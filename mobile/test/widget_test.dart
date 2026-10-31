@@ -9,7 +9,9 @@ void main() {
     await tester.pumpWidget(const WaleedTechApp());
 
     expect(find.text('Waleed Tech Companion'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('Explore engineering topics'), 140);
     expect(find.text('Explore engineering topics'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('Database Engineering'), 140);
     expect(find.text('Database Engineering'), findsOneWidget);
     // The offline CTA increases the ListView height; scroll before asserting.
     await tester.scrollUntilVisible(find.text('Software Engineering'), 140);
@@ -23,6 +25,7 @@ void main() {
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(const WaleedTechApp());
+    await tester.scrollUntilVisible(find.text('Database Engineering'), 140);
     await tester.tap(find.text('Database Engineering'));
     await tester.pumpAndSettle();
 
@@ -67,6 +70,7 @@ void main() {
     await tester.pumpWidget(const WaleedTechApp());
     await tester.tap(find.byTooltip('Switch to Arabic'));
     await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.text('هندسة قواعد البيانات'), 140);
     await tester.tap(find.text('هندسة قواعد البيانات'));
     await tester.pumpAndSettle();
 
