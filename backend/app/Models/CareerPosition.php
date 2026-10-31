@@ -10,6 +10,8 @@ class CareerPosition extends Model
 {
     use HasUuids;
 
+    protected $attributes = ['publishable' => false, 'verified' => false];
+
     protected $fillable = ['profile_id', 'org_name', 'role_en', 'role_ar', 'started_on', 'ended_on', 'publishable', 'verified'];
 
     protected function casts(): array

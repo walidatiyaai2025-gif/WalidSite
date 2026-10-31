@@ -10,6 +10,8 @@ class Certification extends Model
 {
     use HasUuids;
 
+    protected $attributes = ['verified' => false];
+
     protected $fillable = ['profile_id', 'title', 'issuer', 'issued_on', 'verified', 'evidence_asset_id'];
 
     protected function casts(): array

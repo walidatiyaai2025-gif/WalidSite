@@ -9,6 +9,8 @@ class Skill extends Model
 {
     use HasUuids;
 
+    protected $attributes = ['evidence_status' => 'unverified'];
+
     protected $fillable = ['slug', 'name_en', 'name_ar', 'category', 'evidence_status'];
 
     public function scopeWithVerifiedEvidence($query)

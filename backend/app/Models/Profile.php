@@ -11,6 +11,8 @@ class Profile extends Model
 {
     use HasUuids;
 
+    protected $attributes = ['publish_status' => 'draft'];
+
     protected $fillable = ['user_id', 'public_name', 'bio_en', 'bio_ar', 'portrait_asset_id', 'publish_status'];
 
     public function user(): BelongsTo
