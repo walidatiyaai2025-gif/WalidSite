@@ -1,0 +1,22 @@
+:root {
+  --wa-primary: #163B66;
+  --wa-cta: #126DE1;
+  --wa-accent: #00A999;
+  --wa-base: #FFFFFF;
+  --wa-subtle: #F5F9FC;
+  --wa-muted: #EAF5FB;
+  --wa-elevated: #FFFFFF;
+  --wa-strong: #142E4D;
+  --wa-body: #315471;
+  --wa-muted: #55718B;
+  --wa-inverse: #FFFFFF;
+  --wa-soft: #D3E3ED;
+  --wa-strong: #97B4C8;
+  --wa-success: #179B67;
+  --wa-warning: #BF7F12;
+  --wa-danger: #C53F4B;
+  --wa-info: #126DE1;
+  --wa-font-ar: Tajawal, Arial, sans-serif;
+  --wa-font-en: Inter, Arial, sans-serif;
+  --wa-radius-md: 12px;
+}

@@ -1,0 +1,1917 @@
+openapi: 3.1.0
+info:
+  title: Waleed Atiya Web & Mobile API
+  version: 0.6.0
+  description: 'Contract only: endpoints and DTOs to implement/verify during task execution, not an existing
+    service'
+servers:
+- url: /api/v1
+tags:
+- name: public
+- name: mobile
+- name: admin
+paths:
+  /public/home:
+    get:
+      operationId: getHome
+      summary: getHome
+      tags:
+      - public
+      x-required-role: public
+      x-response-model: PublicHome
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthenticated
+        '403':
+          description: Forbidden
+        '422':
+          description: Validation error
+        '429':
+          description: Throttled
+  /public/profile:
+    get:
+      operationId: getProfile
+      summary: getProfile
+      tags:
+      - public
+      x-required-role: public
+      x-response-model: Profile
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthenticated
+        '403':
+          description: Forbidden
+        '422':
+          description: Validation error
+        '429':
+          description: Throttled
+  /public/expertise:
+    get:
+      operationId: getExpertise
+      summary: getExpertise
+      tags:
+      - public
+      x-required-role: public
+      x-response-model: Success
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthenticated
+        '403':
+          description: Forbidden
+        '422':
+          description: Validation error
+        '429':
+          description: Throttled
+  /public/projects:
+    get:
+      operationId: listPublicProjects
+      summary: listPublicProjects
+      tags:
+      - public
+      x-required-role: public
+      x-response-model: Project
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthenticated
+        '403':
+          description: Forbidden
+        '422':
+          description: Validation error
+        '429':
+          description: Throttled
+  /public/projects/{slug}:
+    get:
+      operationId: getProject
+      summary: getProject
+      tags:
+      - public
+      x-required-role: public
+      x-response-model: Project
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthenticated
+        '403':
+          description: Forbidden
+        '422':
+          description: Validation error
+        '429':
+          description: Throttled
+      parameters:
+      - in: path
+        name: slug
+        required: true
+        schema:
+          type: string
+  /public/articles:
+    get:
+      operationId: listPublishedArticles
+      summary: listPublishedArticles
+      tags:
+      - public
+      x-required-role: public
+      x-response-model: Article
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthenticated
+        '403':
+          description: Forbidden
+        '422':
+          description: Validation error
+        '429':
+          description: Throttled
+  /public/articles/{slug}:
+    get:
+      operationId: getArticle
+      summary: getArticle
+      tags:
+      - public
+      x-required-role: public
+      x-response-model: Article
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthenticated
+        '403':
+          description: Forbidden
+        '422':
+          description: Validation error
+        '429':
+          description: Throttled
+      parameters:
+      - in: path
+        name: slug
+        required: true
+        schema:
+          type: string
+  /public/tools:
+    get:
+      operationId: listTools
+      summary: listTools
+      tags:
+      - public
+      x-required-role: public
+      x-response-model: Success
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthenticated
+        '403':
+          description: Forbidden
+        '422':
+          description: Validation error
+        '429':
+          description: Throttled
+  /public/github/portfolio:
+    get:
+      operationId: getPublicGithubPortfolio
+      summary: getPublicGithubPortfolio
+      tags:
+      - public
+      x-required-role: public
+      x-response-model: PublicRepository
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthenticated
+        '403':
+          description: Forbidden
+        '422':
+          description: Validation error
+        '429':
+          description: Throttled
+  /public/resume:
+    get:
+      operationId: getResumeTracks
+      summary: getResumeTracks
+      tags:
+      - public
+      x-required-role: public
+      x-response-model: Success
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthenticated
+        '403':
+          description: Forbidden
+        '422':
+          description: Validation error
+        '429':
+          description: Throttled
+  /public/recruiter:
+    get:
+      operationId: getRecruiterMode
+      summary: getRecruiterMode
+      tags:
+      - public
+      x-required-role: public
+      x-response-model: Success
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthenticated
+        '403':
+          description: Forbidden
+        '422':
+          description: Validation error
+        '429':
+          description: Throttled
+  /public/search:
+    get:
+      operationId: searchPublic
+      summary: searchPublic
+      tags:
+      - public
+      x-required-role: public
+      x-response-model: Success
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthenticated
+        '403':
+          description: Forbidden
+        '422':
+          description: Validation error
+        '429':
+          description: Throttled
+  /public/contact:
+    post:
+      operationId: submitContact
+      summary: submitContact
+      tags:
+      - public
+      x-required-role: public
+      x-response-model: Success
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthenticated
+        '403':
+          description: Forbidden
+        '422':
+          description: Validation error
+        '429':
+          description: Throttled
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ContactInput'
+  /public/app-bootstrap:
+    get:
+      operationId: getAppBootstrap
+      summary: getAppBootstrap
+      tags:
+      - public
+      x-required-role: public
+      x-response-model: Success
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthenticated
+        '403':
+          description: Forbidden
+        '422':
+          description: Validation error
+        '429':
+          description: Throttled
+  /admin/dashboard:
+    get:
+      operationId: adminDashboard
+      summary: adminDashboard
+      tags:
+      - admin
+      x-required-role: admin
+      x-response-model: Success
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthenticated
+        '403':
+          description: Forbidden
+        '422':
+          description: Validation error
+        '429':
+          description: Throttled
+      security:
+      - bearerAuth: []
+  /admin/articles:
+    get:
+      operationId: adminListArticles
+      summary: adminListArticles
+      tags:
+      - admin
+      x-required-role: admin
+      x-response-model: Success
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthenticated
+        '403':
+          description: Forbidden
+        '422':
+          description: Validation error
+        '429':
+          description: Throttled
+      security:
+      - bearerAuth: []
+    post:
+      operationId: adminCreateArticle
+      summary: adminCreateArticle
+      tags:
+      - admin
+      x-required-role: admin
+      x-response-model: Success
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthenticated
+        '403':
+          description: Forbidden
+        '422':
+          description: Validation error
+        '429':
+          description: Throttled
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ArticleDraftInput'
+      security:
+      - bearerAuth: []
+  /admin/articles/{id}/publish:
+    post:
+      operationId: adminPublishArticle
+      summary: adminPublishArticle
+      tags:
+      - admin
+      x-required-role: admin
+      x-response-model: Success
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthenticated
+        '403':
+          description: Forbidden
+        '422':
+          description: Validation error
+        '429':
+          description: Throttled
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      security:
+      - bearerAuth: []
+  /admin/ai/providers:
+    get:
+      operationId: adminListProviders
+      summary: adminListProviders
+      tags:
+      - admin
+      x-required-role: admin
+      x-response-model: AiProvider
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthenticated
+        '403':
+          description: Forbidden
+        '422':
+          description: Validation error
+        '429':
+          description: Throttled
+      security:
+      - bearerAuth: []
+    post:
+      operationId: adminCreateProvider
+      summary: adminCreateProvider
+      tags:
+      - admin
+      x-required-role: admin
+      x-response-model: AiProvider
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthenticated
+        '403':
+          description: Forbidden
+        '422':
+          description: Validation error
+        '429':
+          description: Throttled
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AiProviderInput'
+      security:
+      - bearerAuth: []
+  /admin/ai/providers/{id}:
+    get:
+      operationId: adminGetProvider
+      summary: adminGetProvider
+      tags:
+      - admin
+      x-required-role: admin
+      x-response-model: AiProvider
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthenticated
+        '403':
+          description: Forbidden
+        '422':
+          description: Validation error
+        '429':
+          description: Throttled
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      security:
+      - bearerAuth: []
+    patch:
+      operationId: adminUpdateProvider
+      summary: adminUpdateProvider
+      tags:
+      - admin
+      x-required-role: admin
+      x-response-model: AiProvider
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthenticated
+        '403':
+          description: Forbidden
+        '422':
+          description: Validation error
+        '429':
+          description: Throttled
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AiProviderInput'
+      security:
+      - bearerAuth: []
+  /admin/ai/providers/{id}/test:
+    post:
+      operationId: adminTestProvider
+      summary: adminTestProvider
+      tags:
+      - admin
+      x-required-role: admin
+      x-response-model: AiProvider
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthenticated
+        '403':
+          description: Forbidden
+        '422':
+          description: Validation error
+        '429':
+          description: Throttled
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      security:
+      - bearerAuth: []
+  /admin/ai/routes:
+    get:
+      operationId: adminListAiRoutes
+      summary: adminListAiRoutes
+      tags:
+      - admin
+      x-required-role: admin
+      x-response-model: Success
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthenticated
+        '403':
+          description: Forbidden
+        '422':
+          description: Validation error
+        '429':
+          description: Throttled
+      security:
+      - bearerAuth: []
+  /admin/ai/routes/{id}:
+    put:
+      operationId: adminUpdateAiRoute
+      summary: adminUpdateAiRoute
+      tags:
+      - admin
+      x-required-role: admin
+      x-response-model: Success
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthenticated
+        '403':
+          description: Forbidden
+        '422':
+          description: Validation error
+        '429':
+          description: Throttled
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      security:
+      - bearerAuth: []
+  /admin/ai/images:
+    get:
+      operationId: adminListImages
+      summary: adminListImages
+      tags:
+      - admin
+      x-required-role: admin
+      x-response-model: Success
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthenticated
+        '403':
+          description: Forbidden
+        '422':
+          description: Validation error
+        '429':
+          description: Throttled
+      security:
+      - bearerAuth: []
+    post:
+      operationId: adminCreateImageJob
+      summary: adminCreateImageJob
+      tags:
+      - admin
+      x-required-role: admin
+      x-response-model: AiJob
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthenticated
+        '403':
+          description: Forbidden
+        '422':
+          description: Validation error
+        '429':
+          description: Throttled
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ArticleDraftInput'
+      security:
+      - bearerAuth: []
+  /admin/quality:
+    get:
+      operationId: adminQualityDashboard
+      summary: adminQualityDashboard
+      tags:
+      - admin
+      x-required-role: admin
+      x-response-model: Success
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthenticated
+        '403':
+          description: Forbidden
+        '422':
+          description: Validation error
+        '429':
+          description: Throttled
+      security:
+      - bearerAuth: []
+  /admin/github:
+    get:
+      operationId: adminGithubSettings
+      summary: adminGithubSettings
+      tags:
+      - admin
+      x-required-role: admin
+      x-response-model: PublicRepository
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthenticated
+        '403':
+          description: Forbidden
+        '422':
+          description: Validation error
+        '429':
+          description: Throttled
+      security:
+      - bearerAuth: []
+  /admin/github/sync:
+    post:
+      operationId: adminSyncGithub
+      summary: adminSyncGithub
+      tags:
+      - admin
+      x-required-role: admin
+      x-response-model: Success
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthenticated
+        '403':
+          description: Forbidden
+        '422':
+          description: Validation error
+        '429':
+          description: Throttled
+      security:
+      - bearerAuth: []
+  /admin/projects:
+    get:
+      operationId: adminListProjects
+      summary: adminListProjects
+      tags:
+      - admin
+      x-required-role: admin
+      x-response-model: Success
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthenticated
+        '403':
+          description: Forbidden
+        '422':
+          description: Validation error
+        '429':
+          description: Throttled
+      security:
+      - bearerAuth: []
+  /admin/audience:
+    get:
+      operationId: adminAudience
+      summary: adminAudience
+      tags:
+      - admin
+      x-required-role: admin
+      x-response-model: Success
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthenticated
+        '403':
+          description: Forbidden
+        '422':
+          description: Validation error
+        '429':
+          description: Throttled
+      security:
+      - bearerAuth: []
+  /admin/analytics:
+    get:
+      operationId: adminAnalytics
+      summary: adminAnalytics
+      tags:
+      - admin
+      x-required-role: admin
+      x-response-model: Success
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthenticated
+        '403':
+          description: Forbidden
+        '422':
+          description: Validation error
+        '429':
+          description: Throttled
+      security:
+      - bearerAuth: []
+  /admin/approvals:
+    get:
+      operationId: adminApprovals
+      summary: adminApprovals
+      tags:
+      - admin
+      x-required-role: admin
+      x-response-model: Success
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthenticated
+        '403':
+          description: Forbidden
+        '422':
+          description: Validation error
+        '429':
+          description: Throttled
+      security:
+      - bearerAuth: []
+  /admin/approvals/{id}/decision:
+    post:
+      operationId: adminApprovalDecision
+      summary: adminApprovalDecision
+      tags:
+      - admin
+      x-required-role: admin
+      x-response-model: Success
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthenticated
+        '403':
+          description: Forbidden
+        '422':
+          description: Validation error
+        '429':
+          description: Throttled
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApprovalDecisionInput'
+      security:
+      - bearerAuth: []
+  /admin/audit:
+    get:
+      operationId: adminAudit
+      summary: adminAudit
+      tags:
+      - admin
+      x-required-role: admin
+      x-response-model: Success
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthenticated
+        '403':
+          description: Forbidden
+        '422':
+          description: Validation error
+        '429':
+          description: Throttled
+      security:
+      - bearerAuth: []
+  /mobile/home:
+    get:
+      operationId: mobileHome
+      summary: mobileHome
+      tags:
+      - mobile
+      x-required-role: public
+      x-response-model: Success
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthenticated
+        '403':
+          description: Forbidden
+        '422':
+          description: Validation error
+        '429':
+          description: Throttled
+  /mobile/ai/diagnose:
+    post:
+      operationId: mobileAiDiagnose
+      summary: mobileAiDiagnose
+      tags:
+      - mobile
+      x-required-role: authenticated
+      x-response-model: AiJob
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthenticated
+        '403':
+          description: Forbidden
+        '422':
+          description: Validation error
+        '429':
+          description: Throttled
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AiDiagnoseInput'
+      security:
+      - bearerAuth: []
+  /mobile/solutions/{id}:
+    get:
+      operationId: mobileGetSolution
+      summary: mobileGetSolution
+      tags:
+      - mobile
+      x-required-role: public
+      x-response-model: Runbook
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthenticated
+        '403':
+          description: Forbidden
+        '422':
+          description: Validation error
+        '429':
+          description: Throttled
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+  /mobile/runbooks:
+    get:
+      operationId: mobileRunbooks
+      summary: mobileRunbooks
+      tags:
+      - mobile
+      x-required-role: public
+      x-response-model: Runbook
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthenticated
+        '403':
+          description: Forbidden
+        '422':
+          description: Validation error
+        '429':
+          description: Throttled
+  /mobile/articles:
+    get:
+      operationId: mobileArticles
+      summary: mobileArticles
+      tags:
+      - mobile
+      x-required-role: public
+      x-response-model: Success
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthenticated
+        '403':
+          description: Forbidden
+        '422':
+          description: Validation error
+        '429':
+          description: Throttled
+  /mobile/learn:
+    get:
+      operationId: mobileLearn
+      summary: mobileLearn
+      tags:
+      - mobile
+      x-required-role: public
+      x-response-model: Success
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthenticated
+        '403':
+          description: Forbidden
+        '422':
+          description: Validation error
+        '429':
+          description: Throttled
+  /mobile/interview:
+    post:
+      operationId: mobileInterview
+      summary: mobileInterview
+      tags:
+      - mobile
+      x-required-role: authenticated
+      x-response-model: Success
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthenticated
+        '403':
+          description: Forbidden
+        '422':
+          description: Validation error
+        '429':
+          description: Throttled
+      security:
+      - bearerAuth: []
+  /mobile/saved:
+    get:
+      operationId: mobileSaved
+      summary: mobileSaved
+      tags:
+      - mobile
+      x-required-role: authenticated
+      x-response-model: Success
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthenticated
+        '403':
+          description: Forbidden
+        '422':
+          description: Validation error
+        '429':
+          description: Throttled
+      security:
+      - bearerAuth: []
+  /mobile/me:
+    get:
+      operationId: mobileMe
+      summary: mobileMe
+      tags:
+      - mobile
+      x-required-role: authenticated
+      x-response-model: Success
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthenticated
+        '403':
+          description: Forbidden
+        '422':
+          description: Validation error
+        '429':
+          description: Throttled
+      security:
+      - bearerAuth: []
+  /mobile/preferences:
+    get:
+      operationId: mobilePreferences
+      summary: mobilePreferences
+      tags:
+      - mobile
+      x-required-role: public
+      x-response-model: Success
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthenticated
+        '403':
+          description: Forbidden
+        '422':
+          description: Validation error
+        '429':
+          description: Throttled
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  schemas:
+    PublicHome:
+      type: object
+      additionalProperties: false
+      properties:
+        headline:
+          type: string
+          description: Evidence-based professional headline
+        portrait_url:
+          type: string
+          description: Owner-supplied portrait URL
+        featured_projects:
+          type: array
+          items:
+            $ref: '#/components/schemas/Project'
+        latest_articles:
+          type: array
+          items:
+            $ref: '#/components/schemas/Article'
+      required:
+      - headline
+      - portrait_url
+      - featured_projects
+      - latest_articles
+    Profile:
+      type: object
+      additionalProperties: false
+      properties:
+        display_name:
+          type: string
+          description: Name as supplied in CV
+        professional_summary:
+          type: string
+          description: Verified bio
+        experience:
+          type: array
+          items:
+            type: object
+        certifications:
+          type: array
+          items:
+            type: string
+      required:
+      - display_name
+      - professional_summary
+      - experience
+      - certifications
+    Project:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          description: UUID
+        slug:
+          type: string
+          description: Stable public slug
+        name:
+          type: string
+          description: Verified project name
+        summary:
+          type: string
+          description: Publishable sanitized summary
+        role:
+          type: string
+          description: Verified role
+        status:
+          type: string
+          description: Current status
+          enum:
+          - completed
+          - in_progress
+          - research
+          - archived
+        evidence_urls:
+          type: array
+          items:
+            type: string
+        public_repo_url:
+          type:
+          - string
+          - 'null'
+      required:
+      - id
+      - slug
+      - name
+      - summary
+      - role
+      - status
+      - evidence_urls
+      - public_repo_url
+    Article:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          description: UUID
+        slug:
+          type: string
+          description: Stable slug
+        title:
+          type: string
+          description: Article title
+        body_markdown:
+          type: string
+          description: Validated article content
+        citations:
+          type: array
+          items:
+            type: string
+        tested_status:
+          type: string
+          description: tested/unverified
+          enum:
+          - tested
+          - documented
+          - unverified
+        hero_image_url:
+          type:
+          - string
+          - 'null'
+        published_at:
+          type:
+          - string
+          - 'null'
+      required:
+      - id
+      - slug
+      - title
+      - body_markdown
+      - citations
+      - tested_status
+      - hero_image_url
+      - published_at
+    AiProvider:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          description: UUID
+        display_name:
+          type: string
+          description: Editable label
+        provider_type:
+          type: string
+          description: Provider adapter type
+        base_url:
+          type: string
+          description: Connection URL
+        enabled:
+          type: boolean
+          description: Routing allowed
+        health_status:
+          type: string
+          description: Connection health
+        has_saved_secret:
+          type: boolean
+          description: 'Boolean only: API token is never returned'
+      required:
+      - id
+      - display_name
+      - provider_type
+      - base_url
+      - enabled
+      - health_status
+      - has_saved_secret
+    AiProviderInput:
+      type: object
+      additionalProperties: false
+      properties:
+        display_name:
+          type: string
+          description: Editable label
+        provider_type:
+          type: string
+          description: Adapter type
+        base_url:
+          type: string
+          description: Server endpoint
+        secret:
+          type: string
+          description: Write-only secret; never echoed
+        enabled:
+          type: boolean
+          description: Whether enabled
+        concurrent_limit:
+          type: integer
+          description: Defaults 1
+        timeout_seconds:
+          type: integer
+          description: Defaults 30
+      required:
+      - display_name
+      - provider_type
+      - base_url
+      - enabled
+    Runbook:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          description: UUID
+        title:
+          type: string
+          description: Guide title
+        markdown:
+          type: string
+          description: Offline-capable content
+        version:
+          type: integer
+          description: Content version
+        validated_at:
+          type:
+          - string
+          - 'null'
+      required:
+      - id
+      - title
+      - markdown
+      - version
+      - validated_at
+    PublicRepository:
+      type: object
+      additionalProperties: false
+      properties:
+        full_name:
+          type: string
+          description: Public allowlisted owner/repo
+        html_url:
+          type: string
+          description: Public Github URL
+        updated_at:
+          type: string
+          description: Source timestamp
+        visibility:
+          type: string
+          description: Must be public
+        last_sync_at:
+          type: string
+          description: Cache freshness
+        evidence:
+          type: array
+          items:
+            type: string
+      required:
+      - full_name
+      - html_url
+      - updated_at
+      - visibility
+      - last_sync_at
+      - evidence
+    AiJob:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          description: UUID
+        status:
+          type: string
+          description: Durable status
+          enum:
+          - queued
+          - running
+          - completed
+          - failed
+          - blocked
+          - cancelled
+        progress_percent:
+          type: integer
+          description: 0..100
+        result_url:
+          type:
+          - string
+          - 'null'
+        retry_after_seconds:
+          type:
+          - integer
+          - 'null'
+      required:
+      - id
+      - status
+      - progress_percent
+      - result_url
+      - retry_after_seconds
+    ContactInput:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          description: Contact name
+        email:
+          type: string
+          description: Contact email
+        message:
+          type: string
+          description: Message text
+        privacy_consent:
+          type: boolean
+          description: Explicit consent
+      required:
+      - name
+      - email
+      - message
+      - privacy_consent
+    ArticleDraftInput:
+      type: object
+      additionalProperties: false
+      properties:
+        title:
+          type: string
+          description: Title
+        topic:
+          type: string
+          description: Research topic
+        language:
+          type: string
+          description: ar/en
+          enum:
+          - ar
+          - en
+        publication_mode:
+          type: string
+          description: Draft review or conditional auto
+          enum:
+          - draft
+          - auto_eligible
+      required:
+      - title
+      - topic
+      - language
+      - publication_mode
+    AiDiagnoseInput:
+      type: object
+      additionalProperties: false
+      properties:
+        question:
+          type: string
+          description: Technical question
+        technology:
+          type: string
+          description: Language/stack
+        code_snippet:
+          type: string
+          description: Optional code removed from public logs
+        consent_to_process:
+          type: boolean
+          description: User consent for remote processing
+      required:
+      - question
+      - technology
+      - consent_to_process
+    ApprovalDecisionInput:
+      type: object
+      additionalProperties: false
+      properties:
+        decision:
+          type: string
+          description: approve/reject
+          enum:
+          - approve
+          - reject
+        reason:
+          type: string
+          description: Audit reason
+      required:
+      - decision
+      - reason
+    Success:
+      type: object
+      additionalProperties: false
+      properties:
+        ok:
+          type: boolean
+          description: Success
+        data:
+          type: object
+          description: Endpoint DTO determined by x-response-model; do not invent fields
+        timestamp:
+          type: string
+          description: ISO8601 timestamp
+        request_id:
+          type: string
+          description: Tracing ID
+      required:
+      - ok
+      - data
+      - timestamp
+      - request_id
+    Error:
+      type: object
+      additionalProperties: false
+      properties:
+        ok:
+          type: boolean
+          description: Always false
+        code:
+          type: string
+          description: Stable error code
+        message:
+          type: string
+          description: Safe error text
+        request_id:
+          type: string
+          description: Trace ID
+      required:
+      - ok
+      - code
+      - message
+      - request_id

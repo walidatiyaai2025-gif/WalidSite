@@ -1,0 +1,142 @@
+[
+  {
+    "id": "G-01",
+    "name": "No invented professional claims",
+    "test": "No personal project, metrics, awards, role, certification, employer approval or timeline becomes public without approved public proof.",
+    "domain": "public-content",
+    "blocking": true
+  },
+  {
+    "id": "G-02",
+    "name": "Assets provenance",
+    "test": "Only owner-supplied portrait may represent owner; every derivative provenance points at original SHA.",
+    "domain": "assets",
+    "blocking": true
+  },
+  {
+    "id": "G-03",
+    "name": "Zero fake controls",
+    "test": "40 screens have real backend/local destinations or explicit disabled/unavailable states.",
+    "domain": "web+mobile+admin",
+    "blocking": true
+  },
+  {
+    "id": "G-04",
+    "name": "AI UI Configuration",
+    "test": "Add/test/disable/switch selfhosted and managed providers without editing source code.",
+    "domain": "admin",
+    "blocking": true
+  },
+  {
+    "id": "G-05",
+    "name": "Secrets",
+    "test": "No API keys, tokens or sensitive GitHub data in frontend, mobile packages, Git commits, errors or logs.",
+    "domain": "security",
+    "blocking": true
+  },
+  {
+    "id": "G-06",
+    "name": "Queue limits",
+    "test": "AI tasks one-at-a-time per provider by default, checkpointed, durable retries and idempotency.",
+    "domain": "ai",
+    "blocking": true
+  },
+  {
+    "id": "G-07",
+    "name": "Offline mobile",
+    "test": "Offline runbooks open without internet, clearly show version and stale state.",
+    "domain": "mobile",
+    "blocking": true
+  },
+  {
+    "id": "G-08",
+    "name": "Publish workflow",
+    "test": "Evidence + citations + technical checks; low-risk automatic, high-risk approval queue; scheduled unpublish.",
+    "domain": "content",
+    "blocking": true
+  },
+  {
+    "id": "G-09",
+    "name": "GitHub",
+    "test": "Repository allowlist and public visibility checks; verify exact source timestamp; show no invented numbers.",
+    "domain": "integration",
+    "blocking": true
+  },
+  {
+    "id": "G-10",
+    "name": "Worker overlap",
+    "test": "Exactly one active task owner and disjoint path ownership; change/reassignment documented.",
+    "domain": "governance",
+    "blocking": true
+  },
+  {
+    "id": "G-11",
+    "name": "PR exact-head CI",
+    "test": "Required gate at latest PR SHA green with changed-scope checks and tests.",
+    "domain": "ci",
+    "blocking": true
+  },
+  {
+    "id": "G-12",
+    "name": "Release provenance",
+    "test": "Tag+artifact+deploy evidence, staging smoke, rollback; never claim release without success.",
+    "domain": "release",
+    "blocking": true
+  },
+  {
+    "id": "G-13",
+    "name": "Accessibility",
+    "test": "Arabic RTL, English LTR, keyboard, contrast, accessible labels, tap targets, reduced motion.",
+    "domain": "ux",
+    "blocking": true
+  },
+  {
+    "id": "G-14",
+    "name": "Responsive",
+    "test": "Desktop/tablet/mobile for public/admin, Android/iOS device matrices for app.",
+    "domain": "ux",
+    "blocking": true
+  },
+  {
+    "id": "G-15",
+    "name": "SEO",
+    "test": "Article canonical, sitemap, structured data where validated, robots, language alternates, redirects.",
+    "domain": "web",
+    "blocking": true
+  },
+  {
+    "id": "G-16",
+    "name": "Privacy/consent",
+    "test": "Consent for notifications, unsubscribe, account removal, transparent retention rules.",
+    "domain": "policy",
+    "blocking": true
+  },
+  {
+    "id": "G-17",
+    "name": "Data migration",
+    "test": "Old SQL imported content-only through sanitize whitelist; reject user/password/subscribers/unsafe uploads.",
+    "domain": "migration",
+    "blocking": true
+  },
+  {
+    "id": "G-18",
+    "name": "Image generation",
+    "test": "AI images via selected UI provider; rights/provenance; no fake headshots or diagrams claimed real.",
+    "domain": "media",
+    "blocking": true
+  },
+  {
+    "id": "G-19",
+    "name": "Cost protection",
+    "test": "Admin quotas, budget caps, provider circuit breaker, never retry endlessly.",
+    "domain": "ops",
+    "blocking": true
+  },
+  {
+    "id": "G-20",
+    "name": "Owner only tests final stage",
+    "test": "During ordinary development defer owner questions; blockers isolated with defaults documented, report at staging handoff.",
+    "domain": "governance",
+    "blocking": true
+  }
+]

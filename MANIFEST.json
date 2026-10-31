@@ -1,0 +1,834 @@
+{
+  "packVersion": "6.0",
+  "fileCountExcludingManifest": 165,
+  "createdOn": "2026-10-31",
+  "sourcePortraitSha256": "ce9fb1136f67790f134c3a25e0763e7fded6e5a3a31d18b124b11acbc1d61c4d",
+  "sourceMasterplanV5Sha256": "8ff159a62dc0e68e84962eb11084010ba058dc471ea34b556b8a576fea8cae2d",
+  "integrityItems": [
+    {
+      "path": "README.md",
+      "size_bytes": 1729,
+      "sha256": "af53d95e956d663c2315e1e696bb517efb658679e4844b53c0f0ead9ea849513"
+    },
+    {
+      "path": "Waleed_Atiya_Complete_Development_Masterplan_v06_AR.docx",
+      "size_bytes": 3342146,
+      "sha256": "68b0f38f7b385e56985c7eba01aebd28a0e242a211041dbb2ff9db2b4c327502"
+    },
+    {
+      "path": "api/dto-contracts.json",
+      "size_bytes": 11542,
+      "sha256": "9dc41e77fbc8d2308593d145df4f6cad5e768b9460682ce8dd9bcd0ed94802df"
+    },
+    {
+      "path": "api/openapi-contract.yaml",
+      "size_bytes": 47922,
+      "sha256": "9e6eac11fd0d21230ffe7d40e7622b7980dfbcc7c79000b04555e9fa2afab3c9"
+    },
+    {
+      "path": "assets/app-icons/android-adaptive-background.png",
+      "size_bytes": 6493,
+      "sha256": "9ef6f81a4f412a21e0b441dd0cc004d8c20a0981ea4ac0c54c14056b9a202eec"
+    },
+    {
+      "path": "assets/app-icons/android-adaptive-foreground.png",
+      "size_bytes": 8069,
+      "sha256": "8eef6e747c861b7b6b4d07a2a228b926542e16d00a26d151a29eabde4f5d98d3"
+    },
+    {
+      "path": "assets/app-icons/app-icon-1024.png",
+      "size_bytes": 11833,
+      "sha256": "49af21a2018c4aebd1756fb9adde4496bc26acf814decc801a10f30d83416aed"
+    },
+    {
+      "path": "assets/app-icons/app-icon-120.png",
+      "size_bytes": 977,
+      "sha256": "14b1fb3d12b8aca51dc7bfd74fd9fbf8f51158a3a702947042315f8d959d4577"
+    },
+    {
+      "path": "assets/app-icons/app-icon-144.png",
+      "size_bytes": 1216,
+      "sha256": "14a350c0e4b79883ec916a4143cde1f9e3d6298885eabca9e6be3fa4683f2316"
+    },
+    {
+      "path": "assets/app-icons/app-icon-180.png",
+      "size_bytes": 1518,
+      "sha256": "1f264a9c24c0e7decd5297f6634aaae10c8dd21bc6623e167672bf04ea28772d"
+    },
+    {
+      "path": "assets/app-icons/app-icon-192.png",
+      "size_bytes": 1609,
+      "sha256": "7510b159282dde3085ad88af1ad086588f6330568766fa33340eb6f3dcce864c"
+    },
+    {
+      "path": "assets/app-icons/app-icon-256.png",
+      "size_bytes": 2240,
+      "sha256": "512d013c351ae987cdc1c007e4a9f3b628910d59b84f5d32f569d0da7faba11e"
+    },
+    {
+      "path": "assets/app-icons/app-icon-384.png",
+      "size_bytes": 3549,
+      "sha256": "bcb25c86378688829e9b66a2d895b35f7e04aee31a5c3e3bd85e6488e06f5ebe"
+    },
+    {
+      "path": "assets/app-icons/app-icon-48.png",
+      "size_bytes": 399,
+      "sha256": "3978724e4a641cbd411010824e2599f1d970163a774474e8c791b8a9d5a2d961"
+    },
+    {
+      "path": "assets/app-icons/app-icon-512.png",
+      "size_bytes": 4940,
+      "sha256": "2f9f3da64f89f29afa47f0f9d0d8e0691ee465f612ceced681bd6096be17505c"
+    },
+    {
+      "path": "assets/app-icons/app-icon-72.png",
+      "size_bytes": 601,
+      "sha256": "fa296f1b2e8e3e2f9b259ada45ba3a2cef653bd249c81baa337bcdcbe14578f1"
+    },
+    {
+      "path": "assets/app-icons/app-icon-96.png",
+      "size_bytes": 823,
+      "sha256": "4382008500bb75fd50219edebfd273c820fa1f45117d3ffa294b81cd7b76bf06"
+    },
+    {
+      "path": "assets/blog-fallbacks/ai-engineering-1200x675.png",
+      "size_bytes": 25884,
+      "sha256": "3e045f1edb5e2dfba9cfe739ca4760af0be4960f3d3d99aaf549d78711115d1d"
+    },
+    {
+      "path": "assets/blog-fallbacks/architecture-1200x675.png",
+      "size_bytes": 32701,
+      "sha256": "d5a38580ed815749704e3feb8de5628dcd51fc5eba7951b520a4c857dc1f3e62"
+    },
+    {
+      "path": "assets/blog-fallbacks/devops-1200x675.png",
+      "size_bytes": 29506,
+      "sha256": "2b03ea871493573245622b3df52ec4b1e72de228b28579a356f6ab806736b2b8"
+    },
+    {
+      "path": "assets/blog-fallbacks/flutter-1200x675.png",
+      "size_bytes": 27313,
+      "sha256": "7d70210e204cf695ed73ed27cab7a6c3f5a83eeffe71a5881dfe2a21a7fe8c7f"
+    },
+    {
+      "path": "assets/blog-fallbacks/laravel-1200x675.png",
+      "size_bytes": 28633,
+      "sha256": "5ef44d50e7a6f30d42b1991d80db4b508300f6d68238e3a668c7d2eee1df4d3f"
+    },
+    {
+      "path": "assets/blog-fallbacks/security-1200x675.png",
+      "size_bytes": 27814,
+      "sha256": "9f9bfe8c93b20010ed7ee801f03d6890bff4d8d3030963eea9a289299a5f7afc"
+    },
+    {
+      "path": "assets/blog-fallbacks/sql-dba-1200x675.png",
+      "size_bytes": 34659,
+      "sha256": "622f9d7ae85473b812c0bc7e8675bba3ca1a0b7673e615b37a8407ee29c9462c"
+    },
+    {
+      "path": "assets/blog-fallbacks/troubleshooting-1200x675.png",
+      "size_bytes": 28474,
+      "sha256": "f4e3453b3f7b0cdd383b47f96c92fdabeb81e1031a0a4c23b4615deaf05a4a45"
+    },
+    {
+      "path": "assets/brand/favicon.svg",
+      "size_bytes": 444,
+      "sha256": "fafdc3a5e857ecfbbfef5119ea9031fa7984e0a23bad0c34c3b6ce7543ea16c4"
+    },
+    {
+      "path": "assets/brand/logo-lockup-dark.svg",
+      "size_bytes": 683,
+      "sha256": "8aab975994f555e831f7291c88cbd6189c6f3331d6f0a21fe1ba060ce17c565d"
+    },
+    {
+      "path": "assets/brand/logo-lockup-light.svg",
+      "size_bytes": 683,
+      "sha256": "2392538f0979bbafef64cc0a3a6352220dae7752c9c6c695bb295b527bf483fb"
+    },
+    {
+      "path": "assets/brand/logo-symbol-navy.svg",
+      "size_bytes": 444,
+      "sha256": "1453f44ca6fd185c88f61f37258c45be2aac07ad3669a5006f58379b4a729390"
+    },
+    {
+      "path": "assets/brand/logo-symbol-transparent.svg",
+      "size_bytes": 389,
+      "sha256": "040923e1ebc755fa39c0024701dd026e2564c4cf685fa2885ca0bd53a8b7edf5"
+    },
+    {
+      "path": "assets/brand/logo-symbol-white.svg",
+      "size_bytes": 444,
+      "sha256": "83cf92ccb9d1b3f55195b1f164f92d0f6996f0647be225a7e7e9fe984e86b246"
+    },
+    {
+      "path": "assets/icons/about.svg",
+      "size_bytes": 269,
+      "sha256": "2aeb79e2bb921bf3c42400cf06c6cc703d53d12920c737892a5284396bfdefed"
+    },
+    {
+      "path": "assets/icons/ai.svg",
+      "size_bytes": 347,
+      "sha256": "06db671ecb1d8f05527e745a4ab87ca813d2b20ddafd0ea94bb54b50d673d1e5"
+    },
+    {
+      "path": "assets/icons/alert.svg",
+      "size_bytes": 242,
+      "sha256": "8dc462999ffe5375a9d0ecd9bfae28dc2c26e9c0b3508073074eaf4779a7553c"
+    },
+    {
+      "path": "assets/icons/analytics.svg",
+      "size_bytes": 243,
+      "sha256": "44ec49d396e5a643534c0f239386414cb99a6eb4c40907cf6f96eec8c0de26a8"
+    },
+    {
+      "path": "assets/icons/api.svg",
+      "size_bytes": 260,
+      "sha256": "98335b488e629781e7886b2dbb4ffbdc7643b0380a0c3291cf6bfdb184035e63"
+    },
+    {
+      "path": "assets/icons/back.svg",
+      "size_bytes": 236,
+      "sha256": "92db36d9743ef1533778f68f62c0e7e777950017607750fbe10d144bc4423419"
+    },
+    {
+      "path": "assets/icons/blog.svg",
+      "size_bytes": 284,
+      "sha256": "c5ad57850f96dcf2c26326bbf2c55803c2acce143ab1bce0cacedaf00a12a91d"
+    },
+    {
+      "path": "assets/icons/bookmark.svg",
+      "size_bytes": 235,
+      "sha256": "85660a0f358ebce8cdd8871678f4df4eff07bfa264ff17b312a8f6af0b9ce47b"
+    },
+    {
+      "path": "assets/icons/briefcase.svg",
+      "size_bytes": 282,
+      "sha256": "27694f4435438c47d6d1bc0204945881b7218c2a59cedba549212b6b408aa57e"
+    },
+    {
+      "path": "assets/icons/calendar.svg",
+      "size_bytes": 285,
+      "sha256": "d3d0236be6e8b1fbc46a7068abdbfc259989262ca22d3dc918d8004dc5add35f"
+    },
+    {
+      "path": "assets/icons/chat.svg",
+      "size_bytes": 258,
+      "sha256": "155692ed8f654bf4ad11d8c936cc7d183bf0a5906fac4e103f405659a80cc47f"
+    },
+    {
+      "path": "assets/icons/check.svg",
+      "size_bytes": 229,
+      "sha256": "775cb254fdf62d0f19eb5672096c043e30ee6239c602e3bae46f8774094562f0"
+    },
+    {
+      "path": "assets/icons/cloud.svg",
+      "size_bytes": 270,
+      "sha256": "7ffb24130c2cebd6a1bb425b16fa626d8bd03d0eb52918c8ec6f244cf04297a8"
+    },
+    {
+      "path": "assets/icons/code.svg",
+      "size_bytes": 251,
+      "sha256": "98c0d62d4320bfd8729b6ee76a150f6a5b070e8b1218fd2637d294bd2e4e8ac7"
+    },
+    {
+      "path": "assets/icons/contact.svg",
+      "size_bytes": 276,
+      "sha256": "1769161c0a17620df656ba34528f1e97c4f54ff067a5a8b7c2ee942043fff48d"
+    },
+    {
+      "path": "assets/icons/database.svg",
+      "size_bytes": 296,
+      "sha256": "0f951ad12793fa73cb3cb65916a30e5365981483aff4fa3b778fde7246c9685c"
+    },
+    {
+      "path": "assets/icons/download.svg",
+      "size_bytes": 249,
+      "sha256": "3f83adea967d20f0ed5b1b4867243a1f7974c06a8826a3aab8e599bd5955401e"
+    },
+    {
+      "path": "assets/icons/edit.svg",
+      "size_bytes": 250,
+      "sha256": "be308c0b05bed0465c83830a1cdf808d08e13d61079ebf35a9394be75f98e88e"
+    },
+    {
+      "path": "assets/icons/filter.svg",
+      "size_bytes": 238,
+      "sha256": "b078e2f12106a89ab2f12aa0ec58835f1d70b4d8357eeed52224be52250856b8"
+    },
+    {
+      "path": "assets/icons/github.svg",
+      "size_bytes": 359,
+      "sha256": "e46c4777f8049e4f76204b682d048ac69c46a40106cb66732df5b3b9557ca72c"
+    },
+    {
+      "path": "assets/icons/globe.svg",
+      "size_bytes": 294,
+      "sha256": "bca3ac6cef3445c24ea574fd0c6db7343a42bee9e0fbfa7ab959ea11c9598218"
+    },
+    {
+      "path": "assets/icons/heart.svg",
+      "size_bytes": 275,
+      "sha256": "5b15ff85e914d7581d1c958423a55f795e69848ea65b775be490eabc1ad9e1b5"
+    },
+    {
+      "path": "assets/icons/home.svg",
+      "size_bytes": 258,
+      "sha256": "c2cc99f5bd8c91c32f7d4c43beceb17d04f96d01c9823b06c81f25de448588b8"
+    },
+    {
+      "path": "assets/icons/image.svg",
+      "size_bytes": 314,
+      "sha256": "6f4378147811594fecc3b8b93cfc2136e36f5da922e821bbc776642b8e746e2d"
+    },
+    {
+      "path": "assets/icons/lab.svg",
+      "size_bytes": 252,
+      "sha256": "139637592f15010889c8d4333a2c9d14c57a06efdcb2ca554836e7e86b966a42"
+    },
+    {
+      "path": "assets/icons/learn.svg",
+      "size_bytes": 284,
+      "sha256": "368b29d22fa26c8adeffd222439fd83533ced755208c360e1a01d6031481265c"
+    },
+    {
+      "path": "assets/icons/lock.svg",
+      "size_bytes": 288,
+      "sha256": "87c03b96417a1ae6a2d914442a719731ae8e655213493e7e369451a98c36f987"
+    },
+    {
+      "path": "assets/icons/login.svg",
+      "size_bytes": 250,
+      "sha256": "7459a4de3ca9766859ea7cb96ec9e9777b7e94099713dc24ccf2fb68c0d39a26"
+    },
+    {
+      "path": "assets/icons/logout.svg",
+      "size_bytes": 249,
+      "sha256": "ab7cead4583ecc9d64e99071a8f7784674780e84a23757e1aa4e415d46946cc5"
+    },
+    {
+      "path": "assets/icons/menu.svg",
+      "size_bytes": 238,
+      "sha256": "5068e149fb753d08ebd72d133cba97186c003d03d9f98b1cdc63969859a11b38"
+    },
+    {
+      "path": "assets/icons/notifications.svg",
+      "size_bytes": 268,
+      "sha256": "fe8b72df702f4f2658acabc6731b0d60470028232fdbb2603849984ee3c66b26"
+    },
+    {
+      "path": "assets/icons/offline.svg",
+      "size_bytes": 272,
+      "sha256": "7c3cd40a1295c2d0e7ab846e7a5875369e7ee6e1fd506472c1a42d70db9c9fdd"
+    },
+    {
+      "path": "assets/icons/phone.svg",
+      "size_bytes": 272,
+      "sha256": "d46f34651ec7d200a5e87c525ecf3841e7117b485fa55f3ec7a2174be6a518c6"
+    },
+    {
+      "path": "assets/icons/projects.svg",
+      "size_bytes": 282,
+      "sha256": "8cf6d97c5f5edded3143466194bbae5e80a3d2850859f6ef6a1a1f2af6c6d3e2"
+    },
+    {
+      "path": "assets/icons/resume.svg",
+      "size_bytes": 255,
+      "sha256": "cd8fe5b82f512119b6c5f4a318b109f1e4c505cacfb01f9d7353b222431220ed"
+    },
+    {
+      "path": "assets/icons/runbook.svg",
+      "size_bytes": 248,
+      "sha256": "bbffaed51ed270aa966d8b2afb7929d6a38bddcfc495188e6cf7fbfb95d86495"
+    },
+    {
+      "path": "assets/icons/search.svg",
+      "size_bytes": 260,
+      "sha256": "c7ff8eb57218d2a168332c6c557e32842566f471e4bdacf55482d85e4f468fe9"
+    },
+    {
+      "path": "assets/icons/security.svg",
+      "size_bytes": 280,
+      "sha256": "1046546ed88d42082cdeb4be804c364634b41f569c4e80cee64bced51ec98c90"
+    },
+    {
+      "path": "assets/icons/settings.svg",
+      "size_bytes": 310,
+      "sha256": "e7b90c9b5bd9e0c9f4f4bbd0259534e345230957c62605c55688f6c13f194f85"
+    },
+    {
+      "path": "assets/icons/store.svg",
+      "size_bytes": 262,
+      "sha256": "74bb0ec4c233a93686f353a4421fad472e291491b7651c7e82ae5198db5a387b"
+    },
+    {
+      "path": "assets/icons/upload.svg",
+      "size_bytes": 249,
+      "sha256": "6e92d50a6031e7cea5dde0d818f6add5186f6156230d22fbee1dfa9b8a202ff8"
+    },
+    {
+      "path": "assets/icons/users.svg",
+      "size_bytes": 309,
+      "sha256": "884cad1c1a3eec0c7f5f8046fea581d960814cb69471883ed2cb38c151d76318"
+    },
+    {
+      "path": "assets/icons/workflow.svg",
+      "size_bytes": 323,
+      "sha256": "4c5e7dafd10a3eec4eaf6699f32f9affcf9feff052af29e2d1e03646cfde9707"
+    },
+    {
+      "path": "assets/illustrations/access-denied.svg",
+      "size_bytes": 448,
+      "sha256": "a841836e75f0f03913c423f09d390200f86cac7ef011a5339a344b6d17b2be9a"
+    },
+    {
+      "path": "assets/illustrations/empty-bookmarks.svg",
+      "size_bytes": 448,
+      "sha256": "fe9cfdd5dc401c85df0015927b0d5b735a7c85899765f21ca6a63f10d52d6fe2"
+    },
+    {
+      "path": "assets/illustrations/empty-search.svg",
+      "size_bytes": 445,
+      "sha256": "6aabec78e67fd2fdad56e71c4170d3d41c5f4ce25008e5ff8782290d37c582db"
+    },
+    {
+      "path": "assets/illustrations/error.svg",
+      "size_bytes": 455,
+      "sha256": "b7e92085cad6c3d65a80e38f6633182c3be37c43810edae3f00015cd706343a9"
+    },
+    {
+      "path": "assets/illustrations/loading.svg",
+      "size_bytes": 442,
+      "sha256": "0be0238800f45a7c44beca8f374747f1db80af57728214e8420477778cc3c8cf"
+    },
+    {
+      "path": "assets/illustrations/offline.svg",
+      "size_bytes": 447,
+      "sha256": "e822f46a89a2e1efb263af82bd69ddb6dd14bf351268c0b3868dafde94069248"
+    },
+    {
+      "path": "assets/portraits/portrait-card.jpg",
+      "size_bytes": 92394,
+      "sha256": "4030eb8e7717ee7389daaede27b596518b08b0b988d9c52eddd2162636b03bbf"
+    },
+    {
+      "path": "assets/portraits/portrait-hero.jpg",
+      "size_bytes": 135993,
+      "sha256": "d57444c036a4b730f72aeb19374279970f228bb308afcce1229a8ff34a9183c9"
+    },
+    {
+      "path": "assets/portraits/portrait-light-derived.jpg",
+      "size_bytes": 307615,
+      "sha256": "9a227856d4daac02fb5b084546a04f9637fd3e4b260f68bbe2902f7eb1702463"
+    },
+    {
+      "path": "assets/portraits/portrait-original-user.jpg",
+      "size_bytes": 116179,
+      "sha256": "ce9fb1136f67790f134c3a25e0763e7fded6e5a3a31d18b124b11acbc1d61c4d"
+    },
+    {
+      "path": "assets/portraits/portrait-square-1024.jpg",
+      "size_bytes": 178222,
+      "sha256": "d00d3d6b95d003e6c24573b97a5151d00ad0c39c7dfaa097346b7852b55c1c03"
+    },
+    {
+      "path": "assets/portraits/portrait-square-128.jpg",
+      "size_bytes": 6587,
+      "sha256": "2be0d6b5b6781f8e9baa78d4701df8e81258fc2e19a04930e98e3d67e2ee5249"
+    },
+    {
+      "path": "assets/portraits/portrait-square-256.jpg",
+      "size_bytes": 18991,
+      "sha256": "4cab34b54ae6d5bbec2b7ce650b18725bdbe92dc5875410abbb2d275be6d38b1"
+    },
+    {
+      "path": "assets/portraits/portrait-square-512.jpg",
+      "size_bytes": 59500,
+      "sha256": "23ed54a52062429ab6715948b663b75cea38c89994e874347447bf4cf99777c9"
+    },
+    {
+      "path": "assets/screen-reference/admin_ai_providers.png",
+      "size_bytes": 72251,
+      "sha256": "cf8e952453fb2b98b4c98c169ba52f96b34fac3dc4355be45624f883c003816a"
+    },
+    {
+      "path": "assets/screen-reference/admin_ai_routing.png",
+      "size_bytes": 62738,
+      "sha256": "b3c0db910dabb6a8b5f00fb55ef642c6e9287671ff6f7453ce47f0e2d10d513e"
+    },
+    {
+      "path": "assets/screen-reference/admin_analytics.png",
+      "size_bytes": 76674,
+      "sha256": "5d6ed9ede339756cb973ff36644d90a76548993f9b9aa4f4169b18797a6711dc"
+    },
+    {
+      "path": "assets/screen-reference/admin_approvals.png",
+      "size_bytes": 68861,
+      "sha256": "0a21654b007c3c920934c044e8e849ad38375c18ddd282188637bbd9ce3814fe"
+    },
+    {
+      "path": "assets/screen-reference/admin_audience___push.png",
+      "size_bytes": 64085,
+      "sha256": "ad95dec7c30173e296e9c08b8e981021bf5d7fa7132a37b16891b6962d6f2afc"
+    },
+    {
+      "path": "assets/screen-reference/admin_audit_&_security.png",
+      "size_bytes": 70082,
+      "sha256": "d68354f9446880cc80ef58f2f56dfd352422abdd0a0bcce30df1c6748065406b"
+    },
+    {
+      "path": "assets/screen-reference/admin_content_studio.png",
+      "size_bytes": 63197,
+      "sha256": "7ed51d2d6e31de0ff9ba545a7f212c070bc389b2ef0d9c1419a9fc1dd2b64b3d"
+    },
+    {
+      "path": "assets/screen-reference/admin_dashboard.png",
+      "size_bytes": 76931,
+      "sha256": "3653fe8d0a15b50522d93a31b4d25691afcd2ea30dead5f77bfecda3cc2f634c"
+    },
+    {
+      "path": "assets/screen-reference/admin_github_sync.png",
+      "size_bytes": 81396,
+      "sha256": "13957f667a36fec51d9ebc626e53eab4bca09e41ad1f3b46df8cb347aefd2817"
+    },
+    {
+      "path": "assets/screen-reference/admin_image_studio.png",
+      "size_bytes": 65143,
+      "sha256": "5f4da95365c7b0ccbc5d7209e3064b26a80546c9bacb76ef39b7a91e593a578c"
+    },
+    {
+      "path": "assets/screen-reference/admin_projects_&_cv.png",
+      "size_bytes": 78821,
+      "sha256": "fddf71a8c9243807f81a4a8e9aac0c2e85184902a3e83c96445a50967b1cd9c1"
+    },
+    {
+      "path": "assets/screen-reference/admin_provider_editor.png",
+      "size_bytes": 74981,
+      "sha256": "9bad453974a45a599a2c0ea71e6ab91006bf9cd62995e0bfea5a069e0aa803fb"
+    },
+    {
+      "path": "assets/screen-reference/admin_quality_gates.png",
+      "size_bytes": 65474,
+      "sha256": "66d3bed37a3283c5ca44415a9aa1ed96fc54650b11873669c8477b7521be478a"
+    },
+    {
+      "path": "assets/screen-reference/mobile_ai_troubleshooter.png",
+      "size_bytes": 30001,
+      "sha256": "118c2f84cff7e690faeab3c023e98bd19c5d1659a83921071665876db2c8fbdf"
+    },
+    {
+      "path": "assets/screen-reference/mobile_developer_home.png",
+      "size_bytes": 33748,
+      "sha256": "9ed896b0dad238b4c26aeac941203805408ed9d3a82e423a3746f3ebaacd7c55"
+    },
+    {
+      "path": "assets/screen-reference/mobile_interview_trainer.png",
+      "size_bytes": 32614,
+      "sha256": "da0823038c909da89c664b8241b6724ba05e47336d88b669d8375cee900805be"
+    },
+    {
+      "path": "assets/screen-reference/mobile_learning_paths.png",
+      "size_bytes": 32893,
+      "sha256": "ffc58158c9b64bcfaa6e26edb1c458eba74caa843d5deae9a21b064904d8725b"
+    },
+    {
+      "path": "assets/screen-reference/mobile_my_github.png",
+      "size_bytes": 28716,
+      "sha256": "8f2dbd4e48602e3d19044ab5b8961dba6c1cc720beaa6f202ba2cf1731db3427"
+    },
+    {
+      "path": "assets/screen-reference/mobile_offline_runbook.png",
+      "size_bytes": 37239,
+      "sha256": "7d5e6d912c7cd17ba56e5d53e515fe91c5549b912b615953e28e318e1faa15f3"
+    },
+    {
+      "path": "assets/screen-reference/mobile_personal_profile.png",
+      "size_bytes": 51090,
+      "sha256": "4cdf9d84aaf4bc05bbd7ed059b63d99066c913f9b68c5fa3343c7c050df3d30d"
+    },
+    {
+      "path": "assets/screen-reference/mobile_preferences.png",
+      "size_bytes": 31417,
+      "sha256": "2a9fbdd68e3f5ea888e1aa4ce710a9169ea9d18e4f1b86c34c3f7317c82b6c6d"
+    },
+    {
+      "path": "assets/screen-reference/mobile_runbook_library.png",
+      "size_bytes": 33769,
+      "sha256": "6b0ee70fe1d9eba0d25cfd9fe5fe48901ccaeb56e36e04cdeac984da29c6b45a"
+    },
+    {
+      "path": "assets/screen-reference/mobile_saved_resources.png",
+      "size_bytes": 38847,
+      "sha256": "26dc2e6dc1e1ba2007ed3fbfff253f6943a241cb657b52e7eb6a0cba6b2e2806"
+    },
+    {
+      "path": "assets/screen-reference/mobile_solution_detail.png",
+      "size_bytes": 36849,
+      "sha256": "353350499e384ac81a1e6339925494abf0ff9c2ab309257a45626914bd1587e7"
+    },
+    {
+      "path": "assets/screen-reference/mobile_tech_articles.png",
+      "size_bytes": 35364,
+      "sha256": "ac20f78bc1e90e30dbfa28d61d2f6a325852b3968f9e6b6edc8c351c3105e1b6"
+    },
+    {
+      "path": "assets/screen-reference/mobile_welcome.png",
+      "size_bytes": 39738,
+      "sha256": "03eee36f96e1d294d6c9739ec783a18352a3711fe072350d5f4764f60a987004"
+    },
+    {
+      "path": "assets/screen-reference/web_about.png",
+      "size_bytes": 137766,
+      "sha256": "94cb055e5ea969678fde31364618bf4cdb90a1c23c314fa7665299f9b1d1c4fa"
+    },
+    {
+      "path": "assets/screen-reference/web_ai_engineering.png",
+      "size_bytes": 49040,
+      "sha256": "b34678a26896596a229c08fe4599debb379e71a6368ae7e93ceb2b9f9e065521"
+    },
+    {
+      "path": "assets/screen-reference/web_article_detail.png",
+      "size_bytes": 70776,
+      "sha256": "b26d21e000418c069fbe038ac9b20d8cb98208bacd728cc32e454e69d656d71c"
+    },
+    {
+      "path": "assets/screen-reference/web_case_study.png",
+      "size_bytes": 48906,
+      "sha256": "b40cc7e71b88faaf130fa023d21df41d45c1e9a57f1a0b9009ad8de1dfe9ec6b"
+    },
+    {
+      "path": "assets/screen-reference/web_contact.png",
+      "size_bytes": 51837,
+      "sha256": "c7bfc92312d3e66912f800d6f4db692a6cb6fe5d45a9e27f9daf5dbd834b3a28"
+    },
+    {
+      "path": "assets/screen-reference/web_expertise.png",
+      "size_bytes": 51154,
+      "sha256": "a3b944f9de3528385fa0aeba68d9104b5d9212bc6954255421f03bb7c12d5ac6"
+    },
+    {
+      "path": "assets/screen-reference/web_github_showcase.png",
+      "size_bytes": 55250,
+      "sha256": "e8a57076d8c69afb66451cd89a8e1275e94771a05b9c95a490ce78338052c790"
+    },
+    {
+      "path": "assets/screen-reference/web_home.png",
+      "size_bytes": 136059,
+      "sha256": "a2cb46eb2a1bc9001e3b90496a1d5680caaffa89ea8e959dd4f35c79c61ce21e"
+    },
+    {
+      "path": "assets/screen-reference/web_projects.png",
+      "size_bytes": 50162,
+      "sha256": "b75939f6c5486d45e138f89add1b09c1ce871ba1839319f66d4a1b7d532da610"
+    },
+    {
+      "path": "assets/screen-reference/web_recruiter_mode.png",
+      "size_bytes": 135668,
+      "sha256": "ea21dc2cdf8ff4b02e0bcfc288933bca6abfb657b0558d088c846e931e1be7b3"
+    },
+    {
+      "path": "assets/screen-reference/web_resume.png",
+      "size_bytes": 132507,
+      "sha256": "4fbc236ab17d63058d03a83f92280e23f8cc91eff60440363dd973cdb9cb7567"
+    },
+    {
+      "path": "assets/screen-reference/web_search_results.png",
+      "size_bytes": 55332,
+      "sha256": "cdebb34cc041507553b2c13307eb3a8ea4145c9b7094ae3dccbcd2d014d85ae2"
+    },
+    {
+      "path": "assets/screen-reference/web_tech_lab.png",
+      "size_bytes": 49081,
+      "sha256": "1c47f39bfd489f3d75406064745ee1886300353fdbce02285b738fa60e8ceb82"
+    },
+    {
+      "path": "assets/screen-reference/web_technical_blog.png",
+      "size_bytes": 50905,
+      "sha256": "a8dccf92bd7282da916e729a1f493af7c06100e413ae39f74435da3b213abcd9"
+    },
+    {
+      "path": "assets/social/og-blog-1200x630.png",
+      "size_bytes": 257722,
+      "sha256": "eb08e5e0b935d1c50e153a1dda3e0822c141f3da3c6e001f959145ec62c35579"
+    },
+    {
+      "path": "assets/social/og-profile-1200x630.png",
+      "size_bytes": 260704,
+      "sha256": "ec86952605a9b3ed799661e4f682b3a6c53eceb206132b814242e74e73b9c142"
+    },
+    {
+      "path": "assets/social/og-projects-1200x630.png",
+      "size_bytes": 258023,
+      "sha256": "acd20bb49b07d1bc49c0c97edc5536268ac7c1c3eaca2424aadaccad1bb0f082"
+    },
+    {
+      "path": "contracts/acceptance-gates.json",
+      "size_bytes": 4302,
+      "sha256": "1fedb49b39a48b6fb1bff0c3570f607935351b9390cd222ded74514f2e205058"
+    },
+    {
+      "path": "contracts/ai-providers.json",
+      "size_bytes": 1625,
+      "sha256": "5bc85853af4584c825db8fee65044e4df5fa2020ebd8ed1867b739444d2d9de2"
+    },
+    {
+      "path": "contracts/asset-catalog.json",
+      "size_bytes": 21785,
+      "sha256": "c50f2e216af9e2af0e1584359c0db0f30b2ffcb9a7adfe92638ec929b6321ce9"
+    },
+    {
+      "path": "contracts/media-generation-prompts.json",
+      "size_bytes": 1543,
+      "sha256": "15b6776cbec287afbd5e8fa19c41c111c5c0611a4f73976998b8796dc3edb41b"
+    },
+    {
+      "path": "contracts/screens.csv",
+      "size_bytes": 5983,
+      "sha256": "f1e50a3c0d4c32aa01ddaf1b73cb1d4863c5ad91a04d29961be440e1ce1ac345"
+    },
+    {
+      "path": "contracts/screens.json",
+      "size_bytes": 47973,
+      "sha256": "d9cdcc98dc111643c05f18146adbebe674bed1f02106a2cd842236ba92165e48"
+    },
+    {
+      "path": "database/README.md",
+      "size_bytes": 432,
+      "sha256": "dd63610bfb20051063f3441bd087b80724a60f1c26417fce6f3e691abb556dfb"
+    },
+    {
+      "path": "database/schema-blueprint.json",
+      "size_bytes": 9682,
+      "sha256": "289dd76265794cfaec5dc23b107537109ad79895321c6384ceda7bb62c40c31d"
+    },
+    {
+      "path": "design/flutter-theme-tokens.dart",
+      "size_bytes": 442,
+      "sha256": "9ea48394391290ff9a1fb2f18b56019be7d88995d9e636b6a238a5d9fac6ca38"
+    },
+    {
+      "path": "design/tokens.css",
+      "size_bytes": 521,
+      "sha256": "975cdc57d4711ebd37adbca610272f1da08d2c9da482f40db0dc34487c7606e4"
+    },
+    {
+      "path": "design/tokens.json",
+      "size_bytes": 1986,
+      "sha256": "1944b608cdb18902f90216e15f1122012df8ac0280d314221c58cf46547c6f5f"
+    },
+    {
+      "path": "docs/AI_IMAGE_PIPELINE.md",
+      "size_bytes": 297,
+      "sha256": "3c4d149d139872090f3bff7191711613e9154f29d45102078fe9f8d95168c246"
+    },
+    {
+      "path": "docs/ASSET_POLICY.md",
+      "size_bytes": 887,
+      "sha256": "6a09682a5ae18be551fc6e3a0e2b916ab4eaa48380bb74b51c7bb0f6f1a3f14e"
+    },
+    {
+      "path": "docs/CONTENT_AND_SEO.md",
+      "size_bytes": 511,
+      "sha256": "dc5bea919c667a9491108d0256b6bb4d4fd6df61e67f65b49f74dbea0c89d7db"
+    },
+    {
+      "path": "docs/DECISION_LOG.md",
+      "size_bytes": 817,
+      "sha256": "e78c1dc836c75ef48b29e890129613528a5c89011543261c0138d01a70fd6cac"
+    },
+    {
+      "path": "docs/ENGINEERING_STACK.md",
+      "size_bytes": 969,
+      "sha256": "ac03f76b4c5e5b7e58b49c925068af917c31d6d0be3a8fb51451eb134998a166"
+    },
+    {
+      "path": "docs/EXTERNAL_DEPENDENCIES.md",
+      "size_bytes": 792,
+      "sha256": "58b5fb7135a6d984cf1f4b6d02cb0932303c3569cedc85bee87ba82bf901ab3b"
+    },
+    {
+      "path": "docs/LOCALIZATION.md",
+      "size_bytes": 197,
+      "sha256": "acae0d9cc113a4922e368180a7ef30bcb4883f0197f04d280e3996f8ad4f48ca"
+    },
+    {
+      "path": "docs/PROJECT.md",
+      "size_bytes": 616,
+      "sha256": "cdc676fc54f50d3daca29e3ea7d3aa9cf31764cdb9b325e237152d85fc031592"
+    },
+    {
+      "path": "docs/QA_MATRIX.md",
+      "size_bytes": 2584,
+      "sha256": "089a8afe1e66c21fe1b46ac94eec4d1bfef63347f90d2b0f312536effff29b10"
+    },
+    {
+      "path": "docs/REPOSITORY_LAYOUT.md",
+      "size_bytes": 302,
+      "sha256": "846bcaa80cd7246315bfc032e5cbf7814df0b853f6ead6061c8cdf0524d2b58a"
+    },
+    {
+      "path": "docs/SECURITY.md",
+      "size_bytes": 794,
+      "sha256": "2f1693bb8d936b4e0346d98d6bfa5bd4d3493fd2b968ff6666c19d1b39775e04"
+    },
+    {
+      "path": "docs/SETUP_AND_DELIVERY.md",
+      "size_bytes": 762,
+      "sha256": "3ea7ced7bcde58c62da040c40299b7254761f27be57d6e3d6d7e53d91c757366"
+    },
+    {
+      "path": "github/templates/README.md",
+      "size_bytes": 263,
+      "sha256": "9b8d0fc2d5502ac71b737d8b5dab7862a6959574925d55e192487d8d11c22966"
+    },
+    {
+      "path": "github/workflows/ci.yml",
+      "size_bytes": 1942,
+      "sha256": "6a36c99ec1bdc89f90bdb3f1634745773d3f26c9634fb1d2f84d5e28cd8a045c"
+    },
+    {
+      "path": "github/workflows/release.yml",
+      "size_bytes": 845,
+      "sha256": "69fe4a4fb810be8e764b4bd4d2b7e80d34f2c3410e060ac802939c8d7ab9b6fe"
+    },
+    {
+      "path": "locales/ar.json",
+      "size_bytes": 6260,
+      "sha256": "35d860242bb8d4623d18eb0a83a0884519dbba8043cf4f930a0683c1f8d2dc17"
+    },
+    {
+      "path": "locales/en.json",
+      "size_bytes": 4668,
+      "sha256": "13805fffd5e897312c2b6a1929e7e775a3a0a5f28ad15e0efab5ffbee5ce7519"
+    },
+    {
+      "path": "qa/validate_pack.py",
+      "size_bytes": 1560,
+      "sha256": "4a9fb65a08e2df62696a7110e29eafff1cf142e30a4810e223d01ff8239c2e0a"
+    },
+    {
+      "path": "tasks/master-task-register.json",
+      "size_bytes": 8673,
+      "sha256": "25318ca0b127e6bf1ca27afa6118a164b5a1f86f1cbe6e4391d96c905455a2df"
+    },
+    {
+      "path": "worker-contracts/AGENTS.md",
+      "size_bytes": 2993,
+      "sha256": "c04c939c4dcae89ca77a2f6f74a5569c9e3efb90dec54e2a866d6fc024d4335e"
+    },
+    {
+      "path": "worker-contracts/ISSUE_TEMPLATE.md",
+      "size_bytes": 344,
+      "sha256": "fc6e78833897c6b01a941373e8180a5926517add3784a34a19e496f65d985330"
+    },
+    {
+      "path": "worker-contracts/PR_TEMPLATE.md",
+      "size_bytes": 365,
+      "sha256": "4803b59a09e813e35f4412e4e6a5d62ea1978e919b34928081c049ef3435f7bd"
+    },
+    {
+      "path": "worker-contracts/path-ownership.json",
+      "size_bytes": 2005,
+      "sha256": "f333c6b718f4d91e327d5e95fb3419253dde252d843e9bb1093b7ecdeb33a5d7"
+    }
+  ]
+}

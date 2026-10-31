@@ -1,0 +1,41 @@
+﻿id,surface,title,route,API,role,ref,actions
+WEB-01,web,Home,/,/api/v1/public/home,public,assets/screen-reference/web_home.png,open_projects; open_blog; open_resume
+WEB-02,web,About,/about,/api/v1/public/profile,public,assets/screen-reference/web_about.png,open_evidence; download_cv
+WEB-03,web,Expertise,/expertise,/api/v1/public/expertise,public,assets/screen-reference/web_expertise.png,filter_specialty; open_project
+WEB-04,web,Projects,/projects,/api/v1/public/projects,public,assets/screen-reference/web_projects.png,filter_projects; open_case_study
+WEB-05,web,Case Study,/projects/{slug},/api/v1/public/projects/{slug},public,assets/screen-reference/web_case_study.png,open_evidence; open_repository
+WEB-06,web,AI Engineering,/ai-engineering,/api/v1/public/expertise/ai,public,assets/screen-reference/web_ai_engineering.png,open_case_study
+WEB-07,web,Technical Blog,/blog,/api/v1/public/articles,public,assets/screen-reference/web_technical_blog.png,search_articles; open_article
+WEB-08,web,Article Detail,/blog/{slug},/api/v1/public/articles/{slug},public,assets/screen-reference/web_article_detail.png,copy_code; save_article; report_issue
+WEB-09,web,Tech Lab,/lab,/api/v1/public/tools,public,assets/screen-reference/web_tech_lab.png,open_tool; open_app
+WEB-10,web,GitHub Showcase,/github,/api/v1/public/github/portfolio,public,assets/screen-reference/web_github_showcase.png,filter_repos; open_github
+WEB-11,web,Resume,/resume,/api/v1/public/resume,public,assets/screen-reference/web_resume.png,download_cv_pdf; open_contact
+WEB-12,web,Recruiter Mode,/hire,/api/v1/public/recruiter,public,assets/screen-reference/web_recruiter_mode.png,select_role; download_resume; request_contact
+WEB-13,web,Search Results,/search,/api/v1/public/search,public,assets/screen-reference/web_search_results.png,search; filter; open_result
+WEB-14,web,Contact,/contact,/api/v1/public/contact,public,assets/screen-reference/web_contact.png,send_message
+ADMIN-01,admin,Dashboard,/admin,/api/v1/admin/dashboard,admin,assets/screen-reference/admin_dashboard.png,inspect_job; open_alert
+ADMIN-02,admin,Content Studio,/admin/content,/api/v1/admin/articles,editor,assets/screen-reference/admin_content_studio.png,create_draft; approve; unpublish
+ADMIN-03,admin,AI Providers,/admin/ai/providers,/api/v1/admin/ai/providers,admin,assets/screen-reference/admin_ai_providers.png,add_provider; edit_provider; test_provider
+ADMIN-04,admin,Provider Editor,/admin/ai/providers/{id},/api/v1/admin/ai/providers/{id},admin,assets/screen-reference/admin_provider_editor.png,save_provider; test_connection; disable
+ADMIN-05,admin,AI Routing,/admin/ai/routing,/api/v1/admin/ai/routes,admin,assets/screen-reference/admin_ai_routing.png,change_route; simulation; save_route
+ADMIN-06,admin,Image Studio,/admin/ai/images,/api/v1/admin/ai/images,editor,assets/screen-reference/admin_image_studio.png,queue_image; approve; regenerate
+ADMIN-07,admin,Quality Gates,/admin/quality,/api/v1/admin/quality,admin,assets/screen-reference/admin_quality_gates.png,inspect_failure; retry
+ADMIN-08,admin,GitHub Sync,/admin/github,/api/v1/admin/github,admin,assets/screen-reference/admin_github_sync.png,sync_repo; select_repo; refresh
+ADMIN-09,admin,Projects & CV,/admin/projects,/api/v1/admin/projects,editor,assets/screen-reference/admin_projects_&_cv.png,edit_project; verify_claim; export_cv
+ADMIN-10,admin,Audience / Push,/admin/audience,/api/v1/admin/audience,admin,assets/screen-reference/admin_audience___push.png,create_segment; send_test_push
+ADMIN-11,admin,Analytics,/admin/analytics,/api/v1/admin/analytics,admin,assets/screen-reference/admin_analytics.png,export_report; inspect_kpi
+ADMIN-12,admin,Approvals,/admin/approvals,/api/v1/admin/approvals,admin,assets/screen-reference/admin_approvals.png,approve; reject; defer
+ADMIN-13,admin,Audit & Security,/admin/audit,/api/v1/admin/audit,admin,assets/screen-reference/admin_audit_&_security.png,filter_log; export_audit
+MOBILE-01,mobile,Welcome,/welcome,/api/v1/public/app-bootstrap,guest,assets/screen-reference/mobile_welcome.png,start; choose_language
+MOBILE-02,mobile,Developer Home,/home,/api/v1/mobile/home,guest,assets/screen-reference/mobile_developer_home.png,open_tool; open_article
+MOBILE-03,mobile,AI Troubleshooter,/tools/ai-troubleshooter,/api/v1/mobile/ai/diagnose,authenticated,assets/screen-reference/mobile_ai_troubleshooter.png,submit_prompt; save_answer; report_error
+MOBILE-04,mobile,Solution Detail,/solutions/{id},/api/v1/mobile/solutions/{id},guest,assets/screen-reference/mobile_solution_detail.png,copy; save; share
+MOBILE-05,mobile,Runbook Library,/runbooks,/api/v1/mobile/runbooks,guest,assets/screen-reference/mobile_runbook_library.png,search; download; open
+MOBILE-06,mobile,Offline Runbook,/runbooks/{id}/offline,local://runbooks/{id},guest,assets/screen-reference/mobile_offline_runbook.png,open; copy; mark_progress
+MOBILE-07,mobile,Tech Articles,/articles,/api/v1/mobile/articles,guest,assets/screen-reference/mobile_tech_articles.png,filter; open_article; save
+MOBILE-08,mobile,Learning Paths,/learn,/api/v1/mobile/learn,guest,assets/screen-reference/mobile_learning_paths.png,start_track; continue_lesson
+MOBILE-09,mobile,Interview Trainer,/learn/interview,/api/v1/mobile/interview,authenticated,assets/screen-reference/mobile_interview_trainer.png,start_session; answer; see_feedback
+MOBILE-10,mobile,My GitHub,/github,/api/v1/public/github/portfolio,guest,assets/screen-reference/mobile_my_github.png,open_repo; follow_project
+MOBILE-11,mobile,Saved Resources,/saved,/api/v1/mobile/saved,authenticated,assets/screen-reference/mobile_saved_resources.png,remove_saved; open_saved
+MOBILE-12,mobile,Personal Profile,/profile,/api/v1/mobile/me,authenticated,assets/screen-reference/mobile_personal_profile.png,edit_profile; sign_out
+MOBILE-13,mobile,Preferences,/settings,/api/v1/mobile/preferences,guest,assets/screen-reference/mobile_preferences.png,change_language; change_theme; clear_cache

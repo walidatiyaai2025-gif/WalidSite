@@ -1,0 +1,555 @@
+{
+  "PublicHome": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "headline": {
+        "type": "string",
+        "description": "Evidence-based professional headline"
+      },
+      "portrait_url": {
+        "type": "string",
+        "description": "Owner-supplied portrait URL"
+      },
+      "featured_projects": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/Project"
+        }
+      },
+      "latest_articles": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/Article"
+        }
+      }
+    },
+    "required": [
+      "headline",
+      "portrait_url",
+      "featured_projects",
+      "latest_articles"
+    ]
+  },
+  "Profile": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "display_name": {
+        "type": "string",
+        "description": "Name as supplied in CV"
+      },
+      "professional_summary": {
+        "type": "string",
+        "description": "Verified bio"
+      },
+      "experience": {
+        "type": "array",
+        "items": {
+          "type": "object"
+        }
+      },
+      "certifications": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      }
+    },
+    "required": [
+      "display_name",
+      "professional_summary",
+      "experience",
+      "certifications"
+    ]
+  },
+  "Project": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "id": {
+        "type": "string",
+        "description": "UUID"
+      },
+      "slug": {
+        "type": "string",
+        "description": "Stable public slug"
+      },
+      "name": {
+        "type": "string",
+        "description": "Verified project name"
+      },
+      "summary": {
+        "type": "string",
+        "description": "Publishable sanitized summary"
+      },
+      "role": {
+        "type": "string",
+        "description": "Verified role"
+      },
+      "status": {
+        "type": "string",
+        "description": "Current status",
+        "enum": [
+          "completed",
+          "in_progress",
+          "research",
+          "archived"
+        ]
+      },
+      "evidence_urls": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "public_repo_url": {
+        "type": [
+          "string",
+          "null"
+        ]
+      }
+    },
+    "required": [
+      "id",
+      "slug",
+      "name",
+      "summary",
+      "role",
+      "status",
+      "evidence_urls",
+      "public_repo_url"
+    ]
+  },
+  "Article": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "id": {
+        "type": "string",
+        "description": "UUID"
+      },
+      "slug": {
+        "type": "string",
+        "description": "Stable slug"
+      },
+      "title": {
+        "type": "string",
+        "description": "Article title"
+      },
+      "body_markdown": {
+        "type": "string",
+        "description": "Validated article content"
+      },
+      "citations": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "tested_status": {
+        "type": "string",
+        "description": "tested/unverified",
+        "enum": [
+          "tested",
+          "documented",
+          "unverified"
+        ]
+      },
+      "hero_image_url": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "published_at": {
+        "type": [
+          "string",
+          "null"
+        ]
+      }
+    },
+    "required": [
+      "id",
+      "slug",
+      "title",
+      "body_markdown",
+      "citations",
+      "tested_status",
+      "hero_image_url",
+      "published_at"
+    ]
+  },
+  "AiProvider": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "id": {
+        "type": "string",
+        "description": "UUID"
+      },
+      "display_name": {
+        "type": "string",
+        "description": "Editable label"
+      },
+      "provider_type": {
+        "type": "string",
+        "description": "Provider adapter type"
+      },
+      "base_url": {
+        "type": "string",
+        "description": "Connection URL"
+      },
+      "enabled": {
+        "type": "boolean",
+        "description": "Routing allowed"
+      },
+      "health_status": {
+        "type": "string",
+        "description": "Connection health"
+      },
+      "has_saved_secret": {
+        "type": "boolean",
+        "description": "Boolean only: API token is never returned"
+      }
+    },
+    "required": [
+      "id",
+      "display_name",
+      "provider_type",
+      "base_url",
+      "enabled",
+      "health_status",
+      "has_saved_secret"
+    ]
+  },
+  "AiProviderInput": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "display_name": {
+        "type": "string",
+        "description": "Editable label"
+      },
+      "provider_type": {
+        "type": "string",
+        "description": "Adapter type"
+      },
+      "base_url": {
+        "type": "string",
+        "description": "Server endpoint"
+      },
+      "secret": {
+        "type": "string",
+        "description": "Write-only secret; never echoed"
+      },
+      "enabled": {
+        "type": "boolean",
+        "description": "Whether enabled"
+      },
+      "concurrent_limit": {
+        "type": "integer",
+        "description": "Defaults 1"
+      },
+      "timeout_seconds": {
+        "type": "integer",
+        "description": "Defaults 30"
+      }
+    },
+    "required": [
+      "display_name",
+      "provider_type",
+      "base_url",
+      "enabled"
+    ]
+  },
+  "Runbook": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "id": {
+        "type": "string",
+        "description": "UUID"
+      },
+      "title": {
+        "type": "string",
+        "description": "Guide title"
+      },
+      "markdown": {
+        "type": "string",
+        "description": "Offline-capable content"
+      },
+      "version": {
+        "type": "integer",
+        "description": "Content version"
+      },
+      "validated_at": {
+        "type": [
+          "string",
+          "null"
+        ]
+      }
+    },
+    "required": [
+      "id",
+      "title",
+      "markdown",
+      "version",
+      "validated_at"
+    ]
+  },
+  "PublicRepository": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "full_name": {
+        "type": "string",
+        "description": "Public allowlisted owner/repo"
+      },
+      "html_url": {
+        "type": "string",
+        "description": "Public Github URL"
+      },
+      "updated_at": {
+        "type": "string",
+        "description": "Source timestamp"
+      },
+      "visibility": {
+        "type": "string",
+        "description": "Must be public"
+      },
+      "last_sync_at": {
+        "type": "string",
+        "description": "Cache freshness"
+      },
+      "evidence": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      }
+    },
+    "required": [
+      "full_name",
+      "html_url",
+      "updated_at",
+      "visibility",
+      "last_sync_at",
+      "evidence"
+    ]
+  },
+  "AiJob": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "id": {
+        "type": "string",
+        "description": "UUID"
+      },
+      "status": {
+        "type": "string",
+        "description": "Durable status",
+        "enum": [
+          "queued",
+          "running",
+          "completed",
+          "failed",
+          "blocked",
+          "cancelled"
+        ]
+      },
+      "progress_percent": {
+        "type": "integer",
+        "description": "0..100"
+      },
+      "result_url": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "retry_after_seconds": {
+        "type": [
+          "integer",
+          "null"
+        ]
+      }
+    },
+    "required": [
+      "id",
+      "status",
+      "progress_percent",
+      "result_url",
+      "retry_after_seconds"
+    ]
+  },
+  "ContactInput": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "name": {
+        "type": "string",
+        "description": "Contact name"
+      },
+      "email": {
+        "type": "string",
+        "description": "Contact email"
+      },
+      "message": {
+        "type": "string",
+        "description": "Message text"
+      },
+      "privacy_consent": {
+        "type": "boolean",
+        "description": "Explicit consent"
+      }
+    },
+    "required": [
+      "name",
+      "email",
+      "message",
+      "privacy_consent"
+    ]
+  },
+  "ArticleDraftInput": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "title": {
+        "type": "string",
+        "description": "Title"
+      },
+      "topic": {
+        "type": "string",
+        "description": "Research topic"
+      },
+      "language": {
+        "type": "string",
+        "description": "ar/en",
+        "enum": [
+          "ar",
+          "en"
+        ]
+      },
+      "publication_mode": {
+        "type": "string",
+        "description": "Draft review or conditional auto",
+        "enum": [
+          "draft",
+          "auto_eligible"
+        ]
+      }
+    },
+    "required": [
+      "title",
+      "topic",
+      "language",
+      "publication_mode"
+    ]
+  },
+  "AiDiagnoseInput": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "question": {
+        "type": "string",
+        "description": "Technical question"
+      },
+      "technology": {
+        "type": "string",
+        "description": "Language/stack"
+      },
+      "code_snippet": {
+        "type": "string",
+        "description": "Optional code removed from public logs"
+      },
+      "consent_to_process": {
+        "type": "boolean",
+        "description": "User consent for remote processing"
+      }
+    },
+    "required": [
+      "question",
+      "technology",
+      "consent_to_process"
+    ]
+  },
+  "ApprovalDecisionInput": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "decision": {
+        "type": "string",
+        "description": "approve/reject",
+        "enum": [
+          "approve",
+          "reject"
+        ]
+      },
+      "reason": {
+        "type": "string",
+        "description": "Audit reason"
+      }
+    },
+    "required": [
+      "decision",
+      "reason"
+    ]
+  },
+  "Success": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "ok": {
+        "type": "boolean",
+        "description": "Success"
+      },
+      "data": {
+        "type": "object",
+        "description": "Endpoint DTO determined by x-response-model; do not invent fields"
+      },
+      "timestamp": {
+        "type": "string",
+        "description": "ISO8601 timestamp"
+      },
+      "request_id": {
+        "type": "string",
+        "description": "Tracing ID"
+      }
+    },
+    "required": [
+      "ok",
+      "data",
+      "timestamp",
+      "request_id"
+    ]
+  },
+  "Error": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "ok": {
+        "type": "boolean",
+        "description": "Always false"
+      },
+      "code": {
+        "type": "string",
+        "description": "Stable error code"
+      },
+      "message": {
+        "type": "string",
+        "description": "Safe error text"
+      },
+      "request_id": {
+        "type": "string",
+        "description": "Trace ID"
+      }
+    },
+    "required": [
+      "ok",
+      "code",
+      "message",
+      "request_id"
+    ]
+  }
+}

@@ -1,0 +1,1491 @@
+{
+  "version": "6.0",
+  "screenCount": 40,
+  "screens": [
+    {
+      "id": "WEB-01",
+      "surface": "web",
+      "title": "Home",
+      "route": "/",
+      "backend_data_contract": "/api/v1/public/home",
+      "access_role": "public",
+      "core_components": [
+        "hero",
+        "professional-proof",
+        "featured-projects",
+        "latest-articles",
+        "cta"
+      ],
+      "actions": [
+        "open_projects",
+        "open_blog",
+        "open_resume"
+      ],
+      "reference_image": "assets/screen-reference/web_home.png",
+      "ui_states": [
+        "loading",
+        "empty",
+        "success",
+        "error",
+        "offline",
+        "unauthorized"
+      ],
+      "rtl_ltr": true,
+      "minimum_a11y": "WCAG 2.2 AA",
+      "acceptance": [
+        "Actions must lead to real destinations; never inert controls",
+        "No invented data or achievements; all professional claims link to evidence",
+        "Handle mobile/tablet/desktop/responsive layouts as applicable",
+        "Loading, empty, errors, offline, permissions and retry flows must work",
+        "API/DB roles and authorization enforced server-side",
+        "Visual regression uses this source mockup only as intent, not as pixel-perfect app screenshot"
+      ]
+    },
+    {
+      "id": "WEB-02",
+      "surface": "web",
+      "title": "About",
+      "route": "/about",
+      "backend_data_contract": "/api/v1/public/profile",
+      "access_role": "public",
+      "core_components": [
+        "career-timeline",
+        "verified-experience",
+        "certifications"
+      ],
+      "actions": [
+        "open_evidence",
+        "download_cv"
+      ],
+      "reference_image": "assets/screen-reference/web_about.png",
+      "ui_states": [
+        "loading",
+        "empty",
+        "success",
+        "error",
+        "offline",
+        "unauthorized"
+      ],
+      "rtl_ltr": true,
+      "minimum_a11y": "WCAG 2.2 AA",
+      "acceptance": [
+        "Actions must lead to real destinations; never inert controls",
+        "No invented data or achievements; all professional claims link to evidence",
+        "Handle mobile/tablet/desktop/responsive layouts as applicable",
+        "Loading, empty, errors, offline, permissions and retry flows must work",
+        "API/DB roles and authorization enforced server-side",
+        "Visual regression uses this source mockup only as intent, not as pixel-perfect app screenshot"
+      ]
+    },
+    {
+      "id": "WEB-03",
+      "surface": "web",
+      "title": "Expertise",
+      "route": "/expertise",
+      "backend_data_contract": "/api/v1/public/expertise",
+      "access_role": "public",
+      "core_components": [
+        "specialties",
+        "proof-links",
+        "case-studies"
+      ],
+      "actions": [
+        "filter_specialty",
+        "open_project"
+      ],
+      "reference_image": "assets/screen-reference/web_expertise.png",
+      "ui_states": [
+        "loading",
+        "empty",
+        "success",
+        "error",
+        "offline",
+        "unauthorized"
+      ],
+      "rtl_ltr": true,
+      "minimum_a11y": "WCAG 2.2 AA",
+      "acceptance": [
+        "Actions must lead to real destinations; never inert controls",
+        "No invented data or achievements; all professional claims link to evidence",
+        "Handle mobile/tablet/desktop/responsive layouts as applicable",
+        "Loading, empty, errors, offline, permissions and retry flows must work",
+        "API/DB roles and authorization enforced server-side",
+        "Visual regression uses this source mockup only as intent, not as pixel-perfect app screenshot"
+      ]
+    },
+    {
+      "id": "WEB-04",
+      "surface": "web",
+      "title": "Projects",
+      "route": "/projects",
+      "backend_data_contract": "/api/v1/public/projects",
+      "access_role": "public",
+      "core_components": [
+        "filter",
+        "search",
+        "project-cards",
+        "pagination"
+      ],
+      "actions": [
+        "filter_projects",
+        "open_case_study"
+      ],
+      "reference_image": "assets/screen-reference/web_projects.png",
+      "ui_states": [
+        "loading",
+        "empty",
+        "success",
+        "error",
+        "offline",
+        "unauthorized"
+      ],
+      "rtl_ltr": true,
+      "minimum_a11y": "WCAG 2.2 AA",
+      "acceptance": [
+        "Actions must lead to real destinations; never inert controls",
+        "No invented data or achievements; all professional claims link to evidence",
+        "Handle mobile/tablet/desktop/responsive layouts as applicable",
+        "Loading, empty, errors, offline, permissions and retry flows must work",
+        "API/DB roles and authorization enforced server-side",
+        "Visual regression uses this source mockup only as intent, not as pixel-perfect app screenshot"
+      ]
+    },
+    {
+      "id": "WEB-05",
+      "surface": "web",
+      "title": "Case Study",
+      "route": "/projects/{slug}",
+      "backend_data_contract": "/api/v1/public/projects/{slug}",
+      "access_role": "public",
+      "core_components": [
+        "problem",
+        "role",
+        "architecture",
+        "evidence",
+        "status"
+      ],
+      "actions": [
+        "open_evidence",
+        "open_repository"
+      ],
+      "reference_image": "assets/screen-reference/web_case_study.png",
+      "ui_states": [
+        "loading",
+        "empty",
+        "success",
+        "error",
+        "offline",
+        "unauthorized"
+      ],
+      "rtl_ltr": true,
+      "minimum_a11y": "WCAG 2.2 AA",
+      "acceptance": [
+        "Actions must lead to real destinations; never inert controls",
+        "No invented data or achievements; all professional claims link to evidence",
+        "Handle mobile/tablet/desktop/responsive layouts as applicable",
+        "Loading, empty, errors, offline, permissions and retry flows must work",
+        "API/DB roles and authorization enforced server-side",
+        "Visual regression uses this source mockup only as intent, not as pixel-perfect app screenshot"
+      ]
+    },
+    {
+      "id": "WEB-06",
+      "surface": "web",
+      "title": "AI Engineering",
+      "route": "/ai-engineering",
+      "backend_data_contract": "/api/v1/public/expertise/ai",
+      "access_role": "public",
+      "core_components": [
+        "ai-workflows",
+        "verified-demos",
+        "safety-notes"
+      ],
+      "actions": [
+        "open_case_study"
+      ],
+      "reference_image": "assets/screen-reference/web_ai_engineering.png",
+      "ui_states": [
+        "loading",
+        "empty",
+        "success",
+        "error",
+        "offline",
+        "unauthorized"
+      ],
+      "rtl_ltr": true,
+      "minimum_a11y": "WCAG 2.2 AA",
+      "acceptance": [
+        "Actions must lead to real destinations; never inert controls",
+        "No invented data or achievements; all professional claims link to evidence",
+        "Handle mobile/tablet/desktop/responsive layouts as applicable",
+        "Loading, empty, errors, offline, permissions and retry flows must work",
+        "API/DB roles and authorization enforced server-side",
+        "Visual regression uses this source mockup only as intent, not as pixel-perfect app screenshot"
+      ]
+    },
+    {
+      "id": "WEB-07",
+      "surface": "web",
+      "title": "Technical Blog",
+      "route": "/blog",
+      "backend_data_contract": "/api/v1/public/articles",
+      "access_role": "public",
+      "core_components": [
+        "search",
+        "category-filter",
+        "article-cards"
+      ],
+      "actions": [
+        "search_articles",
+        "open_article"
+      ],
+      "reference_image": "assets/screen-reference/web_technical_blog.png",
+      "ui_states": [
+        "loading",
+        "empty",
+        "success",
+        "error",
+        "offline",
+        "unauthorized"
+      ],
+      "rtl_ltr": true,
+      "minimum_a11y": "WCAG 2.2 AA",
+      "acceptance": [
+        "Actions must lead to real destinations; never inert controls",
+        "No invented data or achievements; all professional claims link to evidence",
+        "Handle mobile/tablet/desktop/responsive layouts as applicable",
+        "Loading, empty, errors, offline, permissions and retry flows must work",
+        "API/DB roles and authorization enforced server-side",
+        "Visual regression uses this source mockup only as intent, not as pixel-perfect app screenshot"
+      ]
+    },
+    {
+      "id": "WEB-08",
+      "surface": "web",
+      "title": "Article Detail",
+      "route": "/blog/{slug}",
+      "backend_data_contract": "/api/v1/public/articles/{slug}",
+      "access_role": "public",
+      "core_components": [
+        "verified-guide",
+        "code-blocks",
+        "citations",
+        "related-posts"
+      ],
+      "actions": [
+        "copy_code",
+        "save_article",
+        "report_issue"
+      ],
+      "reference_image": "assets/screen-reference/web_article_detail.png",
+      "ui_states": [
+        "loading",
+        "empty",
+        "success",
+        "error",
+        "offline",
+        "unauthorized"
+      ],
+      "rtl_ltr": true,
+      "minimum_a11y": "WCAG 2.2 AA",
+      "acceptance": [
+        "Actions must lead to real destinations; never inert controls",
+        "No invented data or achievements; all professional claims link to evidence",
+        "Handle mobile/tablet/desktop/responsive layouts as applicable",
+        "Loading, empty, errors, offline, permissions and retry flows must work",
+        "API/DB roles and authorization enforced server-side",
+        "Visual regression uses this source mockup only as intent, not as pixel-perfect app screenshot"
+      ]
+    },
+    {
+      "id": "WEB-09",
+      "surface": "web",
+      "title": "Tech Lab",
+      "route": "/lab",
+      "backend_data_contract": "/api/v1/public/tools",
+      "access_role": "public",
+      "core_components": [
+        "tool-catalog",
+        "examples",
+        "runbooks"
+      ],
+      "actions": [
+        "open_tool",
+        "open_app"
+      ],
+      "reference_image": "assets/screen-reference/web_tech_lab.png",
+      "ui_states": [
+        "loading",
+        "empty",
+        "success",
+        "error",
+        "offline",
+        "unauthorized"
+      ],
+      "rtl_ltr": true,
+      "minimum_a11y": "WCAG 2.2 AA",
+      "acceptance": [
+        "Actions must lead to real destinations; never inert controls",
+        "No invented data or achievements; all professional claims link to evidence",
+        "Handle mobile/tablet/desktop/responsive layouts as applicable",
+        "Loading, empty, errors, offline, permissions and retry flows must work",
+        "API/DB roles and authorization enforced server-side",
+        "Visual regression uses this source mockup only as intent, not as pixel-perfect app screenshot"
+      ]
+    },
+    {
+      "id": "WEB-10",
+      "surface": "web",
+      "title": "GitHub Showcase",
+      "route": "/github",
+      "backend_data_contract": "/api/v1/public/github/portfolio",
+      "access_role": "public",
+      "core_components": [
+        "verified-repos",
+        "activity",
+        "timestamp",
+        "role"
+      ],
+      "actions": [
+        "filter_repos",
+        "open_github"
+      ],
+      "reference_image": "assets/screen-reference/web_github_showcase.png",
+      "ui_states": [
+        "loading",
+        "empty",
+        "success",
+        "error",
+        "offline",
+        "unauthorized"
+      ],
+      "rtl_ltr": true,
+      "minimum_a11y": "WCAG 2.2 AA",
+      "acceptance": [
+        "Actions must lead to real destinations; never inert controls",
+        "No invented data or achievements; all professional claims link to evidence",
+        "Handle mobile/tablet/desktop/responsive layouts as applicable",
+        "Loading, empty, errors, offline, permissions and retry flows must work",
+        "API/DB roles and authorization enforced server-side",
+        "Visual regression uses this source mockup only as intent, not as pixel-perfect app screenshot"
+      ]
+    },
+    {
+      "id": "WEB-11",
+      "surface": "web",
+      "title": "Resume",
+      "route": "/resume",
+      "backend_data_contract": "/api/v1/public/resume",
+      "access_role": "public",
+      "core_components": [
+        "cv-tracks",
+        "certifications",
+        "proven-claims"
+      ],
+      "actions": [
+        "download_cv_pdf",
+        "open_contact"
+      ],
+      "reference_image": "assets/screen-reference/web_resume.png",
+      "ui_states": [
+        "loading",
+        "empty",
+        "success",
+        "error",
+        "offline",
+        "unauthorized"
+      ],
+      "rtl_ltr": true,
+      "minimum_a11y": "WCAG 2.2 AA",
+      "acceptance": [
+        "Actions must lead to real destinations; never inert controls",
+        "No invented data or achievements; all professional claims link to evidence",
+        "Handle mobile/tablet/desktop/responsive layouts as applicable",
+        "Loading, empty, errors, offline, permissions and retry flows must work",
+        "API/DB roles and authorization enforced server-side",
+        "Visual regression uses this source mockup only as intent, not as pixel-perfect app screenshot"
+      ]
+    },
+    {
+      "id": "WEB-12",
+      "surface": "web",
+      "title": "Recruiter Mode",
+      "route": "/hire",
+      "backend_data_contract": "/api/v1/public/recruiter",
+      "access_role": "public",
+      "core_components": [
+        "role-track",
+        "fit-evidence",
+        "cv",
+        "contact"
+      ],
+      "actions": [
+        "select_role",
+        "download_resume",
+        "request_contact"
+      ],
+      "reference_image": "assets/screen-reference/web_recruiter_mode.png",
+      "ui_states": [
+        "loading",
+        "empty",
+        "success",
+        "error",
+        "offline",
+        "unauthorized"
+      ],
+      "rtl_ltr": true,
+      "minimum_a11y": "WCAG 2.2 AA",
+      "acceptance": [
+        "Actions must lead to real destinations; never inert controls",
+        "No invented data or achievements; all professional claims link to evidence",
+        "Handle mobile/tablet/desktop/responsive layouts as applicable",
+        "Loading, empty, errors, offline, permissions and retry flows must work",
+        "API/DB roles and authorization enforced server-side",
+        "Visual regression uses this source mockup only as intent, not as pixel-perfect app screenshot"
+      ]
+    },
+    {
+      "id": "WEB-13",
+      "surface": "web",
+      "title": "Search Results",
+      "route": "/search",
+      "backend_data_contract": "/api/v1/public/search",
+      "access_role": "public",
+      "core_components": [
+        "query",
+        "results",
+        "filters",
+        "no-results"
+      ],
+      "actions": [
+        "search",
+        "filter",
+        "open_result"
+      ],
+      "reference_image": "assets/screen-reference/web_search_results.png",
+      "ui_states": [
+        "loading",
+        "empty",
+        "success",
+        "error",
+        "offline",
+        "unauthorized"
+      ],
+      "rtl_ltr": true,
+      "minimum_a11y": "WCAG 2.2 AA",
+      "acceptance": [
+        "Actions must lead to real destinations; never inert controls",
+        "No invented data or achievements; all professional claims link to evidence",
+        "Handle mobile/tablet/desktop/responsive layouts as applicable",
+        "Loading, empty, errors, offline, permissions and retry flows must work",
+        "API/DB roles and authorization enforced server-side",
+        "Visual regression uses this source mockup only as intent, not as pixel-perfect app screenshot"
+      ]
+    },
+    {
+      "id": "WEB-14",
+      "surface": "web",
+      "title": "Contact",
+      "route": "/contact",
+      "backend_data_contract": "/api/v1/public/contact",
+      "access_role": "public",
+      "core_components": [
+        "contact-form",
+        "privacy",
+        "spam-protection"
+      ],
+      "actions": [
+        "send_message"
+      ],
+      "reference_image": "assets/screen-reference/web_contact.png",
+      "ui_states": [
+        "loading",
+        "empty",
+        "success",
+        "error",
+        "offline",
+        "unauthorized"
+      ],
+      "rtl_ltr": true,
+      "minimum_a11y": "WCAG 2.2 AA",
+      "acceptance": [
+        "Actions must lead to real destinations; never inert controls",
+        "No invented data or achievements; all professional claims link to evidence",
+        "Handle mobile/tablet/desktop/responsive layouts as applicable",
+        "Loading, empty, errors, offline, permissions and retry flows must work",
+        "API/DB roles and authorization enforced server-side",
+        "Visual regression uses this source mockup only as intent, not as pixel-perfect app screenshot"
+      ]
+    },
+    {
+      "id": "ADMIN-01",
+      "surface": "admin",
+      "title": "Dashboard",
+      "route": "/admin",
+      "backend_data_contract": "/api/v1/admin/dashboard",
+      "access_role": "admin",
+      "core_components": [
+        "jobs",
+        "kpis",
+        "errors",
+        "health"
+      ],
+      "actions": [
+        "inspect_job",
+        "open_alert"
+      ],
+      "reference_image": "assets/screen-reference/admin_dashboard.png",
+      "ui_states": [
+        "loading",
+        "empty",
+        "success",
+        "error",
+        "offline",
+        "unauthorized"
+      ],
+      "rtl_ltr": true,
+      "minimum_a11y": "WCAG 2.2 AA",
+      "acceptance": [
+        "Actions must lead to real destinations; never inert controls",
+        "No invented data or achievements; all professional claims link to evidence",
+        "Handle mobile/tablet/desktop/responsive layouts as applicable",
+        "Loading, empty, errors, offline, permissions and retry flows must work",
+        "API/DB roles and authorization enforced server-side",
+        "Visual regression uses this source mockup only as intent, not as pixel-perfect app screenshot"
+      ]
+    },
+    {
+      "id": "ADMIN-02",
+      "surface": "admin",
+      "title": "Content Studio",
+      "route": "/admin/content",
+      "backend_data_contract": "/api/v1/admin/articles",
+      "access_role": "editor",
+      "core_components": [
+        "draft",
+        "review",
+        "publish",
+        "revision-history"
+      ],
+      "actions": [
+        "create_draft",
+        "approve",
+        "unpublish"
+      ],
+      "reference_image": "assets/screen-reference/admin_content_studio.png",
+      "ui_states": [
+        "loading",
+        "empty",
+        "success",
+        "error",
+        "offline",
+        "unauthorized"
+      ],
+      "rtl_ltr": true,
+      "minimum_a11y": "WCAG 2.2 AA",
+      "acceptance": [
+        "Actions must lead to real destinations; never inert controls",
+        "No invented data or achievements; all professional claims link to evidence",
+        "Handle mobile/tablet/desktop/responsive layouts as applicable",
+        "Loading, empty, errors, offline, permissions and retry flows must work",
+        "API/DB roles and authorization enforced server-side",
+        "Visual regression uses this source mockup only as intent, not as pixel-perfect app screenshot"
+      ]
+    },
+    {
+      "id": "ADMIN-03",
+      "surface": "admin",
+      "title": "AI Providers",
+      "route": "/admin/ai/providers",
+      "backend_data_contract": "/api/v1/admin/ai/providers",
+      "access_role": "admin",
+      "core_components": [
+        "providers",
+        "status",
+        "health-test",
+        "secrets-masked"
+      ],
+      "actions": [
+        "add_provider",
+        "edit_provider",
+        "test_provider"
+      ],
+      "reference_image": "assets/screen-reference/admin_ai_providers.png",
+      "ui_states": [
+        "loading",
+        "empty",
+        "success",
+        "error",
+        "offline",
+        "unauthorized"
+      ],
+      "rtl_ltr": true,
+      "minimum_a11y": "WCAG 2.2 AA",
+      "acceptance": [
+        "Actions must lead to real destinations; never inert controls",
+        "No invented data or achievements; all professional claims link to evidence",
+        "Handle mobile/tablet/desktop/responsive layouts as applicable",
+        "Loading, empty, errors, offline, permissions and retry flows must work",
+        "API/DB roles and authorization enforced server-side",
+        "Visual regression uses this source mockup only as intent, not as pixel-perfect app screenshot"
+      ]
+    },
+    {
+      "id": "ADMIN-04",
+      "surface": "admin",
+      "title": "Provider Editor",
+      "route": "/admin/ai/providers/{id}",
+      "backend_data_contract": "/api/v1/admin/ai/providers/{id}",
+      "access_role": "admin",
+      "core_components": [
+        "endpoint",
+        "adapter",
+        "model",
+        "secrets",
+        "test-connection"
+      ],
+      "actions": [
+        "save_provider",
+        "test_connection",
+        "disable"
+      ],
+      "reference_image": "assets/screen-reference/admin_provider_editor.png",
+      "ui_states": [
+        "loading",
+        "empty",
+        "success",
+        "error",
+        "offline",
+        "unauthorized"
+      ],
+      "rtl_ltr": true,
+      "minimum_a11y": "WCAG 2.2 AA",
+      "acceptance": [
+        "Actions must lead to real destinations; never inert controls",
+        "No invented data or achievements; all professional claims link to evidence",
+        "Handle mobile/tablet/desktop/responsive layouts as applicable",
+        "Loading, empty, errors, offline, permissions and retry flows must work",
+        "API/DB roles and authorization enforced server-side",
+        "Visual regression uses this source mockup only as intent, not as pixel-perfect app screenshot"
+      ]
+    },
+    {
+      "id": "ADMIN-05",
+      "surface": "admin",
+      "title": "AI Routing",
+      "route": "/admin/ai/routing",
+      "backend_data_contract": "/api/v1/admin/ai/routes",
+      "access_role": "admin",
+      "core_components": [
+        "task-routes",
+        "priority",
+        "fallback",
+        "budget",
+        "limits"
+      ],
+      "actions": [
+        "change_route",
+        "simulation",
+        "save_route"
+      ],
+      "reference_image": "assets/screen-reference/admin_ai_routing.png",
+      "ui_states": [
+        "loading",
+        "empty",
+        "success",
+        "error",
+        "offline",
+        "unauthorized"
+      ],
+      "rtl_ltr": true,
+      "minimum_a11y": "WCAG 2.2 AA",
+      "acceptance": [
+        "Actions must lead to real destinations; never inert controls",
+        "No invented data or achievements; all professional claims link to evidence",
+        "Handle mobile/tablet/desktop/responsive layouts as applicable",
+        "Loading, empty, errors, offline, permissions and retry flows must work",
+        "API/DB roles and authorization enforced server-side",
+        "Visual regression uses this source mockup only as intent, not as pixel-perfect app screenshot"
+      ]
+    },
+    {
+      "id": "ADMIN-06",
+      "surface": "admin",
+      "title": "Image Studio",
+      "route": "/admin/ai/images",
+      "backend_data_contract": "/api/v1/admin/ai/images",
+      "access_role": "editor",
+      "core_components": [
+        "prompt",
+        "provider",
+        "asset-validation",
+        "license"
+      ],
+      "actions": [
+        "queue_image",
+        "approve",
+        "regenerate"
+      ],
+      "reference_image": "assets/screen-reference/admin_image_studio.png",
+      "ui_states": [
+        "loading",
+        "empty",
+        "success",
+        "error",
+        "offline",
+        "unauthorized"
+      ],
+      "rtl_ltr": true,
+      "minimum_a11y": "WCAG 2.2 AA",
+      "acceptance": [
+        "Actions must lead to real destinations; never inert controls",
+        "No invented data or achievements; all professional claims link to evidence",
+        "Handle mobile/tablet/desktop/responsive layouts as applicable",
+        "Loading, empty, errors, offline, permissions and retry flows must work",
+        "API/DB roles and authorization enforced server-side",
+        "Visual regression uses this source mockup only as intent, not as pixel-perfect app screenshot"
+      ]
+    },
+    {
+      "id": "ADMIN-07",
+      "surface": "admin",
+      "title": "Quality Gates",
+      "route": "/admin/quality",
+      "backend_data_contract": "/api/v1/admin/quality",
+      "access_role": "admin",
+      "core_components": [
+        "gate-results",
+        "publish-blockers",
+        "evidence"
+      ],
+      "actions": [
+        "inspect_failure",
+        "retry"
+      ],
+      "reference_image": "assets/screen-reference/admin_quality_gates.png",
+      "ui_states": [
+        "loading",
+        "empty",
+        "success",
+        "error",
+        "offline",
+        "unauthorized"
+      ],
+      "rtl_ltr": true,
+      "minimum_a11y": "WCAG 2.2 AA",
+      "acceptance": [
+        "Actions must lead to real destinations; never inert controls",
+        "No invented data or achievements; all professional claims link to evidence",
+        "Handle mobile/tablet/desktop/responsive layouts as applicable",
+        "Loading, empty, errors, offline, permissions and retry flows must work",
+        "API/DB roles and authorization enforced server-side",
+        "Visual regression uses this source mockup only as intent, not as pixel-perfect app screenshot"
+      ]
+    },
+    {
+      "id": "ADMIN-08",
+      "surface": "admin",
+      "title": "GitHub Sync",
+      "route": "/admin/github",
+      "backend_data_contract": "/api/v1/admin/github",
+      "access_role": "admin",
+      "core_components": [
+        "repo-allowlist",
+        "last-sync",
+        "repo-visibility",
+        "permissions"
+      ],
+      "actions": [
+        "sync_repo",
+        "select_repo",
+        "refresh"
+      ],
+      "reference_image": "assets/screen-reference/admin_github_sync.png",
+      "ui_states": [
+        "loading",
+        "empty",
+        "success",
+        "error",
+        "offline",
+        "unauthorized"
+      ],
+      "rtl_ltr": true,
+      "minimum_a11y": "WCAG 2.2 AA",
+      "acceptance": [
+        "Actions must lead to real destinations; never inert controls",
+        "No invented data or achievements; all professional claims link to evidence",
+        "Handle mobile/tablet/desktop/responsive layouts as applicable",
+        "Loading, empty, errors, offline, permissions and retry flows must work",
+        "API/DB roles and authorization enforced server-side",
+        "Visual regression uses this source mockup only as intent, not as pixel-perfect app screenshot"
+      ]
+    },
+    {
+      "id": "ADMIN-09",
+      "surface": "admin",
+      "title": "Projects & CV",
+      "route": "/admin/projects",
+      "backend_data_contract": "/api/v1/admin/projects",
+      "access_role": "editor",
+      "core_components": [
+        "projects",
+        "claims",
+        "evidence",
+        "cv-versions"
+      ],
+      "actions": [
+        "edit_project",
+        "verify_claim",
+        "export_cv"
+      ],
+      "reference_image": "assets/screen-reference/admin_projects_&_cv.png",
+      "ui_states": [
+        "loading",
+        "empty",
+        "success",
+        "error",
+        "offline",
+        "unauthorized"
+      ],
+      "rtl_ltr": true,
+      "minimum_a11y": "WCAG 2.2 AA",
+      "acceptance": [
+        "Actions must lead to real destinations; never inert controls",
+        "No invented data or achievements; all professional claims link to evidence",
+        "Handle mobile/tablet/desktop/responsive layouts as applicable",
+        "Loading, empty, errors, offline, permissions and retry flows must work",
+        "API/DB roles and authorization enforced server-side",
+        "Visual regression uses this source mockup only as intent, not as pixel-perfect app screenshot"
+      ]
+    },
+    {
+      "id": "ADMIN-10",
+      "surface": "admin",
+      "title": "Audience / Push",
+      "route": "/admin/audience",
+      "backend_data_contract": "/api/v1/admin/audience",
+      "access_role": "admin",
+      "core_components": [
+        "consent",
+        "segments",
+        "notifications"
+      ],
+      "actions": [
+        "create_segment",
+        "send_test_push"
+      ],
+      "reference_image": "assets/screen-reference/admin_audience___push.png",
+      "ui_states": [
+        "loading",
+        "empty",
+        "success",
+        "error",
+        "offline",
+        "unauthorized"
+      ],
+      "rtl_ltr": true,
+      "minimum_a11y": "WCAG 2.2 AA",
+      "acceptance": [
+        "Actions must lead to real destinations; never inert controls",
+        "No invented data or achievements; all professional claims link to evidence",
+        "Handle mobile/tablet/desktop/responsive layouts as applicable",
+        "Loading, empty, errors, offline, permissions and retry flows must work",
+        "API/DB roles and authorization enforced server-side",
+        "Visual regression uses this source mockup only as intent, not as pixel-perfect app screenshot"
+      ]
+    },
+    {
+      "id": "ADMIN-11",
+      "surface": "admin",
+      "title": "Analytics",
+      "route": "/admin/analytics",
+      "backend_data_contract": "/api/v1/admin/analytics",
+      "access_role": "admin",
+      "core_components": [
+        "traffic",
+        "retention",
+        "spend",
+        "citation-health"
+      ],
+      "actions": [
+        "export_report",
+        "inspect_kpi"
+      ],
+      "reference_image": "assets/screen-reference/admin_analytics.png",
+      "ui_states": [
+        "loading",
+        "empty",
+        "success",
+        "error",
+        "offline",
+        "unauthorized"
+      ],
+      "rtl_ltr": true,
+      "minimum_a11y": "WCAG 2.2 AA",
+      "acceptance": [
+        "Actions must lead to real destinations; never inert controls",
+        "No invented data or achievements; all professional claims link to evidence",
+        "Handle mobile/tablet/desktop/responsive layouts as applicable",
+        "Loading, empty, errors, offline, permissions and retry flows must work",
+        "API/DB roles and authorization enforced server-side",
+        "Visual regression uses this source mockup only as intent, not as pixel-perfect app screenshot"
+      ]
+    },
+    {
+      "id": "ADMIN-12",
+      "surface": "admin",
+      "title": "Approvals",
+      "route": "/admin/approvals",
+      "backend_data_contract": "/api/v1/admin/approvals",
+      "access_role": "admin",
+      "core_components": [
+        "exceptions",
+        "pending",
+        "decision",
+        "evidence"
+      ],
+      "actions": [
+        "approve",
+        "reject",
+        "defer"
+      ],
+      "reference_image": "assets/screen-reference/admin_approvals.png",
+      "ui_states": [
+        "loading",
+        "empty",
+        "success",
+        "error",
+        "offline",
+        "unauthorized"
+      ],
+      "rtl_ltr": true,
+      "minimum_a11y": "WCAG 2.2 AA",
+      "acceptance": [
+        "Actions must lead to real destinations; never inert controls",
+        "No invented data or achievements; all professional claims link to evidence",
+        "Handle mobile/tablet/desktop/responsive layouts as applicable",
+        "Loading, empty, errors, offline, permissions and retry flows must work",
+        "API/DB roles and authorization enforced server-side",
+        "Visual regression uses this source mockup only as intent, not as pixel-perfect app screenshot"
+      ]
+    },
+    {
+      "id": "ADMIN-13",
+      "surface": "admin",
+      "title": "Audit & Security",
+      "route": "/admin/audit",
+      "backend_data_contract": "/api/v1/admin/audit",
+      "access_role": "admin",
+      "core_components": [
+        "immutable-log",
+        "access-events",
+        "provider-secret-changes"
+      ],
+      "actions": [
+        "filter_log",
+        "export_audit"
+      ],
+      "reference_image": "assets/screen-reference/admin_audit_&_security.png",
+      "ui_states": [
+        "loading",
+        "empty",
+        "success",
+        "error",
+        "offline",
+        "unauthorized"
+      ],
+      "rtl_ltr": true,
+      "minimum_a11y": "WCAG 2.2 AA",
+      "acceptance": [
+        "Actions must lead to real destinations; never inert controls",
+        "No invented data or achievements; all professional claims link to evidence",
+        "Handle mobile/tablet/desktop/responsive layouts as applicable",
+        "Loading, empty, errors, offline, permissions and retry flows must work",
+        "API/DB roles and authorization enforced server-side",
+        "Visual regression uses this source mockup only as intent, not as pixel-perfect app screenshot"
+      ]
+    },
+    {
+      "id": "MOBILE-01",
+      "surface": "mobile",
+      "title": "Welcome",
+      "route": "/welcome",
+      "backend_data_contract": "/api/v1/public/app-bootstrap",
+      "access_role": "guest",
+      "core_components": [
+        "intro",
+        "privacy",
+        "guest-entry"
+      ],
+      "actions": [
+        "start",
+        "choose_language"
+      ],
+      "reference_image": "assets/screen-reference/mobile_welcome.png",
+      "ui_states": [
+        "loading",
+        "empty",
+        "success",
+        "error",
+        "offline",
+        "unauthorized"
+      ],
+      "rtl_ltr": true,
+      "minimum_a11y": "WCAG 2.2 AA",
+      "acceptance": [
+        "Actions must lead to real destinations; never inert controls",
+        "No invented data or achievements; all professional claims link to evidence",
+        "Handle mobile/tablet/desktop/responsive layouts as applicable",
+        "Loading, empty, errors, offline, permissions and retry flows must work",
+        "API/DB roles and authorization enforced server-side",
+        "Visual regression uses this source mockup only as intent, not as pixel-perfect app screenshot"
+      ]
+    },
+    {
+      "id": "MOBILE-02",
+      "surface": "mobile",
+      "title": "Developer Home",
+      "route": "/home",
+      "backend_data_contract": "/api/v1/mobile/home",
+      "access_role": "guest",
+      "core_components": [
+        "tools",
+        "reading-feed",
+        "runbook-cta",
+        "saved"
+      ],
+      "actions": [
+        "open_tool",
+        "open_article"
+      ],
+      "reference_image": "assets/screen-reference/mobile_developer_home.png",
+      "ui_states": [
+        "loading",
+        "empty",
+        "success",
+        "error",
+        "offline",
+        "unauthorized"
+      ],
+      "rtl_ltr": true,
+      "minimum_a11y": "WCAG 2.2 AA",
+      "acceptance": [
+        "Actions must lead to real destinations; never inert controls",
+        "No invented data or achievements; all professional claims link to evidence",
+        "Handle mobile/tablet/desktop/responsive layouts as applicable",
+        "Loading, empty, errors, offline, permissions and retry flows must work",
+        "API/DB roles and authorization enforced server-side",
+        "Visual regression uses this source mockup only as intent, not as pixel-perfect app screenshot"
+      ]
+    },
+    {
+      "id": "MOBILE-03",
+      "surface": "mobile",
+      "title": "AI Troubleshooter",
+      "route": "/tools/ai-troubleshooter",
+      "backend_data_contract": "/api/v1/mobile/ai/diagnose",
+      "access_role": "authenticated",
+      "core_components": [
+        "prompt",
+        "limits",
+        "citations",
+        "response"
+      ],
+      "actions": [
+        "submit_prompt",
+        "save_answer",
+        "report_error"
+      ],
+      "reference_image": "assets/screen-reference/mobile_ai_troubleshooter.png",
+      "ui_states": [
+        "loading",
+        "empty",
+        "success",
+        "error",
+        "offline",
+        "unauthorized"
+      ],
+      "rtl_ltr": true,
+      "minimum_a11y": "WCAG 2.2 AA",
+      "acceptance": [
+        "Actions must lead to real destinations; never inert controls",
+        "No invented data or achievements; all professional claims link to evidence",
+        "Handle mobile/tablet/desktop/responsive layouts as applicable",
+        "Loading, empty, errors, offline, permissions and retry flows must work",
+        "API/DB roles and authorization enforced server-side",
+        "Visual regression uses this source mockup only as intent, not as pixel-perfect app screenshot"
+      ]
+    },
+    {
+      "id": "MOBILE-04",
+      "surface": "mobile",
+      "title": "Solution Detail",
+      "route": "/solutions/{id}",
+      "backend_data_contract": "/api/v1/mobile/solutions/{id}",
+      "access_role": "guest",
+      "core_components": [
+        "steps",
+        "safety",
+        "citations",
+        "version"
+      ],
+      "actions": [
+        "copy",
+        "save",
+        "share"
+      ],
+      "reference_image": "assets/screen-reference/mobile_solution_detail.png",
+      "ui_states": [
+        "loading",
+        "empty",
+        "success",
+        "error",
+        "offline",
+        "unauthorized"
+      ],
+      "rtl_ltr": true,
+      "minimum_a11y": "WCAG 2.2 AA",
+      "acceptance": [
+        "Actions must lead to real destinations; never inert controls",
+        "No invented data or achievements; all professional claims link to evidence",
+        "Handle mobile/tablet/desktop/responsive layouts as applicable",
+        "Loading, empty, errors, offline, permissions and retry flows must work",
+        "API/DB roles and authorization enforced server-side",
+        "Visual regression uses this source mockup only as intent, not as pixel-perfect app screenshot"
+      ]
+    },
+    {
+      "id": "MOBILE-05",
+      "surface": "mobile",
+      "title": "Runbook Library",
+      "route": "/runbooks",
+      "backend_data_contract": "/api/v1/mobile/runbooks",
+      "access_role": "guest",
+      "core_components": [
+        "search",
+        "category",
+        "download-status"
+      ],
+      "actions": [
+        "search",
+        "download",
+        "open"
+      ],
+      "reference_image": "assets/screen-reference/mobile_runbook_library.png",
+      "ui_states": [
+        "loading",
+        "empty",
+        "success",
+        "error",
+        "offline",
+        "unauthorized"
+      ],
+      "rtl_ltr": true,
+      "minimum_a11y": "WCAG 2.2 AA",
+      "acceptance": [
+        "Actions must lead to real destinations; never inert controls",
+        "No invented data or achievements; all professional claims link to evidence",
+        "Handle mobile/tablet/desktop/responsive layouts as applicable",
+        "Loading, empty, errors, offline, permissions and retry flows must work",
+        "API/DB roles and authorization enforced server-side",
+        "Visual regression uses this source mockup only as intent, not as pixel-perfect app screenshot"
+      ]
+    },
+    {
+      "id": "MOBILE-06",
+      "surface": "mobile",
+      "title": "Offline Runbook",
+      "route": "/runbooks/{id}/offline",
+      "backend_data_contract": "local://runbooks/{id}",
+      "access_role": "guest",
+      "core_components": [
+        "downloaded-steps",
+        "last-sync",
+        "source-date"
+      ],
+      "actions": [
+        "open",
+        "copy",
+        "mark_progress"
+      ],
+      "reference_image": "assets/screen-reference/mobile_offline_runbook.png",
+      "ui_states": [
+        "loading",
+        "empty",
+        "success",
+        "error",
+        "offline",
+        "unauthorized"
+      ],
+      "rtl_ltr": true,
+      "minimum_a11y": "WCAG 2.2 AA",
+      "acceptance": [
+        "Actions must lead to real destinations; never inert controls",
+        "No invented data or achievements; all professional claims link to evidence",
+        "Handle mobile/tablet/desktop/responsive layouts as applicable",
+        "Loading, empty, errors, offline, permissions and retry flows must work",
+        "API/DB roles and authorization enforced server-side",
+        "Visual regression uses this source mockup only as intent, not as pixel-perfect app screenshot"
+      ]
+    },
+    {
+      "id": "MOBILE-07",
+      "surface": "mobile",
+      "title": "Tech Articles",
+      "route": "/articles",
+      "backend_data_contract": "/api/v1/mobile/articles",
+      "access_role": "guest",
+      "core_components": [
+        "feed",
+        "categories",
+        "article-details"
+      ],
+      "actions": [
+        "filter",
+        "open_article",
+        "save"
+      ],
+      "reference_image": "assets/screen-reference/mobile_tech_articles.png",
+      "ui_states": [
+        "loading",
+        "empty",
+        "success",
+        "error",
+        "offline",
+        "unauthorized"
+      ],
+      "rtl_ltr": true,
+      "minimum_a11y": "WCAG 2.2 AA",
+      "acceptance": [
+        "Actions must lead to real destinations; never inert controls",
+        "No invented data or achievements; all professional claims link to evidence",
+        "Handle mobile/tablet/desktop/responsive layouts as applicable",
+        "Loading, empty, errors, offline, permissions and retry flows must work",
+        "API/DB roles and authorization enforced server-side",
+        "Visual regression uses this source mockup only as intent, not as pixel-perfect app screenshot"
+      ]
+    },
+    {
+      "id": "MOBILE-08",
+      "surface": "mobile",
+      "title": "Learning Paths",
+      "route": "/learn",
+      "backend_data_contract": "/api/v1/mobile/learn",
+      "access_role": "guest",
+      "core_components": [
+        "tracks",
+        "lessons",
+        "progress"
+      ],
+      "actions": [
+        "start_track",
+        "continue_lesson"
+      ],
+      "reference_image": "assets/screen-reference/mobile_learning_paths.png",
+      "ui_states": [
+        "loading",
+        "empty",
+        "success",
+        "error",
+        "offline",
+        "unauthorized"
+      ],
+      "rtl_ltr": true,
+      "minimum_a11y": "WCAG 2.2 AA",
+      "acceptance": [
+        "Actions must lead to real destinations; never inert controls",
+        "No invented data or achievements; all professional claims link to evidence",
+        "Handle mobile/tablet/desktop/responsive layouts as applicable",
+        "Loading, empty, errors, offline, permissions and retry flows must work",
+        "API/DB roles and authorization enforced server-side",
+        "Visual regression uses this source mockup only as intent, not as pixel-perfect app screenshot"
+      ]
+    },
+    {
+      "id": "MOBILE-09",
+      "surface": "mobile",
+      "title": "Interview Trainer",
+      "route": "/learn/interview",
+      "backend_data_contract": "/api/v1/mobile/interview",
+      "access_role": "authenticated",
+      "core_components": [
+        "role",
+        "question",
+        "feedback",
+        "progress"
+      ],
+      "actions": [
+        "start_session",
+        "answer",
+        "see_feedback"
+      ],
+      "reference_image": "assets/screen-reference/mobile_interview_trainer.png",
+      "ui_states": [
+        "loading",
+        "empty",
+        "success",
+        "error",
+        "offline",
+        "unauthorized"
+      ],
+      "rtl_ltr": true,
+      "minimum_a11y": "WCAG 2.2 AA",
+      "acceptance": [
+        "Actions must lead to real destinations; never inert controls",
+        "No invented data or achievements; all professional claims link to evidence",
+        "Handle mobile/tablet/desktop/responsive layouts as applicable",
+        "Loading, empty, errors, offline, permissions and retry flows must work",
+        "API/DB roles and authorization enforced server-side",
+        "Visual regression uses this source mockup only as intent, not as pixel-perfect app screenshot"
+      ]
+    },
+    {
+      "id": "MOBILE-10",
+      "surface": "mobile",
+      "title": "My GitHub",
+      "route": "/github",
+      "backend_data_contract": "/api/v1/public/github/portfolio",
+      "access_role": "guest",
+      "core_components": [
+        "repositories",
+        "verified-updates",
+        "external-links"
+      ],
+      "actions": [
+        "open_repo",
+        "follow_project"
+      ],
+      "reference_image": "assets/screen-reference/mobile_my_github.png",
+      "ui_states": [
+        "loading",
+        "empty",
+        "success",
+        "error",
+        "offline",
+        "unauthorized"
+      ],
+      "rtl_ltr": true,
+      "minimum_a11y": "WCAG 2.2 AA",
+      "acceptance": [
+        "Actions must lead to real destinations; never inert controls",
+        "No invented data or achievements; all professional claims link to evidence",
+        "Handle mobile/tablet/desktop/responsive layouts as applicable",
+        "Loading, empty, errors, offline, permissions and retry flows must work",
+        "API/DB roles and authorization enforced server-side",
+        "Visual regression uses this source mockup only as intent, not as pixel-perfect app screenshot"
+      ]
+    },
+    {
+      "id": "MOBILE-11",
+      "surface": "mobile",
+      "title": "Saved Resources",
+      "route": "/saved",
+      "backend_data_contract": "/api/v1/mobile/saved",
+      "access_role": "authenticated",
+      "core_components": [
+        "articles",
+        "runbooks",
+        "answers",
+        "offline-sync"
+      ],
+      "actions": [
+        "remove_saved",
+        "open_saved"
+      ],
+      "reference_image": "assets/screen-reference/mobile_saved_resources.png",
+      "ui_states": [
+        "loading",
+        "empty",
+        "success",
+        "error",
+        "offline",
+        "unauthorized"
+      ],
+      "rtl_ltr": true,
+      "minimum_a11y": "WCAG 2.2 AA",
+      "acceptance": [
+        "Actions must lead to real destinations; never inert controls",
+        "No invented data or achievements; all professional claims link to evidence",
+        "Handle mobile/tablet/desktop/responsive layouts as applicable",
+        "Loading, empty, errors, offline, permissions and retry flows must work",
+        "API/DB roles and authorization enforced server-side",
+        "Visual regression uses this source mockup only as intent, not as pixel-perfect app screenshot"
+      ]
+    },
+    {
+      "id": "MOBILE-12",
+      "surface": "mobile",
+      "title": "Personal Profile",
+      "route": "/profile",
+      "backend_data_contract": "/api/v1/mobile/me",
+      "access_role": "authenticated",
+      "core_components": [
+        "account",
+        "privacy",
+        "settings",
+        "history"
+      ],
+      "actions": [
+        "edit_profile",
+        "sign_out"
+      ],
+      "reference_image": "assets/screen-reference/mobile_personal_profile.png",
+      "ui_states": [
+        "loading",
+        "empty",
+        "success",
+        "error",
+        "offline",
+        "unauthorized"
+      ],
+      "rtl_ltr": true,
+      "minimum_a11y": "WCAG 2.2 AA",
+      "acceptance": [
+        "Actions must lead to real destinations; never inert controls",
+        "No invented data or achievements; all professional claims link to evidence",
+        "Handle mobile/tablet/desktop/responsive layouts as applicable",
+        "Loading, empty, errors, offline, permissions and retry flows must work",
+        "API/DB roles and authorization enforced server-side",
+        "Visual regression uses this source mockup only as intent, not as pixel-perfect app screenshot"
+      ]
+    },
+    {
+      "id": "MOBILE-13",
+      "surface": "mobile",
+      "title": "Preferences",
+      "route": "/settings",
+      "backend_data_contract": "/api/v1/mobile/preferences",
+      "access_role": "guest",
+      "core_components": [
+        "locale",
+        "theme",
+        "notifications",
+        "cache"
+      ],
+      "actions": [
+        "change_language",
+        "change_theme",
+        "clear_cache"
+      ],
+      "reference_image": "assets/screen-reference/mobile_preferences.png",
+      "ui_states": [
+        "loading",
+        "empty",
+        "success",
+        "error",
+        "offline",
+        "unauthorized"
+      ],
+      "rtl_ltr": true,
+      "minimum_a11y": "WCAG 2.2 AA",
+      "acceptance": [
+        "Actions must lead to real destinations; never inert controls",
+        "No invented data or achievements; all professional claims link to evidence",
+        "Handle mobile/tablet/desktop/responsive layouts as applicable",
+        "Loading, empty, errors, offline, permissions and retry flows must work",
+        "API/DB roles and authorization enforced server-side",
+        "Visual regression uses this source mockup only as intent, not as pixel-perfect app screenshot"
+      ]
+    }
+  ]
+}

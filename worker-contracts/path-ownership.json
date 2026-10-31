@@ -1,0 +1,72 @@
+{
+  "workers": [
+    {
+      "id": "W1",
+      "role": "Backend & DB",
+      "owned_paths": [
+        "backend/app/Domain/**",
+        "backend/app/Models/**",
+        "backend/app/Http/Controllers/Api/**",
+        "backend/database/**",
+        "backend/routes/api.php",
+        "backend/tests/Feature/Api/**"
+      ],
+      "can_touch_shared": false
+    },
+    {
+      "id": "W2",
+      "role": "Public Web & Recruiter UX",
+      "owned_paths": [
+        "backend/resources/views/**",
+        "backend/resources/css/**",
+        "backend/resources/js/**",
+        "backend/routes/web.php",
+        "backend/tests/Feature/Web/**"
+      ],
+      "can_touch_shared": false
+    },
+    {
+      "id": "W3",
+      "role": "Flutter Mobile",
+      "owned_paths": [
+        "mobile/**"
+      ],
+      "can_touch_shared": false
+    },
+    {
+      "id": "W4",
+      "role": "AI Content & Provider Adapters",
+      "owned_paths": [
+        "backend/app/AI/**",
+        "backend/app/Jobs/AI/**",
+        "backend/tests/Feature/AI/**"
+      ],
+      "can_touch_shared": false
+    },
+    {
+      "id": "LEAD",
+      "role": "Integrator / QA / Releases",
+      "owned_paths": [
+        ".github/**",
+        "docs/**",
+        "assets/**",
+        "design/**",
+        "contracts/**",
+        "backend/composer.json",
+        "backend/package.json",
+        "locales/**",
+        "backend/app/Integrations/GitHub/**",
+        "tasks/**"
+      ],
+      "can_touch_shared": true
+    }
+  ],
+  "rules": [
+    "All planned work starts from the task ledger; no competing worker may claim a task.",
+    "Issue ownership has exactly one worker, base SHA, file boundaries, dependencies, acceptance.",
+    "If planned changed files cross ownership, LEAD splits task before work.",
+    "LEAD exclusively changes shared contracts and imports accepted assets.",
+    "No worker rebases another worker branch or force-pushes protected branches.",
+    "Handoff includes current SHA, tests, remaining blockers and next safe step."
+  ]
+}

@@ -1,0 +1,399 @@
+{
+  "version": "6.0",
+  "status": "DESIGN_CONTRACT_NOT_APPLIED",
+  "database": "MariaDB 10.11+ target subject to deployment verification",
+  "idStrategy": "UUID 36-char canonical; model migrations must preserve key contracts",
+  "tables": [
+    {
+      "table": "users",
+      "columns": [
+        "id:uuid:pk",
+        "email:varchar(254):unique",
+        "password_hash:varchar(255):nullable",
+        "status:varchar(20)",
+        "created_at:datetime"
+      ]
+    },
+    {
+      "table": "profiles",
+      "columns": [
+        "id:uuid:pk",
+        "user_id:uuid:fk(users)",
+        "public_name:varchar(140)",
+        "bio_en:text",
+        "bio_ar:text",
+        "portrait_asset_id:uuid:nullable",
+        "publish_status:varchar(20)"
+      ]
+    },
+    {
+      "table": "career_positions",
+      "columns": [
+        "id:uuid:pk",
+        "profile_id:uuid:fk(profiles)",
+        "org_name:varchar(200)",
+        "role_en:varchar(200)",
+        "role_ar:varchar(200)",
+        "started_on:date",
+        "ended_on:date:nullable",
+        "publishable:boolean",
+        "verified:boolean"
+      ]
+    },
+    {
+      "table": "skills",
+      "columns": [
+        "id:uuid:pk",
+        "slug:varchar(120):unique",
+        "name_en:varchar(200)",
+        "name_ar:varchar(200)",
+        "category:varchar(80)",
+        "evidence_status:varchar(20)"
+      ]
+    },
+    {
+      "table": "certifications",
+      "columns": [
+        "id:uuid:pk",
+        "profile_id:uuid:fk(profiles)",
+        "title:varchar(200)",
+        "issuer:varchar(200)",
+        "issued_on:date:nullable",
+        "verified:boolean",
+        "evidence_asset_id:uuid:nullable"
+      ]
+    },
+    {
+      "table": "professional_claims",
+      "columns": [
+        "id:uuid:pk",
+        "profile_id:uuid:fk(profiles)",
+        "claim_en:text",
+        "claim_ar:text",
+        "evidence_url:text:nullable",
+        "status:varchar(20)",
+        "is_public:boolean"
+      ]
+    },
+    {
+      "table": "projects",
+      "columns": [
+        "id:uuid:pk",
+        "slug:varchar(140):unique",
+        "title:varchar(220)",
+        "summary_en:text",
+        "summary_ar:text",
+        "status:varchar(24)",
+        "visibility:varchar(20)",
+        "github_repo_id:uuid:nullable",
+        "published_at:datetime:nullable"
+      ]
+    },
+    {
+      "table": "project_evidence",
+      "columns": [
+        "id:uuid:pk",
+        "project_id:uuid:fk(projects)",
+        "evidence_type:varchar(40)",
+        "url:text",
+        "visibility:varchar(20)",
+        "verified_at:datetime:nullable"
+      ]
+    },
+    {
+      "table": "github_repositories",
+      "columns": [
+        "id:uuid:pk",
+        "github_id:bigint:unique",
+        "full_name:varchar(255)",
+        "html_url:text",
+        "visibility:varchar(16)",
+        "allow_public:boolean",
+        "last_synced_at:datetime:nullable"
+      ]
+    },
+    {
+      "table": "github_snapshots",
+      "columns": [
+        "id:uuid:pk",
+        "repo_id:uuid:fk(github_repositories)",
+        "captured_at:datetime",
+        "public_payload:json",
+        "data_source:varchar(40)"
+      ]
+    },
+    {
+      "table": "articles",
+      "columns": [
+        "id:uuid:pk",
+        "slug:varchar(180):unique",
+        "title_en:varchar(250)",
+        "title_ar:varchar(250)",
+        "canonical_lang:varchar(2)",
+        "status:varchar(24)",
+        "hero_asset_id:uuid:nullable",
+        "published_at:datetime:nullable"
+      ]
+    },
+    {
+      "table": "article_revisions",
+      "columns": [
+        "id:uuid:pk",
+        "article_id:uuid:fk(articles)",
+        "revision_no:int",
+        "body_md:longtext",
+        "citations_json:json",
+        "validation_json:json",
+        "status:varchar(24)"
+      ]
+    },
+    {
+      "table": "categories",
+      "columns": [
+        "id:uuid:pk",
+        "slug:varchar(110):unique",
+        "name_en:varchar(170)",
+        "name_ar:varchar(170)"
+      ]
+    },
+    {
+      "table": "article_categories",
+      "columns": [
+        "article_id:uuid:fk(articles)",
+        "category_id:uuid:fk(categories)",
+        "PRIMARY:article_id+category_id"
+      ]
+    },
+    {
+      "table": "assets",
+      "columns": [
+        "id:uuid:pk",
+        "asset_key:varchar(180):unique",
+        "mime_type:varchar(120)",
+        "storage_key:text",
+        "sha256:char(64)",
+        "origin:varchar(24)",
+        "rights_status:varchar(24)",
+        "publishable:boolean"
+      ]
+    },
+    {
+      "table": "asset_variants",
+      "columns": [
+        "id:uuid:pk",
+        "asset_id:uuid:fk(assets)",
+        "size_key:varchar(50)",
+        "storage_key:text",
+        "width:int",
+        "height:int",
+        "format:varchar(12)"
+      ]
+    },
+    {
+      "table": "ai_providers",
+      "columns": [
+        "id:uuid:pk",
+        "name:varchar(160)",
+        "provider_type:varchar(30)",
+        "adapter_type:varchar(40)",
+        "base_url:text",
+        "secret_ref:varchar(200):nullable",
+        "enabled:boolean",
+        "health_status:varchar(20)"
+      ]
+    },
+    {
+      "table": "ai_models",
+      "columns": [
+        "id:uuid:pk",
+        "provider_id:uuid:fk(ai_providers)",
+        "provider_model_id:varchar(200)",
+        "capabilities_json:json",
+        "enabled:boolean",
+        "cost_policy_json:json"
+      ]
+    },
+    {
+      "table": "ai_routes",
+      "columns": [
+        "id:uuid:pk",
+        "task_type:varchar(80):unique",
+        "primary_model_id:uuid:fk(ai_models)",
+        "fallback_model_ids_json:json",
+        "budget_json:json",
+        "rate_limits_json:json"
+      ]
+    },
+    {
+      "table": "ai_jobs",
+      "columns": [
+        "id:uuid:pk",
+        "job_type:varchar(80)",
+        "status:varchar(25)",
+        "idempotency_key:varchar(160):unique",
+        "attempt_count:int",
+        "next_attempt_at:datetime:nullable",
+        "result_ref:text:nullable"
+      ]
+    },
+    {
+      "table": "ai_job_steps",
+      "columns": [
+        "id:uuid:pk",
+        "job_id:uuid:fk(ai_jobs)",
+        "step_key:varchar(100)",
+        "status:varchar(24)",
+        "output_ref:text:nullable",
+        "attempt_no:int",
+        "completed_at:datetime:nullable"
+      ]
+    },
+    {
+      "table": "ai_usage",
+      "columns": [
+        "id:uuid:pk",
+        "job_id:uuid:nullable",
+        "provider_id:uuid:fk(ai_providers)",
+        "model_id:uuid:fk(ai_models)",
+        "cost_amount:decimal(12,6)",
+        "cost_currency:char(3)",
+        "usage_json:json"
+      ]
+    },
+    {
+      "table": "editorial_approvals",
+      "columns": [
+        "id:uuid:pk",
+        "entity_type:varchar(40)",
+        "entity_id:uuid",
+        "reason:text",
+        "status:varchar(24)",
+        "decision_at:datetime:nullable"
+      ]
+    },
+    {
+      "table": "runbooks",
+      "columns": [
+        "id:uuid:pk",
+        "slug:varchar(150):unique",
+        "title:varchar(220)",
+        "body_md:longtext",
+        "version:int",
+        "validated_at:datetime:nullable",
+        "offline_ok:boolean"
+      ]
+    },
+    {
+      "table": "runbook_versions",
+      "columns": [
+        "id:uuid:pk",
+        "runbook_id:uuid:fk(runbooks)",
+        "version:int",
+        "body_md:longtext",
+        "checksum:char(64)",
+        "created_at:datetime"
+      ]
+    },
+    {
+      "table": "saved_resources",
+      "columns": [
+        "id:uuid:pk",
+        "user_id:uuid:fk(users)",
+        "resource_type:varchar(30)",
+        "resource_id:uuid",
+        "saved_at:datetime"
+      ]
+    },
+    {
+      "table": "learning_paths",
+      "columns": [
+        "id:uuid:pk",
+        "slug:varchar(150):unique",
+        "title:varchar(220)",
+        "outline_json:json",
+        "published:boolean"
+      ]
+    },
+    {
+      "table": "learning_progress",
+      "columns": [
+        "id:uuid:pk",
+        "user_id:uuid:fk(users)",
+        "path_id:uuid:fk(learning_paths)",
+        "progress_json:json",
+        "updated_at:datetime"
+      ]
+    },
+    {
+      "table": "push_consents",
+      "columns": [
+        "id:uuid:pk",
+        "user_id:uuid:nullable",
+        "device_token_hash:char(64)",
+        "consent_at:datetime",
+        "revoked_at:datetime:nullable"
+      ]
+    },
+    {
+      "table": "contact_messages",
+      "columns": [
+        "id:uuid:pk",
+        "from_name:varchar(180)",
+        "from_email:varchar(254)",
+        "message:text",
+        "spam_score:decimal(4,3)",
+        "status:varchar(20)"
+      ]
+    },
+    {
+      "table": "job_leases",
+      "columns": [
+        "id:uuid:pk",
+        "job_id:uuid:fk(ai_jobs)",
+        "owner_key:varchar(180)",
+        "expires_at:datetime",
+        "lease_version:int"
+      ]
+    },
+    {
+      "table": "idempotency_receipts",
+      "columns": [
+        "id:uuid:pk",
+        "request_key:varchar(180):unique",
+        "status:varchar(20)",
+        "receipt_json:json",
+        "expires_at:datetime"
+      ]
+    },
+    {
+      "table": "audit_events",
+      "columns": [
+        "id:uuid:pk",
+        "actor_type:varchar(30)",
+        "actor_id:varchar(100)",
+        "action:varchar(120)",
+        "subject_type:varchar(60)",
+        "subject_id:varchar(120)",
+        "created_at:datetime",
+        "payload_redacted:json"
+      ]
+    },
+    {
+      "table": "feature_flags",
+      "columns": [
+        "id:uuid:pk",
+        "name:varchar(160):unique",
+        "enabled:boolean",
+        "scope:varchar(50)",
+        "updated_at:datetime"
+      ]
+    }
+  ],
+  "mustEnforce": [
+    "foreign keys and composite unique constraints",
+    "least-privilege roles",
+    "exclude secrets from row payloads/logs",
+    "migration and rollback tests",
+    "index pagination/filter columns after measurable query plans"
+  ]
+}

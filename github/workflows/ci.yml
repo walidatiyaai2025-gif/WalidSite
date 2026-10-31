@@ -1,0 +1,61 @@
+name: PR CI
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: pr-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify mandatory project roots (required after scaffold T001)
+        shell: bash
+        run: |
+          test -f backend/composer.json
+          test -f mobile/pubspec.yaml
+          test -f backend/package.json
+      - name: Basic secret and conflict-marker guards
+        shell: bash
+        run: |
+          ! git grep -n -E '^(<<<<<<< |=======|>>>>>>> )' -- ':!*.lock'
+          ! git ls-files | grep -E '(^|/)(\.env|walidatiya_walid\.sql|id_rsa|id_ed25519)$'
+  php:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+      - run: cd backend && composer validate --strict && composer install --no-interaction --prefer-dist --no-progress && php artisan test
+  flutter:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - run: cd mobile && flutter pub get && flutter analyze && flutter test
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: cd backend && npm ci && npm run lint && npm run test -- --run && npm run build
+  required-ci-gate:
+    if: always()
+    needs: [validate, php, flutter, web]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require all tests green (exact-head)
+        env:
+          NEEDS_JSON: ${{ toJson(needs) }}
+        run: |
+          echo "$NEEDS_JSON" | jq -e 'all(.[]; .result == "success")'

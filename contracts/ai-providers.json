@@ -1,0 +1,67 @@
+{
+  "providerTypeOptions": [
+    "openai-compatible",
+    "ollama-compatible",
+    "anthropic-compatible",
+    "google-compatible",
+    "azure-openai-compatible",
+    "custom-http-adapter"
+  ],
+  "capabilities": [
+    "text",
+    "vision",
+    "image-generation",
+    "embeddings"
+  ],
+  "UIEditableFields": [
+    "display_name",
+    "type",
+    "adapter",
+    "base_url",
+    "enabled",
+    "timeout_seconds",
+    "concurrent_limit",
+    "rpm_limit",
+    "daily_budget",
+    "routing_priority",
+    "model_ids",
+    "capabilities",
+    "image_config",
+    "retry_policy",
+    "circuit_breaker",
+    "healthcheck_path",
+    "secret_write_only"
+  ],
+  "secretRules": [
+    "encrypted server-side in secret manager/database",
+    "write-only UI; never echo secret",
+    "model api key only via server proxy",
+    "redact logs",
+    "no source-control or client bundling"
+  ],
+  "defaults": {
+    "concurrency_per_provider": 1,
+    "provider_request_timeout_sec": 30,
+    "worker_global_concurrency": 2,
+    "max_retries": 2,
+    "job_backoff_seconds": [
+      60,
+      300
+    ],
+    "publish_auto": true,
+    "image_publish_auto": true
+  },
+  "autoPublishAllowedWhen": [
+    "all mandatory quality gates pass",
+    "valid citations and permitted rights",
+    "not a new claim about the owner",
+    "not about a sensitive organisation or secret",
+    "cost and rate limits within budget"
+  ],
+  "blockingExternalDependencies": [
+    "valid provider endpoints and access credentials",
+    "DNS/SSL and deployment hosting",
+    "Apple/Google developer accounts and signing",
+    "public email sender and push credentials"
+  ]
+}

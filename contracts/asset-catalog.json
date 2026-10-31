@@ -1,0 +1,768 @@
+{
+  "version": "6.0",
+  "assetCount": 127,
+  "assets": [
+    {
+      "key": "android-adaptive-background",
+      "path": "assets/app-icons/android-adaptive-background.png",
+      "type": ".png",
+      "usage": "Production visual candidate"
+    },
+    {
+      "key": "android-adaptive-foreground",
+      "path": "assets/app-icons/android-adaptive-foreground.png",
+      "type": ".png",
+      "usage": "Production visual candidate"
+    },
+    {
+      "key": "app-icon-1024",
+      "path": "assets/app-icons/app-icon-1024.png",
+      "type": ".png",
+      "usage": "Production visual candidate"
+    },
+    {
+      "key": "app-icon-120",
+      "path": "assets/app-icons/app-icon-120.png",
+      "type": ".png",
+      "usage": "Production visual candidate"
+    },
+    {
+      "key": "app-icon-144",
+      "path": "assets/app-icons/app-icon-144.png",
+      "type": ".png",
+      "usage": "Production visual candidate"
+    },
+    {
+      "key": "app-icon-180",
+      "path": "assets/app-icons/app-icon-180.png",
+      "type": ".png",
+      "usage": "Production visual candidate"
+    },
+    {
+      "key": "app-icon-192",
+      "path": "assets/app-icons/app-icon-192.png",
+      "type": ".png",
+      "usage": "Production visual candidate"
+    },
+    {
+      "key": "app-icon-256",
+      "path": "assets/app-icons/app-icon-256.png",
+      "type": ".png",
+      "usage": "Production visual candidate"
+    },
+    {
+      "key": "app-icon-384",
+      "path": "assets/app-icons/app-icon-384.png",
+      "type": ".png",
+      "usage": "Production visual candidate"
+    },
+    {
+      "key": "app-icon-48",
+      "path": "assets/app-icons/app-icon-48.png",
+      "type": ".png",
+      "usage": "Production visual candidate"
+    },
+    {
+      "key": "app-icon-512",
+      "path": "assets/app-icons/app-icon-512.png",
+      "type": ".png",
+      "usage": "Production visual candidate"
+    },
+    {
+      "key": "app-icon-72",
+      "path": "assets/app-icons/app-icon-72.png",
+      "type": ".png",
+      "usage": "Production visual candidate"
+    },
+    {
+      "key": "app-icon-96",
+      "path": "assets/app-icons/app-icon-96.png",
+      "type": ".png",
+      "usage": "Production visual candidate"
+    },
+    {
+      "key": "ai-engineering-1200x675",
+      "path": "assets/blog-fallbacks/ai-engineering-1200x675.png",
+      "type": ".png",
+      "usage": "Deterministic placeholder; AI will generate editorial images at runtime"
+    },
+    {
+      "key": "architecture-1200x675",
+      "path": "assets/blog-fallbacks/architecture-1200x675.png",
+      "type": ".png",
+      "usage": "Deterministic placeholder; AI will generate editorial images at runtime"
+    },
+    {
+      "key": "devops-1200x675",
+      "path": "assets/blog-fallbacks/devops-1200x675.png",
+      "type": ".png",
+      "usage": "Deterministic placeholder; AI will generate editorial images at runtime"
+    },
+    {
+      "key": "flutter-1200x675",
+      "path": "assets/blog-fallbacks/flutter-1200x675.png",
+      "type": ".png",
+      "usage": "Deterministic placeholder; AI will generate editorial images at runtime"
+    },
+    {
+      "key": "laravel-1200x675",
+      "path": "assets/blog-fallbacks/laravel-1200x675.png",
+      "type": ".png",
+      "usage": "Deterministic placeholder; AI will generate editorial images at runtime"
+    },
+    {
+      "key": "security-1200x675",
+      "path": "assets/blog-fallbacks/security-1200x675.png",
+      "type": ".png",
+      "usage": "Deterministic placeholder; AI will generate editorial images at runtime"
+    },
+    {
+      "key": "sql-dba-1200x675",
+      "path": "assets/blog-fallbacks/sql-dba-1200x675.png",
+      "type": ".png",
+      "usage": "Deterministic placeholder; AI will generate editorial images at runtime"
+    },
+    {
+      "key": "troubleshooting-1200x675",
+      "path": "assets/blog-fallbacks/troubleshooting-1200x675.png",
+      "type": ".png",
+      "usage": "Deterministic placeholder; AI will generate editorial images at runtime"
+    },
+    {
+      "key": "favicon",
+      "path": "assets/brand/favicon.svg",
+      "type": ".svg",
+      "usage": "Production visual candidate"
+    },
+    {
+      "key": "logo-lockup-dark",
+      "path": "assets/brand/logo-lockup-dark.svg",
+      "type": ".svg",
+      "usage": "Production visual candidate"
+    },
+    {
+      "key": "logo-lockup-light",
+      "path": "assets/brand/logo-lockup-light.svg",
+      "type": ".svg",
+      "usage": "Production visual candidate"
+    },
+    {
+      "key": "logo-symbol-navy",
+      "path": "assets/brand/logo-symbol-navy.svg",
+      "type": ".svg",
+      "usage": "Production visual candidate"
+    },
+    {
+      "key": "logo-symbol-transparent",
+      "path": "assets/brand/logo-symbol-transparent.svg",
+      "type": ".svg",
+      "usage": "Production visual candidate"
+    },
+    {
+      "key": "logo-symbol-white",
+      "path": "assets/brand/logo-symbol-white.svg",
+      "type": ".svg",
+      "usage": "Production visual candidate"
+    },
+    {
+      "key": "about",
+      "path": "assets/icons/about.svg",
+      "type": ".svg",
+      "usage": "Production visual candidate"
+    },
+    {
+      "key": "ai",
+      "path": "assets/icons/ai.svg",
+      "type": ".svg",
+      "usage": "Production visual candidate"
+    },
+    {
+      "key": "alert",
+      "path": "assets/icons/alert.svg",
+      "type": ".svg",
+      "usage": "Production visual candidate"
+    },
+    {
+      "key": "analytics",
+      "path": "assets/icons/analytics.svg",
+      "type": ".svg",
+      "usage": "Production visual candidate"
+    },
+    {
+      "key": "api",
+      "path": "assets/icons/api.svg",
+      "type": ".svg",
+      "usage": "Production visual candidate"
+    },
+    {
+      "key": "back",
+      "path": "assets/icons/back.svg",
+      "type": ".svg",
+      "usage": "Production visual candidate"
+    },
+    {
+      "key": "blog",
+      "path": "assets/icons/blog.svg",
+      "type": ".svg",
+      "usage": "Production visual candidate"
+    },
+    {
+      "key": "bookmark",
+      "path": "assets/icons/bookmark.svg",
+      "type": ".svg",
+      "usage": "Production visual candidate"
+    },
+    {
+      "key": "briefcase",
+      "path": "assets/icons/briefcase.svg",
+      "type": ".svg",
+      "usage": "Production visual candidate"
+    },
+    {
+      "key": "calendar",
+      "path": "assets/icons/calendar.svg",
+      "type": ".svg",
+      "usage": "Production visual candidate"
+    },
+    {
+      "key": "chat",
+      "path": "assets/icons/chat.svg",
+      "type": ".svg",
+      "usage": "Production visual candidate"
+    },
+    {
+      "key": "check",
+      "path": "assets/icons/check.svg",
+      "type": ".svg",
+      "usage": "Production visual candidate"
+    },
+    {
+      "key": "cloud",
+      "path": "assets/icons/cloud.svg",
+      "type": ".svg",
+      "usage": "Production visual candidate"
+    },
+    {
+      "key": "code",
+      "path": "assets/icons/code.svg",
+      "type": ".svg",
+      "usage": "Production visual candidate"
+    },
+    {
+      "key": "contact",
+      "path": "assets/icons/contact.svg",
+      "type": ".svg",
+      "usage": "Production visual candidate"
+    },
+    {
+      "key": "database",
+      "path": "assets/icons/database.svg",
+      "type": ".svg",
+      "usage": "Production visual candidate"
+    },
+    {
+      "key": "download",
+      "path": "assets/icons/download.svg",
+      "type": ".svg",
+      "usage": "Production visual candidate"
+    },
+    {
+      "key": "edit",
+      "path": "assets/icons/edit.svg",
+      "type": ".svg",
+      "usage": "Production visual candidate"
+    },
+    {
+      "key": "filter",
+      "path": "assets/icons/filter.svg",
+      "type": ".svg",
+      "usage": "Production visual candidate"
+    },
+    {
+      "key": "github",
+      "path": "assets/icons/github.svg",
+      "type": ".svg",
+      "usage": "Production visual candidate"
+    },
+    {
+      "key": "globe",
+      "path": "assets/icons/globe.svg",
+      "type": ".svg",
+      "usage": "Production visual candidate"
+    },
+    {
+      "key": "heart",
+      "path": "assets/icons/heart.svg",
+      "type": ".svg",
+      "usage": "Production visual candidate"
+    },
+    {
+      "key": "home",
+      "path": "assets/icons/home.svg",
+      "type": ".svg",
+      "usage": "Production visual candidate"
+    },
+    {
+      "key": "image",
+      "path": "assets/icons/image.svg",
+      "type": ".svg",
+      "usage": "Production visual candidate"
+    },
+    {
+      "key": "lab",
+      "path": "assets/icons/lab.svg",
+      "type": ".svg",
+      "usage": "Production visual candidate"
+    },
+    {
+      "key": "learn",
+      "path": "assets/icons/learn.svg",
+      "type": ".svg",
+      "usage": "Production visual candidate"
+    },
+    {
+      "key": "lock",
+      "path": "assets/icons/lock.svg",
+      "type": ".svg",
+      "usage": "Production visual candidate"
+    },
+    {
+      "key": "login",
+      "path": "assets/icons/login.svg",
+      "type": ".svg",
+      "usage": "Production visual candidate"
+    },
+    {
+      "key": "logout",
+      "path": "assets/icons/logout.svg",
+      "type": ".svg",
+      "usage": "Production visual candidate"
+    },
+    {
+      "key": "menu",
+      "path": "assets/icons/menu.svg",
+      "type": ".svg",
+      "usage": "Production visual candidate"
+    },
+    {
+      "key": "notifications",
+      "path": "assets/icons/notifications.svg",
+      "type": ".svg",
+      "usage": "Production visual candidate"
+    },
+    {
+      "key": "offline",
+      "path": "assets/icons/offline.svg",
+      "type": ".svg",
+      "usage": "Production visual candidate"
+    },
+    {
+      "key": "phone",
+      "path": "assets/icons/phone.svg",
+      "type": ".svg",
+      "usage": "Production visual candidate"
+    },
+    {
+      "key": "projects",
+      "path": "assets/icons/projects.svg",
+      "type": ".svg",
+      "usage": "Production visual candidate"
+    },
+    {
+      "key": "resume",
+      "path": "assets/icons/resume.svg",
+      "type": ".svg",
+      "usage": "Production visual candidate"
+    },
+    {
+      "key": "runbook",
+      "path": "assets/icons/runbook.svg",
+      "type": ".svg",
+      "usage": "Production visual candidate"
+    },
+    {
+      "key": "search",
+      "path": "assets/icons/search.svg",
+      "type": ".svg",
+      "usage": "Production visual candidate"
+    },
+    {
+      "key": "security",
+      "path": "assets/icons/security.svg",
+      "type": ".svg",
+      "usage": "Production visual candidate"
+    },
+    {
+      "key": "settings",
+      "path": "assets/icons/settings.svg",
+      "type": ".svg",
+      "usage": "Production visual candidate"
+    },
+    {
+      "key": "store",
+      "path": "assets/icons/store.svg",
+      "type": ".svg",
+      "usage": "Production visual candidate"
+    },
+    {
+      "key": "upload",
+      "path": "assets/icons/upload.svg",
+      "type": ".svg",
+      "usage": "Production visual candidate"
+    },
+    {
+      "key": "users",
+      "path": "assets/icons/users.svg",
+      "type": ".svg",
+      "usage": "Production visual candidate"
+    },
+    {
+      "key": "workflow",
+      "path": "assets/icons/workflow.svg",
+      "type": ".svg",
+      "usage": "Production visual candidate"
+    },
+    {
+      "key": "access-denied",
+      "path": "assets/illustrations/access-denied.svg",
+      "type": ".svg",
+      "usage": "Production visual candidate"
+    },
+    {
+      "key": "empty-bookmarks",
+      "path": "assets/illustrations/empty-bookmarks.svg",
+      "type": ".svg",
+      "usage": "Production visual candidate"
+    },
+    {
+      "key": "empty-search",
+      "path": "assets/illustrations/empty-search.svg",
+      "type": ".svg",
+      "usage": "Production visual candidate"
+    },
+    {
+      "key": "error",
+      "path": "assets/illustrations/error.svg",
+      "type": ".svg",
+      "usage": "Production visual candidate"
+    },
+    {
+      "key": "loading",
+      "path": "assets/illustrations/loading.svg",
+      "type": ".svg",
+      "usage": "Production visual candidate"
+    },
+    {
+      "key": "offline",
+      "path": "assets/illustrations/offline.svg",
+      "type": ".svg",
+      "usage": "Production visual candidate"
+    },
+    {
+      "key": "portrait-card",
+      "path": "assets/portraits/portrait-card.jpg",
+      "type": ".jpg",
+      "usage": "Owner supplied portrait or crop/background-derived image"
+    },
+    {
+      "key": "portrait-hero",
+      "path": "assets/portraits/portrait-hero.jpg",
+      "type": ".jpg",
+      "usage": "Owner supplied portrait or crop/background-derived image"
+    },
+    {
+      "key": "portrait-light-derived",
+      "path": "assets/portraits/portrait-light-derived.jpg",
+      "type": ".jpg",
+      "usage": "Owner supplied portrait or crop/background-derived image"
+    },
+    {
+      "key": "portrait-original-user",
+      "path": "assets/portraits/portrait-original-user.jpg",
+      "type": ".jpg",
+      "usage": "Owner supplied portrait or crop/background-derived image"
+    },
+    {
+      "key": "portrait-square-1024",
+      "path": "assets/portraits/portrait-square-1024.jpg",
+      "type": ".jpg",
+      "usage": "Owner supplied portrait or crop/background-derived image"
+    },
+    {
+      "key": "portrait-square-128",
+      "path": "assets/portraits/portrait-square-128.jpg",
+      "type": ".jpg",
+      "usage": "Owner supplied portrait or crop/background-derived image"
+    },
+    {
+      "key": "portrait-square-256",
+      "path": "assets/portraits/portrait-square-256.jpg",
+      "type": ".jpg",
+      "usage": "Owner supplied portrait or crop/background-derived image"
+    },
+    {
+      "key": "portrait-square-512",
+      "path": "assets/portraits/portrait-square-512.jpg",
+      "type": ".jpg",
+      "usage": "Owner supplied portrait or crop/background-derived image"
+    },
+    {
+      "key": "admin_ai_providers",
+      "path": "assets/screen-reference/admin_ai_providers.png",
+      "type": ".png",
+      "usage": "Reference mockup ONLY; no real metrics"
+    },
+    {
+      "key": "admin_ai_routing",
+      "path": "assets/screen-reference/admin_ai_routing.png",
+      "type": ".png",
+      "usage": "Reference mockup ONLY; no real metrics"
+    },
+    {
+      "key": "admin_analytics",
+      "path": "assets/screen-reference/admin_analytics.png",
+      "type": ".png",
+      "usage": "Reference mockup ONLY; no real metrics"
+    },
+    {
+      "key": "admin_approvals",
+      "path": "assets/screen-reference/admin_approvals.png",
+      "type": ".png",
+      "usage": "Reference mockup ONLY; no real metrics"
+    },
+    {
+      "key": "admin_audience___push",
+      "path": "assets/screen-reference/admin_audience___push.png",
+      "type": ".png",
+      "usage": "Reference mockup ONLY; no real metrics"
+    },
+    {
+      "key": "admin_audit_&_security",
+      "path": "assets/screen-reference/admin_audit_&_security.png",
+      "type": ".png",
+      "usage": "Reference mockup ONLY; no real metrics"
+    },
+    {
+      "key": "admin_content_studio",
+      "path": "assets/screen-reference/admin_content_studio.png",
+      "type": ".png",
+      "usage": "Reference mockup ONLY; no real metrics"
+    },
+    {
+      "key": "admin_dashboard",
+      "path": "assets/screen-reference/admin_dashboard.png",
+      "type": ".png",
+      "usage": "Reference mockup ONLY; no real metrics"
+    },
+    {
+      "key": "admin_github_sync",
+      "path": "assets/screen-reference/admin_github_sync.png",
+      "type": ".png",
+      "usage": "Reference mockup ONLY; no real metrics"
+    },
+    {
+      "key": "admin_image_studio",
+      "path": "assets/screen-reference/admin_image_studio.png",
+      "type": ".png",
+      "usage": "Reference mockup ONLY; no real metrics"
+    },
+    {
+      "key": "admin_projects_&_cv",
+      "path": "assets/screen-reference/admin_projects_&_cv.png",
+      "type": ".png",
+      "usage": "Reference mockup ONLY; no real metrics"
+    },
+    {
+      "key": "admin_provider_editor",
+      "path": "assets/screen-reference/admin_provider_editor.png",
+      "type": ".png",
+      "usage": "Reference mockup ONLY; no real metrics"
+    },
+    {
+      "key": "admin_quality_gates",
+      "path": "assets/screen-reference/admin_quality_gates.png",
+      "type": ".png",
+      "usage": "Reference mockup ONLY; no real metrics"
+    },
+    {
+      "key": "mobile_ai_troubleshooter",
+      "path": "assets/screen-reference/mobile_ai_troubleshooter.png",
+      "type": ".png",
+      "usage": "Reference mockup ONLY; no real metrics"
+    },
+    {
+      "key": "mobile_developer_home",
+      "path": "assets/screen-reference/mobile_developer_home.png",
+      "type": ".png",
+      "usage": "Reference mockup ONLY; no real metrics"
+    },
+    {
+      "key": "mobile_interview_trainer",
+      "path": "assets/screen-reference/mobile_interview_trainer.png",
+      "type": ".png",
+      "usage": "Reference mockup ONLY; no real metrics"
+    },
+    {
+      "key": "mobile_learning_paths",
+      "path": "assets/screen-reference/mobile_learning_paths.png",
+      "type": ".png",
+      "usage": "Reference mockup ONLY; no real metrics"
+    },
+    {
+      "key": "mobile_my_github",
+      "path": "assets/screen-reference/mobile_my_github.png",
+      "type": ".png",
+      "usage": "Reference mockup ONLY; no real metrics"
+    },
+    {
+      "key": "mobile_offline_runbook",
+      "path": "assets/screen-reference/mobile_offline_runbook.png",
+      "type": ".png",
+      "usage": "Reference mockup ONLY; no real metrics"
+    },
+    {
+      "key": "mobile_personal_profile",
+      "path": "assets/screen-reference/mobile_personal_profile.png",
+      "type": ".png",
+      "usage": "Reference mockup ONLY; no real metrics"
+    },
+    {
+      "key": "mobile_preferences",
+      "path": "assets/screen-reference/mobile_preferences.png",
+      "type": ".png",
+      "usage": "Reference mockup ONLY; no real metrics"
+    },
+    {
+      "key": "mobile_runbook_library",
+      "path": "assets/screen-reference/mobile_runbook_library.png",
+      "type": ".png",
+      "usage": "Reference mockup ONLY; no real metrics"
+    },
+    {
+      "key": "mobile_saved_resources",
+      "path": "assets/screen-reference/mobile_saved_resources.png",
+      "type": ".png",
+      "usage": "Reference mockup ONLY; no real metrics"
+    },
+    {
+      "key": "mobile_solution_detail",
+      "path": "assets/screen-reference/mobile_solution_detail.png",
+      "type": ".png",
+      "usage": "Reference mockup ONLY; no real metrics"
+    },
+    {
+      "key": "mobile_tech_articles",
+      "path": "assets/screen-reference/mobile_tech_articles.png",
+      "type": ".png",
+      "usage": "Reference mockup ONLY; no real metrics"
+    },
+    {
+      "key": "mobile_welcome",
+      "path": "assets/screen-reference/mobile_welcome.png",
+      "type": ".png",
+      "usage": "Reference mockup ONLY; no real metrics"
+    },
+    {
+      "key": "web_about",
+      "path": "assets/screen-reference/web_about.png",
+      "type": ".png",
+      "usage": "Reference mockup ONLY; no real metrics"
+    },
+    {
+      "key": "web_ai_engineering",
+      "path": "assets/screen-reference/web_ai_engineering.png",
+      "type": ".png",
+      "usage": "Reference mockup ONLY; no real metrics"
+    },
+    {
+      "key": "web_article_detail",
+      "path": "assets/screen-reference/web_article_detail.png",
+      "type": ".png",
+      "usage": "Reference mockup ONLY; no real metrics"
+    },
+    {
+      "key": "web_case_study",
+      "path": "assets/screen-reference/web_case_study.png",
+      "type": ".png",
+      "usage": "Reference mockup ONLY; no real metrics"
+    },
+    {
+      "key": "web_contact",
+      "path": "assets/screen-reference/web_contact.png",
+      "type": ".png",
+      "usage": "Reference mockup ONLY; no real metrics"
+    },
+    {
+      "key": "web_expertise",
+      "path": "assets/screen-reference/web_expertise.png",
+      "type": ".png",
+      "usage": "Reference mockup ONLY; no real metrics"
+    },
+    {
+      "key": "web_github_showcase",
+      "path": "assets/screen-reference/web_github_showcase.png",
+      "type": ".png",
+      "usage": "Reference mockup ONLY; no real metrics"
+    },
+    {
+      "key": "web_home",
+      "path": "assets/screen-reference/web_home.png",
+      "type": ".png",
+      "usage": "Reference mockup ONLY; no real metrics"
+    },
+    {
+      "key": "web_projects",
+      "path": "assets/screen-reference/web_projects.png",
+      "type": ".png",
+      "usage": "Reference mockup ONLY; no real metrics"
+    },
+    {
+      "key": "web_recruiter_mode",
+      "path": "assets/screen-reference/web_recruiter_mode.png",
+      "type": ".png",
+      "usage": "Reference mockup ONLY; no real metrics"
+    },
+    {
+      "key": "web_resume",
+      "path": "assets/screen-reference/web_resume.png",
+      "type": ".png",
+      "usage": "Reference mockup ONLY; no real metrics"
+    },
+    {
+      "key": "web_search_results",
+      "path": "assets/screen-reference/web_search_results.png",
+      "type": ".png",
+      "usage": "Reference mockup ONLY; no real metrics"
+    },
+    {
+      "key": "web_tech_lab",
+      "path": "assets/screen-reference/web_tech_lab.png",
+      "type": ".png",
+      "usage": "Reference mockup ONLY; no real metrics"
+    },
+    {
+      "key": "web_technical_blog",
+      "path": "assets/screen-reference/web_technical_blog.png",
+      "type": ".png",
+      "usage": "Reference mockup ONLY; no real metrics"
+    },
+    {
+      "key": "og-blog-1200x630",
+      "path": "assets/social/og-blog-1200x630.png",
+      "type": ".png",
+      "usage": "Production visual candidate"
+    },
+    {
+      "key": "og-profile-1200x630",
+      "path": "assets/social/og-profile-1200x630.png",
+      "type": ".png",
+      "usage": "Production visual candidate"
+    },
+    {
+      "key": "og-projects-1200x630",
+      "path": "assets/social/og-projects-1200x630.png",
+      "type": ".png",
+      "usage": "Production visual candidate"
+    }
+  ]
+}

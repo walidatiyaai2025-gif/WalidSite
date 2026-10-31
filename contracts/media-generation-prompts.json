@@ -1,0 +1,55 @@
+{
+  "version": "6.0",
+  "source": "AI Control Center configured provider (no hardcoded models or credentials)",
+  "policies": [
+    "No portraits or likeness of Waleed can be synthesized",
+    "No real organization logos without permissions",
+    "No diagrams labeled as production infrastructure unless actually verified",
+    "Store prompt, input assets, chosen model, cost, rights and QA verdict",
+    "Generate responsive variants after image is approved"
+  ],
+  "templates": [
+    {
+      "id": "technical-article-hero",
+      "prompt": "Editorial vector-inspired technical illustration for {technical_topic}, premium light blue and teal palette, informative abstract shapes, no words, no people, no logos",
+      "sizes": [
+        [
+          1200,
+          675
+        ],
+        [
+          600,
+          338
+        ]
+      ]
+    },
+    {
+      "id": "learning-track-cover",
+      "prompt": "Clean educational diagram-like technology concept for {learning_topic}, no labels, light background, dark navy strokes and teal highlights, no faces",
+      "sizes": [
+        [
+          1200,
+          675
+        ],
+        [
+          512,
+          512
+        ]
+      ]
+    },
+    {
+      "id": "public-project-abstract",
+      "prompt": "Abstract enterprise software engineering artwork for {verified_project_category}, clean light background, no brand or client logos, no architecture claims",
+      "sizes": [
+        [
+          1200,
+          675
+        ],
+        [
+          900,
+          900
+        ]
+      ]
+    }
+  ]
+}

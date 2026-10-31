@@ -1,0 +1,427 @@
+{
+  "state": "PLANNED_NOT_ISSUED",
+  "ownerInterventionDuringDevelopment": false,
+  "tasks": [
+    {
+      "id": "T001",
+      "worker": "LEAD",
+      "title": "Project scaffold + baseline contracts",
+      "dependsOn": [],
+      "ownedDomain": [
+        "shared",
+        "github"
+      ],
+      "status": "PLANNED",
+      "issueUrl": null,
+      "prUrl": null,
+      "evidenceSha": null
+    },
+    {
+      "id": "T002",
+      "worker": "W1",
+      "title": "Laravel authentication and RBAC",
+      "dependsOn": [
+        "T001"
+      ],
+      "ownedDomain": [
+        "backend"
+      ],
+      "status": "PLANNED",
+      "issueUrl": null,
+      "prUrl": null,
+      "evidenceSha": null
+    },
+    {
+      "id": "T003",
+      "worker": "W1",
+      "title": "Database migrations + profile/skills/certifications",
+      "dependsOn": [
+        "T002"
+      ],
+      "ownedDomain": [
+        "backend",
+        "database"
+      ],
+      "status": "PLANNED",
+      "issueUrl": null,
+      "prUrl": null,
+      "evidenceSha": null
+    },
+    {
+      "id": "T004",
+      "worker": "W2",
+      "title": "Public website design tokens and layout",
+      "dependsOn": [
+        "T001"
+      ],
+      "ownedDomain": [
+        "web"
+      ],
+      "status": "PLANNED",
+      "issueUrl": null,
+      "prUrl": null,
+      "evidenceSha": null
+    },
+    {
+      "id": "T005",
+      "worker": "W3",
+      "title": "Flutter app scaffold and design theme",
+      "dependsOn": [
+        "T001"
+      ],
+      "ownedDomain": [
+        "mobile"
+      ],
+      "status": "PLANNED",
+      "issueUrl": null,
+      "prUrl": null,
+      "evidenceSha": null
+    },
+    {
+      "id": "T006",
+      "worker": "W4",
+      "title": "AI provider adapter interface + selfhosted routing",
+      "dependsOn": [
+        "T001"
+      ],
+      "ownedDomain": [
+        "ai"
+      ],
+      "status": "PLANNED",
+      "issueUrl": null,
+      "prUrl": null,
+      "evidenceSha": null
+    },
+    {
+      "id": "T007",
+      "worker": "W2",
+      "title": "Home/About/Expertise and Recruiter UX",
+      "dependsOn": [
+        "T004",
+        "T003"
+      ],
+      "ownedDomain": [
+        "web"
+      ],
+      "status": "PLANNED",
+      "issueUrl": null,
+      "prUrl": null,
+      "evidenceSha": null
+    },
+    {
+      "id": "T008",
+      "worker": "W1",
+      "title": "Projects, professional claims and evidence API",
+      "dependsOn": [
+        "T003"
+      ],
+      "ownedDomain": [
+        "backend"
+      ],
+      "status": "PLANNED",
+      "issueUrl": null,
+      "prUrl": null,
+      "evidenceSha": null
+    },
+    {
+      "id": "T009",
+      "worker": "W2",
+      "title": "Projects, case studies, resume and contact",
+      "dependsOn": [
+        "T007",
+        "T008"
+      ],
+      "ownedDomain": [
+        "web"
+      ],
+      "status": "PLANNED",
+      "issueUrl": null,
+      "prUrl": null,
+      "evidenceSha": null
+    },
+    {
+      "id": "T010",
+      "worker": "W1",
+      "title": "Article, revision, citation and media models",
+      "dependsOn": [
+        "T003"
+      ],
+      "ownedDomain": [
+        "backend"
+      ],
+      "status": "PLANNED",
+      "issueUrl": null,
+      "prUrl": null,
+      "evidenceSha": null
+    },
+    {
+      "id": "T011",
+      "worker": "W4",
+      "title": "Durable AI job orchestration + budget caps",
+      "dependsOn": [
+        "T006",
+        "T010"
+      ],
+      "ownedDomain": [
+        "ai"
+      ],
+      "status": "PLANNED",
+      "issueUrl": null,
+      "prUrl": null,
+      "evidenceSha": null
+    },
+    {
+      "id": "T012",
+      "worker": "W2",
+      "title": "Blog, article, tech lab and search",
+      "dependsOn": [
+        "T004",
+        "T010"
+      ],
+      "ownedDomain": [
+        "web"
+      ],
+      "status": "PLANNED",
+      "issueUrl": null,
+      "prUrl": null,
+      "evidenceSha": null
+    },
+    {
+      "id": "T013",
+      "worker": "W3",
+      "title": "Mobile navigation and offline runbook cache",
+      "dependsOn": [
+        "T005",
+        "T010"
+      ],
+      "ownedDomain": [
+        "mobile"
+      ],
+      "status": "PLANNED",
+      "issueUrl": null,
+      "prUrl": null,
+      "evidenceSha": null
+    },
+    {
+      "id": "T014",
+      "worker": "W4",
+      "title": "Research/draft/fact-check/image pipeline",
+      "dependsOn": [
+        "T011"
+      ],
+      "ownedDomain": [
+        "ai"
+      ],
+      "status": "PLANNED",
+      "issueUrl": null,
+      "prUrl": null,
+      "evidenceSha": null
+    },
+    {
+      "id": "T015",
+      "worker": "W1",
+      "title": "Provider admin CRUD and secure secrets backend",
+      "dependsOn": [
+        "T002",
+        "T006"
+      ],
+      "ownedDomain": [
+        "backend"
+      ],
+      "status": "PLANNED",
+      "issueUrl": null,
+      "prUrl": null,
+      "evidenceSha": null
+    },
+    {
+      "id": "T016",
+      "worker": "W2",
+      "title": "Admin dashboard + provider config UI",
+      "dependsOn": [
+        "T004",
+        "T015"
+      ],
+      "ownedDomain": [
+        "web"
+      ],
+      "status": "PLANNED",
+      "issueUrl": null,
+      "prUrl": null,
+      "evidenceSha": null
+    },
+    {
+      "id": "T017",
+      "worker": "LEAD",
+      "title": "Public GitHub allowlist + connector policy",
+      "dependsOn": [
+        "T001"
+      ],
+      "ownedDomain": [
+        "integrations/github"
+      ],
+      "status": "PLANNED",
+      "issueUrl": null,
+      "prUrl": null,
+      "evidenceSha": null
+    },
+    {
+      "id": "T018",
+      "worker": "W2",
+      "title": "GitHub portfolio UI",
+      "dependsOn": [
+        "T004",
+        "T017"
+      ],
+      "ownedDomain": [
+        "web"
+      ],
+      "status": "PLANNED",
+      "issueUrl": null,
+      "prUrl": null,
+      "evidenceSha": null
+    },
+    {
+      "id": "T019",
+      "worker": "W3",
+      "title": "Mobile AI diagnose, solution, reading screens",
+      "dependsOn": [
+        "T013",
+        "T011"
+      ],
+      "ownedDomain": [
+        "mobile"
+      ],
+      "status": "PLANNED",
+      "issueUrl": null,
+      "prUrl": null,
+      "evidenceSha": null
+    },
+    {
+      "id": "T020",
+      "worker": "W2",
+      "title": "Editorial, image, quality and approval Admin screens",
+      "dependsOn": [
+        "T016",
+        "T014"
+      ],
+      "ownedDomain": [
+        "web"
+      ],
+      "status": "PLANNED",
+      "issueUrl": null,
+      "prUrl": null,
+      "evidenceSha": null
+    },
+    {
+      "id": "T021",
+      "worker": "W3",
+      "title": "Mobile learn, interview, saved/profile screens",
+      "dependsOn": [
+        "T019"
+      ],
+      "ownedDomain": [
+        "mobile"
+      ],
+      "status": "PLANNED",
+      "issueUrl": null,
+      "prUrl": null,
+      "evidenceSha": null
+    },
+    {
+      "id": "T022",
+      "worker": "W4",
+      "title": "Auto publish/refresh with risk-based gating",
+      "dependsOn": [
+        "T014"
+      ],
+      "ownedDomain": [
+        "ai"
+      ],
+      "status": "PLANNED",
+      "issueUrl": null,
+      "prUrl": null,
+      "evidenceSha": null
+    },
+    {
+      "id": "T023",
+      "worker": "LEAD",
+      "title": "CI branch protection and test quality policy",
+      "dependsOn": [
+        "T001"
+      ],
+      "ownedDomain": [
+        "github"
+      ],
+      "status": "PLANNED",
+      "issueUrl": null,
+      "prUrl": null,
+      "evidenceSha": null
+    },
+    {
+      "id": "T024",
+      "worker": "LEAD",
+      "title": "Integrated E2E, a11y, security, performance QA",
+      "dependsOn": [
+        "T009",
+        "T012",
+        "T018",
+        "T020",
+        "T021",
+        "T022",
+        "T023"
+      ],
+      "ownedDomain": [
+        "qa"
+      ],
+      "status": "PLANNED",
+      "issueUrl": null,
+      "prUrl": null,
+      "evidenceSha": null
+    },
+    {
+      "id": "T025",
+      "worker": "LEAD",
+      "title": "Staging deployment and smoke, rollback",
+      "dependsOn": [
+        "T024"
+      ],
+      "ownedDomain": [
+        "release"
+      ],
+      "status": "PLANNED",
+      "issueUrl": null,
+      "prUrl": null,
+      "evidenceSha": null
+    },
+    {
+      "id": "T026",
+      "worker": "LEAD",
+      "title": "Release artifacts + store signing external deps",
+      "dependsOn": [
+        "T025"
+      ],
+      "ownedDomain": [
+        "release"
+      ],
+      "status": "PLANNED",
+      "issueUrl": null,
+      "prUrl": null,
+      "evidenceSha": null
+    },
+    {
+      "id": "T027",
+      "worker": "LEAD",
+      "title": "Owner preview handoff after staging verification",
+      "dependsOn": [
+        "T025"
+      ],
+      "ownedDomain": [
+        "handoff"
+      ],
+      "status": "PLANNED",
+      "issueUrl": null,
+      "prUrl": null,
+      "evidenceSha": null
+    }
+  ]
+}

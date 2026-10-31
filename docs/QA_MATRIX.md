@@ -1,0 +1,21 @@
+# Acceptance Gates
+- **G-01: No invented professional claims** — No personal project, metrics, awards, role, certification, employer approval or timeline becomes public without approved public proof.
+- **G-02: Assets provenance** — Only owner-supplied portrait may represent owner; every derivative provenance points at original SHA.
+- **G-03: Zero fake controls** — 40 screens have real backend/local destinations or explicit disabled/unavailable states.
+- **G-04: AI UI Configuration** — Add/test/disable/switch selfhosted and managed providers without editing source code.
+- **G-05: Secrets** — No API keys, tokens or sensitive GitHub data in frontend, mobile packages, Git commits, errors or logs.
+- **G-06: Queue limits** — AI tasks one-at-a-time per provider by default, checkpointed, durable retries and idempotency.
+- **G-07: Offline mobile** — Offline runbooks open without internet, clearly show version and stale state.
+- **G-08: Publish workflow** — Evidence + citations + technical checks; low-risk automatic, high-risk approval queue; scheduled unpublish.
+- **G-09: GitHub** — Repository allowlist and public visibility checks; verify exact source timestamp; show no invented numbers.
+- **G-10: Worker overlap** — Exactly one active task owner and disjoint path ownership; change/reassignment documented.
+- **G-11: PR exact-head CI** — Required gate at latest PR SHA green with changed-scope checks and tests.
+- **G-12: Release provenance** — Tag+artifact+deploy evidence, staging smoke, rollback; never claim release without success.
+- **G-13: Accessibility** — Arabic RTL, English LTR, keyboard, contrast, accessible labels, tap targets, reduced motion.
+- **G-14: Responsive** — Desktop/tablet/mobile for public/admin, Android/iOS device matrices for app.
+- **G-15: SEO** — Article canonical, sitemap, structured data where validated, robots, language alternates, redirects.
+- **G-16: Privacy/consent** — Consent for notifications, unsubscribe, account removal, transparent retention rules.
+- **G-17: Data migration** — Old SQL imported content-only through sanitize whitelist; reject user/password/subscribers/unsafe uploads.
+- **G-18: Image generation** — AI images via selected UI provider; rights/provenance; no fake headshots or diagrams claimed real.
+- **G-19: Cost protection** — Admin quotas, budget caps, provider circuit breaker, never retry endlessly.
+- **G-20: Owner only tests final stage** — During ordinary development defer owner questions; blockers isolated with defaults documented, report at staging handoff.
