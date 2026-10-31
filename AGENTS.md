@@ -16,3 +16,11 @@ Ordinary implementation decisions are autonomous, reversible and logged; only br
 
 ## Bootstrap phase
 T001 / Issue #2 is in progress: uploaded v6 is a **reference pack, not compiled software**. The initial governance/CI PR enables pack checks while scaffold tests will become mandatory as backend/mobile files arrive. A green *pack-only* check is not proof of a functioning application. T002–T027 remain blocked on their declared dependencies until merged.
+
+## Owner command = executable engineering work
+The phrases **"كمل وليد سايت"**, **"شغّل الوركرز"**, **"خلص وليد سايت"**, or equivalent are explicit authorization to **implement real code now**, not to stop at planning, issuing tickets, or describing next steps. In the invoking conversation:
+1. Inspect live GitHub and take the earliest dependency-ready, non-duplicated task.
+2. Change actual product source code, add tests, push commits and open/reuse a PR via GitHub connector.
+3. Check exact-head CI, repair red checks on the same branch, merge and verify when allowed; then take additional independent tasks if tooling/time permits.
+4. Run multiple workers in parallel **only** when actual independently executing tools are available; otherwise run lanes sequentially. Do not claim background workers are running without a real external agent/automation runtime.
+5. Never ask the owner to supervise ordinary development. Do not treat a planning-only answer as completion while a safe, implementable task exists. Report real commits/PRs, verification and external blockers succinctly.

@@ -1,0 +1,10 @@
+# Flutter/Dart tool state
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+build/
+flutter_*.png
+*.iml
+.idea/
+*.log
