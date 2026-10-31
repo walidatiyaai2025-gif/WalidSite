@@ -41,7 +41,7 @@ class Article extends Model
             || ! in_array($this->canonical_lang, ['ar', 'en'], true)) {
             return false;
         }
-        if ($this->hero_asset_id && ! $this->heroAsset?->isPubliclyUsable()) {
+        if ($this->hero_asset_id && ! $this->heroAsset()->first()?->isPubliclyUsable()) {
             return false;
         }
         $latest = $this->revisions()->orderByDesc('revision_no')->first();
