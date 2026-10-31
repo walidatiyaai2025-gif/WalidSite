@@ -6,6 +6,7 @@ use App\Models\AiProvider;
 use App\Models\Role;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
@@ -79,4 +80,65 @@ class VerifiedAdminOverviewTest extends TestCase
         $this->actingAs($this->userWithRole('admin'), 'web')
             ->get('/admin')->assertOk();
     }
+    public function test_ai_activity_shows_only_persisted_utc_receipts_separated_by_currency(): void
+    {
+        $this->actingAs($this->userWithRole('admin'), 'web');
+
+        $this->get('/admin')->assertOk()
+            ->assertSee('Persisted AI jobs')
+            ->assertSee('No AI jobs recorded yet.')
+            ->assertSee('No usage receipts recorded today.');
+
+        $provider = AiProvider::create([
+            'display_name' => 'Private billing fixture',
+            'provider_type' => 'ollama-compatible',
+            'base_url' => 'http://127.0.0.1:11434',
+            'secret_ciphertext' => 'never-leak-this-secret',
+            'enabled' => true,
+            'health_status' => 'healthy',
+        ]);
+        $jobId = (string) Str::uuid();
+        DB::table('ai_jobs')->insert([
+            'id' => $jobId,
+            'provider_id' => $provider->id,
+            'job_type' => 'draft',
+            'idempotency_key' => 'overview:test:1',
+            'payload_hash' => str_repeat('a', 64),
+            'status' => 'completed',
+            'created_at' => now('UTC'),
+            'updated_at' => now('UTC'),
+        ]);
+        foreach ([
+            ['key' => 'usd-current', 'cost' => 123, 'currency' => 'USD', 'at' => now('UTC')],
+            ['key' => 'kwd-current', 'cost' => 9, 'currency' => 'KWD', 'at' => now('UTC')],
+            ['key' => 'usd-yesterday', 'cost' => 999, 'currency' => 'USD', 'at' => now('UTC')->subDays(2)],
+        ] as $row) {
+            DB::table('ai_usage')->insert([
+                'id' => (string) Str::uuid(),
+                'usage_key' => $row['key'],
+                'job_id' => $jobId,
+                'provider_id' => $provider->id,
+                'cost_minor' => $row['cost'],
+                'cost_currency' => $row['currency'],
+                'created_at' => $row['at'],
+            ]);
+        }
+
+        $this->get('/admin')->assertOk()
+            ->assertSee('Persisted AI jobs')
+            ->assertSee('completed')
+            ->assertSee('Today’s usage (UTC)')
+            ->assertSee('USD')->assertSee('KWD')
+            ->assertSee('>123</td>', false)->assertSee('>9</td>', false)
+            ->assertDontSee('>999</td>', false)
+            ->assertDontSee('>1131</td>', false)
+            ->assertDontSee('never-leak-this-secret')
+            ->assertDontSee('Private billing fixture');
+
+        $this->get('/admin?lang=ar')->assertOk()
+            ->assertSee('dir="rtl"', false)
+            ->assertSee('استخدام اليوم (UTC)')
+            ->assertSee('USD')->assertSee('KWD');
+    }
+
 }
