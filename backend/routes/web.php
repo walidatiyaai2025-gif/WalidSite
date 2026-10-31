@@ -16,10 +16,49 @@ Route::middleware('auth:web')->group(function (): void {
 
     Route::get('/admin', function (Request $request) {
         abort_unless($request->user()?->canAccessAdmin(), 403);
-
-        // T016 owns the dashboard. This is explicitly unavailable until then.
-        return response('Admin workspace is under development.', 503);
+        return redirect()->route('admin.providers.index');
     })->name('admin.home');
+
+    Route::get('/admin/ai/providers', function (Request $request) {
+        abort_unless($request->user()?->canAccessAdmin(), 403);
+        return view('admin.ai.providers', [
+            'providers' => \App\Models\AiProvider::query()->orderBy('display_name')->paginate(20),
+        ]);
+    })->name('admin.providers.index');
+
+    // Laravel web middleware enforces CSRF. API controller remains the only
+    // writer, validator, secret encryption and audit implementation.
+    Route::post('/admin/ai/providers', function (Request $request) {
+        abort_unless($request->user()?->canAccessAdmin(), 403);
+        app(\App\Http\Controllers\Api\AiProviderController::class)->store($request);
+        return redirect()->route('admin.providers.index')
+            ->with('status', 'Provider saved.');
+    })->middleware('throttle:10,1')->name('admin.providers.create');
+
+    Route::patch('/admin/ai/providers/{provider}', function (
+        Request $request, \App\Models\AiProvider $provider
+    ) {
+        abort_unless($request->user()?->canAccessAdmin(), 403);
+        // Empty input must not silently erase an existing secret.
+        if ($request->boolean('clear_secret')) {
+            $request->merge(['secret' => null]);
+        } elseif (trim((string) $request->input('secret', '')) === '') {
+            $request->request->remove('secret');
+        }
+        app(\App\Http\Controllers\Api\AiProviderController::class)->update($request, $provider);
+        return redirect()->route('admin.providers.index')
+            ->with('status', 'Provider updated.');
+    })->middleware('throttle:20,1')->name('admin.providers.update');
+
+    Route::post('/admin/ai/providers/{provider}/test', function (
+        Request $request, \App\Models\AiProvider $provider
+    ) {
+        abort_unless($request->user()?->canAccessAdmin(), 403);
+        $result = app(\App\Http\Controllers\Api\AiProviderController::class)->test($request, $provider);
+        $health = $result->getData(true)['data']['health_status'] ?? 'unverified';
+        return redirect()->route('admin.providers.index')
+            ->with('status', 'Connection check recorded: '.$health.'.');
+    })->middleware('throttle:5,1')->name('admin.providers.test');
 });
 
 Route::get('/github', function (Request $request, \App\Integrations\GitHub\PublicRepositoryDirectory $directory) {
