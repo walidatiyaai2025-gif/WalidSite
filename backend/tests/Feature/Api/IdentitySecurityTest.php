@@ -98,7 +98,7 @@ class IdentitySecurityTest extends TestCase
             'password' => 'VeryLongTestPassword.123!',
         ])->assertRedirect('/admin');
         $this->assertAuthenticatedAs($user, 'web');
-        $this->get('/admin')->assertStatus(503);
+        $this->get('/admin')->assertRedirect('/admin/ai/providers');
         $this->post('/admin/logout')->assertRedirect('/admin/login');
         $this->assertGuest('web');
     }
