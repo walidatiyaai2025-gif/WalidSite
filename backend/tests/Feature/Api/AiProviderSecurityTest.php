@@ -105,6 +105,42 @@ class AiProviderSecurityTest extends TestCase
             ->assertOk()->assertJsonPath('data.health_status', 'unverified');
     }
 
+    public function test_in_flight_health_results_cannot_overwrite_changed_or_deleted_provider(): void
+    {
+        $this->withToken($this->tokenFor('owner'));
+        $id = $this->postJson('/api/v1/admin/ai/providers', $this->input())
+            ->assertCreated()->json('data.id');
+
+        // Simulate a different admin changing the endpoint while the external
+        // provider is responding. A stale green result must not persist.
+        Http::fake(function ($request) use ($id) {
+            AiProvider::findOrFail($id)->update(['base_url' => 'https://new.example.com/v1']);
+            return Http::response(['data' => []], 200);
+        });
+        $this->postJson('/api/v1/admin/ai/providers/'.$id.'/test')
+            ->assertStatus(409)
+            ->assertJsonPath('message', 'Provider settings changed during health check. Retry to test the current configuration.');
+
+        $provider = AiProvider::findOrFail($id);
+        $this->assertSame('https://new.example.com/v1', $provider->base_url);
+        $this->assertSame('unverified', $provider->health_status);
+        $this->assertNull($provider->last_checked_at);
+        $this->assertSame(0, DB::table('ai_provider_audit_events')->where('action', 'tested')->count());
+
+        // A revoked provider must never be resurrected or have its health
+        // overwritten when an in-flight provider request eventually finishes.
+        Http::fake(function ($request) use ($id) {
+            AiProvider::findOrFail($id)->delete();
+            return Http::response(['data' => []], 200);
+        });
+        $this->postJson('/api/v1/admin/ai/providers/'.$id.'/test')
+            ->assertStatus(409);
+        $this->assertNull(AiProvider::find($id));
+        $this->assertSame('unverified', AiProvider::withTrashed()->findOrFail($id)->health_status);
+        $this->assertSame(0, DB::table('ai_provider_audit_events')->where('action', 'tested')->count());
+        Http::assertSentCount(2);
+    }
+
     public function test_delete_requires_admin_and_erases_secret_while_preserving_audit(): void
     {
         $this->deleteJson('/api/v1/admin/ai/providers/00000000-0000-4000-8000-000000000000')
