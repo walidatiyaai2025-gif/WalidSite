@@ -1,0 +1,11 @@
+## Scope / task
+- Issue: 
+- Worker and owned paths: 
+- Changed screen IDs and contracts: 
+- Tests executed / results: 
+- Visual evidence (empty/error/offline included): 
+- Security and public-claims review: 
+- API/schema migration and rollback: 
+- Exact-head CI SHA and URL: 
+- Any external blocker explicitly disclosed: 
+- Final staging smoke (LEAD after merge): 
