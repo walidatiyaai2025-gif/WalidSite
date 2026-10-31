@@ -18,21 +18,17 @@ use Laravel\Sanctum\PersonalAccessToken;
 
 class AiProviderController extends Controller
 {
-    /**
-     * Require a real administrator bearer token, not a mobile-only token or a
-     * browser session. Admin credential issuance is separate from mobile login.
-     */
+    /** API requires admin token; only named CSRF-protected web forms may use the admin session. */
     private function authorizeAdmin(Request $request): void
     {
         $user = $request->user();
         $token = $user?->currentAccessToken();
+        $apiToken = $token instanceof PersonalAccessToken && $token->can('admin');
+        $webForm = $request->routeIs(
+            'admin.providers.create', 'admin.providers.update', 'admin.providers.test'
+        ) && $request->hasSession() && \Illuminate\Support\Facades\Auth::guard('web')->check();
 
-        abort_unless(
-            $user?->canAccessAdmin()
-                && $token instanceof PersonalAccessToken
-                && $token->can('admin'),
-            403
-        );
+        abort_unless($user?->canAccessAdmin() && ($apiToken || $webForm), 403);
     }
 
     private function rules(bool $creating): array
