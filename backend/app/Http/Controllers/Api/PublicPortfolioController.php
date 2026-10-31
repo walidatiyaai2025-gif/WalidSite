@@ -16,8 +16,15 @@ class PublicPortfolioController extends Controller
         $page = Project::query()->publiclyVerified()->orderByDesc('published_at')
             ->orderBy('id')->paginate(12);
 
+        // A database 'verified' flag alone does not make an unsafe link
+        // usable public proof. Never expose such projects in the API DTO.
+        $visible = $page->getCollection()
+            ->map(fn (Project $project) => $this->projectData($project, $request))
+            ->filter(fn (array $data) => ! empty($data['evidence_urls']))
+            ->values();
+
         return response()->json([
-            'data' => $page->getCollection()->map(fn (Project $project) => $this->projectData($project, $request))->all(),
+            'data' => $visible->all(),
             'meta' => [
                 'current_page' => $page->currentPage(),
                 'last_page' => $page->lastPage(),
@@ -29,8 +36,10 @@ class PublicPortfolioController extends Controller
     public function project(Request $request, string $slug): JsonResponse
     {
         $project = Project::query()->publiclyVerified()->where('slug', $slug)->firstOrFail();
+        $data = $this->projectData($project, $request);
+        abort_if(empty($data['evidence_urls']), 404);
 
-        return response()->json(['data' => $this->projectData($project, $request)]);
+        return response()->json(['data' => $data]);
     }
 
     public function profile(Request $request): JsonResponse
@@ -97,12 +106,37 @@ class PublicPortfolioController extends Controller
         return is_array($parts)
             && strtolower($parts['scheme'] ?? '') === 'https'
             && is_string($parts['host'] ?? null)
-            && $parts['host'] !== ''
+            && $this->safePublicHostname($parts['host'])
+            && (! isset($parts['port']) || $parts['port'] === 443)
             && ! isset($parts['user'])
             && ! isset($parts['pass'])
             && ! isset($parts['query'])
             && ! isset($parts['fragment'])
             // Repository visibility is checked only by T017, not by this evidence flag.
             && ! in_array(strtolower($parts['host']), ['github.com', 'www.github.com'], true);
+    }
+
+    /**
+     * Public references are hyperlinks, not network fetch targets. Reject
+     * loopback, IP literals, and internal-only names without DNS lookups.
+     * DNS/redirect egress policy belongs to any later active fetcher.
+     */
+    private function safePublicHostname(string $hostname): bool
+    {
+        $hostname = strtolower(rtrim($hostname, '.'));
+        if (filter_var(trim($hostname, '[]'), FILTER_VALIDATE_IP) !== false) {
+            return false;
+        }
+        if (preg_match('/\\A(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}\\z/iD', $hostname) !== 1) {
+            return false;
+        }
+
+        foreach (['localhost', 'local', 'internal', 'invalid', 'onion'] as $suffix) {
+            if ($hostname === $suffix || str_ends_with($hostname, '.'.$suffix)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 }
