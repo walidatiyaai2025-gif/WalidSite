@@ -184,12 +184,13 @@ Route::post('/contact', function (Request $request) {
 
     $body = "Name: {$input['name']}\nEmail: {$input['email']}\n\n{$input['message']}";
     try {
-        \Illuminate\Support\Facades\Mail::raw(
-            $body,
-            function ($mail) use ($recipient, $input): void {
-                $mail->to($recipient)->replyTo($input['email'])
-                    ->subject('WalidSite contact: '.$input['subject']);
-            }
+        // Use a text-only Mailable so Laravel's transport and test fake
+        // both observe the exact delivery attempt. Never expose the recipient.
+        \Illuminate\Support\Facades\Mail::to($recipient)->send(
+            (new \Illuminate\Mail\Mailable)
+                ->text('mail.contact-notification', ['messageBody' => $body])
+                ->replyTo($input['email'])
+                ->subject('WalidSite contact: '.$input['subject'])
         );
     } catch (\Throwable $exception) {
         report($exception);
