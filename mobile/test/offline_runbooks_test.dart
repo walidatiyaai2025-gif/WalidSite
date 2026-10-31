@@ -12,6 +12,18 @@ void main() {
     );
   });
 
+  test('future verification timestamps remain visibly unverified', () {
+    final pack = OfflineRunbookPack(
+      version: '0.1.0',
+      source: 'test bundle',
+      lastSynced: null,
+      verifiedAt: DateTime.now().toUtc().add(const Duration(days: 1)),
+      items: const [],
+    );
+
+    expect(pack.isStale, isTrue);
+  });
+
   testWidgets('offline pack opens with version and unverified warning', (tester) async {
     await tester.pumpWidget(const WaleedTechApp());
     await tester.tap(find.byKey(const Key('offline-runbooks-entry')));
