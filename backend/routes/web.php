@@ -240,3 +240,53 @@ Route::post('/contact', function (Request $request) {
     return redirect()->route('public.contact', ['lang' => $request->query('lang') === 'ar' ? 'ar' : 'en'])
         ->with('contact_delivered', true);
 })->middleware('throttle:4,1')->name('public.contact.submit');
+
+
+/*
+ * T012 public technical blog: only approved pinned revisions can render.
+ * All Markdown is sanitized by the view; unpublished drafts stay private.
+ */
+Route::get('/blog', function (Request $request) {
+    $input = $request->validate([
+        'q' => ['sometimes', 'string', 'max:80'],
+        'category' => ['sometimes', 'string', 'max:110', 'regex:/^[a-z0-9-]+$/'],
+        'lang' => ['sometimes', 'in:en,ar'],
+        'page' => ['sometimes', 'integer', 'min:1', 'max:10000'],
+    ]);
+    $search = trim($input['q'] ?? '');
+    $category = $input['category'] ?? '';
+    $query = \App\Models\Article::query()->publiclyVisible();
+
+    if ($search !== '') {
+        $term = '%'.addcslashes($search, '%_\\').'%';
+        $query->where(fn ($builder) => $builder->where('title_en', 'like', $term)
+            ->orWhere('title_ar', 'like', $term));
+    }
+    if ($category !== '') {
+        $query->whereHas('categories', fn ($builder) => $builder->where('slug', $category));
+    }
+
+    $categories = \App\Models\Category::query()
+        ->whereHas('articles', fn ($article) => $article->publiclyVisible())
+        ->orderBy('slug')->get();
+    $paginated = $query->orderByDesc('published_at')->orderBy('id')->paginate(9)->withQueryString();
+    $entries = $paginated->getCollection()
+        ->map(fn (\App\Models\Article $article) => [
+            'article' => $article,
+            'revision' => $article->publicRevision(),
+        ])
+        ->filter(fn (array $entry) => $entry['revision'] !== null)
+        ->values();
+
+    return view('public.blog', compact('entries', 'paginated', 'categories', 'search', 'category'));
+})->name('public.blog')->middleware('throttle:60,1');
+
+Route::get('/blog/{slug}', function (Request $request, string $slug) {
+    $request->validate(['lang' => ['sometimes', 'in:ar,en']]);
+    $article = \App\Models\Article::query()->publiclyVisible()
+        ->where('slug', $slug)->firstOrFail();
+    $revision = $article->publicRevision();
+    abort_if($revision === null, 404);
+
+    return view('public.article', compact('article', 'revision'));
+})->where('slug', '[a-zA-Z0-9-]+')->name('public.article')->middleware('throttle:60,1');
