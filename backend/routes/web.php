@@ -296,3 +296,37 @@ Route::get('/blog/{slug}', function (Request $request, string $slug) {
 
     return view('public.article', compact('article', 'revision'));
 })->where('slug', '[a-zA-Z0-9-]+')->name('public.article')->middleware('throttle:60,1');
+
+/* T012 additive LAB + SEARCH: never show unreviewed or private data. */
+Route::get('/lab', function () {
+    $articles = \App\Models\Article::query()->publiclyVisible()
+        ->orderByDesc('published_at')->orderBy('id')->limit(15)->get()
+        ->filter(fn ($article) => $article->publicRevision() !== null);
+    return view('public.lab', compact('articles'));
+})->name('public.lab')->middleware('throttle:60,1');
+
+Route::get('/search', function (Request $request) {
+    $raw = $request->query('q', '');
+    $search = is_string($raw) ? mb_substr(trim($raw), 0, 80) : '';
+    $articles = collect();
+    $projects = collect();
+
+    if ($search !== '') {
+        $term = '%'.addcslashes($search, '%_\\').'%';
+        $articles = \App\Models\Article::query()->publiclyVisible()
+            ->where(fn ($builder) => $builder->where('title_en', 'like', $term)
+                ->orWhere('title_ar', 'like', $term))
+            ->orderBy('id')->limit(10)->get()
+            ->filter(fn ($article) => $article->publicRevision() !== null)->values();
+
+        $api = app(\App\Http\Controllers\Api\PublicPortfolioController::class);
+        $projects = \App\Models\Project::query()->publiclyVerified()
+            ->where(fn ($builder) => $builder->where('title', 'like', $term)
+                ->orWhere('summary_en', 'like', $term)->orWhere('summary_ar', 'like', $term))
+            ->orderBy('id')->limit(10)->get()
+            ->map(fn ($project) => $api->project($request, $project->slug)->getData(true)['data'])
+            ->filter(fn (array $project) => ! empty($project['evidence_urls']))->values();
+    }
+    return view('public.search', compact('search', 'articles', 'projects'));
+})->name('public.search')->middleware('throttle:60,1');
+
