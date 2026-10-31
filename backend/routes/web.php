@@ -22,7 +22,20 @@ Route::middleware('auth:web')->group(function (): void {
             'healthy' => \App\Models\AiProvider::query()->where('health_status', 'healthy')->count(),
             'unverified' => \App\Models\AiProvider::query()->where('health_status', 'unverified')->count(),
         ];
-        return view('admin.dashboard', compact('stats'));
+        // T016: read only persisted, server-side job records. Never fabricate
+        // provider telemetry or sum cost across unrelated currencies.
+        $jobs = \Illuminate\Support\Facades\DB::table('ai_jobs')
+            ->select('status')->selectRaw('COUNT(*) AS job_count')
+            ->groupBy('status')->orderBy('status')->get();
+        $utcStart = now('UTC')->startOfDay();
+        $usage = \Illuminate\Support\Facades\DB::table('ai_usage')
+            ->where('created_at', '>=', $utcStart)
+            ->where('created_at', '<', $utcStart->copy()->addDay())
+            ->select('cost_currency')
+            ->selectRaw('COUNT(*) AS request_count, SUM(cost_minor) AS spend_minor')
+            ->groupBy('cost_currency')->orderBy('cost_currency')->get();
+
+        return view('admin.dashboard', compact('stats', 'jobs', 'usage'));
     })->name('admin.home');
 
     Route::get('/admin/ai/providers', function (Request $request) {
