@@ -57,6 +57,7 @@
         }
         @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
     </style>
+    @stack('head')
     @stack('styles')
 </head>
 <body>
@@ -75,10 +76,12 @@
                 <a class="language-link" href="{{ route('public.blog', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'المدونة' : 'Blog' }}</a>
                 <a class="language-link" href="{{ route('public.resume', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'السيرة العامة' : 'Resume' }}</a>
                 <a class="language-link" href="{{ route('public.contact', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'التواصل' : 'Contact' }}</a>
+                <a class="language-link" href="{{ route('public.lab', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'المختبر' : 'Lab' }}</a>
+                <a class="language-link" href="{{ route('public.search', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'بحث' : 'Search' }}</a>
                 <a class="language-link" href="{{ route('public.github', ['lang' => $locale]) }}">
                     {{ $locale === 'ar' ? 'مشاريع GitHub' : 'GitHub projects' }}
                 </a>
-                @php($languageRoute = request()->routeIs('public.github', 'public.about', 'public.expertise', 'public.hire', 'public.projects', 'public.project', 'public.resume', 'public.contact', 'public.blog', 'public.article') ? request()->route()->getName() : 'home')
+                @php($languageRoute = request()->routeIs('public.github', 'public.about', 'public.expertise', 'public.hire', 'public.projects', 'public.project', 'public.resume', 'public.contact', 'public.blog', 'public.article', 'public.lab', 'public.search') ? request()->route()->getName() : 'home')
                 @php($languageArgs = ['lang' => $locale === 'ar' ? 'en' : 'ar'])
                 @if(request()->routeIs('public.project', 'public.article'))
                     @php($languageArgs['slug'] = request()->route('slug'))
@@ -86,6 +89,9 @@
                 @if(request()->routeIs('public.blog'))
                     @php($languageArgs['q'] = request()->query('q', ''))
                     @php($languageArgs['category'] = request()->query('category', ''))
+                @endif
+                @if(request()->routeIs('public.search'))
+                    @php($languageArgs['q'] = request()->query('q', ''))
                 @endif
                 <a class="language-link" href="{{ route($languageRoute, $languageArgs) }}"
                    lang="{{ $locale === 'ar' ? 'en' : 'ar' }}"
