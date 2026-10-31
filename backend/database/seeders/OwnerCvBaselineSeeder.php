@@ -1,16 +1,15 @@
 <?php
 
-namespace Database\Seeders;
+namespace Database\\Seeders;
 
-use App\Models\CareerPosition;
-use App\Models\Certification;
-use App\Models\ProfessionalClaim;
-use App\Models\Profile;
-use App\Models\Skill;
-use App\Models\User;
-use Illuminate\Database\Seeder;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
+use App\\Models\\Certification;
+use App\\Models\\ProfessionalClaim;
+use App\\Models\\Profile;
+use App\\Models\\Skill;
+use App\\Models\\User;
+use Illuminate\\Database\\Seeder;
+use Illuminate\\Support\\Facades\\DB;
+use Illuminate\\Support\\Str;
 use RuntimeException;
 
 class OwnerCvBaselineSeeder extends Seeder
@@ -52,31 +51,26 @@ class OwnerCvBaselineSeeder extends Seeder
                 $start = sprintf('%04d-01-01', (int) $experience['period']['start']);
                 $end = isset($experience['period']['end'])
                     ? sprintf('%04d-12-31', (int) $experience['period']['end']) : null;
-                // Eloquent date casts can store a midnight timestamp even for a DATE
-                // column (notably SQLite). Query with whereDate so reruns remain idempotent.
-                $position = CareerPosition::query()
-                    ->where('profile_id', $profile->id)
-                    ->where('org_name', $experience['organization'])
-                    ->whereDate('started_on', $start)
-                    ->first();
-                if (! $position) {
-                    $position = CareerPosition::create([
-                        'profile_id' => $profile->id,
-                        'org_name' => $experience['organization'],
-                        'started_on' => $start,
-                        'role_en' => implode(' / ', $experience['roles']),
-                        'role_ar' => implode(' / ', $experience['roles']),
-                        'ended_on' => $end,
-                        'publishable' => false,
-                        'verified' => false,
-                    ]);
-                }
-                if ($position->wasRecentlyCreated) {
-                    DB::table('career_positions')->where('id', $position->id)->update([
-                        'date_precision' => 'year',
-                        'source_refs_json' => json_encode($experience['source_refs'], JSON_THROW_ON_ERROR),
-                    ]);
-                }
+
+                // One row represents one employer-period. The source may list multiple
+                // concurrent titles for that same period; preserve them together and let
+                // the database unique key make reruns idempotent without overwriting edits.
+                $roles = implode(' / ', array_values(array_unique($experience['roles'])));
+                DB::table('career_positions')->insertOrIgnore([
+                    'id' => (string) Str::uuid(),
+                    'profile_id' => $profile->id,
+                    'org_name' => $experience['organization'],
+                    'started_on' => $start,
+                    'role_en' => $roles,
+                    'role_ar' => $roles,
+                    'ended_on' => $end,
+                    'publishable' => false,
+                    'verified' => false,
+                    'date_precision' => 'year',
+                    'source_refs_json' => json_encode($experience['source_refs'], JSON_THROW_ON_ERROR),
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
             }
 
             foreach ($cv['competencies'] as $group) {
