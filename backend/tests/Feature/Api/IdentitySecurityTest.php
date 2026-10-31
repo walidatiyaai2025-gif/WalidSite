@@ -5,6 +5,7 @@ namespace Tests\Feature\Api;
 use App\Models\Role;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Tests\TestCase;
@@ -65,6 +66,8 @@ class IdentitySecurityTest extends TestCase
         $this->getJson('/api/v1/admin/identity-check')->assertForbidden();
         $this->postJson('/api/v1/auth/logout')->assertOk()->assertJsonPath('data.revoked', true);
         $this->assertDatabaseCount('personal_access_tokens', 0);
+        // The test container reuses guards across requests; production does not.
+        Auth::forgetGuards();
         $this->getJson('/api/v1/mobile/me')->assertUnauthorized();
     }
 
