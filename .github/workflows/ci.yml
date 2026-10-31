@@ -82,25 +82,25 @@ jobs:
           php -r '
           require "vendor/autoload.php";
           $app = require "bootstrap/app.php";
-          $app->make(Illuminate\\Contracts\\Console\\Kernel::class)->bootstrap();
+          $app->make(Illuminate\Contracts\\Console\\Kernel::class)->bootstrap();
           $expected = ["users" => 1, "profiles" => 1, "career_positions" => 4, "certifications" => 5, "skills" => 25, "profile_skill" => 25, "professional_claims" => 1];
           foreach ($expected as $table => $count) {
-              $actual = Illuminate\\Support\\Facades\\DB::table($table)->count();
+              $actual = Illuminate\Support\\Facades\\DB::table($table)->count();
               if ($actual !== $count) {
                   fwrite(STDERR, "$table expected $count rows, got $actual\\n");
                   exit(1);
               }
           }
-          $db = Illuminate\\Support\\Facades\\DB::class;
+          $db = Illuminate\Support\\Facades\\DB::class;
           if ($db::table("users")->whereNotNull("password_hash")->exists()
               || $db::table("role_user")->count() !== 0
               || $db::table("career_positions")->where("publishable", true)->orWhere("verified", true)->exists()
               || $db::table("certifications")->where("verified", true)->exists()
               || $db::table("professional_claims")->where("is_public", true)->exists()) {
-              fwrite(STDERR, "Owner baseline leaked credentials, roles, or unreviewed public claims\\n");
+              fwrite(STDERR, "Owner baseline leaked credentials, roles, or unreviewed public claims\n");
               exit(1);
           }
-          echo "PASS: MariaDB migration and repeated owner CV seed are idempotent and fail-closed\\n";
+          echo "PASS: MariaDB migration and repeated owner CV seed are idempotent and fail-closed\n";
           '
       - uses: actions/setup-node@v4
         if: ${{ hashFiles('backend/package.json') != '' }}
