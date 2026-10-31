@@ -5,6 +5,7 @@ namespace Tests\Feature\Api;
 use App\Models\ProfessionalClaim;
 use App\Models\Profile;
 use App\Models\Project;
+use App\Models\Role;
 use App\Models\ProjectEvidence;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -90,6 +91,41 @@ class PublicPortfolioSecurityTest extends TestCase
             ->assertJsonPath('data.summary', 'عمل معتمد بالمصادر');
     }
 
+    public function test_public_profile_ignores_non_owner_and_inactive_owner_records(): void
+    {
+        $other = User::create(['email' => 'unrelated@example.test', 'status' => 'active']);
+        Profile::create([
+            'user_id' => $other->id,
+            'public_name' => 'NON OWNER PRIVATE NAME',
+            'publish_status' => 'published',
+        ]);
+
+        $inactive = User::create(['email' => 'inactive-owner@example.test', 'status' => 'disabled']);
+        $inactive->roles()->attach(Role::firstOrCreate(['name' => 'owner'])->id);
+        Profile::create([
+            'user_id' => $inactive->id,
+            'public_name' => 'INACTIVE OWNER PRIVATE NAME',
+            'publish_status' => 'published',
+        ]);
+
+        $this->getJson('/api/v1/public/profile')->assertOk()->assertJsonPath('data', null)
+            ->assertDontSee('PRIVATE NAME');
+
+        $owner = User::create(['email' => 'active-owner@example.test', 'status' => 'active']);
+        $owner->roles()->attach(Role::firstOrCreate(['name' => 'owner'])->id);
+        Profile::create([
+            'user_id' => $owner->id,
+            'public_name' => 'Approved Public Owner',
+            'publish_status' => 'published',
+        ]);
+
+        $this->getJson('/api/v1/public/profile')->assertOk()
+            ->assertJsonPath('data.name', 'Approved Public Owner')
+            ->assertJsonCount(0, 'data.claims')
+            ->assertDontSee('NON OWNER PRIVATE NAME')
+            ->assertDontSee('INACTIVE OWNER PRIVATE NAME');
+    }
+
     public function test_raw_owner_import_is_hidden_until_approved_evidenced_claims(): void
     {
         $user = User::create(['email' => 'profile@example.test', 'status' => 'pending_activation']);
@@ -109,6 +145,11 @@ class PublicPortfolioSecurityTest extends TestCase
         $this->getJson('/api/v1/public/profile')->assertJsonPath('data', null)->assertDontSee('Confidential');
 
         $profile->update(['publish_status' => 'published']);
+        // A published but inactive/non-owner record must remain private.
+        $this->getJson('/api/v1/public/profile')->assertJsonPath('data', null)
+            ->assertDontSee('Source Name');
+        $user->update(['status' => 'active']);
+        $user->roles()->attach(Role::firstOrCreate(['name' => 'owner'])->id);
         $this->getJson('/api/v1/public/profile')->assertJsonPath('data.name', 'Source Name')
             ->assertJsonCount(0, 'data.claims')->assertDontSee('Unverified private CV');
 
