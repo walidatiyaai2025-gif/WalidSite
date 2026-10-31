@@ -134,6 +134,32 @@ Route::middleware('auth:web')->group(function (): void {
             'article' => $article->id, 'lang' => $request->query('lang') === 'ar' ? 'ar' : 'en',
         ])->with('status', 'Article unpublished.');
     })->middleware('throttle:10,1')->name('admin.content.unpublish');
+
+    // T020: rights revocation is available before a licensed approval flow.
+    Route::get('/admin/ai/images', function (Request $request) {
+        abort_unless($request->user()?->canAccessAdmin(), 403);
+        $request->validate([
+            'lang' => ['sometimes', 'in:ar,en'],
+            'page' => ['sometimes', 'integer', 'min:1', 'max:10000'],
+        ]);
+        return view('admin.ai.media', [
+            'assets' => \App\Models\Asset::query()
+                ->orderByDesc('created_at')->orderBy('id')->paginate(12)->withQueryString(),
+        ]);
+    })->name('admin.media.index');
+
+    Route::post('/admin/ai/images/{asset}/revoke', function (
+        Request $request, \App\Models\Asset $asset
+    ) {
+        abort_unless($request->user()?->canAccessAdmin(), 403);
+        // Revocation is a fail-closed one-way admin action. Never expose
+        // internal storage paths or silently restore licenses in this view.
+        $asset->forceFill(['rights_status' => 'revoked', 'publishable' => false])->save();
+
+        return redirect()->route('admin.media.index', [
+            'lang' => $request->query('lang') === 'ar' ? 'ar' : 'en',
+        ])->with('status', 'Media rights revoked; public eligibility removed.');
+    })->middleware('throttle:10,1')->name('admin.media.revoke');
 });
 
 Route::get('/github', function (Request $request, \App\Integrations\GitHub\PublicRepositoryDirectory $directory) {
