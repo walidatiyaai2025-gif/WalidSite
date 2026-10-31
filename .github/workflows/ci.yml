@@ -102,3 +102,48 @@ jobs:
           fi
           gh api -X DELETE "repos/${GITHUB_REPOSITORY}/git/refs/heads/${SOURCE_BRANCH}"
           echo "Deleted merged short-lived branch $SOURCE_BRANCH"
+
+      - name: Reconcile pre-hook T001 branches after a verified merge
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # These two PRs merged before the guarded auto-cleanup job existed.
+          # Keep this idempotent: absence or any ref movement means no deletion.
+          while read -r pr_number branch expected_sha; do
+            pr_json="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${pr_number}")"
+            merged="$(jq -r '.merged' <<<"${pr_json}")"
+            pr_head="$(jq -r '.head.ref' <<<"${pr_json}")"
+            pr_sha="$(jq -r '.head.sha' <<<"${pr_json}")"
+            pr_repo="$(jq -r '.head.repo.full_name' <<<"${pr_json}")"
+            pr_base="$(jq -r '.base.ref' <<<"${pr_json}")"
+            if [[ "${merged}" != true || "${pr_head}" != "${branch}" ||
+                  "${pr_sha}" != "${expected_sha}" ||
+                  "${pr_repo}" != "${GITHUB_REPOSITORY}" || "${pr_base}" != main ]]; then
+              echo "Preserving ${branch}: PR provenance/merge does not match"
+              continue
+            fi
+
+            current="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/${branch}" --jq '.object.sha' 2>/dev/null)" || {
+              echo "Already absent or unreadable: ${branch}; no deletion attempted"
+              continue
+            }
+            if [[ "${current}" != "${expected_sha}" ]]; then
+              echo "Preserving ${branch}: branch has advanced beyond merged PR"
+              continue
+            fi
+
+            open_count="$(gh api -X GET "repos/${GITHUB_REPOSITORY}/pulls" \
+              -f state=open -f head="${GITHUB_REPOSITORY%%/*}:${branch}" --jq 'length')"
+            if [[ "${open_count}" != 0 ]]; then
+              echo "Preserving ${branch}: active PR found"
+              continue
+            fi
+
+            gh api -X DELETE "repos/${GITHUB_REPOSITORY}/git/refs/heads/${branch}"
+            echo "Deleted verified merged legacy branch ${branch}"
+          done <<'MERGED_PRE_HOOK'
+          29 feat/T001-governance-and-ci c89c0a080515cb846e0a408e7ecb27c6d15de26f
+          30 feat/T001-runtime-scaffold 1803e74a477217597eee93a6d9f210f775b66deb
+          MERGED_PRE_HOOK
