@@ -1,0 +1,31 @@
+name: Release
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Immutable version (e.g. 1.0.0)
+        required: true
+permissions:
+  contents: read
+concurrency:
+  group: release-main
+  cancel-in-progress: false
+jobs:
+  release-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Validate release prerequisites
+        shell: bash
+        run: |
+          test -n '${{ inputs.version }}'
+          test -f backend/composer.json
+          test -f mobile/pubspec.yaml
+          echo 'RELEASE GATE ONLY: no deployment/signing is assumed.'
+      - name: Deployment requires provisioned secrets and environment approvals
+        shell: bash
+        run: |
+          echo 'Provision staging/prod deploy steps only after T025 acceptance.'
+          exit 1
