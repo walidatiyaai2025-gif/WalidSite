@@ -164,8 +164,12 @@ class _VerifiedArticleLibraryState extends State<VerifiedArticleLibrary> {
   }
 
   void _refresh() {
-    _articles = widget.loader?.call() ??
-        const VerifiedArticleReader().load(widget.arabic);
+    final loader = widget.loader;
+    _articles = loader != null
+        ? loader()
+        : VerifiedArticleReader.configuredOrigin() == null
+            ? Future<List<VerifiedArticle>>.value(const <VerifiedArticle>[])
+            : const VerifiedArticleReader().load(widget.arabic);
   }
 
   @override
