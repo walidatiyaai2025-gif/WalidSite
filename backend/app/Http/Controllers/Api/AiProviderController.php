@@ -106,7 +106,9 @@ class AiProviderController extends Controller
     {
         $this->authorizeAdmin($request);
         $fields = $this->verifiedInput($request, true);
-        if (AiProvider::query()->where('display_name', $fields['display_name'])->exists()) {
+        // Archived names remain reserved: the database unique constraint also
+        // covers soft-deleted providers, so reject with 422 rather than 500.
+        if (AiProvider::withTrashed()->where('display_name', $fields['display_name'])->exists()) {
             throw ValidationException::withMessages(['display_name' => 'A provider with this name already exists.']);
         }
         $provider = DB::transaction(function () use ($fields, $request): AiProvider {
@@ -124,7 +126,7 @@ class AiProviderController extends Controller
         if ($fields === ['health_status' => 'unverified', 'last_checked_at' => null]) {
             throw ValidationException::withMessages(['provider' => 'At least one setting must change.']);
         }
-        if (isset($fields['display_name']) && AiProvider::query()->where('display_name', $fields['display_name'])
+        if (isset($fields['display_name']) && AiProvider::withTrashed()->where('display_name', $fields['display_name'])
             ->whereKeyNot($provider->id)->exists()) {
             throw ValidationException::withMessages(['display_name' => 'A provider with this name already exists.']);
         }
