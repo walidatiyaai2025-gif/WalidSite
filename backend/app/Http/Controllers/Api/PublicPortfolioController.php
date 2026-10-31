@@ -19,7 +19,7 @@ class PublicPortfolioController extends Controller
         // A database 'verified' flag alone does not make an unsafe link
         // usable public proof. Never expose such projects in the API DTO.
         $visible = $page->getCollection()
-            ->map(fn (Project $project) => $this->projectData($project, $request))
+            ->map(fn (Project $project) => $this->publicProjectData($project, $request))
             ->filter(fn (array $data) => ! empty($data['evidence_urls']))
             ->values();
 
@@ -36,7 +36,7 @@ class PublicPortfolioController extends Controller
     public function project(Request $request, string $slug): JsonResponse
     {
         $project = Project::query()->publiclyVerified()->where('slug', $slug)->firstOrFail();
-        $data = $this->projectData($project, $request);
+        $data = $this->publicProjectData($project, $request);
         abort_if(empty($data['evidence_urls']), 404);
 
         return response()->json(['data' => $data]);
@@ -71,7 +71,10 @@ class PublicPortfolioController extends Controller
         ]]);
     }
 
-    private function projectData(Project $project, Request $request): array
+    /** Shared verified DTO serializer for public web cards and API responses.
+     * Callers must apply publiclyVerified() and discard empty evidence lists.
+     */
+    public function publicProjectData(Project $project, Request $request): array
     {
         $ar = $request->query('lang') === 'ar';
         $urls = $project->evidence()
