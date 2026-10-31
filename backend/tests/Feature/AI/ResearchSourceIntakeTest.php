@@ -33,6 +33,14 @@ class ResearchSourceIntakeTest extends TestCase
             'https://user:password@docs.example.org/guide',
             'https://docs.example.org:8443/guide',
             'https://docs.example.org/guide?api_key=secret',
+            'https://docs.example.org/guide?api%5Fkey=secret',
+            'https://docs.example.org/guide?next=%253Faccess_token%253Dstolen',
+            'https://docs.example.org/guide?X-Amz-Signature=signed',
+            'https://docs.example.org/guide?X-Goog-Credential=private',
+            'https://docs.example.org/guide?refresh_token=secret',
+            'https://docs.example.org/guide#token=private',
+            'https://docs.example.org/guide#sessionid=private',
+            'https://docs.example.org/guide?lang=en;client_secret=private',
             'https://storage.local/guide',
             'not a URL',
         ] as $url) {
@@ -43,6 +51,15 @@ class ResearchSourceIntakeTest extends TestCase
                 $this->assertTrue(true);
             }
         }
+    }
+
+    public function test_public_noncredential_query_and_fragment_remain_allowed(): void
+    {
+        $this->assertSame([
+            ['source_url' => 'https://docs.example.org/guide?lang=ar&page=2#chapter', 'verified' => false],
+        ], (new ResearchSourceIntake())->candidateCitations([
+            'https://docs.example.org/guide?lang=ar&page=2#chapter',
+        ]));
     }
 
     public function test_requires_one_to_twenty_source_candidates(): void
