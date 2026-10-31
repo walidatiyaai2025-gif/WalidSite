@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\IdentityController;
 use App\Http\Controllers\Api\AiProviderController;
 use App\Http\Controllers\Api\PublicPortfolioController;
+use App\Http\Controllers\Api\PublicArticleController;
 use Illuminate\Support\Facades\Route;
 
 Route::post('/auth/login', [IdentityController::class, 'login'])
@@ -27,3 +28,9 @@ Route::get('/public/projects/{slug}', [PublicPortfolioController::class, 'projec
     ->where('slug', '[a-zA-Z0-9-]+')->name('api.public.project')->middleware('throttle:60,1');
 Route::get('/public/profile', [PublicPortfolioController::class, 'profile'])
     ->name('api.public.profile')->middleware('throttle:60,1');
+
+// T012 read-only editorial API: pinned, citation-checked public revisions only.
+Route::get('/public/articles', [PublicArticleController::class, 'index'])
+    ->name('api.public.articles')->middleware('throttle:60,1');
+Route::get('/public/articles/{slug}', [PublicArticleController::class, 'show'])
+    ->where('slug', '[a-zA-Z0-9-]+')->name('api.public.article')->middleware('throttle:60,1');
