@@ -188,7 +188,8 @@ Route::post('/contact', function (Request $request) {
         // both observe the exact delivery attempt. Never expose the recipient.
         \Illuminate\Support\Facades\Mail::to($recipient)->send(
             (new \Illuminate\Mail\Mailable)
-                ->text('mail.contact-notification', ['messageBody' => $body])
+                ->text('mail.contact-notification')
+                ->with(['messageBody' => $body])
                 ->replyTo($input['email'])
                 ->subject('WalidSite contact: '.$input['subject'])
         );
