@@ -228,9 +228,9 @@ Route::post('/contact', function (Request $request) {
     );
 
     $input = $request->validate([
-        'name' => ['required', 'string', 'min:2', 'max:100'],
+        'name' => ['required', 'string', 'min:2', 'max:100', 'not_regex:/[\\x00-\\x1F\\x7F]/u'],
         'email' => ['required', 'email:rfc', 'max:254'],
-        'subject' => ['required', 'string', 'min:3', 'max:140'],
+        'subject' => ['required', 'string', 'min:3', 'max:140', 'not_regex:/[\\x00-\\x1F\\x7F]/u'],
         'message' => ['required', 'string', 'min:10', 'max:3000'],
         'website' => ['nullable', 'string', 'max:200'],
     ]);

@@ -128,6 +128,22 @@ class EvidencePortfolioPagesTest extends TestCase
         ])->assertStatus(503);
     }
 
+    public function test_contact_rejects_multiline_header_shaped_input_without_sending(): void
+    {
+        config()->set('mail.contact_recipient', 'reviewed-inbox@example.test');
+        config()->set('mail.default', 'smtp');
+        Mail::fake();
+
+        $this->post('/contact', [
+            'name' => "Visitor\nInjected",
+            'email' => 'visitor@example.test',
+            'subject' => "Project inquiry\r\nBcc: attacker@example.test",
+            'message' => 'Please review the public portfolio project.',
+        ])->assertSessionHasErrors(['name', 'subject']);
+
+        Mail::assertNothingSent();
+    }
+
     public function test_contact_sends_only_when_configured_and_honeypot_does_not_send(): void
     {
         config()->set('mail.contact_recipient', 'reviewed-inbox@example.test');
