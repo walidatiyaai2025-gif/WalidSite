@@ -1,15 +1,15 @@
 <?php
 
-namespace Database\\Seeders;
+namespace Database\Seeders;
 
-use App\\Models\\Certification;
-use App\\Models\\ProfessionalClaim;
-use App\\Models\\Profile;
-use App\\Models\\Skill;
-use App\\Models\\User;
-use Illuminate\\Database\\Seeder;
-use Illuminate\\Support\\Facades\\DB;
-use Illuminate\\Support\\Str;
+use App\Models\Certification;
+use App\Models\ProfessionalClaim;
+use App\Models\Profile;
+use App\Models\Skill;
+use App\Models\User;
+use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use RuntimeException;
 
 class OwnerCvBaselineSeeder extends Seeder
