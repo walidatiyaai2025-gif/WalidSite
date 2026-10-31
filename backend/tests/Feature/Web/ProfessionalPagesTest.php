@@ -5,6 +5,7 @@ namespace Tests\Feature\Web;
 use App\Models\CareerPosition;
 use App\Models\Certification;
 use App\Models\Profile;
+use App\Models\Role;
 use App\Models\Skill;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -17,7 +18,8 @@ class ProfessionalPagesTest extends TestCase
 
     private function profile(string $status = 'review'): Profile
     {
-        $user = User::create(['email' => uniqid('user', true).'@example.test', 'status' => 'pending_activation']);
+        $user = User::create(['email' => uniqid('user', true).'@example.test', 'status' => 'active']);
+        $user->roles()->attach(Role::firstOrCreate(['name' => 'owner'])->id);
         return Profile::create([
             'user_id' => $user->id, 'public_name' => 'Real CV Owner',
             'bio_en' => 'Private CV data that must be withheld',
@@ -89,4 +91,36 @@ class ProfessionalPagesTest extends TestCase
         $this->get('/hire?track=delivery')->assertOk()->assertSee('Evidence Delivery Skill')->assertDontSee('Evidence Database Skill');
         $this->get('/hire?track=not-valid')->assertOk()->assertSee('Evidence Database Skill');
     }
+    public function test_published_non_owner_and_inactive_owner_are_never_publicly_visible(): void
+    {
+        $reader = User::create(['email' => 'reader@example.test', 'status' => 'active']);
+        $profile = Profile::create([
+            'user_id' => $reader->id,
+            'public_name' => 'Do Not Show Non Owner',
+            'publish_status' => 'published',
+        ]);
+        CareerPosition::create([
+            'profile_id' => $profile->id,
+            'org_name' => 'Confidential Non Owner Organization',
+            'role_en' => 'Sensitive Example',
+            'role_ar' => 'مثال خاص',
+            'started_on' => '2024-01-01',
+            'verified' => true,
+            'publishable' => true,
+        ]);
+
+        $this->get('/about')->assertOk()
+            ->assertDontSee('Do Not Show Non Owner')
+            ->assertDontSee('Confidential Non Owner Organization');
+        $this->get('/expertise')->assertOk()->assertDontSee('Do Not Show Non Owner');
+        $this->get('/hire')->assertOk()->assertDontSee('Do Not Show Non Owner');
+
+        $reader->roles()->attach(Role::firstOrCreate(['name' => 'owner'])->id);
+        $reader->update(['status' => 'pending_activation']);
+        $this->get('/about')->assertOk()->assertDontSee('Confidential Non Owner Organization');
+
+        $reader->update(['status' => 'active']);
+        $this->get('/about')->assertOk()->assertSee('Confidential Non Owner Organization');
+    }
+
 }

@@ -46,7 +46,10 @@ Route::get('/github', function (Request $request, \App\Integrations\GitHub\Publi
 
 foreach (['about', 'expertise', 'hire'] as $professionalPage) {
     Route::get('/'.$professionalPage, function (Request $request) use ($professionalPage) {
-        $profile = \App\Models\Profile::query()->published()->first();
+        $profile = \App\Models\Profile::query()->published()
+            ->whereHas('user', fn ($user) => $user->where('status', 'active')
+                ->whereHas('roles', fn ($roles) => $roles->where('name', 'owner')))
+            ->first();
         $positions = collect();
         $certifications = collect();
         $skills = collect();
