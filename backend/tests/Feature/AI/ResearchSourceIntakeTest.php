@@ -1,10 +1,10 @@
 <?php
 
-namespace Tests\\Feature\\AI;
+namespace Tests\Feature\AI;
 
-use App\\AI\\ResearchSourceIntake;
+use App\AI\ResearchSourceIntake;
 use InvalidArgumentException;
-use Tests\\TestCase;
+use Tests\TestCase;
 
 class ResearchSourceIntakeTest extends TestCase
 {
