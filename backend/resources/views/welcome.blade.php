@@ -72,8 +72,10 @@
                 <a href="{{ route('public.expertise', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'الخبرات التقنية' : 'Technical expertise' }}</a>
                 <a href="{{ route('public.hire', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'لجهات التوظيف' : 'Recruiter overview' }}</a>
                 <a href="{{ route('public.projects', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'دراسات الحالة' : 'Case studies' }}</a>
-                <a href="{{ route('public.resume', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'السيرة المهنية العامة' : 'Public resume' }}</a>
                 <a href="{{ route('public.blog', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'المدونة التقنية' : 'Technical blog' }}</a>
+                <a href="{{ route('public.lab', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'المختبر التقني' : 'Tech lab' }}</a>
+                <a href="{{ route('public.search', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'البحث' : 'Search' }}</a>
+                <a href="{{ route('public.resume', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'السيرة المهنية العامة' : 'Public resume' }}</a>
             </p>
             <p style="margin-top: 18px"><a href="{{ route('public.github', ['lang' => $locale]) }}">
                 {{ $locale === 'ar' ? 'استعراض المشاريع العامة الموثقة على GitHub' : 'Browse verified public GitHub projects' }}

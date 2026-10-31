@@ -247,78 +247,86 @@ Route::post('/contact', function (Request $request) {
         ->with('contact_delivered', true);
 })->middleware('throttle:4,1')->name('public.contact.submit');
 
-/* T012: public editorial pages share the pinned, evidence-checked Article model. */
-Route::get('/blog', function (Request $request) {
-    $raw = $request->query('q', '');
-    $search = is_string($raw) ? mb_substr(trim($raw), 0, 80) : '';
-    $rawCategory = $request->query('category', '');
-    $category = is_string($rawCategory) && preg_match('/^[a-z0-9-]{1,110}$/D', $rawCategory) ? $rawCategory : '';
 
+/*
+ * T012 public technical blog: only approved pinned revisions can render.
+ * All Markdown is sanitized by the view; unpublished drafts stay private.
+ */
+Route::get('/blog', function (Request $request) {
+    $input = $request->validate([
+        'q' => ['sometimes', 'string', 'max:80'],
+        'category' => ['sometimes', 'string', 'max:110', 'regex:/^[a-z0-9-]+$/'],
+        'lang' => ['sometimes', 'in:en,ar'],
+        'page' => ['sometimes', 'integer', 'min:1', 'max:10000'],
+    ]);
+    $search = trim($input['q'] ?? '');
+    $category = $input['category'] ?? '';
     $query = \App\Models\Article::query()->publiclyVisible();
+
     if ($search !== '') {
         $term = '%'.addcslashes($search, '%_\\').'%';
-        $query->where(fn ($q) => $q->where('title_en', 'like', $term)->orWhere('title_ar', 'like', $term));
+        $query->where(fn ($builder) => $builder->where('title_en', 'like', $term)
+            ->orWhere('title_ar', 'like', $term));
     }
     if ($category !== '') {
-        $query->whereHas('categories', fn ($q) => $q->where('slug', $category));
+        $query->whereHas('categories', fn ($builder) => $builder->where('slug', $category));
     }
-    $paginator = $query->orderByDesc('published_at')->orderBy('id')->paginate(12)->withQueryString();
-    $articles = $paginator->getCollection()->filter(fn ($a) => $a->publicRevision() !== null)->values();
 
-    $categories = \App\Models\Category::query()->orderBy('slug')->get()->filter(
-        fn ($cat) => $cat->articles()->publiclyVisible()->get()->contains(
-            fn ($a) => $a->publicRevision() !== null
-        )
-    );
+    $categories = \App\Models\Category::query()
+        ->whereHas('articles', fn ($article) => $article->publiclyVisible())
+        ->orderBy('slug')->get();
+    $paginated = $query->orderByDesc('published_at')->orderBy('id')->paginate(9)->withQueryString();
+    $entries = $paginated->getCollection()
+        ->map(fn (\App\Models\Article $article) => [
+            'article' => $article,
+            'revision' => $article->publicRevision(),
+        ])
+        ->filter(fn (array $entry) => $entry['revision'] !== null)
+        ->values();
 
-    return view('public.blog', compact('articles', 'paginator', 'categories', 'search', 'category'));
-})->name('public.blog');
+    return view('public.blog', compact('entries', 'paginated', 'categories', 'search', 'category'));
+})->name('public.blog')->middleware('throttle:60,1');
 
 Route::get('/blog/{slug}', function (Request $request, string $slug) {
-    $article = \App\Models\Article::query()->publiclyVisible()->where('slug', $slug)->firstOrFail();
+    $request->validate(['lang' => ['sometimes', 'in:ar,en']]);
+    $article = \App\Models\Article::query()->publiclyVisible()
+        ->where('slug', $slug)->firstOrFail();
     $revision = $article->publicRevision();
-    abort_unless($revision, 404);
+    abort_if($revision === null, 404);
 
-    // Never turn a verified citation into an internal/private URL or GitHub
-    // link whose public visibility has not passed the T017 allowlist.
-    $sources = collect($revision->citations_json)->pluck('source_url')->filter(function ($url) {
-        if (! is_string($url) || strlen($url) > 2048) return false;
-        $parsed = parse_url($url);
-        if (! is_array($parsed) || strtolower($parsed['scheme'] ?? '') !== 'https'
-            || ! is_string($parsed['host'] ?? null) || isset($parsed['user']) || isset($parsed['pass'])) return false;
-        $host = strtolower($parsed['host']);
-        if (in_array($host, ['localhost', 'github.com', 'www.github.com'], true)
-            || str_ends_with($host, '.local') || str_ends_with($host, '.internal')) return false;
-        if (filter_var($host, FILTER_VALIDATE_IP)) {
-            return filter_var($host, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) !== false;
-        }
-        return true;
-    })->unique()->values();
-    return view('public.article', compact('article', 'revision', 'sources'));
-})->where('slug', '[a-zA-Z0-9-]+')->name('public.article');
+    return view('public.article', compact('article', 'revision'));
+})->where('slug', '[a-zA-Z0-9-]+')->name('public.article')->middleware('throttle:60,1');
 
+/* T012 additive LAB + SEARCH: never show unreviewed or private data. */
 Route::get('/lab', function () {
-    $articles = \App\Models\Article::query()->publiclyVisible()->orderByDesc('published_at')->limit(15)
-        ->get()->filter(fn ($a) => $a->publicRevision() !== null);
+    $articles = \App\Models\Article::query()->publiclyVisible()
+        ->orderByDesc('published_at')->orderBy('id')->limit(15)->get()
+        ->filter(fn ($article) => $article->publicRevision() !== null);
     return view('public.lab', compact('articles'));
-})->name('public.lab');
+})->name('public.lab')->middleware('throttle:60,1');
 
 Route::get('/search', function (Request $request) {
     $raw = $request->query('q', '');
     $search = is_string($raw) ? mb_substr(trim($raw), 0, 80) : '';
     $articles = collect();
     $projects = collect();
+
     if ($search !== '') {
         $term = '%'.addcslashes($search, '%_\\').'%';
         $articles = \App\Models\Article::query()->publiclyVisible()
-            ->where(fn ($q) => $q->where('title_en', 'like', $term)->orWhere('title_ar', 'like', $term))
-            ->limit(10)->get()->filter(fn ($a) => $a->publicRevision() !== null);
+            ->where(fn ($builder) => $builder->where('title_en', 'like', $term)
+                ->orWhere('title_ar', 'like', $term))
+            ->orderBy('id')->limit(10)->get()
+            ->filter(fn ($article) => $article->publicRevision() !== null)->values();
+
         $api = app(\App\Http\Controllers\Api\PublicPortfolioController::class);
         $projects = \App\Models\Project::query()->publiclyVerified()
-            ->where(fn ($q) => $q->where('title', 'like', $term)->orWhere('summary_en', 'like', $term))
-            ->limit(10)->get()->map(fn ($p) => $api->project($request, $p->slug)->getData(true)['data'])
-            ->filter(fn ($p) => ! empty($p['evidence_urls']))->values();
+            ->where(fn ($builder) => $builder->where('title', 'like', $term)
+                ->orWhere('summary_en', 'like', $term)->orWhere('summary_ar', 'like', $term))
+            ->orderBy('id')->limit(10)->get()
+            ->map(fn ($project) => $api->project($request, $project->slug)->getData(true)['data'])
+            ->filter(fn (array $project) => ! empty($project['evidence_urls']))->values();
     }
     return view('public.search', compact('search', 'articles', 'projects'));
-})->name('public.search');
+})->name('public.search')->middleware('throttle:60,1');
 
