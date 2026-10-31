@@ -67,6 +67,9 @@
             <div class="build-status" role="status">
                 {{ $locale === 'ar' ? 'المنصة قيد التطوير والتحقق' : 'Platform foundation in development' }}
             </div>
+            <p style="margin-top: 18px"><a href="{{ route('public.github', ['lang' => $locale]) }}">
+                {{ $locale === 'ar' ? 'استعراض المشاريع العامة الموثقة على GitHub' : 'Browse verified public GitHub projects' }}
+            </a></p>
         </div>
 
         <figure class="portrait-frame">
