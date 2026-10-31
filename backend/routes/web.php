@@ -297,7 +297,7 @@ Route::get('/blog/{slug}', function (Request $request, string $slug) {
     return view('public.article', compact('article', 'revision'));
 })->where('slug', '[a-zA-Z0-9-]+')->name('public.article')->middleware('throttle:60,1');
 
-/* T012 additive LAB + SEARCH: never show unreviewed or private data. */
+/* T012 remaining lab and verified-content search pages. */
 Route::get('/lab', function () {
     $articles = \App\Models\Article::query()->publiclyVisible()
         ->orderByDesc('published_at')->orderBy('id')->limit(15)->get()
@@ -329,4 +329,3 @@ Route::get('/search', function (Request $request) {
     }
     return view('public.search', compact('search', 'articles', 'projects'));
 })->name('public.search')->middleware('throttle:60,1');
-

@@ -19,6 +19,8 @@ Route::middleware('auth:sanctum')->group(function (): void {
     Route::post('/admin/ai/providers', [AiProviderController::class, 'store'])->middleware('throttle:10,1');
     Route::get('/admin/ai/providers/{provider}', [AiProviderController::class, 'show']);
     Route::patch('/admin/ai/providers/{provider}', [AiProviderController::class, 'update'])->middleware('throttle:20,1');
+    Route::delete('/admin/ai/providers/{provider}', [AiProviderController::class, 'destroy'])
+        ->name('api.admin.ai.providers.destroy');
     Route::post('/admin/ai/providers/{provider}/test', [AiProviderController::class, 'test'])->middleware('throttle:5,1');
 });
 

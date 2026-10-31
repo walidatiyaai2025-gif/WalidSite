@@ -89,6 +89,18 @@ class PublicLabSearchTest extends TestCase
             ->assertDontSee('Secret infrastructure project');
     }
 
+    public function test_blog_article_lab_and_search_emit_canonical_and_bilingual_metadata(): void
+    {
+        $article = $this->publishedArticle();
+
+        foreach (['/blog', '/blog/'.$article->slug, '/lab', '/search'] as $path) {
+            $this->get($path.'?lang=ar')->assertOk()
+                ->assertSee('<link rel="canonical" href="'.url($path).'">', false)
+                ->assertSee('hreflang="ar"', false)
+                ->assertSee('hreflang="en"', false);
+        }
+    }
+
     public function test_search_filters_are_bounded_and_html_escaped(): void
     {
         $this->get('/search?q='.urlencode('<img src=x onerror=alert(1)>'))
