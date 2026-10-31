@@ -21,8 +21,11 @@ class PublicEditorialPagesTest extends TestCase
         ]);
         $article->revisions()->create([
             'revision_no' => 1, 'status' => 'validated',
-            'body_md' => 'Documented guidance <script>alert(1)</script>.',
-            'citations_json' => [['source_url'=>'https://example.org/source','verified'=>true]],
+            'body_md' => "## Guide notes\n\nDocumented **guidance** [unsafe link](javascript:alert(2)).\n\n<script>alert(1)</script>",
+            'citations_json' => [
+                ['source_url'=>'https://example.org/source','verified'=>true],
+                ['source_url'=>'https://localhost/private','verified'=>true],
+            ],
             'validation_json' => ['citations_passed'=>true, 'technical_passed'=>true],
         ]);
         return $article;
@@ -48,6 +51,13 @@ class PublicEditorialPagesTest extends TestCase
         $this->get('/blog/verified-guide?lang=ar')->assertOk()
             ->assertSee('دليل الاستعلامات الموثق')
             ->assertSee('https://example.org/source')
+            ->assertSee('<h2>Guide notes</h2>', false)
+            ->assertSee('<strong>guidance</strong>', false)
+            ->assertSee('rel="noopener noreferrer"', false)
+            ->assertSee('&lt;script&gt;alert(1)&lt;/script&gt;', false)
+            ->assertDontSee('href="javascript:alert(2)"', false)
+            ->assertDontSee('javascript:alert(2)')
+            ->assertDontSee('https://localhost/private')
             ->assertDontSee('<script>alert(1)</script>', false);
         $published->revisions()->where('revision_no', 1)->update(['status'=>'draft']);
         $this->get('/blog/verified-guide')->assertNotFound();
