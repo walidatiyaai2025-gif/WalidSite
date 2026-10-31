@@ -1,0 +1,68 @@
+name: PR CI
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: pr-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  required-ci-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate immutable v6 reference pack
+        run: python3 qa/validate_pack.py
+      - name: Reject merge markers and known sensitive files
+        shell: bash
+        run: |
+          if git grep -n -E '^(<<<<<<< |=======|>>>>>>> )' -- ':!*.lock'; then echo 'Unresolved merge markers'; exit 1; fi
+          if git ls-files | grep -Ei '(^|/)(\.env$|walidatiya_walid\.sql$|id_rsa$|id_ed25519$|.*\.p12$|.*\.p8$)'; then echo 'Sensitive source file tracked'; exit 1; fi
+      - name: Explain bootstrap baseline
+        shell: bash
+        run: |
+          if test ! -f backend/composer.json || test ! -f mobile/pubspec.yaml; then
+            echo 'BASELINE ONLY: app scaffolds are not yet present; this CI checks the reference pack, NOT a runnable app.'
+          fi
+      - uses: shivammathur/setup-php@v2
+        if: ${{ hashFiles('backend/composer.json') != '' }}
+        with:
+          php-version: '8.3'
+          extensions: mbstring, xml, pdo_sqlite
+      - name: Laravel tests (mandatory once scaffold exists)
+        if: ${{ hashFiles('backend/composer.json') != '' }}
+        shell: bash
+        run: |
+          cd backend
+          composer validate --strict
+          composer install --no-interaction --prefer-dist --no-progress
+          php artisan test
+      - uses: actions/setup-node@v4
+        if: ${{ hashFiles('backend/package.json') != '' }}
+        with:
+          node-version: '22'
+      - name: Web build and tests (mandatory once scaffold exists)
+        if: ${{ hashFiles('backend/package.json') != '' }}
+        shell: bash
+        run: |
+          cd backend
+          npm ci
+          npm run lint
+          npm run test -- --run
+          npm run build
+      - uses: subosito/flutter-action@v2
+        if: ${{ hashFiles('mobile/pubspec.yaml') != '' }}
+        with:
+          channel: stable
+      - name: Flutter analyze and tests (mandatory once scaffold exists)
+        if: ${{ hashFiles('mobile/pubspec.yaml') != '' }}
+        shell: bash
+        run: |
+          cd mobile
+          flutter pub get
+          flutter analyze
+          flutter test
