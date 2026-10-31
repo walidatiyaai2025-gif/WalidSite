@@ -24,3 +24,6 @@ The phrases **"كمل وليد سايت"**, **"شغّل الوركرز"**, **"خ
 3. Check exact-head CI, repair red checks on the same branch, merge and verify when allowed; then take additional independent tasks if tooling/time permits.
 4. Run multiple workers in parallel **only** when actual independently executing tools are available; otherwise run lanes sequentially. Do not claim background workers are running without a real external agent/automation runtime.
 5. Never ask the owner to supervise ordinary development. Do not treat a planning-only answer as completion while a safe, implementable task exists. Report real commits/PRs, verification and external blockers succinctly.
+
+## Owner progress percentage (mandatory, every status question)
+When the owner asks how complete WalidSite is ("نسبة اكتمال المشروع", "المشروع وصل كام؟", etc.), **answer first with a numeric %** calculated from the latest live GitHub Issues/merged PRs, then report N completed of 27 v6 tasks and remaining tasks. Follow [the canonical calculation and evidence policy](docs/PROGRESS_PERCENTAGE.md). Do not mistake green CI, open PRs, or merged-but-unclosed task Issues for completed tasks; never claim a stale or fabricated percentage. This is baseline task completion, not staging/release readiness.
