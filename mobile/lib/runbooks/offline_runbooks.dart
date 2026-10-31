@@ -20,8 +20,13 @@ class OfflineRunbookPack {
   final DateTime? verifiedAt;
   final List<OfflineRunbook> items;
 
-  bool get isStale => verifiedAt == null ||
-      DateTime.now().difference(verifiedAt!).inDays >= 30;
+  bool get isStale {
+    final verified = verifiedAt;
+    final now = DateTime.now().toUtc();
+    return verified == null ||
+        verified.isAfter(now) ||
+        now.difference(verified).inDays >= 30;
+  }
 
   // One immutable bundled read per app process, preventing repeated asset I/O
   // and avoiding build-frame races during rapid locale or route transitions.
