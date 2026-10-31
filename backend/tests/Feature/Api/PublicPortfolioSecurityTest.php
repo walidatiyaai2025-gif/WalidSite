@@ -91,6 +91,37 @@ class PublicPortfolioSecurityTest extends TestCase
             ->assertJsonPath('data.summary', 'عمل معتمد بالمصادر');
     }
 
+    public function test_internal_evidence_links_never_qualify_as_public_project_proof(): void
+    {
+        $unproven = $this->project();
+        foreach ([
+            'https://127.0.0.1/admin',
+            'https://[::1]/private',
+            'https://localhost/login',
+            'https://service.internal/status',
+            'https://server.local/config',
+            'https://docs.example.org:8443/private',
+        ] as $url) {
+            $this->proof($unproven, 'public', true, $url);
+        }
+
+        $safe = $this->project();
+        $this->proof($safe, 'public', true, 'https://docs.example.test/public-proof');
+        $this->proof($safe, 'public', true, 'https://10.1.2.3/internal');
+
+        $this->getJson('/api/v1/public/projects')
+            ->assertOk()->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.slug', $safe->slug)
+            ->assertJsonCount(1, 'data.0.evidence_urls')
+            ->assertDontSee($unproven->slug)
+            ->assertDontSee('10.1.2.3');
+
+        $this->getJson('/api/v1/public/projects/'.$unproven->slug)->assertNotFound();
+        $this->getJson('/api/v1/public/projects/'.$safe->slug)
+            ->assertOk()->assertJsonCount(1, 'data.evidence_urls')
+            ->assertJsonPath('data.evidence_urls.0', 'https://docs.example.test/public-proof');
+    }
+
     public function test_public_profile_ignores_non_owner_and_inactive_owner_records(): void
     {
         $other = User::create(['email' => 'unrelated@example.test', 'status' => 'active']);

@@ -253,7 +253,7 @@ Route::get('/projects', function (Request $request) {
         ->paginate(9)->withQueryString();
     $api = app(\App\Http\Controllers\Api\PublicPortfolioController::class);
     $projects = $paginated->getCollection()
-        ->map(fn ($project) => $api->project($request, $project->slug)->getData(true)['data'])
+        ->map(fn ($project) => $api->publicProjectData($project, $request))
         ->filter(fn (array $project): bool => count($project['evidence_urls'] ?? []) > 0)
         ->values();
 
@@ -261,8 +261,10 @@ Route::get('/projects', function (Request $request) {
 })->name('public.projects');
 
 Route::get('/projects/{slug}', function (Request $request, string $slug) {
+    $record = \App\Models\Project::query()->publiclyVerified()
+        ->where('slug', $slug)->firstOrFail();
     $project = app(\App\Http\Controllers\Api\PublicPortfolioController::class)
-        ->project($request, $slug)->getData(true)['data'];
+        ->publicProjectData($record, $request);
     // A project without a usable public evidence link is not a public case study.
     abort_if(empty($project['evidence_urls']), 404);
 
@@ -419,7 +421,7 @@ Route::get('/search', function (Request $request) {
             ->where(fn ($builder) => $builder->where('title', 'like', $term)
                 ->orWhere('summary_en', 'like', $term)->orWhere('summary_ar', 'like', $term))
             ->orderBy('id')->limit(10)->get()
-            ->map(fn ($project) => $api->project($request, $project->slug)->getData(true)['data'])
+            ->map(fn ($project) => $api->publicProjectData($project, $request))
             ->filter(fn (array $project) => ! empty($project['evidence_urls']))->values();
     }
     return view('public.search', compact('search', 'articles', 'projects'));
