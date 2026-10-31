@@ -47,6 +47,10 @@ class OwnerCvBaselineTest extends TestCase
         $this->assertSame(0, DB::table('certifications')->where('verified', true)->count());
         $this->assertSame(0, DB::table('professional_claims')->where('is_public', true)->count());
         $this->assertSame(4, DB::table('career_positions')->where('date_precision', 'year')->count());
+        $this->assertSame(
+            'Senior SQL Server DBA / Technical Project Manager',
+            DB::table('career_positions')->where('org_name', 'Amiri Diwan')->value('role_en')
+        );
         $this->assertNotNull(DB::table('certifications')->first()->source_refs_json);
     }
 
