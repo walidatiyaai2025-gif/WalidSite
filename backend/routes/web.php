@@ -21,3 +21,25 @@ Route::middleware('auth:web')->group(function (): void {
         return response('Admin workspace is under development.', 503);
     })->name('admin.home');
 });
+
+Route::get('/github', function (Request $request, \App\Integrations\GitHub\PublicRepositoryDirectory $directory) {
+    $repositories = $directory->repositories();
+    $search = mb_substr(trim((string) $request->query('q', '')), 0, 80);
+    $language = mb_substr(trim((string) $request->query('language', '')), 0, 60);
+
+    $languages = collect($repositories)
+        ->filter(fn (array $repo) => ($repo['status'] ?? null) === 'verified' && ! empty($repo['language']))
+        ->pluck('language')->unique()->sort()->values()->all();
+
+    $filtered = array_values(array_filter($repositories, static function (array $repo) use ($search, $language): bool {
+        $matchesSearch = $search === '' || str_contains(
+            mb_strtolower(($repo['full_name'] ?? '').' '.($repo['description'] ?? '')),
+            mb_strtolower($search)
+        );
+        $matchesLanguage = $language === '' || (($repo['language'] ?? null) === $language);
+
+        return $matchesSearch && $matchesLanguage;
+    }));
+
+    return view('github.index', compact('repositories', 'filtered', 'languages', 'search', 'language'));
+})->name('public.github');
