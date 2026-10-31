@@ -39,7 +39,7 @@ button{background:transparent;color:#fff;border:1px solid #fff;border-radius:8px
 <h2 id="provider-counters">{{ $locale === 'ar' ? 'حالة المزودين' : 'Provider status' }}</h2>
 <div class="cards">
 @foreach ([
-'configured' => ['en'=>'Configured', 'ar'=>'مسجل'],
+'configured' => ['en'=>'Configured providers', 'ar'=>'مزودون مسجلون'],
 'enabled' => ['en'=>'Enabled', 'ar'=>'مفعّل'],
 'healthy' => ['en'=>'Healthy', 'ar'=>'سليم'],
 'unverified' => ['en'=>'Unverified', 'ar'=>'غير متحقق منه']
