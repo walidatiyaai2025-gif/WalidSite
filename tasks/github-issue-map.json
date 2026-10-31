@@ -1,0 +1,264 @@
+{
+  "program": "https://github.com/walidatiyaai2025-gif/WalidSite/issues/1",
+  "version": "v6.0",
+  "note": "GitHub issues are canonical; this file maps immutable task IDs only. Status must be read live from GitHub.",
+  "items": [
+    {
+      "id": "T001",
+      "issue_number": 2,
+      "issue_url": "https://github.com/walidatiyaai2025-gif/WalidSite/issues/2",
+      "lane": "LEAD",
+      "dependsOn": []
+    },
+    {
+      "id": "T002",
+      "issue_number": 3,
+      "issue_url": "https://github.com/walidatiyaai2025-gif/WalidSite/issues/3",
+      "lane": "W1",
+      "dependsOn": [
+        "T001"
+      ]
+    },
+    {
+      "id": "T003",
+      "issue_number": 4,
+      "issue_url": "https://github.com/walidatiyaai2025-gif/WalidSite/issues/4",
+      "lane": "W1",
+      "dependsOn": [
+        "T002"
+      ]
+    },
+    {
+      "id": "T004",
+      "issue_number": 5,
+      "issue_url": "https://github.com/walidatiyaai2025-gif/WalidSite/issues/5",
+      "lane": "W2",
+      "dependsOn": [
+        "T001"
+      ]
+    },
+    {
+      "id": "T005",
+      "issue_number": 6,
+      "issue_url": "https://github.com/walidatiyaai2025-gif/WalidSite/issues/6",
+      "lane": "W3",
+      "dependsOn": [
+        "T001"
+      ]
+    },
+    {
+      "id": "T006",
+      "issue_number": 7,
+      "issue_url": "https://github.com/walidatiyaai2025-gif/WalidSite/issues/7",
+      "lane": "W4",
+      "dependsOn": [
+        "T001"
+      ]
+    },
+    {
+      "id": "T007",
+      "issue_number": 8,
+      "issue_url": "https://github.com/walidatiyaai2025-gif/WalidSite/issues/8",
+      "lane": "W2",
+      "dependsOn": [
+        "T004",
+        "T003"
+      ]
+    },
+    {
+      "id": "T008",
+      "issue_number": 9,
+      "issue_url": "https://github.com/walidatiyaai2025-gif/WalidSite/issues/9",
+      "lane": "W1",
+      "dependsOn": [
+        "T003"
+      ]
+    },
+    {
+      "id": "T009",
+      "issue_number": 10,
+      "issue_url": "https://github.com/walidatiyaai2025-gif/WalidSite/issues/10",
+      "lane": "W2",
+      "dependsOn": [
+        "T007",
+        "T008"
+      ]
+    },
+    {
+      "id": "T010",
+      "issue_number": 11,
+      "issue_url": "https://github.com/walidatiyaai2025-gif/WalidSite/issues/11",
+      "lane": "W1",
+      "dependsOn": [
+        "T003"
+      ]
+    },
+    {
+      "id": "T011",
+      "issue_number": 12,
+      "issue_url": "https://github.com/walidatiyaai2025-gif/WalidSite/issues/12",
+      "lane": "W4",
+      "dependsOn": [
+        "T006",
+        "T010"
+      ]
+    },
+    {
+      "id": "T012",
+      "issue_number": 13,
+      "issue_url": "https://github.com/walidatiyaai2025-gif/WalidSite/issues/13",
+      "lane": "W2",
+      "dependsOn": [
+        "T004",
+        "T010"
+      ]
+    },
+    {
+      "id": "T013",
+      "issue_number": 14,
+      "issue_url": "https://github.com/walidatiyaai2025-gif/WalidSite/issues/14",
+      "lane": "W3",
+      "dependsOn": [
+        "T005",
+        "T010"
+      ]
+    },
+    {
+      "id": "T014",
+      "issue_number": 15,
+      "issue_url": "https://github.com/walidatiyaai2025-gif/WalidSite/issues/15",
+      "lane": "W4",
+      "dependsOn": [
+        "T011"
+      ]
+    },
+    {
+      "id": "T015",
+      "issue_number": 16,
+      "issue_url": "https://github.com/walidatiyaai2025-gif/WalidSite/issues/16",
+      "lane": "W1",
+      "dependsOn": [
+        "T002",
+        "T006"
+      ]
+    },
+    {
+      "id": "T016",
+      "issue_number": 17,
+      "issue_url": "https://github.com/walidatiyaai2025-gif/WalidSite/issues/17",
+      "lane": "W2",
+      "dependsOn": [
+        "T004",
+        "T015"
+      ]
+    },
+    {
+      "id": "T017",
+      "issue_number": 18,
+      "issue_url": "https://github.com/walidatiyaai2025-gif/WalidSite/issues/18",
+      "lane": "LEAD",
+      "dependsOn": [
+        "T001"
+      ]
+    },
+    {
+      "id": "T018",
+      "issue_number": 19,
+      "issue_url": "https://github.com/walidatiyaai2025-gif/WalidSite/issues/19",
+      "lane": "W2",
+      "dependsOn": [
+        "T004",
+        "T017"
+      ]
+    },
+    {
+      "id": "T019",
+      "issue_number": 20,
+      "issue_url": "https://github.com/walidatiyaai2025-gif/WalidSite/issues/20",
+      "lane": "W3",
+      "dependsOn": [
+        "T013",
+        "T011"
+      ]
+    },
+    {
+      "id": "T020",
+      "issue_number": 21,
+      "issue_url": "https://github.com/walidatiyaai2025-gif/WalidSite/issues/21",
+      "lane": "W2",
+      "dependsOn": [
+        "T016",
+        "T014"
+      ]
+    },
+    {
+      "id": "T021",
+      "issue_number": 22,
+      "issue_url": "https://github.com/walidatiyaai2025-gif/WalidSite/issues/22",
+      "lane": "W3",
+      "dependsOn": [
+        "T019"
+      ]
+    },
+    {
+      "id": "T022",
+      "issue_number": 23,
+      "issue_url": "https://github.com/walidatiyaai2025-gif/WalidSite/issues/23",
+      "lane": "W4",
+      "dependsOn": [
+        "T014"
+      ]
+    },
+    {
+      "id": "T023",
+      "issue_number": 24,
+      "issue_url": "https://github.com/walidatiyaai2025-gif/WalidSite/issues/24",
+      "lane": "LEAD",
+      "dependsOn": [
+        "T001"
+      ]
+    },
+    {
+      "id": "T024",
+      "issue_number": 25,
+      "issue_url": "https://github.com/walidatiyaai2025-gif/WalidSite/issues/25",
+      "lane": "LEAD",
+      "dependsOn": [
+        "T009",
+        "T012",
+        "T018",
+        "T020",
+        "T021",
+        "T022",
+        "T023"
+      ]
+    },
+    {
+      "id": "T025",
+      "issue_number": 26,
+      "issue_url": "https://github.com/walidatiyaai2025-gif/WalidSite/issues/26",
+      "lane": "LEAD",
+      "dependsOn": [
+        "T024"
+      ]
+    },
+    {
+      "id": "T026",
+      "issue_number": 27,
+      "issue_url": "https://github.com/walidatiyaai2025-gif/WalidSite/issues/27",
+      "lane": "LEAD",
+      "dependsOn": [
+        "T025"
+      ]
+    },
+    {
+      "id": "T027",
+      "issue_number": 28,
+      "issue_url": "https://github.com/walidatiyaai2025-gif/WalidSite/issues/28",
+      "lane": "LEAD",
+      "dependsOn": [
+        "T025"
+      ]
+    }
+  ]
+}
