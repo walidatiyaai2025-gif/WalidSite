@@ -1,3 +1,4 @@
+@php($locale = request()->query('lang') === 'ar' ? 'ar' : 'en')
 @extends('layouts.site')
 
 @section('title', $locale === 'ar' ? 'وليد عطية — الموقع المهني' : 'Waleed Atiya — Engineering Portfolio')
@@ -69,7 +70,7 @@
         </div>
 
         <figure class="portrait-frame">
-            <img src="{{ route('portrait') }}"
+            <img src="{{ 'https://raw.githubusercontent.com/walidatiyaai2025-gif/WalidSite/main/assets/portraits/portrait-light-derived.jpg' }}"
                  alt="{{ $locale === 'ar' ? 'الصورة الشخصية الأصلية المعتمدة لوليد عطية، بخلفية فاتحة' : 'Approved real portrait of Waleed Atiya against a light background' }}"
                  width="640" height="760" decoding="async" fetchpriority="high">
             <figcaption>{{ $locale === 'ar' ? 'صورة المالك المعتمدة' : 'Owner-approved portrait' }}</figcaption>
