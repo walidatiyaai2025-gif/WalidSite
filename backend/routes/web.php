@@ -65,6 +65,62 @@ Route::middleware('auth:web')->group(function (): void {
         return redirect()->route('admin.providers.index')
             ->with('status', 'Connection check recorded: '.$health.'.');
     })->middleware('throttle:5,1')->name('admin.providers.test');
+
+    // T020: editorial decisions remain server-authorized and fail closed.
+    Route::get('/admin/content', function (Request $request) {
+        abort_unless($request->user()?->canAccessAdmin(), 403);
+        $input = $request->validate([
+            'article' => ['sometimes', 'uuid'],
+            'lang' => ['sometimes', 'in:ar,en'],
+            'page' => ['sometimes', 'integer', 'min:1', 'max:10000'],
+        ]);
+        $articles = \App\Models\Article::query()
+            ->withCount('revisions')->orderByDesc('updated_at')->orderBy('id')
+            ->paginate(15)->withQueryString();
+        $selected = isset($input['article'])
+            ? \App\Models\Article::query()->with('heroAsset')
+                ->findOrFail($input['article']) : null;
+        $revisions = $selected
+            ? $selected->revisions()->orderByDesc('revision_no')->limit(30)->get()
+            : collect();
+
+        return view('admin.content.index', compact('articles', 'selected', 'revisions'));
+    })->name('admin.content.index');
+
+    Route::post('/admin/content/{article}/publish', function (
+        Request $request, \App\Models\Article $article
+    ) {
+        abort_unless($request->user()?->canAccessAdmin(), 403);
+        // Never write status directly: the domain pins the exact validated
+        // revision and rejects unsafe citations or insufficient image rights.
+        if (! $article->isReadyToPublish()) {
+            return back()->withErrors(['publish' => 'Citation, technical or image rights gates have not passed.']);
+        }
+        try {
+            $article->publishVerified();
+        } catch (\DomainException $exception) {
+            return back()->withErrors(['publish' => 'Publication checks changed; review again before publishing.']);
+        }
+
+        return redirect()->route('admin.content.index', [
+            'article' => $article->id, 'lang' => $request->query('lang') === 'ar' ? 'ar' : 'en',
+        ])->with('status', 'Verified revision published.');
+    })->middleware('throttle:10,1')->name('admin.content.publish');
+
+    Route::post('/admin/content/{article}/unpublish', function (
+        Request $request, \App\Models\Article $article
+    ) {
+        abort_unless($request->user()?->canAccessAdmin(), 403);
+        // Revocation invalidates the public revision pointer immediately.
+        $article->forceFill([
+            'status' => 'draft', 'published_at' => null,
+            'published_revision_no' => null,
+        ])->save();
+
+        return redirect()->route('admin.content.index', [
+            'article' => $article->id, 'lang' => $request->query('lang') === 'ar' ? 'ar' : 'en',
+        ])->with('status', 'Article unpublished.');
+    })->middleware('throttle:10,1')->name('admin.content.unpublish');
 });
 
 Route::get('/github', function (Request $request, \App\Integrations\GitHub\PublicRepositoryDirectory $directory) {
