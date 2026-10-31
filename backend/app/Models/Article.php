@@ -13,6 +13,9 @@ class Article extends Model
 {
     use HasUuids;
 
+    // Mirror the DB default even before refreshing a newly inserted model.
+    protected $attributes = ['status' => 'draft'];
+
     protected $fillable = ['slug', 'title_en', 'title_ar', 'canonical_lang', 'hero_asset_id'];
 
     protected function casts(): array
