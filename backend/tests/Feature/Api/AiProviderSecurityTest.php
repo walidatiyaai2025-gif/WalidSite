@@ -126,6 +126,7 @@ class AiProviderSecurityTest extends TestCase
         $this->assertSame('unverified', $provider->health_status);
         $this->assertNull($provider->last_checked_at);
         $this->assertSame(0, DB::table('ai_provider_audit_events')->where('action', 'tested')->count());
+        Http::assertSentCount(1);
 
         // A revoked provider must never be resurrected or have its health
         // overwritten when an in-flight provider request eventually finishes.
@@ -138,7 +139,8 @@ class AiProviderSecurityTest extends TestCase
         $this->assertNull(AiProvider::find($id));
         $this->assertSame('unverified', AiProvider::withTrashed()->findOrFail($id)->health_status);
         $this->assertSame(0, DB::table('ai_provider_audit_events')->where('action', 'tested')->count());
-        Http::assertSentCount(2);
+        // Each Http::fake() replaces the recorded request history.
+        Http::assertSentCount(1);
     }
 
     public function test_delete_requires_admin_and_erases_secret_while_preserving_audit(): void
