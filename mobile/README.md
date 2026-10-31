@@ -23,3 +23,10 @@ The mobile shell uses canonical v6 light design colors and Flutter SDK localizat
 `flutter pub get`, `flutter analyze`, and `flutter test` are enforced in PR CI.
 
 **Platform runner limitation:** Android/iOS runner directories are not yet checked into this repo. A developer with a current Flutter SDK can generate and review those files from `mobile/` using `flutter create --platforms=android,ios .` before a signed/device build. Do not mark T005 fully complete, release an APK/IPA, or close its Issue on widget tests alone. The canonical owner will only test after a verified app build is available.
+
+
+## T013 offline navigation and packaged runbooks
+
+The Home → Offline runbooks → Runbook detail flow works from an application asset without an HTTP request, including after a cold restart or in airplane mode. A version, original bundle source, last sync and prominent stale/unverified warning are displayed on library and detail views. The bundled content is short, original educational draft guidance only: **never treat it as a verified operational runbook**.
+
+This is the first offline-cache fallback, NOT the completed remote sync/download feature: the runbook API, signed update integrity check, persisted downloaded snapshots, storage quotas, and verified content publishing belong to later integration. A missing/invalid bundle displays a real error state; there is no fabricated live server data. CI runs `flutter analyze` and `flutter test`.

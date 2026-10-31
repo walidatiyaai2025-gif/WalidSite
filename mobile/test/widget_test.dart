@@ -11,6 +11,8 @@ void main() {
     expect(find.text('Waleed Tech Companion'), findsOneWidget);
     expect(find.text('Explore engineering topics'), findsOneWidget);
     expect(find.text('Database Engineering'), findsOneWidget);
+    // The offline CTA increases the ListView height; scroll before asserting.
+    await tester.scrollUntilVisible(find.text('Software Engineering'), 140);
     expect(find.text('Software Engineering'), findsOneWidget);
     // ListView builds items lazily: scroll to the last topic before asserting.
     await tester.scrollUntilVisible(find.text('AI Engineering'), 150);
