@@ -1,6 +1,11 @@
 @php($locale = request()->query('lang') === 'ar' ? 'ar' : 'en')
 @extends('layouts.site')
 @section('title', ($locale === 'ar' ? $article->title_ar : $article->title_en).' — Waleed Atiya')
+@push('head')
+<link rel="canonical" href="{{ request()->url() }}">
+<link rel="alternate" hreflang="ar" href="{{ request()->fullUrlWithQuery(['lang' => 'ar']) }}">
+<link rel="alternate" hreflang="en" href="{{ request()->fullUrlWithQuery(['lang' => 'en']) }}">
+@endpush
 @push('styles')
 <style>
 .article-shell{max-width:920px;padding-block:clamp(30px,6vw,75px)}
