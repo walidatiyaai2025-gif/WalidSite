@@ -11,7 +11,9 @@ void main() {
     expect(find.text('Explore engineering topics'), findsOneWidget);
     expect(find.text('Database Engineering'), findsOneWidget);
     expect(find.text('Software Engineering'), findsOneWidget);
-    // ListView builds items lazily: scroll to the last topic before asserting.\n    await tester.scrollUntilVisible(find.text('AI Engineering'), 150);\n    expect(find.text('AI Engineering'), findsOneWidget);
+    // ListView builds items lazily: scroll to the last topic before asserting.
+    await tester.scrollUntilVisible(find.text('AI Engineering'), 150);
+    expect(find.text('AI Engineering'), findsOneWidget);
   });
 
   testWidgets('topic card navigates to a real details screen', (
