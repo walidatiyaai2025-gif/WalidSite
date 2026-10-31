@@ -111,6 +111,26 @@ class DurableAiQueueTest extends TestCase
         $this->assertNull($queue->claimNext('worker-b'));
     }
 
+    public function test_archived_provider_cannot_claim_queued_ai_work_even_when_enabled(): void
+    {
+        $queue = new DurableAiQueue();
+        $archived = $this->provider();
+        $active = $this->provider();
+        $blockedJob = $queue->enqueue($archived, 'draft', 'archived:blocked', ['research']);
+        $activeJob = $queue->enqueue($active, 'draft', 'archived:active', ['research']);
+
+        // Deletion is an administrative revocation, not an invitation to
+        // bypass Eloquent's soft-delete filter via raw DB provider queries.
+        $archived->delete();
+        $this->assertTrue($archived->trashed());
+        $this->assertSame($activeJob, $queue->claimNext('worker-a')?->id);
+        $this->assertSame('queued', DB::table('ai_jobs')->where('id', $blockedJob)->value('status'));
+
+        $queue->completeStep($activeJob, 'worker-a', 'research', 'drafts/active');
+        $queue->completeJob($activeJob, 'worker-a');
+        $this->assertNull($queue->claimNext('worker-b'));
+    }
+
     public function test_paid_job_without_reserved_budget_cannot_claim(): void
     {
         $queue = new DurableAiQueue();
