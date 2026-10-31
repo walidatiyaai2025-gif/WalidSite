@@ -1,3 +1,4 @@
+@php($locale = request()->query('lang') === 'ar' ? 'ar' : 'en')
 <!doctype html>
 <html lang="{{ $locale }}" dir="{{ $locale === 'ar' ? 'rtl' : 'ltr' }}">
 <head>
