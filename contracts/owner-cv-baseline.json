@@ -1,0 +1,299 @@
+{
+  "schema": "walidsite.owner-cv-baseline.v1",
+  "identity": {
+    "full_name": "Waleed Atiya Ata Atiya",
+    "location": "Kuwait",
+    "nationality": "Egyptian",
+    "public_headlines": [
+      "Senior SQL Server DBA",
+      "Technical Project Manager",
+      "Software Engineer"
+    ],
+    "contact": {
+      "email": "lido825@hotmail.com",
+      "phone": "+96566010746",
+      "visibility": "contact_page_or_owner_approved_cv_only"
+    }
+  },
+  "sources": [
+    {
+      "id": "cv_dba",
+      "filename": "Senior_SQL_DBA_Realistic_Final.docx",
+      "type": "owner-supplied CV",
+      "authority": "owner-supplied"
+    },
+    {
+      "id": "cv_pm",
+      "filename": "Waleed_TPM_Riyadh_Hybrid.docx",
+      "type": "owner-supplied CV",
+      "authority": "owner-supplied"
+    }
+  ],
+  "professional_summary": {
+    "text": "Senior SQL Server DBA and Technical Project Manager with experience delivering and supporting SQL Server, SharePoint, IIS, digital systems and mobile backend integrations in government and enterprise environments. Areas of work include SQL Server high availability and disaster recovery, performance and query tuning, security and compliance, project delivery, UAT, deployment coordination and operational handover.",
+    "source_refs": [
+      "cv_dba",
+      "cv_pm"
+    ],
+    "publication": "public_high_level"
+  },
+  "experience": [
+    {
+      "id": "amiri_diwan",
+      "organization": "Amiri Diwan",
+      "location": "Kuwait",
+      "period": {
+        "start": "2024",
+        "end": null,
+        "label": "2024 – Present"
+      },
+      "employment_context": "Contracted via Private Sector Vendor",
+      "roles": [
+        "Senior SQL Server DBA",
+        "Technical Project Manager"
+      ],
+      "responsibilities": [
+        "SQL Server AlwaysOn high-availability clusters, failover checks, disaster recovery drills, backup validation, indexing and slow-query investigations.",
+        "Database hardening, privileged-account and audit configuration coordination with security and infrastructure teams.",
+        "Biometric attendance mobile system backend and delivery coordination, rollout, UAT and post-go-live enhancements.",
+        "Internal application store deployment support with SQL Server and IIS."
+      ],
+      "publication": "role_and_non_sensitive_summary_only",
+      "source_refs": [
+        "cv_dba",
+        "cv_pm"
+      ]
+    },
+    {
+      "id": "crown_prince_diwan",
+      "organization": "Crown Prince Diwan",
+      "location": "Kuwait",
+      "period": {
+        "start": "2022",
+        "end": "2024",
+        "label": "2022 – 2024"
+      },
+      "employment_context": "Contracted via Private Sector Vendor",
+      "roles": [
+        "Senior SQL Server DBA",
+        "Technical Project Manager"
+      ],
+      "responsibilities": [
+        "SQL Server AlwaysOn and HA/DR environments, tuning and backup and recovery checks.",
+        "SharePoint, SQL Server, IIS and internal application operations and deployments.",
+        "Coordination of development, infrastructure, change requests, testing and stakeholder approvals."
+      ],
+      "publication": "role_and_non_sensitive_summary_only",
+      "source_refs": [
+        "cv_dba",
+        "cv_pm"
+      ]
+    },
+    {
+      "id": "paaet_diyar",
+      "organization": "PAAET / Diyar United",
+      "location": "Kuwait",
+      "period": {
+        "start": "2009",
+        "end": "2022",
+        "label": "2009 – 2022"
+      },
+      "roles": [
+        "Senior SharePoint / DBA & Software Engineer",
+        "Project Manager / Senior Developer"
+      ],
+      "responsibilities": [
+        "Development and support of student and human-resources systems (RSD, TAS, ONR, GM, ROM, EM).",
+        "SQL Server, SharePoint, BPM/portal systems, migrations, monitoring and RedGate backup operations.",
+        "Project delivery, change management, UAT, documentation and operational handover."
+      ],
+      "publication": "role_and_non_sensitive_summary_only",
+      "source_refs": [
+        "cv_dba",
+        "cv_pm"
+      ]
+    },
+    {
+      "id": "bizware",
+      "organization": "Bizware",
+      "location": "Egypt",
+      "period": {
+        "start": "2007",
+        "end": "2009",
+        "label": "2007 – 2009"
+      },
+      "roles": [
+        "Software Engineer"
+      ],
+      "responsibilities": [],
+      "publication": "public_high_level",
+      "source_refs": [
+        "cv_dba"
+      ]
+    }
+  ],
+  "competencies": [
+    {
+      "group": "Database & Reliability",
+      "items": [
+        "SQL Server Administration",
+        "SQL Server AlwaysOn Clustering (HA/DR)",
+        "Performance & Query Tuning",
+        "Backup, Recovery & DR Checks",
+        "Indexing, Logs & Monitoring",
+        "RedGate Backup"
+      ],
+      "sources": [
+        "cv_dba"
+      ]
+    },
+    {
+      "group": "Infrastructure & Security",
+      "items": [
+        "Windows Server",
+        "SharePoint Administration",
+        "IIS & Application Deployment",
+        "Security Hardening & Compliance",
+        "Privileged Access / Audit Coordination",
+        "Nintex"
+      ],
+      "sources": [
+        "cv_dba"
+      ]
+    },
+    {
+      "group": "Software & Integration",
+      "items": [
+        "C#/.NET",
+        "Mobile Backend Integrations",
+        "Application Rollouts & Fixes",
+        "Internal Government Systems"
+      ],
+      "sources": [
+        "cv_dba",
+        "cv_pm"
+      ]
+    },
+    {
+      "group": "Project Delivery",
+      "items": [
+        "Project Planning & Scheduling",
+        "Stakeholder Alignment",
+        "Scope & Change Management",
+        "Release & Deployment Coordination",
+        "UAT & Adoption Support",
+        "Documentation & Reporting",
+        "Risk & Issue Tracking",
+        "Agile / Hybrid Delivery",
+        "Fit-Gap and Requirements Clarification"
+      ],
+      "sources": [
+        "cv_pm"
+      ]
+    }
+  ],
+  "certifications": [
+    {
+      "title": "MCSE SharePoint 2013",
+      "source_refs": [
+        "cv_dba"
+      ],
+      "source_type": "self-reported CV",
+      "external_verification": "not_provided"
+    },
+    {
+      "title": "MCSA Windows Server 2012",
+      "source_refs": [
+        "cv_dba"
+      ],
+      "source_type": "self-reported CV",
+      "external_verification": "not_provided"
+    },
+    {
+      "title": "MCTS SQL Server 2005",
+      "source_refs": [
+        "cv_dba"
+      ],
+      "source_type": "self-reported CV",
+      "external_verification": "not_provided"
+    },
+    {
+      "title": "ITIL Expert V3",
+      "source_refs": [
+        "cv_dba",
+        "cv_pm"
+      ],
+      "source_type": "self-reported CV",
+      "external_verification": "not_provided"
+    },
+    {
+      "title": "PMP",
+      "source_refs": [
+        "cv_dba",
+        "cv_pm"
+      ],
+      "source_type": "self-reported CV",
+      "external_verification": "not_provided"
+    }
+  ],
+  "selected_projects": [
+    {
+      "id": "biometric_attendance",
+      "title": "Biometric Attendance Mobile System",
+      "organization": "Amiri Diwan",
+      "scope": "Backend + Database + Delivery",
+      "visibility": "restricted_case_study",
+      "source_refs": [
+        "cv_dba",
+        "cv_pm"
+      ]
+    },
+    {
+      "id": "internal_app_stores",
+      "title": "Internal Application Stores",
+      "organization": "Amiri Diwan",
+      "scope": "SQL Server + IIS + Applications",
+      "visibility": "restricted_case_study",
+      "source_refs": [
+        "cv_dba"
+      ]
+    },
+    {
+      "id": "alwayson_clusters",
+      "title": "SQL Server AlwaysOn Cluster Deployment",
+      "organization": "Crown Prince Diwan",
+      "scope": "HA/DR + Clustering",
+      "visibility": "restricted_case_study",
+      "source_refs": [
+        "cv_dba"
+      ]
+    },
+    {
+      "id": "paaet_students_hr",
+      "title": "Student / HR / BPM Systems",
+      "organization": "PAAET",
+      "scope": "RSD, TAS, ONR, GM, ROM, EM; development, portals and databases",
+      "visibility": "restricted_case_study",
+      "source_refs": [
+        "cv_dba",
+        "cv_pm"
+      ]
+    }
+  ],
+  "publication_rules": {
+    "default": "public_high_level",
+    "never_publish": [
+      "stale visa date",
+      "personal residency documentation",
+      "private infrastructure topology",
+      "internal credentials",
+      "government hostnames",
+      "unapproved screenshots",
+      "fabricated metrics"
+    ],
+    "restricted_case_studies": "Show only sanitized title and broad role after publication safety review; no internal deployment topology or privileged details.",
+    "old_sql_dump": "Do not use as user/account/password seed. Import only sanitized public professional content with explicit allowlist.",
+    "ai_updates": "Never overwrite owner-authored CV baseline. New claims require evidence and explicit policy gate.",
+    "first_run_seed": "T003 must import this source deterministically with idempotent upserts; no editable forms required from owner at launch."
+  }
+}
