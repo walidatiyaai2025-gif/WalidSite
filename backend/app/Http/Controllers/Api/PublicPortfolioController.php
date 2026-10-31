@@ -35,8 +35,12 @@ class PublicPortfolioController extends Controller
 
     public function profile(Request $request): JsonResponse
     {
-        // An owner-imported CV baseline is "review", never public by default.
-        $profile = Profile::query()->where('publish_status', 'published')->first();
+        // Publishing a record is not authorization to represent the site owner.
+        // Prevent unrelated or deactivated accounts from leaking public CV claims.
+        $profile = Profile::query()->published()
+            ->whereHas('user', fn ($user) => $user->where('status', 'active')
+                ->whereHas('roles', fn ($roles) => $roles->where('name', 'owner')))
+            ->first();
         if (! $profile) {
             return response()->json(['data' => null]);
         }
