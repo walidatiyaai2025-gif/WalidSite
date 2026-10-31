@@ -140,4 +140,29 @@ class AiProviderSecurityTest extends TestCase
         $this->assertStringNotContainsString('private-test-credential-123', $audit->changed_fields_json);
         Http::assertNothingSent();
     }
+
+    public function test_archived_display_names_are_reserved_with_validation_errors_not_database_failures(): void
+    {
+        $this->withToken($this->tokenFor('owner'));
+
+        $archived = $this->postJson('/api/v1/admin/ai/providers', $this->input())
+            ->assertCreated()->json('data.id');
+        $this->deleteJson('/api/v1/admin/ai/providers/'.$archived)->assertNoContent();
+
+        // The DB unique index covers tombstones. Both entry points must
+        // reject these names before SQL raises an unhandled conflict.
+        $this->postJson('/api/v1/admin/ai/providers', $this->input())
+            ->assertUnprocessable()->assertJsonValidationErrors('display_name');
+
+        $different = $this->postJson('/api/v1/admin/ai/providers', array_merge(
+            $this->input(), ['display_name' => 'Other Managed Provider']
+        ))->assertCreated()->json('data.id');
+
+        $this->patchJson('/api/v1/admin/ai/providers/'.$different, [
+            'display_name' => 'OpenAI Managed',
+        ])->assertUnprocessable()->assertJsonValidationErrors('display_name');
+
+        $this->assertSame('Other Managed Provider', AiProvider::findOrFail($different)->display_name);
+        $this->assertTrue(AiProvider::withTrashed()->findOrFail($archived)->trashed());
+    }
 }
