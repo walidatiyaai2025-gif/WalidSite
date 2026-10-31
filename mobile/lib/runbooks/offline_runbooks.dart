@@ -28,12 +28,10 @@ class OfflineRunbookPack {
         now.difference(verified).inDays >= 30;
   }
 
-  // One immutable bundled read per app process, preventing repeated asset I/O
-  // and avoiding build-frame races during rapid locale or route transitions.
-  static Future<OfflineRunbookPack>? _bundledCache;
-
-  static Future<OfflineRunbookPack> loadBundled() =>
-      _bundledCache ??= _readBundledAsset();
+  // rootBundle already caches small asset strings. Never hold a static Future
+  // across navigator trees or widget-test FakeAsync zones: its async
+  // completion can strand a later FutureBuilder on a permanent spinner.
+  static Future<OfflineRunbookPack> loadBundled() => _readBundledAsset();
 
   static Future<OfflineRunbookPack> _readBundledAsset() async {
     // rootBundle never calls the network; available in airplane mode and after restart.
