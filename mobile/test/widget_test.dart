@@ -71,6 +71,9 @@ void main() {
     await tester.tap(find.byTooltip('Switch to Arabic'));
     await tester.pumpAndSettle();
     await tester.scrollUntilVisible(find.text('هندسة قواعد البيانات'), 140);
+    // A lazily built element may still be partially below the test viewport.
+    await tester.ensureVisible(find.text('هندسة قواعد البيانات'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('هندسة قواعد البيانات'));
     await tester.pumpAndSettle();
 
