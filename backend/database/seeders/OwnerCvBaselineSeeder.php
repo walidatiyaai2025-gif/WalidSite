@@ -52,16 +52,25 @@ class OwnerCvBaselineSeeder extends Seeder
                 $start = sprintf('%04d-01-01', (int) $experience['period']['start']);
                 $end = isset($experience['period']['end'])
                     ? sprintf('%04d-12-31', (int) $experience['period']['end']) : null;
-                $position = CareerPosition::firstOrCreate(
-                    ['profile_id' => $profile->id, 'org_name' => $experience['organization'], 'started_on' => $start],
-                    [
+                // Eloquent date casts can store a midnight timestamp even for a DATE
+                // column (notably SQLite). Query with whereDate so reruns remain idempotent.
+                $position = CareerPosition::query()
+                    ->where('profile_id', $profile->id)
+                    ->where('org_name', $experience['organization'])
+                    ->whereDate('started_on', $start)
+                    ->first();
+                if (! $position) {
+                    $position = CareerPosition::create([
+                        'profile_id' => $profile->id,
+                        'org_name' => $experience['organization'],
+                        'started_on' => $start,
                         'role_en' => implode(' / ', $experience['roles']),
                         'role_ar' => implode(' / ', $experience['roles']),
                         'ended_on' => $end,
                         'publishable' => false,
                         'verified' => false,
-                    ]
-                );
+                    ]);
+                }
                 if ($position->wasRecentlyCreated) {
                     DB::table('career_positions')->where('id', $position->id)->update([
                         'date_precision' => 'year',
