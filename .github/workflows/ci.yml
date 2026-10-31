@@ -19,6 +19,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Validate immutable v6 reference pack
         run: python3 qa/validate_pack.py
+      - name: Validate active CI workflow policy
+        run: python3 qa/validate_ci_policy.py
       - name: Validate canonical owner CV source
         run: python3 qa/validate_owner_cv.py
       - name: Reject merge markers and known sensitive files
