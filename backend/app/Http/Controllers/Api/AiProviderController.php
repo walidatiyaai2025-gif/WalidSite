@@ -165,6 +165,20 @@ class AiProviderController extends Controller
     public function test(Request $request, AiProvider $provider): JsonResponse
     {
         $this->authorizeAdmin($request);
+        // Health checks may perform network I/O. Never hold a database lock
+        // during the request, and never record results for settings that have
+        // since been rotated, disabled, or deleted by another administrator.
+        $configurationFields = [
+            'provider_type', 'base_url', 'secret_ciphertext', 'enabled',
+            'concurrent_limit', 'timeout_seconds', 'daily_budget_minor',
+            'currency', 'routing_priority',
+        ];
+        $snapshot = [];
+        foreach ($configurationFields as $field) {
+            // The ciphertext is compared, never logged or returned to clients.
+            $snapshot[$field] = $provider->getRawOriginal($field);
+        }
+
         // Explicit action only. No connectivity during create/update/page load.
         $adapter = $provider->provider_type === 'ollama-compatible'
             ? new OllamaAdapter() : new OpenAiCompatibleAdapter();
@@ -173,10 +187,29 @@ class AiProviderController extends Controller
             $provider->secret_ciphertext,
             $provider->timeout_seconds
         );
-        DB::transaction(function () use ($provider, $request, $healthy): void {
-            $provider->update(['health_status' => $healthy ? 'healthy' : 'unhealthy', 'last_checked_at' => now()]);
-            $this->audit($provider, $request, 'tested', []);
+
+        $updated = DB::transaction(function () use ($provider, $request, $healthy, $snapshot): ?AiProvider {
+            $current = AiProvider::query()->whereKey($provider->id)->lockForUpdate()->first();
+            if ($current === null) {
+                return null; // Revoked while the external request was in flight.
+            }
+            foreach ($snapshot as $field => $original) {
+                if ($current->getRawOriginal($field) !== $original) {
+                    return null; // Changed credentials, limits, endpoint or enabled state.
+                }
+            }
+            $current->update(['health_status' => $healthy ? 'healthy' : 'unhealthy', 'last_checked_at' => now()]);
+            $this->audit($current, $request, 'tested', []);
+
+            return $current;
         });
-        return response()->json(['data' => $provider->fresh()->toPublicArray()]);
+
+        if ($updated === null) {
+            return response()->json([
+                'message' => 'Provider settings changed during health check. Retry to test the current configuration.',
+            ], 409);
+        }
+
+        return response()->json(['data' => $updated->fresh()->toPublicArray()]);
     }
 }
