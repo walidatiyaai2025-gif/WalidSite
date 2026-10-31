@@ -30,7 +30,7 @@
 <p>{{ $locale === 'ar' ? 'مراجعة رقم' : 'Reviewed revision' }} {{ $article->published_revision_no }} —
 {{ $locale === 'ar' ? 'موثق بالمصادر فقط، دون ضمان تجربة تنفيذية.' : 'Documented sources, not independently execution-tested.' }}</p>
 <section class="ed-card" aria-labelledby="content-heading"><h2 id="content-heading">{{ $locale === 'ar' ? 'المحتوى' : 'Technical content' }}</h2>
-<div class="article-content" id="article-content">{!! \\Illuminate\\Support\\Str::markdown($revision->body_md, ['html_input' => 'escape', 'allow_unsafe_links' => false]) !!}</div></section>
+<div class="article-content" id="article-content">{!! \Illuminate\Support\Str::markdown($revision->body_md, ['html_input' => 'escape', 'allow_unsafe_links' => false]) !!}</div></section>
 <section class="ed-card" aria-labelledby="source-heading"><h2 id="source-heading">{{ $locale === 'ar' ? 'المصادر العامة' : 'Public sources' }}</h2>
 @if($sources->isEmpty())
 <p role="status">{{ $locale === 'ar' ? 'لا توجد روابط مصادر خارجية عامة آمنة للعرض.' : 'No externally safe public citation links to show.' }}</p>
