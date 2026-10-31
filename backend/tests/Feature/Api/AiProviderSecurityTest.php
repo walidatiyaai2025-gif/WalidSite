@@ -111,15 +111,17 @@ class AiProviderSecurityTest extends TestCase
             ->assertUnauthorized();
 
         Auth::forgetGuards();
-        $this->withToken($this->tokenFor('reader'))
-            ->deleteJson('/api/v1/admin/ai/providers/00000000-0000-4000-8000-000000000000')
-            ->assertForbidden();
-
-        Auth::forgetGuards();
         $this->withToken($this->tokenFor('owner'));
         $created = $this->postJson('/api/v1/admin/ai/providers', $this->input())->assertCreated();
         $id = $created->json('data.id');
 
+        Auth::forgetGuards();
+        $this->withToken($this->tokenFor('reader'))
+            ->deleteJson('/api/v1/admin/ai/providers/'.$id)
+            ->assertForbidden();
+
+        Auth::forgetGuards();
+        $this->withToken($this->tokenFor('owner'));
         $this->deleteJson('/api/v1/admin/ai/providers/'.$id)->assertNoContent();
         $this->getJson('/api/v1/admin/ai/providers')->assertOk()->assertJsonCount(0, 'data');
         $this->getJson('/api/v1/admin/ai/providers/'.$id)->assertNotFound();
