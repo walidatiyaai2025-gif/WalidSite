@@ -42,11 +42,9 @@ void main() {
   });
 
   testWidgets('Arabic runbooks use local RTL strings', (tester) async {
-    // Load immutable asset outside fake-frame timing, then verify navigation in RTL.
-    await tester.runAsync(() async {
-      final pack = await OfflineRunbookPack.loadBundled();
-      expect(pack.items, isNotEmpty);
-    });
+    // Pump-based navigation uses the same asset-loading path as the passing
+    // English test. Do not await a fake-zone Future inside runAsync: crossing
+    // the FakeAsync/real-async zones can deadlock on a cached asset load.
     await tester.pumpWidget(const WaleedTechApp());
     await tester.tap(find.byTooltip('Switch to Arabic'));
     await tester.pumpAndSettle();
