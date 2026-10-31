@@ -42,13 +42,30 @@ void main() {
   });
 
   testWidgets('Arabic runbooks use local RTL strings', (tester) async {
-    // Pump-based navigation uses the same asset-loading path as the passing
-    // English test. Do not await a fake-zone Future inside runAsync: crossing
-    // the FakeAsync/real-async zones can deadlock on a cached asset load.
-    await tester.pumpWidget(const WaleedTechApp());
-    await tester.tap(find.byTooltip('Switch to Arabic'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('offline-runbooks-entry')));
+    // The English end-to-end test exercises the real bundled asset. For
+    // locale-specific widget coverage, inject a deterministic immutable
+    // snapshot so no AssetBundle I/O can stall a FakeAsync widget frame.
+    const item = OfflineRunbook(
+      id: 'safe-change-checklist',
+      titleEn: 'Change safety checklist',
+      titleAr: 'قائمة الأمان قبل التغيير',
+      stepsEn: ['Record the current state'],
+      stepsAr: ['سجّل الحالة الحالية'],
+    );
+    final pack = OfflineRunbookPack(
+      version: '0.1.0',
+      source: 'Bundled educational draft',
+      lastSynced: null,
+      verifiedAt: null,
+      items: const [item],
+    );
+
+    await tester.pumpWidget(MaterialApp(
+      home: Directionality(
+        textDirection: TextDirection.rtl,
+        child: OfflineRunbookLibrary(arabic: true, bundledPack: Future.value(pack)),
+      ),
+    ));
     await tester.pumpAndSettle();
 
     expect(find.text('مكتبة الأدلة المحلية'), findsOneWidget);
