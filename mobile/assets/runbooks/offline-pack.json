@@ -1,0 +1,39 @@
+{
+  "schema": "walidsite.offline-runbook-pack.v1",
+  "version": "0.1.0",
+  "source": "Bundled educational draft (not source-verified)",
+  "last_synced_at": null,
+  "verified_at": null,
+  "items": [
+    {
+      "id": "safe-change-checklist",
+      "title_en": "Change safety checklist",
+      "title_ar": "قائمة الأمان قبل التغيير",
+      "steps_en": [
+        "Record the current state without copying credentials or personal data.",
+        "Obtain appropriate authorization and confirm a tested rollback path.",
+        "Apply changes in a controlled test environment before production."
+      ],
+      "steps_ar": [
+        "سجّل الحالة الحالية دون نسخ كلمات المرور أو البيانات الشخصية.",
+        "احصل على الموافقات اللازمة وتأكد من وجود خطة رجوع مجرّبة.",
+        "اختبر التغييرات في بيئة معزولة قبل الإنتاج."
+      ]
+    },
+    {
+      "id": "incident-notes",
+      "title_en": "Incident notes checklist",
+      "title_ar": "قائمة توثيق الأعطال",
+      "steps_en": [
+        "Record the symptom, affected service, and approximate occurrence time.",
+        "Avoid exposing private infrastructure identifiers in public reports.",
+        "Document observed recovery and verification; escalate when evidence is incomplete."
+      ],
+      "steps_ar": [
+        "دوّن العَرَض والخدمة المتأثرة والوقت التقريبي لحدوثه.",
+        "تجنب تضمين معرّفات البنية الداخلية في تقارير عامة.",
+        "وثّق الاستعادة والتحقق منها وصعّد المشكلة عندما تكون الأدلة غير مكتملة."
+      ]
+    }
+  ]
+}

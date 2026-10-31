@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'theme/waleed_theme.dart';
+import 'runbooks/offline_runbooks.dart';
 
 void main() => runApp(const WaleedTechApp());
 
@@ -91,6 +92,22 @@ class CompanionHome extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
           children: [
             _IntroPanel(arabic: arabic),
+            const SizedBox(height: 16),
+            Card(
+              child: ListTile(
+                key: const Key('offline-runbooks-entry'),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                leading: const Icon(Icons.menu_book_outlined, size: 30),
+                title: Text(arabic ? 'الأدلة المتاحة دون إنترنت' : 'Offline runbooks'),
+                subtitle: Text(arabic
+                    ? 'اقرأ النسخة المرفقة مع التطبيق وتحقق من صلاحيتها'
+                    : 'Read bundled guidance and check its verification status'),
+                trailing: Icon(arabic ? Icons.chevron_left : Icons.chevron_right),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(builder: (_) => OfflineRunbookLibrary(arabic: arabic)),
+                ),
+              ),
+            ),
             const SizedBox(height: 28),
             Text(
               arabic ? 'استكشف المجالات التقنية' : 'Explore engineering topics',
