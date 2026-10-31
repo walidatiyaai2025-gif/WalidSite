@@ -30,3 +30,22 @@ The mobile shell uses canonical v6 light design colors and Flutter SDK localizat
 The Home → Offline runbooks → Runbook detail flow works from an application asset without an HTTP request, including after a cold restart or in airplane mode. A version, original bundle source, last sync and prominent stale/unverified warning are displayed on library and detail views. The bundled content is short, original educational draft guidance only: **never treat it as a verified operational runbook**.
 
 This is the first offline-cache fallback, NOT the completed remote sync/download feature: the runbook API, signed update integrity check, persisted downloaded snapshots, storage quotas, and verified content publishing belong to later integration. A missing/invalid bundle displays a real error state; there is no fabricated live server data. CI runs `flutter analyze` and `flutter test`.
+
+
+## T019 verified article reading (increment)
+
+The bilingual Home → Verified technical articles → Article detail route reads actual
+source-verified public article JSON from the implemented Laravel endpoint
+`/api/v1/public/articles?lang=en|ar`. Configure the HTTPS **origin only** at
+build time with `--dart-define=WALIDSITE_API_ORIGIN=https://your-real-host.example`;
+no production hostname, credentials, or sample articles are compiled into the app.
+Without an approved endpoint, the UI says the service is not configured. Network,
+response/size, evidence-validation and empty states fail closed. Article bodies are
+shown as **plain selectable Markdown source**, never interpreted as arbitrary HTML.
+Sources are displayed for examination, not claimed to prove a hands-on execution.
+
+This is **not** completed T019: there is no authenticated mobile AI diagnosis or
+solution endpoint yet, no secured mobile article sync, bookmark persistence,
+offline article cache, actual device build or staging verification. The offline
+runbooks in T013 are independent educational fallback data, **not** substitute
+verified online article content. Do not claim AI diagnosis or publish results.
