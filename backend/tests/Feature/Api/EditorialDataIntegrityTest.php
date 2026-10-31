@@ -104,4 +104,53 @@ class EditorialDataIntegrityTest extends TestCase
         $this->assertDatabaseCount('article_revisions', 0);
         $this->assertDatabaseCount('article_categories', 0);
     }
+
+    public function test_unsafe_source_urls_never_authorize_publication_even_when_claimed_verified(): void
+    {
+        $unsafe = [
+            'http://docs.example.org/evidence',
+            'https://localhost/internal',
+            'https://db.internal/runbook',
+            'https://127.0.0.1/private',
+            'https://10.0.0.4/private',
+            'https://user:pass@docs.example.org/source',
+            'https://docs.example.org:8443/source',
+            'https://docs.example.org/source?api_key=private',
+            'https://service.local/resource',
+        ];
+
+        foreach ($unsafe as $index => $url) {
+            $article = Article::create([
+                'slug' => 'rejected-source-'.$index,
+                'title_en' => 'Unreviewed evidence',
+                'title_ar' => 'مصدر غير موثق',
+                'canonical_lang' => 'en',
+            ]);
+            $revision = $article->revisions()->create([
+                'revision_no' => 1,
+                'body_md' => 'Evidence is required.',
+                'citations_json' => [['source_url' => $url, 'verified' => true]],
+                'validation_json' => ['citations_passed' => true, 'technical_passed' => true],
+                'status' => 'validated',
+            ]);
+            $this->assertFalse($revision->hasVerifiedEvidence(), 'Unsafe source accepted: '.$url);
+            $this->assertFalse($article->isReadyToPublish());
+            $this->getJson('/api/v1/public/articles/'.$article->slug)->assertNotFound();
+        }
+    }
+
+    public function test_revoked_source_safety_hides_previously_published_snapshot(): void
+    {
+        $article = $this->article();
+        $revision = $this->revision($article);
+        $article->publishVerified();
+        $this->getJson('/api/v1/public/articles/'.$article->slug)->assertOk();
+
+        $revision->update(['citations_json' => [
+            ['source_url' => 'https://localhost/secret', 'verified' => true],
+        ]]);
+
+        $this->assertNull($article->fresh()->publicRevision());
+        $this->getJson('/api/v1/public/articles/'.$article->slug)->assertNotFound();
+    }
 }
