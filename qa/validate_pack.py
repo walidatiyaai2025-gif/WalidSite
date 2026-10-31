@@ -25,6 +25,13 @@ for lang in ['ar','en']:
  tr=json.loads((root/'locales'/f'{lang}.json').read_text(encoding='utf-8'))
  if set(tr['screenTitles'])!={x['id'] for x in s}:errors.append('SCREEN LOCALE '+lang)
  if set(tr['actions'])!={a for x in s for a in x['actions']}:errors.append('ACTION LOCALE '+lang)
-if len(list((root/'github/workflows').glob('*.yml')))!=2:errors.append('WORKFLOW COUNT')
+# Keep the two source-pack templates and validate the actual Actions directory separately.
+if len(list((root/'github/workflows').glob('*.yml')))!=2:errors.append('WORKFLOW TEMPLATE COUNT')
+active_dir=root/'.github'/'workflows'
+active_workflows=sorted(p.name for p in active_dir.iterdir() if p.is_file() and p.suffix in {'.yml','.yaml'}) if active_dir.is_dir() else []
+if active_workflows!=['ci.yml','release.yml']:errors.append('ACTIVE WORKFLOW POLICY '+repr(active_workflows))
+ci_workflow=active_dir/'ci.yml'
+if not ci_workflow.is_file() or ci_workflow.read_text(encoding='utf-8').count('required-ci-gate:')!=1:errors.append('CI STABLE GATE')
+if not ci_workflow.is_file() or 'pull_request:' not in ci_workflow.read_text(encoding='utf-8'):errors.append('CI MISSING PR TRIGGER')
 if errors:print('FAILED',errors);sys.exit(1)
 print('PASS',len(m['integrityItems']),'files',len(s),'screens',len(tasks),'tasks')
