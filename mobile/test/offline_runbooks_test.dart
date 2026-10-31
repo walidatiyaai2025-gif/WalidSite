@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:waleed_tech_companion/main.dart';
@@ -63,7 +64,7 @@ void main() {
     await tester.pumpWidget(MaterialApp(
       home: Directionality(
         textDirection: TextDirection.rtl,
-        child: OfflineRunbookLibrary(arabic: true, bundledPack: Future.value(pack)),
+        child: OfflineRunbookLibrary(arabic: true, bundledPack: SynchronousFuture<OfflineRunbookPack>(pack)),
       ),
     ));
     await tester.pumpAndSettle();
