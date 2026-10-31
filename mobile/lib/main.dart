@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'theme/waleed_theme.dart';
 import 'runbooks/offline_runbooks.dart';
+import 'articles/verified_articles.dart';
 
 void main() => runApp(const WaleedTechApp());
 
@@ -105,6 +106,24 @@ class CompanionHome extends StatelessWidget {
                 trailing: Icon(arabic ? Icons.chevron_left : Icons.chevron_right),
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute<void>(builder: (_) => OfflineRunbookLibrary(arabic: arabic)),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Card(
+              child: ListTile(
+                key: const Key('verified-articles-entry'),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                leading: const Icon(Icons.article_outlined, size: 30),
+                title: Text(arabic ? 'المقالات التقنية الموثقة' : 'Verified technical articles'),
+                subtitle: Text(arabic
+                    ? 'اقرأ المقالات المنشورة فقط، دون ادعاء نتائج AI'
+                    : 'Read approved publications; no invented AI output'),
+                trailing: Icon(arabic ? Icons.chevron_left : Icons.chevron_right),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => VerifiedArticleLibrary(arabic: arabic),
+                  ),
                 ),
               ),
             ),
