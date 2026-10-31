@@ -31,6 +31,10 @@ for command in (
     "npm run build",
     "flutter analyze",
     "flutter test",
+    "image: mariadb:10.11",
+    "pdo_mysql",
+    "php artisan migrate:fresh --force",
+    "OwnerCvBaselineSeeder",
 ):
     if command not in ci:
         errors.append(f"ci.yml is missing required quality command: {command}")
