@@ -15,3 +15,11 @@ flutter run
 The bootstrap has functional in-app navigation to informational topic screens, with deliberately honest forthcoming content. Task T005 owns the complete Flutter scaffold/platform runners and agreed design system, T013/T019/T021 own product flows. Do not add placeholder statistics, mock API results or fake live AI.
 
 Use only the approved source image and `design/tokens.json` for future branding; the current W mark is a text glyph until vector assets are imported from canonical `assets/brand/`.
+
+## T005 bilingual theme increment
+
+The mobile shell uses canonical v6 light design colors and Flutter SDK localization delegates to switch between English/LTR and Arabic/RTL without a service call. Topic cards navigate to real localized details pages; future content is clearly marked unavailable. No owner portrait is generated.
+
+`flutter pub get`, `flutter analyze`, and `flutter test` are enforced in PR CI.
+
+**Platform runner limitation:** Android/iOS runner directories are not yet checked into this repo. A developer with a current Flutter SDK can generate and review those files from `mobile/` using `flutter create --platforms=android,ios .` before a signed/device build. Do not mark T005 fully complete, release an APK/IPA, or close its Issue on widget tests alone. The canonical owner will only test after a verified app build is available.
