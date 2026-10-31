@@ -23,7 +23,14 @@ class OfflineRunbookPack {
   bool get isStale => verifiedAt == null ||
       DateTime.now().difference(verifiedAt!).inDays >= 30;
 
-  static Future<OfflineRunbookPack> loadBundled() async {
+  // One immutable bundled read per app process, preventing repeated asset I/O
+  // and avoiding build-frame races during rapid locale or route transitions.
+  static Future<OfflineRunbookPack>? _bundledCache;
+
+  static Future<OfflineRunbookPack> loadBundled() =>
+      _bundledCache ??= _readBundledAsset();
+
+  static Future<OfflineRunbookPack> _readBundledAsset() async {
     // rootBundle never calls the network; available in airplane mode and after restart.
     final text = await rootBundle.loadString('assets/runbooks/offline-pack.json');
     return parse(text);

@@ -30,6 +30,11 @@ void main() {
   });
 
   testWidgets('Arabic runbooks use local RTL strings', (tester) async {
+    // Load immutable asset outside fake-frame timing, then verify navigation in RTL.
+    await tester.runAsync(() async {
+      final pack = await OfflineRunbookPack.loadBundled();
+      expect(pack.items, isNotEmpty);
+    });
     await tester.pumpWidget(const WaleedTechApp());
     await tester.tap(find.byTooltip('Switch to Arabic'));
     await tester.pumpAndSettle();
