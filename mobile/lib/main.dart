@@ -22,7 +22,11 @@ class _WaleedTechAppState extends State<WaleedTechApp> {
       debugShowCheckedModeBanner: false,
       locale: Locale(_arabic ? 'ar' : 'en'),
       supportedLocales: const [Locale('en'), Locale('ar')],
-      localizationsDelegates: GlobalMaterialLocalizations.delegates,
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
       theme: WaleedTheme.light(arabic: _arabic),
       home: CompanionHome(
         arabic: _arabic,
