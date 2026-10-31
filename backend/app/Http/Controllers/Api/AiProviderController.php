@@ -135,6 +135,31 @@ class AiProviderController extends Controller
         return response()->json(['data' => $provider->fresh()->toPublicArray()]);
     }
 
+    public function destroy(Request $request, AiProvider $provider): JsonResponse
+    {
+        $this->authorizeAdmin($request);
+
+        DB::transaction(function () use ($provider, $request): void {
+            // Revoke provider access and erase credentials before retaining an
+            // audit-preserving tombstone. Never persist the submitted secret.
+            $provider->forceFill([
+                'enabled' => false,
+                'secret_ciphertext' => null,
+                'health_status' => 'unverified',
+                'last_checked_at' => null,
+            ])->save();
+
+            $this->audit($provider, $request, 'deleted', [
+                'enabled' => false,
+                'secret_removed' => true,
+            ]);
+
+            $provider->delete();
+        });
+
+        return response()->json(null, 204);
+    }
+
     public function test(Request $request, AiProvider $provider): JsonResponse
     {
         $this->authorizeAdmin($request);
