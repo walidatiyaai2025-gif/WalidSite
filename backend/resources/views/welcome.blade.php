@@ -64,6 +64,11 @@
                 <span>{{ $locale === 'ar' ? 'تطوير البرمجيات' : 'Software engineering' }}</span>
                 <span>{{ $locale === 'ar' ? 'الذكاء الاصطناعي' : 'Artificial intelligence' }}</span>
             </div>
+            <div class="discipline-tags" aria-label="{{ $locale === 'ar' ? 'روابط الملف المهني' : 'Professional profile links' }}">
+                <a class="wa-link" href="{{ route('public.about', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'نبذة عني' : 'About me' }}</a>
+                <a class="wa-link" href="{{ route('public.expertise', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'الخبرات الموثقة' : 'Verified expertise' }}</a>
+                <a class="wa-link" href="{{ route('public.hire', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'التوظيف' : 'Recruiter mode' }}</a>
+            </div>
             <div class="build-status" role="status">
                 {{ $locale === 'ar' ? 'المنصة قيد التطوير والتحقق' : 'Platform foundation in development' }}
             </div>

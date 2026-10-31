@@ -39,16 +39,34 @@
             color: var(--wa-primary); font-weight: 800; letter-spacing: -.02em; }
         .brand-mark { display: inline-grid; place-items: center; width: 42px; height: 42px;
             border-radius: 12px; background: var(--wa-primary); color: white; font-size: 23px; }
-        .header-links { display: flex; gap: 16px; align-items: center; }
+        .header-links { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
         .language-link { display: inline-flex; min-height: 44px; align-items: center;
             padding: 8px 16px; border: 1px solid var(--wa-soft-border);
             background: var(--wa-base); border-radius: 999px; text-decoration: none;
             font-weight: 700; color: var(--wa-primary); }
         .site-main { min-height: calc(100vh - 154px); }
+        .wa-page { padding-block: clamp(36px, 6vw, 70px); }
+        .wa-page h1 { color: var(--wa-primary); font-size: clamp(32px, 5vw, 52px); line-height: 1.2; }
+        .wa-page h2 { color: var(--wa-primary); font-size: clamp(21px, 3vw, 28px); }
+        .wa-page-lead { max-width: 75ch; color: var(--wa-body); }
+        .wa-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 290px), 1fr)); gap: 16px; margin-block: 24px 34px; }
+        .wa-card { padding: 24px; background: #fff; border: 1px solid var(--wa-soft-border); border-radius: 18px; }
+        .wa-card h2, .wa-card h3 { margin: 0 0 12px; }
+        .wa-card p { color: var(--wa-body); }
+        .wa-meta { color: var(--wa-muted-text); font-size: 14px; }
+        .wa-notice { border: 1px solid var(--wa-soft-border); background: #fff; padding: 22px; border-radius: 14px; margin: 22px 0; color: var(--wa-body); }
+        .wa-link { display: inline-flex; min-height: 44px; align-items: center; font-weight: 700; color: var(--wa-cta); }
+        .wa-form { display: flex; flex-wrap: wrap; align-items: end; gap: 14px; padding: 20px; background: #fff; border: 1px solid var(--wa-soft-border); border-radius: 14px; }
+        .wa-form label { display: block; font-weight: 700; margin-bottom: 6px; }
+        .wa-form select { min-height: 44px; min-width: 230px; padding: 9px 14px; background: #fff; border: 1px solid var(--wa-soft-border); border-radius: 9px; font: inherit; }
+        .wa-form button { min-height: 44px; background: var(--wa-cta); color: #fff; padding: 10px 18px; border: none; border-radius: 9px; font: inherit; cursor: pointer; }
+        .wa-form :is(select,button):focus-visible { outline: 3px solid var(--wa-accent); outline-offset: 2px; }
         .site-footer { border-top: 1px solid var(--wa-soft-border); color: var(--wa-muted-text);
             background: var(--wa-base); padding-block: 20px; font-size: 14px; }
         .footer-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 24px; }
         @media (max-width: 600px) {
+            .header-row { flex-wrap: wrap; padding-block: 12px; }
+            .header-links { width: 100%; }
             .site-wrap { width: min(100% - 28px, 1260px); }
             .header-row { min-height: 70px; }
             .brand { font-size: 15px; }
@@ -71,9 +89,19 @@
                 <a class="language-link" href="{{ route('public.github', ['lang' => $locale]) }}">
                     {{ $locale === 'ar' ? 'مشاريع GitHub' : 'GitHub projects' }}
                 </a>
-                <a class="language-link" href="{{ (request()->routeIs('public.github')
-                       ? route('public.github', ['lang' => $locale === 'ar' ? 'en' : 'ar'])
-                       : route('home', ['lang' => $locale === 'ar' ? 'en' : 'ar'])) }}"
+                @foreach ([
+                    'public.about' => ($locale === 'ar' ? 'نبذة عني' : 'About'),
+                    'public.expertise' => ($locale === 'ar' ? 'الخبرات' : 'Expertise'),
+                    'public.hire' => ($locale === 'ar' ? 'التوظيف' : 'Recruiter'),
+                ] as $navRoute => $navLabel)
+                    <a class="language-link" href="{{ route($navRoute, ['lang' => $locale]) }}"
+                       @if (request()->routeIs($navRoute)) aria-current="page" @endif>{{ $navLabel }}</a>
+                @endforeach
+                <a class="language-link" href="{{ route(
+                        in_array(request()->route()?->getName(), ['public.about', 'public.expertise', 'public.hire', 'public.github'], true)
+                            ? request()->route()->getName() : 'home',
+                        ['lang' => $locale === 'ar' ? 'en' : 'ar']
+                    ) }}"
                    lang="{{ $locale === 'ar' ? 'en' : 'ar' }}"
                    hreflang="{{ $locale === 'ar' ? 'en' : 'ar' }}">
                     {{ $locale === 'ar' ? 'English' : 'العربية' }}

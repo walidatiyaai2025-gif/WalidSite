@@ -43,3 +43,74 @@ Route::get('/github', function (Request $request, \App\Integrations\GitHub\Publi
 
     return view('github.index', compact('repositories', 'filtered', 'languages', 'search', 'language'));
 })->name('public.github');
+
+
+/*
+ * T007 public profile endpoints. Only an active owner account with a published
+ * profile may expose professional proof, and each child item has its own gate.
+ * The seed is deliberately "review" and never bypasses these gates.
+ */
+Route::get('/about', function () {
+    $profile = \App\Models\Profile::published()
+        ->whereHas('user', fn ($q) => $q->where('status', 'active')
+            ->whereHas('roles', fn ($roles) => $roles->where('name', 'owner')))
+        ->first();
+
+    return view('public.about', [
+        'profile' => $profile,
+        'positions' => $profile
+            ? \App\Models\CareerPosition::publiclyVerified()
+                ->where('profile_id', $profile->id)->orderByDesc('started_on')->get()
+            : collect(),
+        'certifications' => $profile
+            ? \App\Models\Certification::publiclyVerified()
+                ->where('profile_id', $profile->id)->orderBy('title')->get()
+            : collect(),
+    ]);
+})->name('public.about');
+
+Route::get('/expertise', function (Request $request) {
+    $profile = \App\Models\Profile::published()
+        ->whereHas('user', fn ($q) => $q->where('status', 'active')
+            ->whereHas('roles', fn ($roles) => $roles->where('name', 'owner')))
+        ->first();
+    $skills = $profile
+        ? \Illuminate\Support\Facades\DB::table('skills')
+            ->join('profile_skill', 'skills.id', '=', 'profile_skill.skill_id')
+            ->where('profile_skill.profile_id', $profile->id)
+            ->where('skills.evidence_status', 'verified')
+            ->orderBy('skills.category')->orderBy('skills.name_en')
+            ->get(['skills.name_en', 'skills.name_ar', 'skills.category'])
+        : collect();
+    $categories = $skills->pluck('category')->unique()->values()->all();
+    $category = mb_substr(trim((string) $request->query('category', '')), 0, 80);
+    $filtered = $category === '' ? $skills : $skills->where('category', $category);
+
+    return view('public.expertise', compact('profile', 'skills', 'categories', 'category', 'filtered'));
+})->name('public.expertise');
+
+Route::get('/hire', function (Request $request) {
+    $tracks = [
+        'database' => 'Database & Reliability',
+        'software' => 'Software & Integration',
+        'delivery' => 'Project Delivery',
+    ];
+    $track = (string) $request->query('track', 'database');
+    if (! array_key_exists($track, $tracks)) {
+        $track = 'database';
+    }
+    $profile = \App\Models\Profile::published()
+        ->whereHas('user', fn ($q) => $q->where('status', 'active')
+            ->whereHas('roles', fn ($roles) => $roles->where('name', 'owner')))
+        ->first();
+    $proof = $profile
+        ? \Illuminate\Support\Facades\DB::table('skills')
+            ->join('profile_skill', 'skills.id', '=', 'profile_skill.skill_id')
+            ->where('profile_skill.profile_id', $profile->id)
+            ->where('skills.evidence_status', 'verified')
+            ->where('skills.category', $tracks[$track])
+            ->orderBy('skills.name_en')->get(['skills.name_en', 'skills.name_ar'])
+        : collect();
+
+    return view('public.hire', compact('profile', 'proof', 'track', 'tracks'));
+})->name('public.hire');
