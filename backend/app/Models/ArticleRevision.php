@@ -47,12 +47,49 @@ class ArticleRevision extends Model
             if (! is_array($citation)
                 || ($citation['verified'] ?? false) !== true
                 || ! is_string($citation['source_url'] ?? null)
-                || ! filter_var($citation['source_url'], FILTER_VALIDATE_URL)
-                || strtolower(parse_url($citation['source_url'], PHP_URL_SCHEME) ?: '') !== 'https') {
+                || ! self::isSafePublicSourceUrl($citation['source_url'])) {
                 return false;
             }
         }
 
         return true;
+    }
+    /**
+     * "verified" is a review state, never permission to link to internal
+     * infrastructure or leak signed/private evidence URLs in public output.
+     * This check does not fetch a URL or assert that an external source exists.
+     */
+    private static function isSafePublicSourceUrl(string $url): bool
+    {
+        if (strlen($url) > 2048 || filter_var($url, FILTER_VALIDATE_URL) === false) {
+            return false;
+        }
+
+        $parts = parse_url($url);
+        if (! is_array($parts) || strtolower((string) ($parts['scheme'] ?? '')) !== 'https'
+            || ! is_string($parts['host'] ?? null)
+            || isset($parts['user']) || isset($parts['pass'])
+            || (isset($parts['port']) && $parts['port'] !== 443)) {
+            return false;
+        }
+
+        $host = strtolower(rtrim($parts['host'], '.'));
+        if (! str_contains($host, '.')
+            || filter_var($host, FILTER_VALIDATE_IP) !== false
+            || filter_var($host, FILTER_VALIDATE_DOMAIN, FILTER_FLAG_HOSTNAME) === false) {
+            return false;
+        }
+
+        foreach (['localhost', '.localhost', '.local', '.internal', '.test', '.invalid', '.onion'] as $suffix) {
+            if ($host === $suffix || str_ends_with($host, $suffix)) {
+                return false;
+            }
+        }
+
+        $query = urldecode((string) ($parts['query'] ?? ''));
+        return preg_match(
+            '/(?:^|&)(?:access[_-]?token|api[_-]?key|auth(?:orization)?|password|secret|signature|session)=/i',
+            $query
+        ) !== 1;
     }
 }
