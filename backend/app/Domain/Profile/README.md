@@ -1,0 +1,9 @@
+# Owner CV first run — T003 follow-up to PR #36
+
+The canonical v6 owner CV lives at `contracts/owner-cv-baseline.json` (two owner-supplied CVs). The Laravel `composer setup` script now runs `OwnerCvBaselineSeeder` immediately after migrations, with no manual biography/skills/certification form required. The same idempotent seed can be re-run using `php artisan db:seed --class=OwnerCvBaselineSeeder --force`.
+
+This follow-up extends **existing** T003 tables (PR #36), never recreates them. It stores four source employment periods, 25 source competencies, five self-reported certificates, and one gated professional claim. It intentionally does not import secret account records, ancient SQL dumps, employer infrastructure details or restricted case studies. Initial owner identity has **no password, token or role** and is pending activation. A real owner login is provisioned separately in controlled operations. No invented issuer or certificate validation. The original owner portrait remains under `assets/portraits/` until an asset ID is registered.
+
+Year-only career periods normalize to January 1 / December 31 solely for database indexing and are tagged `date_precision=year`; never render false exact dates. Names of technical skills/roles are source wording in both fields until translation review. The seeded profile is `review`, experiences are not publishable/verified, certifications unverified and claim private. Later public readers must filter with the T003 verified/published scopes, not expose raw tables. `firstOrCreate` never overwrites later owner edits.
+
+Rollback first migrates down the extension and then PR #36's base schema. When reverting nullable `issuer` to the original NOT NULL field, unknown values become empty strings (explicitly unknown, not fictional issuer names). Use `php artisan test --filter=OwnerCvBaselineTest` and full CI.
