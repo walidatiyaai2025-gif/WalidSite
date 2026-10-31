@@ -16,6 +16,9 @@ return [
 
     'default' => env('MAIL_MAILER', 'log'),
 
+    // Contact is opt-in only; production recipient stays in server-side environment.
+    'contact_recipient' => env('MAIL_CONTACT_RECIPIENT'),
+
     /*
     |--------------------------------------------------------------------------
     | Mailer Configurations

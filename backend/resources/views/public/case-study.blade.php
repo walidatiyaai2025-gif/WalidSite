@@ -1,0 +1,35 @@
+@php($locale = request()->query('lang') === 'ar' ? 'ar' : 'en')
+@extends('layouts.site')
+@section('title', $project['name'].' — Waleed Atiya')
+@push('styles')
+<style>
+.study {padding-block:48px;max-width:940px}
+.study h1{font-size:clamp(32px,5vw,50px);color:var(--wa-primary)}
+.study section{background:#fff;padding:26px;border:1px solid var(--wa-soft-border);border-radius:18px;margin-block:20px}
+.study a{color:var(--wa-cta);overflow-wrap:anywhere;min-height:44px}
+.study p{color:var(--wa-body)}
+</style>
+@endpush
+@section('content')
+<article class="site-wrap study">
+<a href="{{ route('public.projects', ['lang'=>$locale]) }}">{{ $locale === 'ar' ? 'كل المشاريع' : 'All projects' }}</a>
+<h1>{{ $project['name'] }}</h1>
+<p>{{ $project['summary'] }}</p>
+<section aria-labelledby="case-facts">
+<h2 id="case-facts">{{ $locale === 'ar' ? 'تفاصيل تم التحقق منها' : 'Verified facts' }}</h2>
+<p>{{ $locale === 'ar' ? 'الحالة' : 'Status' }}: {{ $project['status'] }}</p>
+@if(!empty($project['role']))
+<p>{{ $locale === 'ar' ? 'الدور' : 'Role' }}: {{ $project['role'] }}</p>
+@endif
+<p>{{ $locale === 'ar' ? 'التفاصيل السرية والنتائج غير المثبتة غير منشورة.' : 'Confidential details and unverified results are not published.' }}</p>
+</section>
+<section aria-labelledby="case-evidence">
+<h2 id="case-evidence">{{ $locale === 'ar' ? 'أدلة منشورة' : 'Published evidence' }}</h2>
+<ul>
+@foreach($project['evidence_urls'] as $url)
+<li><a href="{{ $url }}" target="_blank" rel="noopener noreferrer">{{ $url }}</a></li>
+@endforeach
+</ul>
+</section>
+</article>
+@endsection
