@@ -6,6 +6,7 @@ use App\Models\AiProvider;
 use App\Models\Role;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
@@ -48,9 +49,11 @@ class AiProviderSecurityTest extends TestCase
             ['reader', 'admin', 'active'],
             ['owner', 'admin', 'inactive'],
         ] as [$role, $ability, $status]) {
+            Auth::forgetGuards();
             $this->withToken($this->tokenFor($role, $ability, $status))
                 ->getJson('/api/v1/admin/ai/providers')->assertForbidden();
         }
+        Auth::forgetGuards();
         $this->withToken($this->tokenFor('admin'))->getJson('/api/v1/admin/ai/providers')->assertOk();
     }
 
@@ -87,6 +90,10 @@ class AiProviderSecurityTest extends TestCase
             $this->postJson('/api/v1/admin/ai/providers', array_merge($this->input(), ['base_url' => $url]))
                 ->assertUnprocessable()->assertJsonValidationErrors('base_url');
         }
+        // A new admin token keeps negative-validation rate-limit counters separate
+        // from the explicit health probe without disabling production throttling.
+        Auth::forgetGuards();
+        $this->withToken($this->tokenFor('owner'));
         Http::fake(['https://api.openai.com/v1/models' => Http::response(['data' => []], 200)]);
         $created = $this->postJson('/api/v1/admin/ai/providers', $this->input())->assertCreated();
         $id = $created->json('data.id');
