@@ -66,7 +66,8 @@ final class ResearchSourceIntake
             || filter_var($host, FILTER_VALIDATE_DOMAIN, FILTER_FLAG_HOSTNAME) === false
             || ! str_contains($host, '.')
             || $this->isLocalHost($host)
-            || preg_match('/(?:^|&)(?:access[_-]?token|api[_-]?key|auth(?:orization)?|password|secret|signature|session)=/i', $query) === 1) {
+            || $this->containsCredentialParameter($query)
+            || $this->containsCredentialParameter((string) ($parts['fragment'] ?? ''))) {
             throw new InvalidArgumentException('Research sources must use a safe public HTTPS URL.');
         }
 
@@ -79,6 +80,34 @@ final class ResearchSourceIntake
         }
 
         return $url;
+    }
+
+    /**
+     * Citation URLs are public, shareable evidence, never signed download links
+     * or credential containers. Check encoded keys, fragments and nested URLs
+     * without making any network request or logging their values.
+     */
+    private function containsCredentialParameter(string $value): bool
+    {
+        // Repeated encoding is common in redirect URLs. Bound decoding work and
+        // inspect each layer so a secret key cannot bypass the public URL gate.
+        for ($depth = 0; $depth < 3; $depth++) {
+            if (preg_match(
+                '/(?:^|[?&;])(?:access[_-]?token|refresh[_-]?token|id[_-]?token|token|api[_-]?key|auth(?:orization)?|password|passwd|secret|client[_-]?secret|private[_-]?key|signature|sig|session(?:id)?|jwt|bearer|awsaccesskeyid|x-amz-(?:credential|signature|security-token)|x-goog-(?:credential|signature))=/i',
+                $value,
+            ) === 1) {
+                return true;
+            }
+
+            $decoded = rawurldecode($value);
+            if ($decoded === $value) {
+                break;
+            }
+
+            $value = $decoded;
+        }
+
+        return false;
     }
 
     private function isLocalHost(string $host): bool
