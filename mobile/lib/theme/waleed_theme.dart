@@ -13,7 +13,7 @@ abstract final class WaleedPalette {
 }
 
 abstract final class WaleedTheme {
-  static ThemeData light({required bool arabic}) {
+  static ThemeData light() {
     final scheme = ColorScheme.fromSeed(
       seedColor: WaleedPalette.cta,
       brightness: Brightness.light,
@@ -29,7 +29,6 @@ abstract final class WaleedTheme {
       brightness: Brightness.light,
       colorScheme: scheme,
       scaffoldBackgroundColor: WaleedPalette.canvas,
-      fontFamily: arabic ? 'Arial' : 'Arial',
       appBarTheme: const AppBarTheme(
         backgroundColor: WaleedPalette.canvas,
         foregroundColor: WaleedPalette.ink,
