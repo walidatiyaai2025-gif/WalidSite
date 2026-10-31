@@ -94,7 +94,8 @@ class PublicPortfolioController extends Controller
             && strtolower($parts['scheme'] ?? '') === 'https'
             && is_string($parts['host'] ?? null)
             && $parts['host'] !== ''
-            && ! isset($parts['user'], $parts['pass'])
+            && ! isset($parts['user'])
+            && ! isset($parts['pass'])
             && ! isset($parts['query'])
             && ! isset($parts['fragment'])
             // Repository visibility is checked only by T017, not by this evidence flag.
