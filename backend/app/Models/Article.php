@@ -20,7 +20,7 @@ class Article extends Model
 
     protected function casts(): array
     {
-        return ['published_at' => 'datetime'];
+        return ['published_at' => 'datetime', 'published_revision_no' => 'integer'];
     }
 
     public function revisions(): HasMany
@@ -56,12 +56,46 @@ class Article extends Model
         if (! $this->isReadyToPublish()) {
             throw new DomainException('Article evidence, editorial validation, or media rights are incomplete.');
         }
-        $this->forceFill(['status' => 'published', 'published_at' => now()])->save();
+        // Freeze the exact validated revision at publication time. A newer draft
+        // must never silently replace the already reviewed public content.
+        $revision = $this->revisions()->orderByDesc('revision_no')->firstOrFail();
+        $this->forceFill([
+            'status' => 'published',
+            'published_at' => now(),
+            'published_revision_no' => $revision->revision_no,
+        ])->save();
+    }
+
+    public function publicRevision(): ?ArticleRevision
+    {
+        if ($this->status !== 'published'
+            || $this->published_at === null
+            || $this->published_at->isFuture()
+            || $this->published_revision_no === null
+            || ($this->hero_asset_id !== null && ! $this->heroAsset()->first()?->isPubliclyUsable())) {
+            return null;
+        }
+
+        $revision = $this->revisions()->where('revision_no', $this->published_revision_no)->first();
+
+        // Revalidate the persisted snapshot on every public read: rights,
+        // citations or an editor's validation may have been revoked.
+        return $revision?->hasVerifiedEvidence() === true ? $revision : null;
     }
 
     public function scopePubliclyVisible($query)
     {
-        return $query->where('status', 'published')->whereNotNull('published_at')
-            ->whereHas('revisions', fn ($q) => $q->where('status', 'validated'));
+        return $query->where('articles.status', 'published')
+            ->whereNotNull('articles.published_revision_no')
+            ->whereNotNull('articles.published_at')
+            ->where('articles.published_at', '<=', now())
+            ->whereHas('revisions', fn ($q) => $q->where('status', 'validated')
+                ->whereColumn('revision_no', 'articles.published_revision_no'))
+            ->where(function ($q) {
+                $q->whereNull('articles.hero_asset_id')
+                    ->orWhereHas('heroAsset', fn ($asset) => $asset
+                        ->where('publishable', true)
+                        ->where('rights_status', 'cleared'));
+            });
     }
 }
