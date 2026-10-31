@@ -16,7 +16,13 @@ Route::middleware('auth:web')->group(function (): void {
 
     Route::get('/admin', function (Request $request) {
         abort_unless($request->user()?->canAccessAdmin(), 403);
-        return redirect()->route('admin.providers.index');
+        $stats = [
+            'configured' => \App\Models\AiProvider::query()->count(),
+            'enabled' => \App\Models\AiProvider::query()->where('enabled', true)->count(),
+            'healthy' => \App\Models\AiProvider::query()->where('health_status', 'healthy')->count(),
+            'unverified' => \App\Models\AiProvider::query()->where('health_status', 'unverified')->count(),
+        ];
+        return view('admin.dashboard', compact('stats'));
     })->name('admin.home');
 
     Route::get('/admin/ai/providers', function (Request $request) {
