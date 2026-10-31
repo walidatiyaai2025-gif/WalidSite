@@ -1,6 +1,7 @@
 name: PR CI
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, closed]
   push:
     branches: [main]
   workflow_dispatch:
@@ -11,12 +12,15 @@ concurrency:
   cancel-in-progress: true
 jobs:
   required-ci-gate:
+    if: github.event.action != 'closed'
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
       - name: Validate immutable v6 reference pack
         run: python3 qa/validate_pack.py
+      - name: Validate canonical owner CV source
+        run: python3 qa/validate_owner_cv.py
       - name: Reject merge markers and known sensitive files
         shell: bash
         run: |
@@ -66,3 +70,35 @@ jobs:
           flutter pub get
           flutter analyze
           flutter test
+
+  cleanup-merged-branch:
+    # Runs only after an actual merge and only for a branch in this repository.
+    # No checkout or execution of PR-provided code; never deletes a reused branch.
+    if: github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == true && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Safely remove merged short-lived branch
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SOURCE_BRANCH: ${{ github.event.pull_request.head.ref }}
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          case "$SOURCE_BRANCH" in
+            feat/*|fix/*|chore/*) ;;
+            *) echo "Preserving non-task branch: $SOURCE_BRANCH"; exit 0 ;;
+          esac
+          if [ "$SOURCE_BRANCH" = main ]; then exit 0; fi
+          current="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/${SOURCE_BRANCH}" --jq '.object.sha' 2>/dev/null)" || {
+            echo "Already deleted (or cannot read branch); no destructive action"
+            exit 0
+          }
+          if [ "$current" != "$EXPECTED_SHA" ]; then
+            echo "Branch has advanced since merge; preserve and investigate"
+            exit 0
+          fi
+          gh api -X DELETE "repos/${GITHUB_REPOSITORY}/git/refs/heads/${SOURCE_BRANCH}"
+          echo "Deleted merged short-lived branch $SOURCE_BRANCH"
