@@ -104,4 +104,40 @@ class AiProviderSecurityTest extends TestCase
         $this->patchJson('/api/v1/admin/ai/providers/'.$id, ['enabled' => false])
             ->assertOk()->assertJsonPath('data.health_status', 'unverified');
     }
+
+    public function test_delete_requires_admin_and_erases_secret_while_preserving_audit(): void
+    {
+        $this->deleteJson('/api/v1/admin/ai/providers/00000000-0000-4000-8000-000000000000')
+            ->assertUnauthorized();
+
+        Auth::forgetGuards();
+        $this->withToken($this->tokenFor('owner'));
+        $created = $this->postJson('/api/v1/admin/ai/providers', $this->input())->assertCreated();
+        $id = $created->json('data.id');
+
+        Auth::forgetGuards();
+        $this->withToken($this->tokenFor('reader'))
+            ->deleteJson('/api/v1/admin/ai/providers/'.$id)
+            ->assertForbidden();
+
+        Auth::forgetGuards();
+        $this->withToken($this->tokenFor('owner'));
+        $this->deleteJson('/api/v1/admin/ai/providers/'.$id)->assertNoContent();
+        $this->getJson('/api/v1/admin/ai/providers')->assertOk()->assertJsonCount(0, 'data');
+        $this->getJson('/api/v1/admin/ai/providers/'.$id)->assertNotFound();
+
+        $deleted = AiProvider::withTrashed()->findOrFail($id);
+        $this->assertTrue($deleted->trashed());
+        $this->assertFalse($deleted->enabled);
+        $this->assertNull($deleted->secret_ciphertext);
+
+        $audit = DB::table('ai_provider_audit_events')
+            ->where('provider_id', $id)
+            ->where('action', 'deleted')
+            ->first();
+        $this->assertNotNull($audit);
+        $this->assertSame(['enabled', 'secret_removed'], json_decode($audit->changed_fields_json, true));
+        $this->assertStringNotContainsString('private-test-credential-123', $audit->changed_fields_json);
+        Http::assertNothingSent();
+    }
 }
