@@ -52,6 +52,8 @@
             .site-wrap { width: min(100% - 28px, 1260px); }
             .header-row { min-height: 70px; }
             .brand { font-size: 15px; }
+            .header-links { gap: 8px; }
+            .language-link { padding: 6px 10px; font-size: 13px; }
         }
         @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
     </style>
@@ -66,7 +68,12 @@
                 <span>{{ $locale === 'ar' ? 'وليد عطية' : 'Waleed Atiya' }}</span>
             </a>
             <nav class="header-links" aria-label="{{ $locale === 'ar' ? 'التنقل واللغة' : 'Navigation and language' }}">
-                <a class="language-link" href="{{ route('home', ['lang' => $locale === 'ar' ? 'en' : 'ar']) }}"
+                <a class="language-link" href="{{ route('public.github', ['lang' => $locale]) }}">
+                    {{ $locale === 'ar' ? 'مشاريع GitHub' : 'GitHub projects' }}
+                </a>
+                <a class="language-link" href="{{ (request()->routeIs('public.github')
+                       ? route('public.github', ['lang' => $locale === 'ar' ? 'en' : 'ar'])
+                       : route('home', ['lang' => $locale === 'ar' ? 'en' : 'ar'])) }}"
                    lang="{{ $locale === 'ar' ? 'en' : 'ar' }}"
                    hreflang="{{ $locale === 'ar' ? 'en' : 'ar' }}">
                     {{ $locale === 'ar' ? 'English' : 'العربية' }}
