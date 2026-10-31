@@ -71,12 +71,18 @@
                 <a class="language-link" href="{{ route('public.about', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'نبذة' : 'About' }}</a>
                 <a class="language-link" href="{{ route('public.expertise', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'الخبرات' : 'Expertise' }}</a>
                 <a class="language-link" href="{{ route('public.hire', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'التوظيف' : 'Recruiter' }}</a>
+                <a class="language-link" href="{{ route('public.projects', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'المشاريع' : 'Projects' }}</a>
+                <a class="language-link" href="{{ route('public.resume', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'السيرة العامة' : 'Resume' }}</a>
+                <a class="language-link" href="{{ route('public.contact', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'التواصل' : 'Contact' }}</a>
                 <a class="language-link" href="{{ route('public.github', ['lang' => $locale]) }}">
                     {{ $locale === 'ar' ? 'مشاريع GitHub' : 'GitHub projects' }}
                 </a>
-                <a class="language-link" href="{{ route(request()->routeIs('public.github', 'public.about', 'public.expertise', 'public.hire')
-                        ? request()->route()->getName() : 'home',
-                        ['lang' => $locale === 'ar' ? 'en' : 'ar']) }}"
+                @php($languageRoute = request()->routeIs('public.github', 'public.about', 'public.expertise', 'public.hire', 'public.projects', 'public.project', 'public.resume', 'public.contact') ? request()->route()->getName() : 'home')
+                @php($languageArgs = ['lang' => $locale === 'ar' ? 'en' : 'ar'])
+                @if(request()->routeIs('public.project'))
+                    @php($languageArgs['slug'] = request()->route('slug'))
+                @endif
+                <a class="language-link" href="{{ route($languageRoute, $languageArgs) }}"
                    lang="{{ $locale === 'ar' ? 'en' : 'ar' }}"
                    hreflang="{{ $locale === 'ar' ? 'en' : 'ar' }}">
                     {{ $locale === 'ar' ? 'English' : 'العربية' }}
