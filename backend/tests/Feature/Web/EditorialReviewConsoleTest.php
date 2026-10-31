@@ -92,7 +92,7 @@ class EditorialReviewConsoleTest extends TestCase
             ->assertSee('Publishing blocked')
             ->assertDontSee('Approve and publish verified revision');
         $this->get('/admin/content?article=not-a-uuid')
-            ->assertSessionHasNoErrors()->assertStatus(302);
+            ->assertRedirect()->assertSessionHasErrors('article');
     }
 
     public function test_only_a_validated_revision_can_publish_and_unpublish_revokes_public_access(): void
