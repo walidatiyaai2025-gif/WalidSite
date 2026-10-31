@@ -67,6 +67,11 @@
             <div class="build-status" role="status">
                 {{ $locale === 'ar' ? 'المنصة قيد التطوير والتحقق' : 'Platform foundation in development' }}
             </div>
+            <p style="margin-top: 22px; display:flex; flex-wrap:wrap; gap:18px">
+                <a href="{{ route('public.about', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'نبذة وخبرات موثقة' : 'About and experience' }}</a>
+                <a href="{{ route('public.expertise', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'الخبرات التقنية' : 'Technical expertise' }}</a>
+                <a href="{{ route('public.hire', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'لجهات التوظيف' : 'Recruiter overview' }}</a>
+            </p>
             <p style="margin-top: 18px"><a href="{{ route('public.github', ['lang' => $locale]) }}">
                 {{ $locale === 'ar' ? 'استعراض المشاريع العامة الموثقة على GitHub' : 'Browse verified public GitHub projects' }}
             </a></p>
