@@ -121,15 +121,20 @@ class OfflineRunbook {
 }
 
 class OfflineRunbookLibrary extends StatefulWidget {
-  const OfflineRunbookLibrary({required this.arabic, super.key});
+  const OfflineRunbookLibrary({required this.arabic, this.bundledPack, super.key});
   final bool arabic;
+
+  // Tests can supply deterministic offline content without depending on an
+  // AssetBundle read during a Flutter FakeAsync widget frame.
+  final Future<OfflineRunbookPack>? bundledPack;
 
   @override
   State<OfflineRunbookLibrary> createState() => _OfflineRunbookLibraryState();
 }
 
 class _OfflineRunbookLibraryState extends State<OfflineRunbookLibrary> {
-  late final Future<OfflineRunbookPack> _pack = OfflineRunbookPack.loadBundled();
+  late final Future<OfflineRunbookPack> _pack =
+      widget.bundledPack ?? OfflineRunbookPack.loadBundled();
   String _query = '';
 
   @override
