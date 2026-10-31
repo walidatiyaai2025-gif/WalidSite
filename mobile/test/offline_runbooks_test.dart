@@ -52,7 +52,7 @@ void main() {
       stepsEn: ['Record the current state'],
       stepsAr: ['سجّل الحالة الحالية'],
     );
-    final pack = OfflineRunbookPack(
+    const pack = OfflineRunbookPack(
       version: '0.1.0',
       source: 'Bundled educational draft',
       lastSynced: null,
