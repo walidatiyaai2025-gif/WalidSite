@@ -22,7 +22,6 @@ final class DurableAiQueue
         if (! preg_match('/^[A-Za-z0-9_.:\-]{1,160}$/D', $key) ||
             ! preg_match('/^[A-Za-z0-9_.:\-]{1,80}$/D', $kind) ||
             $steps === [] || count($steps) > 20 ||
-            count($steps) !== count(array_unique($steps)) ||
             $reserveMinor < 0 || $maxAttempts < 1 || $maxAttempts > 5) {
             throw new InvalidArgumentException('Invalid durable job definition.');
         }
@@ -30,6 +29,9 @@ final class DurableAiQueue
             if (! is_string($step) || ! preg_match('/^[A-Za-z0-9_.:\-]{1,100}$/D', $step)) {
                 throw new InvalidArgumentException('Invalid checkpoint step key.');
             }
+        }
+        if (count($steps) !== count(array_unique($steps))) {
+            throw new InvalidArgumentException('Duplicate checkpoint step.');
         }
 
         $hash = hash('sha256', json_encode([
@@ -86,13 +88,13 @@ final class DurableAiQueue
                     ->lockForUpdate()->first();
                 $job = DB::table('ai_jobs')->where('id', $id)->lockForUpdate()->first();
                 if (! $provider || ! $job || ! in_array($job->status, ['queued', 'retry'], true) ||
-                    ($job->next_attempt_at && $job->next_attempt_at > now()) ||
+                    ($job->next_attempt_at && \Illuminate\Support\Carbon::parse($job->next_attempt_at)->isFuture()) ||
                     ! $provider->enabled || $provider->health_status !== 'healthy') {
                     return null;
                 }
                 $circuit = DB::table('ai_provider_circuits')
                     ->where('provider_id', $provider->id)->first();
-                if ($circuit && $circuit->opened_until && $circuit->opened_until > now()) {
+                if ($circuit && $circuit->opened_until && \Illuminate\Support\Carbon::parse($circuit->opened_until)->isFuture()) {
                     return null;
                 }
 
@@ -161,7 +163,12 @@ final class DurableAiQueue
     {
         $this->validateOutputRef($resultRef);
         DB::transaction(function () use ($jobId, $owner, $resultRef): void {
-            $this->requireLease($jobId, $owner);
+            $job = $this->requireLease($jobId, $owner);
+            $provider = DB::table('ai_providers')->where('id', $job->provider_id)->first();
+            if ($provider && $provider->provider_type === 'openai-compatible' &&
+                ! DB::table('ai_usage')->where('job_id', $jobId)->exists()) {
+                throw new DomainException('Paid work requires a usage receipt before completion.');
+            }
             if (DB::table('ai_job_steps')->where('job_id', $jobId)
                 ->where('status', '!=', 'completed')->exists()) {
                 throw new DomainException('Incomplete checkpoints cannot be published.');
@@ -170,6 +177,10 @@ final class DurableAiQueue
                 'status' => 'completed', 'result_ref' => $resultRef, 'updated_at' => now(),
             ]);
             DB::table('job_leases')->where('job_id', $jobId)->delete();
+            DB::table('ai_provider_circuits')->where('provider_id', $job->provider_id)->update([
+                'consecutive_failures' => 0, 'opened_until' => null,
+                'last_failure_code' => null, 'updated_at' => now(),
+            ]);
         }, 3);
     }
 
@@ -178,7 +189,8 @@ final class DurableAiQueue
         string $jobId, string $owner, string $usageKey, int $costMinor,
         string $currency, ?string $modelKey = null, array $tokens = []
     ): bool {
-        if ($costMinor < 0 || ! preg_match('/^[A-Za-z0-9_.:\-]{1,180}$/D', $usageKey) ||
+        if ($costMinor < 0 || ($modelKey !== null && ! preg_match('/^[A-Za-z0-9_.:\-]{1,160}$/D', $modelKey)) ||
+            ! preg_match('/^[A-Za-z0-9_.:\-]{1,180}$/D', $usageKey) ||
             array_diff(array_keys($tokens), ['input_tokens', 'output_tokens']) ||
             array_filter($tokens, fn ($v) => ! is_int($v) || $v < 0)) {
             throw new InvalidArgumentException('Invalid usage receipt.');
@@ -192,7 +204,9 @@ final class DurableAiQueue
             }
             $old = DB::table('ai_usage')->where('usage_key', $usageKey)->first();
             if ($old) {
-                if ($old->job_id !== $jobId || (int) $old->cost_minor !== $costMinor) {
+                if ($old->job_id !== $jobId || (int) $old->cost_minor !== $costMinor ||
+                    $old->model_key !== $modelKey || $old->cost_currency !== $currency ||
+                    $old->usage_json !== json_encode($tokens, JSON_THROW_ON_ERROR)) {
                     throw new DomainException('Usage receipt conflict.');
                 }
                 return false;
@@ -251,7 +265,7 @@ final class DurableAiQueue
             $changed = DB::transaction(function () use ($id) {
                 $lease = DB::table('job_leases')->where('job_id', $id)
                     ->lockForUpdate()->first();
-                if (! $lease || $lease->expires_at > now()) {
+                if (! $lease || \Illuminate\Support\Carbon::parse($lease->expires_at)->isFuture()) {
                     return false;
                 }
                 $job = DB::table('ai_jobs')->where('id', $id)->lockForUpdate()->first();
@@ -279,7 +293,7 @@ final class DurableAiQueue
         $job = DB::table('ai_jobs')->where('id', $jobId)->lockForUpdate()->first();
         $lease = DB::table('job_leases')->where('job_id', $jobId)->lockForUpdate()->first();
         if (! $job || $job->status !== 'running' || ! $lease ||
-            $lease->owner_key !== $owner || $lease->expires_at <= now()) {
+            $lease->owner_key !== $owner || \Illuminate\Support\Carbon::parse($lease->expires_at)->isPast()) {
             throw new DomainException('An active matching lease is required.');
         }
         return $job;
