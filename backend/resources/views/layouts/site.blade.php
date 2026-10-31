@@ -57,6 +57,7 @@
         }
         @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
     </style>
+    @stack('head')
     @stack('styles')
 </head>
 <body>
@@ -74,6 +75,9 @@
                 <a class="language-link" href="{{ route('public.projects', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'المشاريع' : 'Projects' }}</a>
                 <a class="language-link" href="{{ route('public.resume', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'السيرة العامة' : 'Resume' }}</a>
                 <a class="language-link" href="{{ route('public.contact', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'التواصل' : 'Contact' }}</a>
+                <a class="language-link" href="{{ route('public.blog', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'المقالات' : 'Blog' }}</a>
+                <a class="language-link" href="{{ route('public.lab', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'المختبر' : 'Lab' }}</a>
+                <a class="language-link" href="{{ route('public.search', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'بحث' : 'Search' }}</a>
                 <a class="language-link" href="{{ route('public.github', ['lang' => $locale]) }}">
                     {{ $locale === 'ar' ? 'مشاريع GitHub' : 'GitHub projects' }}
                 </a>
