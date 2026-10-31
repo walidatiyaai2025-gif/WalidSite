@@ -89,6 +89,9 @@ final class DurableAiQueue
                 $job = DB::table('ai_jobs')->where('id', $id)->lockForUpdate()->first();
                 if (! $provider || ! $job || ! in_array($job->status, ['queued', 'retry'], true) ||
                     ($job->next_attempt_at && \Illuminate\Support\Carbon::parse($job->next_attempt_at)->isFuture()) ||
+                    // Raw query builder bypasses AiProvider's SoftDeletes scope.
+                    // Archived providers must never start new AI executions.
+                    $provider->deleted_at !== null ||
                     ! $provider->enabled || $provider->health_status !== 'healthy') {
                     return null;
                 }
