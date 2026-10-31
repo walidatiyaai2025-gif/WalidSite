@@ -155,7 +155,7 @@ Route::get('/resume', function () {
 Route::get('/contact', function () {
     $recipient = config('mail.contact_recipient');
     $available = is_string($recipient) && filter_var($recipient, FILTER_VALIDATE_EMAIL)
-        && ! in_array(config('mail.default'), ['log', 'array'], true);
+        && in_array(config('mail.default'), ['smtp', 'sendmail', 'ses', 'ses-v2', 'postmark', 'resend'], true);
 
     return view('public.contact', compact('available'));
 })->name('public.contact');
@@ -164,7 +164,7 @@ Route::post('/contact', function (Request $request) {
     $recipient = config('mail.contact_recipient');
     abort_unless(
         is_string($recipient) && filter_var($recipient, FILTER_VALIDATE_EMAIL)
-        && ! in_array(config('mail.default'), ['log', 'array'], true),
+        && in_array(config('mail.default'), ['smtp', 'sendmail', 'ses', 'ses-v2', 'postmark', 'resend'], true),
         503,
         'Contact delivery has not been configured.'
     );
