@@ -27,7 +27,7 @@ class _WaleedTechAppState extends State<WaleedTechApp> {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
-      theme: WaleedTheme.light(arabic: _arabic),
+      theme: WaleedTheme.light(),
       home: CompanionHome(
         arabic: _arabic,
         onToggleLanguage: () => setState(() => _arabic = !_arabic),
