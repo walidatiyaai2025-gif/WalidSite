@@ -34,12 +34,12 @@
         .skip-link:focus { top: 12px; }
         .site-wrap { width: min(100% - 40px, 1260px); margin-inline: auto; }
         .site-header { background: rgba(255,255,255,.96); border-bottom: 1px solid var(--wa-soft-border); }
-        .header-row { min-height: 78px; display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+        .header-row { min-height: 78px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px 24px; padding-block: 10px; }
         .brand { display: inline-flex; align-items: center; gap: 12px; text-decoration: none;
             color: var(--wa-primary); font-weight: 800; letter-spacing: -.02em; }
         .brand-mark { display: inline-grid; place-items: center; width: 42px; height: 42px;
             border-radius: 12px; background: var(--wa-primary); color: white; font-size: 23px; }
-        .header-links { display: flex; gap: 16px; align-items: center; }
+        .header-links { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
         .language-link { display: inline-flex; min-height: 44px; align-items: center;
             padding: 8px 16px; border: 1px solid var(--wa-soft-border);
             background: var(--wa-base); border-radius: 999px; text-decoration: none;
@@ -68,12 +68,15 @@
                 <span>{{ $locale === 'ar' ? 'وليد عطية' : 'Waleed Atiya' }}</span>
             </a>
             <nav class="header-links" aria-label="{{ $locale === 'ar' ? 'التنقل واللغة' : 'Navigation and language' }}">
+                <a class="language-link" href="{{ route('public.about', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'نبذة' : 'About' }}</a>
+                <a class="language-link" href="{{ route('public.expertise', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'الخبرات' : 'Expertise' }}</a>
+                <a class="language-link" href="{{ route('public.hire', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'التوظيف' : 'Recruiter' }}</a>
                 <a class="language-link" href="{{ route('public.github', ['lang' => $locale]) }}">
                     {{ $locale === 'ar' ? 'مشاريع GitHub' : 'GitHub projects' }}
                 </a>
-                <a class="language-link" href="{{ (request()->routeIs('public.github')
-                       ? route('public.github', ['lang' => $locale === 'ar' ? 'en' : 'ar'])
-                       : route('home', ['lang' => $locale === 'ar' ? 'en' : 'ar'])) }}"
+                <a class="language-link" href="{{ route(request()->routeIs('public.github', 'public.about', 'public.expertise', 'public.hire')
+                        ? request()->route()->getName() : 'home',
+                        ['lang' => $locale === 'ar' ? 'en' : 'ar']) }}"
                    lang="{{ $locale === 'ar' ? 'en' : 'ar' }}"
                    hreflang="{{ $locale === 'ar' ? 'en' : 'ar' }}">
                     {{ $locale === 'ar' ? 'English' : 'العربية' }}

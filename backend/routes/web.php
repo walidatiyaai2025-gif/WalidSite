@@ -43,3 +43,49 @@ Route::get('/github', function (Request $request, \App\Integrations\GitHub\Publi
 
     return view('github.index', compact('repositories', 'filtered', 'languages', 'search', 'language'));
 })->name('public.github');
+
+foreach (['about', 'expertise', 'hire'] as $professionalPage) {
+    Route::get('/'.$professionalPage, function (Request $request) use ($professionalPage) {
+        $profile = \App\Models\Profile::query()->published()
+            ->whereHas('user', fn ($user) => $user->where('status', 'active')
+                ->whereHas('roles', fn ($roles) => $roles->where('name', 'owner')))
+            ->first();
+        $positions = collect();
+        $certifications = collect();
+        $skills = collect();
+        $track = (string) $request->query('track', 'all');
+        $tracks = [
+            'database' => ['Database & Reliability'],
+            'software' => ['Software & Integration', 'Infrastructure & Security'],
+            'delivery' => ['Project Delivery'],
+        ];
+        if (! isset($tracks[$track])) {
+            $track = 'all';
+        }
+
+        if ($profile) {
+            if ($professionalPage === 'about') {
+                $positions = \App\Models\CareerPosition::query()->publiclyVerified()
+                    ->where('profile_id', $profile->id)->orderByDesc('started_on')->get();
+                $certifications = \App\Models\Certification::query()->publiclyVerified()
+                    ->where('profile_id', $profile->id)->orderBy('title')->get();
+            } else {
+                $skillsQuery = \App\Models\Skill::query()->withVerifiedEvidence()
+                    ->whereIn('id', \Illuminate\Support\Facades\DB::table('profile_skill')
+                        ->where('profile_id', $profile->id)->select('skill_id'));
+                if ($professionalPage === 'hire' && $track !== 'all') {
+                    $skillsQuery->whereIn('category', $tracks[$track]);
+                }
+                $skills = $skillsQuery->orderBy('category')->orderBy('name_en')->get();
+            }
+        }
+
+        return view('public.professional', [
+            'page' => $professionalPage,
+            'positions' => $positions,
+            'certifications' => $certifications,
+            'skills' => $skills,
+            'track' => $track,
+        ]);
+    })->name('public.'.$professionalPage);
+}
