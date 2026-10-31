@@ -24,11 +24,11 @@ Route::middleware('auth:web')->group(function (): void {
         ];
         // T016: read only persisted, server-side job records. Never fabricate
         // provider telemetry or sum cost across unrelated currencies.
-        $jobs = \\Illuminate\\Support\\Facades\\DB::table('ai_jobs')
+        $jobs = \Illuminate\Support\Facades\DB::table('ai_jobs')
             ->select('status')->selectRaw('COUNT(*) AS job_count')
             ->groupBy('status')->orderBy('status')->get();
         $utcStart = now('UTC')->startOfDay();
-        $usage = \\Illuminate\\Support\\Facades\\DB::table('ai_usage')
+        $usage = \Illuminate\Support\Facades\DB::table('ai_usage')
             ->where('created_at', '>=', $utcStart)
             ->where('created_at', '<', $utcStart->copy()->addDay())
             ->select('cost_currency')
