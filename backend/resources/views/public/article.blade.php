@@ -15,7 +15,11 @@
 .ed-form{display:flex;flex-wrap:wrap;align-items:end;gap:12px}.ed-form label{display:block;font-weight:700}
 .ed-form input,.ed-form select{font:inherit;padding:10px;border:1px solid #97B4C8;border-radius:10px;min-height:44px;min-width:190px}
 .ed-form button{min-height:44px;background:var(--wa-cta);color:#fff;border:0;border-radius:10px;padding:10px 18px;font:inherit;font-weight:700}
-.article-content{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.9;color:var(--wa-body)}
+.article-content{overflow-wrap:anywhere;line-height:1.9;color:var(--wa-body)}
+.article-content :is(h2,h3,h4){line-height:1.4;color:var(--wa-primary);margin-top:30px}
+.article-content pre{background:#132C47;color:#fff;border-radius:10px;padding:20px;overflow-x:auto;white-space:pre;direction:ltr;text-align:left}
+.article-content :not(pre)>code{background:var(--wa-muted-surface);padding:2px 5px;border-radius:4px;overflow-wrap:anywhere}
+.article-content :is(a,blockquote){overflow-wrap:anywhere}
 </style>
 @endpush
 @section('content')
@@ -26,7 +30,7 @@
 <p>{{ $locale === 'ar' ? 'مراجعة رقم' : 'Reviewed revision' }} {{ $article->published_revision_no }} —
 {{ $locale === 'ar' ? 'موثق بالمصادر فقط، دون ضمان تجربة تنفيذية.' : 'Documented sources, not independently execution-tested.' }}</p>
 <section class="ed-card" aria-labelledby="content-heading"><h2 id="content-heading">{{ $locale === 'ar' ? 'المحتوى' : 'Technical content' }}</h2>
-<div class="article-content">{{ $revision->body_md }}</div></section>
+<div class="article-content" id="article-content">{!! \\Illuminate\\Support\\Str::markdown($revision->body_md, ['html_input' => 'escape', 'allow_unsafe_links' => false]) !!}</div></section>
 <section class="ed-card" aria-labelledby="source-heading"><h2 id="source-heading">{{ $locale === 'ar' ? 'المصادر العامة' : 'Public sources' }}</h2>
 @if($sources->isEmpty())
 <p role="status">{{ $locale === 'ar' ? 'لا توجد روابط مصادر خارجية عامة آمنة للعرض.' : 'No externally safe public citation links to show.' }}</p>
