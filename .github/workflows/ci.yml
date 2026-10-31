@@ -15,10 +15,27 @@ jobs:
     if: github.event.action != 'closed'
     runs-on: ubuntu-latest
     timeout-minutes: 35
+    services:
+      mariadb:
+        image: mariadb:10.11
+        env:
+          MARIADB_ROOT_PASSWORD: walidsite-root
+          MARIADB_DATABASE: walidsite_test
+          MARIADB_USER: walidsite
+          MARIADB_PASSWORD: walidsite-password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
     steps:
       - uses: actions/checkout@v4
       - name: Validate immutable v6 reference pack
         run: python3 qa/validate_pack.py
+      - name: Validate active CI workflow policy
+        run: python3 qa/validate_ci_policy.py
       - name: Validate canonical owner CV source
         run: python3 qa/validate_owner_cv.py
       - name: Reject merge markers and known sensitive files
@@ -36,7 +53,7 @@ jobs:
         if: ${{ hashFiles('backend/composer.json') != '' }}
         with:
           php-version: '8.3'
-          extensions: mbstring, xml, pdo_sqlite
+          extensions: mbstring, xml, pdo_sqlite, pdo_mysql
       - name: Laravel tests (mandatory once scaffold exists)
         if: ${{ hashFiles('backend/composer.json') != '' }}
         shell: bash
@@ -45,6 +62,46 @@ jobs:
           composer validate --strict
           composer install --no-interaction --prefer-dist --no-progress
           php artisan test
+      - name: MariaDB migration and owner CV idempotency smoke
+        if: ${{ hashFiles('backend/composer.json') != '' }}
+        shell: bash
+        env:
+          APP_ENV: testing
+          APP_KEY: base64:MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE=
+          DB_CONNECTION: mysql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_DATABASE: walidsite_test
+          DB_USERNAME: walidsite
+          DB_PASSWORD: walidsite-password
+        run: |
+          cd backend
+          php artisan migrate:fresh --force
+          php artisan db:seed --class=OwnerCvBaselineSeeder --force
+          php artisan db:seed --class=OwnerCvBaselineSeeder --force
+          php -r '
+          require "vendor/autoload.php";
+          $app = require "bootstrap/app.php";
+          $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+          $expected = ["users" => 1, "profiles" => 1, "career_positions" => 4, "certifications" => 5, "skills" => 25, "profile_skill" => 25, "professional_claims" => 1];
+          foreach ($expected as $table => $count) {
+              $actual = Illuminate\Support\Facades\DB::table($table)->count();
+              if ($actual !== $count) {
+                  fwrite(STDERR, "$table expected $count rows, got $actual\n");
+                  exit(1);
+              }
+          }
+          $db = Illuminate\Support\Facades\DB::class;
+          if ($db::table("users")->whereNotNull("password_hash")->exists()
+              || $db::table("role_user")->count() !== 0
+              || $db::table("career_positions")->where("publishable", true)->orWhere("verified", true)->exists()
+              || $db::table("certifications")->where("verified", true)->exists()
+              || $db::table("professional_claims")->where("is_public", true)->exists()) {
+              fwrite(STDERR, "Owner baseline leaked credentials, roles, or unreviewed public claims\n");
+              exit(1);
+          }
+          echo "PASS: MariaDB migration and repeated owner CV seed are idempotent and fail-closed\n";
+          '
       - uses: actions/setup-node@v4
         if: ${{ hashFiles('backend/package.json') != '' }}
         with:
