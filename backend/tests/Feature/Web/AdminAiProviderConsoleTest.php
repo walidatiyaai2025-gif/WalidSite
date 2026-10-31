@@ -56,7 +56,7 @@ class AdminAiProviderConsoleTest extends TestCase
     public function test_owner_can_open_bilingual_console_with_real_csrf_forms(): void
     {
         $this->actingAs($this->account(), 'web');
-        $this->get('/admin')->assertRedirect('/admin/ai/providers');
+        $this->get('/admin')->assertOk()->assertSee('Administration overview');
         $this->get('/admin/ai/providers')->assertOk()
             ->assertSee('AI providers')
             ->assertSee('name="_token"', false)
