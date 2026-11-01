@@ -145,8 +145,13 @@ class DurableAiQueueTest extends TestCase
         $provider = $this->provider('openai-compatible', 100);
         $id = $queue->enqueue($provider, 'draft', 'budget:1', ['write'], 50);
         $queue->claimNext('worker-a');
+        // Simulate an administrator lowering the daily cap after admission.
+        // The attempted usage fits the job reservation but exceeds the
+        // newly enforced provider cap, so this tests the daily gate alone.
+        DB::table('ai_providers')->where('id', $provider->id)
+            ->update(['daily_budget_minor' => 40]);
         try {
-            $queue->recordUsage($id, 'worker-a', 'too:expensive', 101, 'USD');
+            $queue->recordUsage($id, 'worker-a', 'too:expensive', 41, 'USD');
             $this->fail('Excess usage was accepted.');
         } catch (DomainException $e) {
             $this->assertSame('Daily provider spending cap reached.', $e->getMessage());
