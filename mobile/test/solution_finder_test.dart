@@ -28,11 +28,16 @@ void main() {
   );
 
   test('offline finder matches source steps in both languages without inference', () {
-    expect(OfflineSolutionSearch.find(pack, ' LATENCY '), [runbook]);
-    expect(OfflineSolutionSearch.find(pack, 'استعادة'), [runbook]);
-    expect(OfflineSolutionSearch.find(pack, 'backup'), [another]);
-    expect(OfflineSolutionSearch.find(pack, 'anything unlisted'), isEmpty);
-    expect(OfflineSolutionSearch.find(pack, ' '), isEmpty);
+    expect(OfflineSolutionSearch.find(pack, ' LATENCY ', arabic: false), [runbook]);
+    expect(OfflineSolutionSearch.find(pack, 'استعادة', arabic: true), [runbook]);
+    expect(OfflineSolutionSearch.find(pack, 'backup', arabic: false), [another]);
+    expect(OfflineSolutionSearch.find(pack, 'anything unlisted', arabic: false), isEmpty);
+    expect(OfflineSolutionSearch.find(pack, ' ', arabic: false), isEmpty);
+
+    // The search must not reveal content that the active locale does not show.
+    expect(OfflineSolutionSearch.find(pack, 'latency', arabic: true), isEmpty);
+    expect(OfflineSolutionSearch.find(pack, 'استعادة', arabic: false), isEmpty);
+    expect(OfflineSolutionSearch.find(pack, 'راجع', arabic: true), [runbook]);
   });
 
   testWidgets('finder opens real local steps and exposes stale pack provenance',
@@ -93,5 +98,21 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('solution-search-empty')), findsOneWidget);
     expect(find.byKey(const Key('solution-network-restore')), findsNothing);
+
+    await tester.enterText(
+      find.byKey(const Key('solution-search-input')),
+      'latency',
+    );
+    await tester.pumpAndSettle();
+    // English-only hidden steps cannot produce Arabic result cards.
+    expect(find.byKey(const Key('solution-search-empty')), findsOneWidget);
+
+    await tester.enterText(
+      find.byKey(const Key('solution-search-input')),
+      'تأخير',
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('solution-network-restore')), findsOneWidget);
+    expect(find.byKey(const Key('solution-search-empty')), findsNothing);
   });
 }
