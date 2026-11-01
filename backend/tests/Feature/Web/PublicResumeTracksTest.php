@@ -26,7 +26,9 @@ class PublicResumeTracksTest extends TestCase
         foreach ([
             ['database-evidence', 'Database Evidence Skill', 'Database & Reliability', 'verified'],
             ['software-evidence', 'Software Evidence Skill', 'Software & Integration', 'verified'],
+            ['infrastructure-evidence', 'Infrastructure Evidence Skill', 'Infrastructure & Security', 'verified'],
             ['delivery-evidence', 'Delivery Evidence Skill', 'Project Delivery', 'verified'],
+            ['custom-evidence', 'Specialized Evidence Skill', 'Specialized Domain', 'verified'],
             ['private-evidence', 'Private Evidence Skill', 'Database & Reliability', 'unverified'],
         ] as [$slug, $name, $category, $status]) {
             $skill = Skill::create([
@@ -51,6 +53,7 @@ class PublicResumeTracksTest extends TestCase
 
         $this->get('/resume?track=software')->assertOk()
             ->assertSee('Software Evidence Skill')
+            ->assertSee('Infrastructure Evidence Skill')
             ->assertDontSee('Database Evidence Skill');
         $this->get('/resume?track=delivery')->assertOk()
             ->assertSee('Delivery Evidence Skill')
@@ -62,6 +65,43 @@ class PublicResumeTracksTest extends TestCase
         $this->get('/resume?track[]=database')->assertOk()
             ->assertSee('Database Evidence Skill')
             ->assertSee('Delivery Evidence Skill');
+
+        // The same four persisted categories have translated *display*
+        // labels in Arabic, while English and unknown verified categories
+        // remain honest and the underlying track filter is unchanged.
+        $arabic = $this->get('/resume?lang=ar&track=all')->assertOk()
+            ->assertSee('dir="rtl"', false)
+            ->assertSee('قواعد البيانات والموثوقية')
+            ->assertSee('البرمجيات والتكامل')
+            ->assertSee('البنية التحتية والأمن')
+            ->assertSee('إدارة وتسليم المشاريع')
+            ->assertSee('Specialized Domain')
+            ->assertDontSee('Private Evidence Skill')
+            ->assertDontSee('Other Profile Evidence');
+        foreach (['Database & Reliability', 'Software & Integration',
+                  'Infrastructure & Security', 'Project Delivery'] as $category) {
+            $arabic->assertDontSee('<p>'.e($category).'</p>', false);
+        }
+
+        $english = $this->get('/resume?lang=en&track=all')->assertOk()
+            ->assertSee('dir="ltr"', false)
+            ->assertSee('Specialized Domain');
+        foreach (['Database & Reliability', 'Software & Integration',
+                  'Infrastructure & Security', 'Project Delivery'] as $category) {
+            $english->assertSee('<p>'.e($category).'</p>', false);
+        }
+
+        $this->get('/resume?lang=ar&track=software')->assertOk()
+            ->assertSee('Software Evidence Skill')
+            ->assertSee('Infrastructure Evidence Skill')
+            ->assertSee('البرمجيات والتكامل')
+            ->assertSee('البنية التحتية والأمن')
+            ->assertDontSee('Database Evidence Skill')
+            ->assertDontSee('Delivery Evidence Skill')
+            ->assertDontSee('Specialized Evidence Skill');
+        $this->get('/resume?lang=ar&track=database')->assertOk()
+            ->assertSee('قواعد البيانات والموثوقية')
+            ->assertDontSee('Software Evidence Skill');
     }
 
     public function test_language_switch_retains_selected_track_without_losing_rtl(): void
