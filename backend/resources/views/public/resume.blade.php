@@ -1,6 +1,11 @@
 @php($locale = request()->query('lang') === 'ar' ? 'ar' : 'en')
 @extends('layouts.site')
 @section('title', $locale === 'ar' ? 'السيرة العامة — وليد عطية' : 'Public resume — Waleed Atiya')
+@push('head')
+<link rel="canonical" href="{{ route('public.resume', ['lang' => $locale]) }}">
+<link rel="alternate" hreflang="ar" href="{{ route('public.resume', ['lang' => 'ar']) }}">
+<link rel="alternate" hreflang="en" href="{{ route('public.resume', ['lang' => 'en']) }}">
+@endpush
 @push('styles')
 <style>
 .resume{max-width:980px;padding-block:45px}.resume h1,.resume h2{color:var(--wa-primary)}

@@ -57,6 +57,7 @@
         }
         @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
     </style>
+    <link rel="sitemap" type="application/xml" href="{{ route('public.sitemap') }}">
     @stack('head')
     @stack('styles')
 </head>

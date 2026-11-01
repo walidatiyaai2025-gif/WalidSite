@@ -2,9 +2,7 @@
 @extends('layouts.site')
 @section('title', $locale === 'ar' ? 'البحث — وليد عطية' : 'Search — Waleed Atiya')
 @push('head')
-<link rel="canonical" href="{{ request()->url() }}">
-<link rel="alternate" hreflang="ar" href="{{ request()->fullUrlWithQuery(['lang' => 'ar']) }}">
-<link rel="alternate" hreflang="en" href="{{ request()->fullUrlWithQuery(['lang' => 'en']) }}">
+<meta name="robots" content="noindex,follow">
 @endpush
 @push('styles')
 <style>
