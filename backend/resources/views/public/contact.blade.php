@@ -53,6 +53,12 @@
     <a href="{{ route('public.project', ['slug' => $reportProject['slug'], 'lang' => $locale]) }}">{{ $reportProject['name'] }}</a>
 </p>
 @endif
+@if($contactTrack)
+<p class="contact-track-context">
+    {{ $locale === 'ar' ? 'موضوع الاستفسار المختار (لا يُعد توثيقًا للخبرة):' : 'Selected inquiry topic (not proof of professional expertise):' }}
+    <a href="{{ route('public.hire', ['lang' => $locale, 'track' => $contactTrack]) }}">{{ $contactTrackLabels[$contactTrack] }}</a>
+</p>
+@endif
 @if(session('contact_delivered'))
 <div class="contact-notice" role="status">{{ $locale === 'ar' ? 'تم تسليم الرسالة لخادم البريد المهيأ.' : 'The message was handed to the configured mail transport.' }}</div>
 <p><a class="contact-again" href="{{ route('public.contact', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'إرسال رسالة أخرى' : 'Send another message' }}</a></p>
