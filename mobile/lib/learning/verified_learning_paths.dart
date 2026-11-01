@@ -246,13 +246,26 @@ class _VerifiedLearningLibraryState extends State<VerifiedLearningLibrary> {
           (response.hasMorePages && response.tracks.isEmpty)) {
         throw const FormatException('Mismatched learning page');
       }
-      final seen = _additional.map((t) => t.id).toSet();
-      final unique = response.tracks.where((t) => seen.add(t.id)).toList();
-      if (unique.length != response.tracks.length) {
-        throw const FormatException('Repeated learning track');
+      // The first published page also belongs to the already-visible set.
+      // A replayed ID or slug must never create a second card, partially
+      // append untrusted data, or move the pagination cursor forward.
+      final first = await _firstPage;
+      if (!mounted || token != _generation) return;
+      final seenIds = <String>{
+        for (final track in first.tracks) track.id,
+        for (final track in _additional) track.id,
+      };
+      final seenSlugs = <String>{
+        for (final track in first.tracks) track.slug,
+        for (final track in _additional) track.slug,
+      };
+      for (final track in response.tracks) {
+        if (!seenIds.add(track.id) || !seenSlugs.add(track.slug)) {
+          throw const FormatException('Repeated learning track');
+        }
       }
       setState(() {
-        _additional = [..._additional, ...unique];
+        _additional = [..._additional, ...response.tracks];
         _nextPage++;
         _more = response.hasMorePages;
       });

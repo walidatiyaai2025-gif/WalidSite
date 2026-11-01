@@ -195,4 +195,123 @@ void main() {
     expect(find.byKey(const Key('learning-unconfigured')), findsOneWidget);
     expect(find.textContaining('not connected to a trusted server'), findsOneWidget);
   });
+
+  testWidgets('cross-page duplicate learning ID fails closed and retries same page',
+      (tester) async {
+    final calls = <int>[];
+    var attempts = 0;
+    await tester.pumpWidget(MaterialApp(home: VerifiedLearningLibrary(
+      arabic: false,
+      pageLoader: (page) async {
+        calls.add(page);
+        if (page == 1) {
+          return VerifiedLearningPage.parse(
+            response(1, [track()], more: true), 1,
+          );
+        }
+        attempts++;
+        if (attempts == 1) {
+          // A replay from page one must never become a second card.
+          return VerifiedLearningPage.parse(response(2, [track()]), 2);
+        }
+        return VerifiedLearningPage.parse(response(2, [
+          track(id: idTwo, slug: 'new-path', title: 'New verified path'),
+        ]), 2);
+      },
+    )));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('learning-more')));
+    await tester.pumpAndSettle();
+    expect(calls, [1, 2]);
+    expect(find.byKey(const Key('learning-more-error')), findsOneWidget);
+    expect(find.byKey(const Key('learning-track-database-recovery')), findsOneWidget);
+    expect(find.text('Verified database recovery'), findsOneWidget);
+    expect(find.byKey(const Key('learning-track-new-path')), findsNothing);
+    expect(find.textContaining('Repeated learning track'), findsNothing);
+    expect(find.byKey(const Key('learning-more')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('learning-more')));
+    await tester.pumpAndSettle();
+    expect(calls, [1, 2, 2], reason: 'Failure must not advance the page cursor');
+    expect(find.byKey(const Key('learning-track-database-recovery')), findsOneWidget);
+    expect(find.byKey(const Key('learning-track-new-path')), findsOneWidget);
+    expect(find.byKey(const Key('learning-more-error')), findsNothing);
+    expect(find.byKey(const Key('learning-more')), findsNothing);
+  });
+
+  testWidgets('fresh ID with a previously displayed slug is not appended',
+      (tester) async {
+    final calls = <int>[];
+    await tester.pumpWidget(MaterialApp(home: VerifiedLearningLibrary(
+      arabic: true,
+      pageLoader: (page) async {
+        calls.add(page);
+        return VerifiedLearningPage.parse(
+          response(page, [
+            page == 1
+                ? track(title: 'مسار موثق')
+                : track(id: idTwo, title: 'مسار مكرر'),
+          ], more: page == 1), page,
+        );
+      },
+    )));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('learning-more')));
+    await tester.pumpAndSettle();
+    expect(calls, [1, 2]);
+    expect(find.byKey(const Key('learning-track-database-recovery')), findsOneWidget);
+    expect(find.text('مسار موثق'), findsOneWidget);
+    expect(find.text('مسار مكرر'), findsNothing);
+    expect(find.byKey(const Key('learning-more-error')), findsOneWidget);
+    expect(find.text('تعذر تحميل المزيد. حاول مرة أخرى.'), findsOneWidget);
+    expect(find.byKey(const Key('learning-more')), findsOneWidget);
+  });
+
+  testWidgets('replays of an already appended page cannot advance pagination',
+      (tester) async {
+    const idThree = '00000000-0000-4000-8000-000000000003';
+    final calls = <int>[];
+    var pageThreeAttempts = 0;
+    await tester.pumpWidget(MaterialApp(home: VerifiedLearningLibrary(
+      arabic: false,
+      pageLoader: (page) async {
+        calls.add(page);
+        if (page == 1) {
+          return VerifiedLearningPage.parse(
+            response(1, [track()], more: true), 1,
+          );
+        }
+        if (page == 2) {
+          return VerifiedLearningPage.parse(response(2, [
+            track(id: idTwo, slug: 'second-path'),
+          ], more: true), 2);
+        }
+        pageThreeAttempts++;
+        return VerifiedLearningPage.parse(response(3, [
+          pageThreeAttempts == 1
+              ? track(id: idTwo, slug: 'replayed-second')
+              : track(id: idThree, slug: 'third-path'),
+        ]), 3);
+      },
+    )));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('learning-more')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('learning-track-second-path')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('learning-more')));
+    await tester.pumpAndSettle();
+    expect(calls, [1, 2, 3]);
+    expect(find.byKey(const Key('learning-more-error')), findsOneWidget);
+    expect(find.byKey(const Key('learning-track-replayed-second')), findsNothing);
+    expect(find.byKey(const Key('learning-track-second-path')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('learning-more')));
+    await tester.pumpAndSettle();
+    expect(calls, [1, 2, 3, 3]);
+    expect(find.byKey(const Key('learning-track-third-path')), findsOneWidget);
+    expect(find.byKey(const Key('learning-more-error')), findsNothing);
+  });
+
 }
