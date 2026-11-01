@@ -23,6 +23,50 @@ class Article extends Model
         return ['published_at' => 'datetime', 'published_revision_no' => 'integer'];
     }
 
+    /**
+     * A reviewed body is not approval for a different public title, canonical
+     * language, slug or hero. All of these fields are part of the reviewed
+     * editorial claim, even if the Markdown and citations remain unchanged.
+     */
+    private const REVIEWED_PUBLIC_FIELDS = [
+        'slug', 'title_en', 'title_ar', 'canonical_lang', 'hero_asset_id',
+    ];
+
+    protected static function booted(): void
+    {
+        static::updating(static function (self $article): void {
+            if ($article->isDirty(self::REVIEWED_PUBLIC_FIELDS)) {
+                // The metadata edit cannot smuggle a published state through
+                // the same save operation or retain its old published pin.
+                $article->forceFill([
+                    'status' => 'draft',
+                    'published_at' => null,
+                    'published_revision_no' => null,
+                ]);
+            }
+        });
+
+        static::updated(static function (self $article): void {
+            if (! $article->wasChanged(self::REVIEWED_PUBLIC_FIELDS)) {
+                return;
+            }
+
+            // Revisions validated against the old article metadata must be
+            // reviewed again. This also covers edits made before first publish.
+            // A subsequent separate review may restore their validated state.
+            $article->revisions()->where('status', 'validated')->get()
+                ->each(static function (ArticleRevision $revision): void {
+                    $revision->update([
+                        'status' => 'draft',
+                        'validation_json' => [
+                            'citations_passed' => false,
+                            'technical_passed' => false,
+                        ],
+                    ]);
+                });
+        });
+    }
+
     public function revisions(): HasMany
     {
         return $this->hasMany(ArticleRevision::class);
