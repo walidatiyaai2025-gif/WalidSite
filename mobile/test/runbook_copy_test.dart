@@ -52,6 +52,10 @@ void main() {
     expect(copied.first, isNot(contains('سجّل الحالة الحالية')));
     expect(find.text('Steps, source and warning copied.'), findsOneWidget);
 
+    // Unmount the English scaffold before testing the Arabic messenger.
+    // Reusing the same messenger leaves its earlier SnackBar in the queue.
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
     await tester.pumpWidget(const MaterialApp(
       locale: Locale('ar'),
       home: Directionality(
