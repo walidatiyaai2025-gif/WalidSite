@@ -1,0 +1,768 @@
+import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
+
+import 'package:flutter/material.dart';
+
+import '../articles/verified_articles.dart';
+import '../runbooks/verified_online_runbooks.dart';
+import '../theme/waleed_theme.dart';
+
+class MobileAiHttpException implements Exception {
+  const MobileAiHttpException(this.statusCode);
+  final int statusCode;
+}
+
+class MobileAiSession {
+  const MobileAiSession({required this.token, required this.expiresAt});
+  final String token;
+  final DateTime? expiresAt;
+}
+
+class MobileAiJob {
+  const MobileAiJob({
+    required this.id,
+    required this.status,
+    required this.progressPercent,
+    required this.resultUrl,
+    required this.retryAfterSeconds,
+  });
+
+  final String id;
+  final String status;
+  final int progressPercent;
+  final String? resultUrl;
+  final int? retryAfterSeconds;
+
+  static final RegExp _uuid = RegExp(
+    r'^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$',
+  );
+
+  static MobileAiJob parse(String raw) {
+    if (raw.length > 128 * 1024) {
+      throw const FormatException('Oversized diagnosis response');
+    }
+    final decoded = jsonDecode(raw);
+    if (decoded is! Map<String, dynamic> ||
+        decoded.length != 1 ||
+        decoded['data'] is! Map<String, dynamic>) {
+      throw const FormatException('Invalid diagnosis response');
+    }
+    final data = decoded['data'] as Map<String, dynamic>;
+    const allowed = {
+      'id',
+      'status',
+      'progress_percent',
+      'result_url',
+      'retry_after_seconds',
+    };
+    if (data.length != allowed.length ||
+        data.keys.toSet().difference(allowed).isNotEmpty) {
+      throw const FormatException('Unexpected diagnosis fields');
+    }
+
+    final id = data['id'];
+    final status = data['status'];
+    final progress = data['progress_percent'];
+    final resultUrl = data['result_url'];
+    final retry = data['retry_after_seconds'];
+    const statuses = {
+      'queued',
+      'running',
+      'completed',
+      'failed',
+      'blocked',
+      'cancelled',
+    };
+    if (id is! String ||
+        !_uuid.hasMatch(id) ||
+        status is! String ||
+        !statuses.contains(status) ||
+        progress is! int ||
+        progress < 0 ||
+        progress > 100 ||
+        (resultUrl != null && resultUrl is! String) ||
+        (retry != null && (retry is! int || retry < 0 || retry > 86400))) {
+      throw const FormatException('Invalid diagnosis job');
+    }
+    if (status == 'completed' && progress != 100) {
+      throw const FormatException('Incomplete completed job');
+    }
+
+    return MobileAiJob(
+      id: id,
+      status: status,
+      progressPercent: progress,
+      resultUrl: resultUrl as String?,
+      retryAfterSeconds: retry as int?,
+    );
+  }
+
+  String? reviewedRunbookId() {
+    final raw = resultUrl;
+    if (raw == null || raw.length > 120) return null;
+    final match = RegExp(
+      r'^/api/v1/mobile/solutions/([a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12})$',
+    ).firstMatch(raw);
+    return match?.group(1);
+  }
+}
+
+class MobileAiClient {
+  const MobileAiClient();
+
+  static const String apiOrigin =
+      String.fromEnvironment('WALIDSITE_API_ORIGIN');
+  static const int _maxResponseBytes = 1024 * 1024;
+
+  static Uri? configuredOrigin() =>
+      VerifiedArticleReader.validatedOrigin(apiOrigin);
+
+  Future<MapEntry<int, String>> _jsonRequest(
+    String method,
+    String path, {
+    Map<String, Object?>? body,
+    String? bearer,
+  }) async {
+    final origin = configuredOrigin();
+    if (origin == null) {
+      throw const FormatException('API origin is not configured');
+    }
+    final url = origin.replace(path: path);
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
+    try {
+      final request = await client.openUrl(method, url)
+          .timeout(const Duration(seconds: 8));
+      request.followRedirects = false;
+      request.headers.set(HttpHeaders.acceptHeader, 'application/json');
+      request.headers.set(HttpHeaders.contentTypeHeader, 'application/json');
+      if (bearer != null) {
+        request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $bearer');
+      }
+      if (body != null) {
+        request.add(utf8.encode(jsonEncode(body)));
+      }
+      final response =
+          await request.close().timeout(const Duration(seconds: 8));
+      final bytes = BytesBuilder(copy: false);
+      await for (final chunk in response.timeout(const Duration(seconds: 8))) {
+        if (bytes.length + chunk.length > _maxResponseBytes) {
+          throw const FormatException('API response too large');
+        }
+        bytes.add(chunk);
+      }
+      final raw = utf8.decode(bytes.takeBytes(), allowMalformed: false);
+      return MapEntry(response.statusCode, raw);
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  Future<MobileAiSession> login(String email, String password) async {
+    final safeEmail = email.trim();
+    if (safeEmail.isEmpty ||
+        safeEmail.length > 254 ||
+        password.isEmpty ||
+        password.length > 4096) {
+      throw const FormatException('Invalid login input');
+    }
+    final response = await _jsonRequest(
+      'POST',
+      '/api/v1/auth/login',
+      body: {
+        'email': safeEmail,
+        'password': password,
+        'device_name': 'waleed-tech-companion',
+      },
+    );
+    if (response.key != HttpStatus.ok) {
+      throw MobileAiHttpException(response.key);
+    }
+
+    final decoded = jsonDecode(response.value);
+    if (decoded is! Map<String, dynamic> ||
+        decoded.length != 1 ||
+        decoded['data'] is! Map<String, dynamic>) {
+      throw const FormatException('Invalid login response');
+    }
+    final data = decoded['data'] as Map<String, dynamic>;
+    if (data.keys.toSet().difference({
+          'token',
+          'token_type',
+          'expires_at',
+        }).isNotEmpty ||
+        data['token'] is! String ||
+        data['token_type'] != 'Bearer' ||
+        (data['token'] as String).isEmpty ||
+        (data['token'] as String).length > 8192) {
+      throw const FormatException('Invalid mobile token response');
+    }
+    final expiresRaw = data['expires_at'];
+    final expires = expiresRaw == null
+        ? null
+        : expiresRaw is String
+            ? DateTime.tryParse(expiresRaw)
+            : null;
+    if (expiresRaw != null && expires == null) {
+      throw const FormatException('Invalid token expiry');
+    }
+    return MobileAiSession(
+      token: data['token'] as String,
+      expiresAt: expires?.toUtc(),
+    );
+  }
+
+  Future<MobileAiJob> diagnose(
+    String token, {
+    required String question,
+    required String technology,
+    required String codeSnippet,
+  }) async {
+    if (token.isEmpty || token.length > 8192) {
+      throw const FormatException('Invalid bearer token');
+    }
+    final response = await _jsonRequest(
+      'POST',
+      '/api/v1/mobile/ai/diagnose',
+      bearer: token,
+      body: {
+        'question': question.trim(),
+        'technology': technology.trim(),
+        'code_snippet': codeSnippet,
+        'consent_to_process': true,
+      },
+    );
+    if (response.key != HttpStatus.ok) {
+      throw MobileAiHttpException(response.key);
+    }
+    return MobileAiJob.parse(response.value);
+  }
+
+  Future<void> saveRunbook(String token, String runbookId) async {
+    if (token.isEmpty ||
+        token.length > 8192 ||
+        !MobileAiJob._uuid.hasMatch(runbookId)) {
+      throw const FormatException('Invalid saved resource');
+    }
+    final response = await _jsonRequest(
+      'POST',
+      '/api/v1/mobile/saved',
+      bearer: token,
+      body: {
+        'resource_type': 'runbook',
+        'resource_id': runbookId,
+      },
+    );
+    if (response.key != HttpStatus.ok) {
+      throw MobileAiHttpException(response.key);
+    }
+    final decoded = jsonDecode(response.value);
+    if (decoded is! Map<String, dynamic> ||
+        decoded['data'] is! Map<String, dynamic> ||
+        (decoded['data'] as Map<String, dynamic>)['saved'] != true ||
+        (decoded['data'] as Map<String, dynamic>)['resource_id'] != runbookId) {
+      throw const FormatException('Invalid save response');
+    }
+  }
+}
+
+typedef MobileLoginAction = Future<MobileAiSession> Function(
+  String email,
+  String password,
+);
+typedef MobileDiagnoseAction = Future<MobileAiJob> Function(
+  String token,
+  String question,
+  String technology,
+  String codeSnippet,
+);
+typedef MobileSaveAction = Future<void> Function(String token, String runbookId);
+
+class AiTroubleshooterScreen extends StatefulWidget {
+  const AiTroubleshooterScreen({
+    required this.arabic,
+    this.loginAction,
+    this.diagnoseAction,
+    this.saveAction,
+    this.detailLoader,
+    super.key,
+  });
+
+  final bool arabic;
+  final MobileLoginAction? loginAction;
+  final MobileDiagnoseAction? diagnoseAction;
+  final MobileSaveAction? saveAction;
+  final Future<ReviewedRunbook> Function(String id)? detailLoader;
+
+  @override
+  State<AiTroubleshooterScreen> createState() =>
+      _AiTroubleshooterScreenState();
+}
+
+class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
+  final _email = TextEditingController();
+  final _password = TextEditingController();
+  final _technology = TextEditingController();
+  final _question = TextEditingController();
+  final _code = TextEditingController();
+
+  String? _token;
+  bool _consent = false;
+  bool _busyLogin = false;
+  bool _busyDiagnosis = false;
+  bool _busySave = false;
+  String? _message;
+  MobileAiJob? _job;
+  bool _saved = false;
+
+  @override
+  void dispose() {
+    _email.dispose();
+    _password.dispose();
+    _technology.dispose();
+    _question.dispose();
+    _code.dispose();
+    super.dispose();
+  }
+
+  bool get _apiConfigured =>
+      widget.loginAction != null ||
+      widget.diagnoseAction != null ||
+      MobileAiClient.configuredOrigin() != null;
+
+  MobileLoginAction get _login => widget.loginAction ??
+      (String email, String password) =>
+          const MobileAiClient().login(email, password);
+
+  MobileDiagnoseAction get _diagnose => widget.diagnoseAction ??
+      (String token, String question, String technology, String codeSnippet) =>
+          const MobileAiClient().diagnose(
+            token,
+            question: question,
+            technology: technology,
+            codeSnippet: codeSnippet,
+          );
+
+  MobileSaveAction get _save => widget.saveAction ??
+      (String token, String runbookId) =>
+          const MobileAiClient().saveRunbook(token, runbookId);
+
+  String _httpMessage(int status) {
+    final ar = widget.arabic;
+    return switch (status) {
+      401 || 403 => ar
+          ? 'انتهت الجلسة أو لا تملك صلاحية استخدام الأداة.'
+          : 'Your session expired or is not authorized for this tool.',
+      422 => ar
+          ? 'تحقق من البيانات المدخلة ثم حاول مرة أخرى.'
+          : 'Check the submitted fields and try again.',
+      429 => ar
+          ? 'تم بلوغ حد الاستخدام. حاول لاحقًا.'
+          : 'Usage limit reached. Try again later.',
+      503 => ar
+          ? 'خدمة التشخيص غير متاحة حاليًا.'
+          : 'AI diagnosis is currently unavailable.',
+      _ => ar
+          ? 'تعذر إكمال الطلب. تحقق من الاتصال وحاول مرة أخرى.'
+          : 'Could not complete the request. Check your connection and try again.',
+    };
+  }
+
+  String _genericError(Object error) {
+    if (error is MobileAiHttpException) {
+      return _httpMessage(error.statusCode);
+    }
+    return widget.arabic
+        ? 'تعذر الاتصال بالخدمة بأمان. تحقق من الإعداد والاتصال.'
+        : 'Could not reach the service safely. Check configuration and connectivity.';
+  }
+
+  Future<void> _signIn() async {
+    if (_busyLogin) return;
+    final email = _email.text.trim();
+    final password = _password.text;
+    if (email.isEmpty || password.isEmpty) {
+      setState(() => _message = widget.arabic
+          ? 'أدخل البريد الإلكتروني وكلمة المرور.'
+          : 'Enter email and password.');
+      return;
+    }
+
+    setState(() {
+      _busyLogin = true;
+      _message = null;
+    });
+    try {
+      final session = await _login(email, password);
+      if (!mounted) return;
+      setState(() {
+        _token = session.token;
+        _password.clear();
+        _message = widget.arabic
+            ? 'تم تسجيل الدخول لهذه الجلسة فقط.'
+            : 'Signed in for this session only.';
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _password.clear();
+        _message = _genericError(error);
+      });
+    } finally {
+      if (mounted) setState(() => _busyLogin = false);
+    }
+  }
+
+  Future<void> _submit() async {
+    if (_busyDiagnosis || _token == null) return;
+    final question = _question.text.trim();
+    final technology = _technology.text.trim();
+    if (!_consent) {
+      setState(() => _message = widget.arabic
+          ? 'يلزم الموافقة قبل إرسال البيانات للمعالجة.'
+          : 'Consent is required before sending data for processing.');
+      return;
+    }
+    if (question.length < 4 || technology.isEmpty) {
+      setState(() => _message = widget.arabic
+          ? 'أدخل التقنية وسؤالًا تقنيًا واضحًا.'
+          : 'Enter a technology and a clear technical question.');
+      return;
+    }
+
+    setState(() {
+      _busyDiagnosis = true;
+      _message = null;
+      _job = null;
+      _saved = false;
+    });
+    try {
+      final job =
+          await _diagnose(_token!, question, technology, _code.text);
+      if (!mounted) return;
+      setState(() {
+        _job = job;
+        _message = switch (job.status) {
+          'completed' when job.reviewedRunbookId() != null => widget.arabic
+              ? 'تم العثور على حل منشور تمت مراجعته.'
+              : 'A reviewed published solution is ready.',
+          'completed' => widget.arabic
+              ? 'اكتمل التشخيص ولم يتم العثور على دليل مناسب.'
+              : 'Diagnosis completed with no suitable reviewed guide.',
+          'queued' || 'running' => widget.arabic
+              ? 'الطلب قيد المعالجة. حاول مرة أخرى بعد المدة المقترحة.'
+              : 'The request is still processing. Retry after the suggested interval.',
+          _ => widget.arabic
+              ? 'تعذر إكمال التشخيص بأمان.'
+              : 'The diagnosis could not complete safely.',
+        };
+      });
+    } catch (error) {
+      if (!mounted) return;
+      if (error is MobileAiHttpException &&
+          (error.statusCode == 401 || error.statusCode == 403)) {
+        _token = null;
+      }
+      setState(() => _message = _genericError(error));
+    } finally {
+      if (mounted) setState(() => _busyDiagnosis = false);
+    }
+  }
+
+  Future<void> _saveResult() async {
+    final id = _job?.reviewedRunbookId();
+    if (_busySave || id == null || _token == null) return;
+    setState(() {
+      _busySave = true;
+      _message = null;
+    });
+    try {
+      await _save(_token!, id);
+      if (!mounted) return;
+      setState(() {
+        _saved = true;
+        _message = widget.arabic
+            ? 'تم حفظ الدليل في حسابك.'
+            : 'The reviewed guide was saved to your account.';
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _message = _genericError(error));
+    } finally {
+      if (mounted) setState(() => _busySave = false);
+    }
+  }
+
+  void _openSolution() {
+    final id = _job?.reviewedRunbookId();
+    if (id == null) return;
+    Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => ReviewedRunbookDetail(
+        id: id,
+        arabic: widget.arabic,
+        loader: widget.detailLoader,
+      ),
+    ));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ar = widget.arabic;
+    final resultId = _job?.reviewedRunbookId();
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(ar ? 'مساعد تشخيص الأعطال' : 'AI Troubleshooter'),
+      ),
+      body: SafeArea(
+        child: !_apiConfigured
+            ? Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Text(
+                    ar
+                        ? 'خادم التشخيص الآمن غير مهيأ في هذا الإصدار.'
+                        : 'The secure diagnosis server is not configured for this build.',
+                    key: const Key('ai-unconfigured'),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              )
+            : ListView(
+                padding: const EdgeInsets.all(20),
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: WaleedPalette.border),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(
+                          Icons.auto_awesome_outlined,
+                          color: WaleedPalette.accent,
+                          size: 34,
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          ar
+                              ? 'تشخيص تقني يوجّهك فقط إلى أدلة منشورة ومراجعة.'
+                              : 'Technical diagnosis that can only point to reviewed published guides.',
+                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w700,
+                                color: WaleedPalette.ink,
+                              ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          ar
+                              ? 'قد تُرسل بيانات السؤال والكود إلى مزود AI المهيأ من الإدارة. لا تُرسل أسرارًا أو بيانات شخصية.'
+                              : 'Your question and code may be sent to the admin-configured AI provider. Do not submit secrets or personal data.',
+                          style: const TextStyle(color: WaleedPalette.body),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  if (_token == null) ...[
+                    Text(
+                      ar ? 'تسجيل الدخول مطلوب' : 'Sign in required',
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      key: const Key('ai-login-email'),
+                      controller: _email,
+                      keyboardType: TextInputType.emailAddress,
+                      autofillHints: const [AutofillHints.email],
+                      decoration: InputDecoration(
+                        labelText: ar ? 'البريد الإلكتروني' : 'Email',
+                        border: const OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      key: const Key('ai-login-password'),
+                      controller: _password,
+                      obscureText: true,
+                      enableSuggestions: false,
+                      autocorrect: false,
+                      decoration: InputDecoration(
+                        labelText: ar ? 'كلمة المرور' : 'Password',
+                        border: const OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    FilledButton(
+                      key: const Key('ai-login-submit'),
+                      onPressed: _busyLogin ? null : _signIn,
+                      child: Text(_busyLogin
+                          ? (ar ? 'جارٍ تسجيل الدخول...' : 'Signing in...')
+                          : (ar ? 'تسجيل الدخول' : 'Sign in')),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      ar
+                          ? 'رمز الجلسة يبقى في الذاكرة فقط ولا يتم حفظ كلمة المرور.'
+                          : 'The session token stays in memory only; the password is never saved.',
+                      key: const Key('ai-session-privacy'),
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ] else ...[
+                    TextField(
+                      key: const Key('ai-technology'),
+                      controller: _technology,
+                      maxLength: 120,
+                      decoration: InputDecoration(
+                        labelText: ar ? 'التقنية أو المنصة' : 'Technology or stack',
+                        hintText: ar ? 'مثال: SQL Server' : 'Example: SQL Server',
+                        border: const OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      key: const Key('ai-question'),
+                      controller: _question,
+                      maxLength: 2000,
+                      minLines: 3,
+                      maxLines: 7,
+                      decoration: InputDecoration(
+                        labelText: ar ? 'صف المشكلة' : 'Describe the issue',
+                        border: const OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      key: const Key('ai-code'),
+                      controller: _code,
+                      maxLength: 8000,
+                      minLines: 4,
+                      maxLines: 10,
+                      autocorrect: false,
+                      enableSuggestions: false,
+                      decoration: InputDecoration(
+                        labelText: ar
+                            ? 'مقتطف الكود أو الخطأ (اختياري)'
+                            : 'Code or error snippet (optional)',
+                        border: const OutlineInputBorder(),
+                      ),
+                    ),
+                    CheckboxListTile(
+                      key: const Key('ai-consent'),
+                      value: _consent,
+                      contentPadding: EdgeInsets.zero,
+                      controlAffinity: ListTileControlAffinity.leading,
+                      onChanged: _busyDiagnosis
+                          ? null
+                          : (value) =>
+                              setState(() => _consent = value == true),
+                      title: Text(ar
+                          ? 'أوافق على معالجة هذه البيانات للتشخيص.'
+                          : 'I consent to processing this data for diagnosis.'),
+                      subtitle: Text(ar
+                          ? 'لا ترسل كلمات مرور أو مفاتيح API أو معلومات شخصية.'
+                          : 'Do not submit passwords, API keys, or personal information.'),
+                    ),
+                    const SizedBox(height: 8),
+                    FilledButton.icon(
+                      key: const Key('ai-diagnose-submit'),
+                      onPressed: _busyDiagnosis ? null : _submit,
+                      icon: const Icon(Icons.auto_awesome),
+                      label: Text(_busyDiagnosis
+                          ? (ar ? 'جارٍ التشخيص...' : 'Diagnosing...')
+                          : (ar ? 'ابدأ التشخيص' : 'Diagnose')),
+                    ),
+                  ],
+                  if (_message != null) ...[
+                    const SizedBox(height: 16),
+                    Semantics(
+                      liveRegion: true,
+                      child: Text(
+                        _message!,
+                        key: const Key('ai-message'),
+                      ),
+                    ),
+                  ],
+                  if (_job != null) ...[
+                    const SizedBox(height: 16),
+                    Card(
+                      key: const Key('ai-job-card'),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              ar ? 'حالة التشخيص' : 'Diagnosis status',
+                              style: const TextStyle(fontWeight: FontWeight.w700),
+                            ),
+                            const SizedBox(height: 8),
+                            LinearProgressIndicator(
+                              value: _job!.progressPercent / 100,
+                              minHeight: 6,
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              '${_job!.status} · ${_job!.progressPercent}%',
+                              key: const Key('ai-job-status'),
+                            ),
+                            if (_job!.retryAfterSeconds != null)
+                              Text(ar
+                                  ? 'إعادة المحاولة بعد نحو ${_job!.retryAfterSeconds} ثانية.'
+                                  : 'Retry after about ${_job!.retryAfterSeconds} seconds.'),
+                            if (resultId != null) ...[
+                              const SizedBox(height: 12),
+                              FilledButton.icon(
+                                key: const Key('ai-open-solution'),
+                                onPressed: _openSolution,
+                                icon: const Icon(Icons.fact_check_outlined),
+                                label: Text(ar
+                                    ? 'افتح الحل المراجع'
+                                    : 'Open reviewed solution'),
+                              ),
+                              const SizedBox(height: 8),
+                              OutlinedButton.icon(
+                                key: const Key('ai-save-answer'),
+                                onPressed:
+                                    _busySave || _saved ? null : _saveResult,
+                                icon: Icon(_saved
+                                    ? Icons.bookmark_added_outlined
+                                    : Icons.bookmark_add_outlined),
+                                label: Text(_saved
+                                    ? (ar ? 'تم الحفظ' : 'Saved')
+                                    : _busySave
+                                        ? (ar ? 'جارٍ الحفظ...' : 'Saving...')
+                                        : (ar
+                                            ? 'حفظ الحل'
+                                            : 'Save answer')),
+                              ),
+                            ],
+                            const SizedBox(height: 8),
+                            Tooltip(
+                              message: ar
+                                  ? 'لا توجد واجهة إبلاغ بالخادم حتى الآن.'
+                                  : 'No server-side reporting endpoint is implemented yet.',
+                              child: OutlinedButton.icon(
+                                key: const Key('ai-report-error-disabled'),
+                                onPressed: null,
+                                icon: const Icon(Icons.report_gmailerrorred_outlined),
+                                label: Text(ar
+                                    ? 'الإبلاغ غير متاح حاليًا'
+                                    : 'Report error unavailable'),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+      ),
+    );
+  }
+}
