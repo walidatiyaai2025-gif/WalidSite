@@ -5,6 +5,7 @@ import 'runbooks/offline_runbooks.dart';
 import 'runbooks/verified_online_runbooks.dart';
 import 'articles/verified_articles.dart';
 import 'learning/verified_learning_paths.dart';
+import 'interview/interview_practice.dart';
 import 'github/verified_github_portfolio.dart';
 import 'solutions/offline_solution_finder.dart';
 import 'ai/ai_troubleshooter.dart';
@@ -231,6 +232,27 @@ class CompanionHome extends StatelessWidget {
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute<void>(
                     builder: (_) => VerifiedLearningLibrary(arabic: arabic),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Card(
+              child: ListTile(
+                key: const Key('interview-practice-entry'),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16, vertical: 12,
+                ),
+                leading: const Icon(Icons.record_voice_over_outlined, size: 30),
+                title: Text(arabic ? 'تدريب المقابلات' : 'Interview practice'),
+                subtitle: Text(arabic
+                    ? 'أسئلة تقنية ومراجعة ذاتية خاصة دون تقييم آلي'
+                    : 'Private technical answers with server review checklists'),
+                trailing: Icon(arabic
+                    ? Icons.chevron_left : Icons.chevron_right),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => InterviewPracticeScreen(arabic: arabic),
                   ),
                 ),
               ),
