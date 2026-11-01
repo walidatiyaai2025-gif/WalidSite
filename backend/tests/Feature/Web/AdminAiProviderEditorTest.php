@@ -55,7 +55,7 @@ final class AdminAiProviderEditorTest extends TestCase
 
         $this->actingAs($this->account(), 'web');
         $this->get($url.'?lang=en')->assertOk()
-            ->assertHeader('Cache-Control', 'no-store')
+            ->assertHeader('Cache-Control', 'no-store, private')
             ->assertSee('Edit AI provider')
             ->assertSee('Editor provider')
             ->assertSee('Save provider settings')
