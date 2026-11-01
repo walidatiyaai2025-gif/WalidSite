@@ -66,7 +66,13 @@ final class PublicLabCatalogTest extends TestCase
             ->assertJsonCount(0, 'data.articles')
             ->assertJsonCount(0, 'data.runbooks')
             ->assertJsonPath('meta.lang', 'en')
-            ->assertHeader('Cache-Control', 'no-store');
+            ;
+        // Symfony appends the private directive to no-store during response
+        // preparation. Both directives are required, regardless of ordering.
+        $this->assertStringContainsString('no-store',
+            (string) $response->headers->get('Cache-Control'));
+        $this->assertStringContainsString('private',
+            (string) $response->headers->get('Cache-Control'));
         $this->assertSame(
             ['tools', 'articles', 'runbooks'],
             array_keys($response->json('data'))
