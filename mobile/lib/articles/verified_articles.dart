@@ -91,8 +91,12 @@ class VerifiedArticle {
         // Treat API citations as untrusted: allow benign queries, never keys.
         final url = Uri.tryParse(citation);
         final host = url?.host.toLowerCase() ?? '';
+        // Links are displayed verbatim: never expose internal resolver
+        // names from a compromised or mismatched public API response.
         const privateSuffixes = [
-          'localhost', 'local', 'internal', 'test', 'invalid', 'onion',
+          'localhost', 'local', 'localdomain', 'internal', 'svc', 'lan',
+          'home', 'arpa', 'corp', 'intranet', 'private', 'test',
+          'invalid', 'onion',
         ];
         if (url == null ||
             url.scheme != 'https' ||
@@ -193,8 +197,12 @@ class VerifiedArticleReader {
     }
 
     final host = uri.host.toLowerCase();
+    // Exact label suffix checks: private resolver zones are not safe
+    // destinations even when presented as HTTPS fully-qualified hosts.
     const privateSuffixes = [
-      'localhost', 'local', 'internal', 'test', 'invalid', 'onion',
+      'localhost', 'local', 'localdomain', 'internal', 'svc', 'lan',
+      'home', 'arpa', 'corp', 'intranet', 'private', 'test',
+      'invalid', 'onion',
     ];
     // Require a complete public FQDN; reject internal-only suffixes.
     final publicHostPattern = RegExp(
