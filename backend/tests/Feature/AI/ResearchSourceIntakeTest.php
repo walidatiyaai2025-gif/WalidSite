@@ -111,6 +111,40 @@ class ResearchSourceIntakeTest extends TestCase
         ], (new ResearchSourceIntake())->candidateCitations([$url]));
     }
 
+    public function test_signed_url_path_segments_never_enter_unverified_source_candidates(): void
+    {
+        $intake = new ResearchSourceIntake();
+        foreach ([
+            'https://docs.example.org/guide/token=private',
+            'https://docs.example.org/guide/api_key=private',
+            'https://docs.example.org/guide/access_token=private',
+            'https://docs.example.org/guide/X-Amz-Signature=private',
+            'https://docs.example.org/guide/source[token]=private',
+            'https://docs.example.org/guide/token%3Dprivate',
+            'https://docs.example.org/guide/%74oken%3Dprivate',
+            'https://docs.example.org/guide/%2574oken%253Dprivate',
+            'https://docs.example.org/guide/source%5Bapi_key%5D%3Dprivate',
+        ] as $url) {
+            try {
+                $intake->candidateCitations([$url]);
+                $this->fail('Signed URL path was accepted as an AI prompt citation.');
+            } catch (InvalidArgumentException $exception) {
+                $this->assertSame(
+                    'Research sources must use a safe public HTTPS URL.',
+                    $exception->getMessage()
+                );
+            }
+        }
+    }
+
+    public function test_public_noncredential_url_paths_are_unchanged(): void
+    {
+        $url = 'https://docs.example.org/reference/tokenized=public/keynote=guide?lang=ar';
+        $this->assertSame([
+            ['source_url' => $url, 'verified' => false],
+        ], (new ResearchSourceIntake())->candidateCitations([$url]));
+    }
+
     public function test_public_noncredential_query_and_fragment_remain_allowed(): void
     {
         $this->assertSame([
