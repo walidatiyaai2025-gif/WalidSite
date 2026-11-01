@@ -3,6 +3,7 @@
 namespace Tests\Feature\Web;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\File;
 use Tests\TestCase;
 
 class PublicLayoutTest extends TestCase
@@ -72,6 +73,38 @@ class PublicLayoutTest extends TestCase
         // Query parameters must never select a different file on disk.
         $this->get('/media/owner-portrait.jpg?path=../../.env')->assertOk()
             ->assertHeader('Content-Type', 'image/jpeg');
+    }
+
+    public function test_cpanel_public_html_portrait_takes_precedence_over_missing_source_layout(): void
+    {
+        $originalPublicPath = public_path();
+        $isolatedPublicPath = storage_path('framework/testing/cpanel-portrait-'.bin2hex(random_bytes(6)));
+        $portraitDirectory = $isolatedPublicPath.'/assets/portraits';
+        $approvedSource = base_path('../assets/portraits/portrait-light-derived.jpg');
+
+        File::ensureDirectoryExists($portraitDirectory);
+        $this->assertTrue(File::copy($approvedSource, $portraitDirectory.'/portrait-light-derived.jpg'));
+
+        try {
+            // A packaged installation sets Laravel's public path to public_html.
+            app()->usePublicPath($isolatedPublicPath);
+            $response = $this->get('/media/owner-portrait.jpg?path=../../.env');
+            $response->assertOk()
+                ->assertHeader('Content-Type', 'image/jpeg')
+                ->assertHeader('X-Content-Type-Options', 'nosniff');
+
+            $this->assertSame(
+                realpath($portraitDirectory.'/portrait-light-derived.jpg'),
+                realpath($response->baseResponse->getFile()->getPathname()),
+            );
+            $this->assertSame(
+                hash_file('sha256', $approvedSource),
+                hash_file('sha256', $response->baseResponse->getFile()->getPathname()),
+            );
+        } finally {
+            app()->usePublicPath($originalPublicPath);
+            File::deleteDirectory($isolatedPublicPath);
+        }
     }
 
     public function test_google_fonts_are_available_on_public_and_sign_in_pages(): void
