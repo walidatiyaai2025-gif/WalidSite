@@ -18,6 +18,8 @@
 .runbook-body pre{background:#132C47;color:#fff;border-radius:10px;padding:20px;overflow-x:auto;direction:ltr;text-align:left}
 .runbook-body :not(pre)>code{background:var(--wa-muted-surface);padding:2px 5px;border-radius:4px}
 .runbook-body a{color:var(--wa-cta);overflow-wrap:anywhere}
+.runbook-copy-action{display:inline-flex;align-items:center;justify-content:center;min-height:44px;margin-block:12px 8px;padding:9px 16px;border:0;border-radius:10px;background:var(--wa-cta);color:#fff;font:inherit;font-weight:700;cursor:pointer}
+.runbook-copy-action:focus-visible{outline:3px solid var(--wa-primary);outline-offset:3px}
 </style>
 @endpush
 @section('content')
@@ -35,8 +37,40 @@
     <div class="runbook-body" id="runbook-content">
         {!! \Illuminate\Support\Str::markdown($runbook['markdown'], ['html_input' => 'escape', 'allow_unsafe_links' => false]) !!}
     </div>
+    <p id="runbook-copy-feedback" class="runbook-note" role="status" aria-live="polite" aria-atomic="true"></p>
     <p class="runbook-note">{{ $locale === 'ar'
         ? 'هذا الدليل حاصل على مراجعة للنص والنسخة، وليس إثباتًا لإجراء اختبار تشغيل في بيئة حقيقية.'
         : 'Review covers the published text and version; it is not proof of a live execution test.' }}</p>
 </article>
+<script>
+(() => {
+    const feedback = document.getElementById('runbook-copy-feedback');
+    const arabic = document.documentElement.lang === 'ar';
+    document.querySelectorAll('#runbook-content pre').forEach((pre) => {
+        // Copy only displayed, version-approved text; never execute runbook commands.
+        const code = pre.querySelector('code');
+        if (!code || pre.nextElementSibling?.classList.contains('runbook-copy-action')) return;
+
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'runbook-copy-action';
+        button.textContent = arabic ? 'نسخ الكود' : 'Copy code';
+        button.addEventListener('click', async () => {
+            if (!navigator.clipboard || !navigator.clipboard.writeText) {
+                feedback.textContent = arabic
+                    ? 'نسخ الكود غير متاح في هذا المتصفح'
+                    : 'Code copying is unavailable in this browser';
+                return;
+            }
+            try {
+                await navigator.clipboard.writeText(code.textContent || '');
+                feedback.textContent = arabic ? 'تم نسخ الكود' : 'Code copied';
+            } catch (_) {
+                feedback.textContent = arabic ? 'تعذر نسخ الكود' : 'Could not copy code';
+            }
+        });
+        pre.insertAdjacentElement('afterend', button);
+    });
+})();
+</script>
 @endsection
