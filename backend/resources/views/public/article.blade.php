@@ -21,6 +21,11 @@
 .article-nav{display:flex;flex-wrap:wrap;gap:18px;margin-bottom:18px}.article-nav a{min-height:44px;display:inline-flex;align-items:center;color:var(--wa-cta);font-weight:700}
 .copy-action{margin-top:16px;margin-bottom:5px;background:var(--wa-cta);border:0;border-radius:8px;color:#fff;padding:9px 14px;min-height:44px;cursor:pointer;font:inherit;font-weight:700}
 .article-note{font-size:13px;color:var(--wa-muted-text)}
+.article-related{margin-block:26px;background:#fff;border:1px solid var(--wa-soft-border);border-radius:18px;padding:24px}
+.article-related h2{color:var(--wa-primary);margin-top:0}
+.article-related-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));gap:12px;list-style:none;padding:0}
+.article-related-link{display:flex;align-items:center;min-height:44px;padding:12px 15px;border:1px solid var(--wa-soft-border);border-radius:12px;color:var(--wa-cta);font-weight:700;text-decoration:none}
+.article-related-link:hover,.article-related-link:focus-visible{background:var(--wa-muted-surface)}
 @media print{.site-header,.site-footer,.article-nav,.copy-action{display:none!important}.article-body{border:0;padding:0}}
 </style>
 @endpush
@@ -48,6 +53,19 @@
             ? 'التحقق من المصادر لا يعني إثبات تجربة تشغيل فعلية. حفظ المقال للحسابات سيُفعّل بعد اكتمال الميزة.'
             : 'Source validation does not prove runtime execution. Account-based article saving is not yet available.' }}</p>
     </section>
+    @if($related->isNotEmpty())
+    <section class="article-related" aria-labelledby="related-articles-title">
+        <h2 id="related-articles-title">{{ $locale === 'ar' ? 'مقالات ذات صلة' : 'Related articles' }}</h2>
+        <ul class="article-related-list">
+            @foreach($related as $suggestion)
+                <li><a class="article-related-link"
+                    href="{{ route('public.article', ['slug' => $suggestion->slug, 'lang' => $locale]) }}">
+                    {{ $locale === 'ar' ? $suggestion->title_ar : $suggestion->title_en }}
+                </a></li>
+            @endforeach
+        </ul>
+    </section>
+    @endif
     <p id="copy-status" class="article-note" aria-live="polite"></p>
 </article>
 <script>
