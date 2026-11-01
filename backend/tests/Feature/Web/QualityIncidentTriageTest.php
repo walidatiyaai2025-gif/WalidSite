@@ -184,7 +184,8 @@ final class QualityIncidentTriageTest extends TestCase
             ->assertOk()
             ->assertSee('فشل وإعادة محاولة مهام AI (0)')
             ->assertSee('لا توجد أعطال تطابق هذه المرشحات.')
-            ->assertDontSee($failed)->assertDontSee($retry);
+            ->assertDontSee($failed)
+            ->assertSee('value="'.$retry.'"', false);
 
         $this->get('/admin/quality?job_id='.$unknown)->assertOk()
             ->assertSee('No incidents match these filters.');
