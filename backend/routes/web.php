@@ -889,6 +889,14 @@ Route::post('/contact', function (Request $request) {
         'Contact delivery has not been configured.'
     );
 
+    // Drop obvious automated submissions before sender-field validation.
+    // A populated hidden website field is not a legitimate inquiry and must
+    // never reveal field errors, trigger a success notice, or reach mail.
+    $honeypot = $request->input('website');
+    if (is_string($honeypot) && trim($honeypot) !== '') {
+        return redirect()->route('public.contact', ['lang' => $request->query('lang') === 'ar' ? 'ar' : 'en']);
+    }
+
     $arabicValidation = $request->query('lang') === 'ar';
     $contactMessages = $arabicValidation ? [
         'required' => 'حقل :attribute مطلوب.',
@@ -918,11 +926,6 @@ Route::post('/contact', function (Request $request) {
         'privacy_consent' => ['required', 'boolean', 'accepted'],
         'website' => ['nullable', 'string', 'max:200'],
     ], $contactMessages, $contactAttributes);
-
-    // Silently discard bot honeypots; do not store or dispatch untrusted mail.
-    if (! empty($input['website'])) {
-        return redirect()->route('public.contact', ['lang' => $request->query('lang') === 'ar' ? 'ar' : 'en']);
-    }
 
     $body = "Name: {$input['name']}\nEmail: {$input['email']}\n\n{$input['message']}";
     try {
