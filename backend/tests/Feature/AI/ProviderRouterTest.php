@@ -12,6 +12,7 @@ class ProviderRouterTest extends TestCase
     {
         return array_replace([
             'id' => 'local-model',
+            'provider_type' => 'openai-compatible',
             'enabled' => true,
             'health_status' => 'healthy',
             'capabilities' => ['text', 'embeddings'],
@@ -65,4 +66,55 @@ class ProviderRouterTest extends TestCase
             $this->provider(['capabilities' => ['vision'], 'health_status' => 'unverified']),
         ]));
     }
+    public function test_zero_budget_healthy_local_ollama_remains_eligible_without_paid_reservation(): void
+    {
+        $router = new ProviderRouter;
+
+        $this->assertSame('local-free', $router->selectProviderId('text', [
+            $this->provider([
+                'id' => 'managed-exhausted', 'provider_type' => 'openai-compatible',
+                'daily_budget_remaining' => 0, 'routing_priority' => 1,
+            ]),
+            $this->provider([
+                'id' => 'local-free', 'provider_type' => 'ollama-compatible',
+                'daily_budget_remaining' => 0, 'routing_priority' => 5,
+            ]),
+        ]));
+
+        $this->assertNull($router->selectProviderId('text', [
+            $this->provider([
+                'id' => 'unknown-type', 'provider_type' => 'unknown',
+                'daily_budget_remaining' => 0,
+            ]),
+            $this->provider([
+                'id' => 'managed-exhausted', 'provider_type' => 'openai-compatible',
+                'daily_budget_remaining' => 0,
+            ]),
+        ]));
+    }
+
+    public function test_zero_budget_does_not_bypass_local_provider_safety_gates(): void
+    {
+        $router = new ProviderRouter;
+        $local = [
+            'provider_type' => 'ollama-compatible',
+            'daily_budget_remaining' => 0,
+            'capabilities' => ['text'],
+        ];
+
+        $this->assertNull($router->selectProviderId('text', [
+            $this->provider(array_replace($local, ['enabled' => false])),
+        ]));
+        $this->assertNull($router->selectProviderId('text', [
+            $this->provider(array_replace($local, ['enabled' => false])),
+            $this->provider(array_replace($local, ['health_status' => 'unverified'])),
+            $this->provider(array_replace($local, ['in_flight' => 1])),
+            $this->provider(array_replace($local, ['daily_budget_remaining' => -1])),
+            $this->provider(array_replace($local, ['daily_budget_remaining' => INF])),
+        ]));
+        $this->assertNull($router->selectProviderId('image-generation', [
+            $this->provider($local),
+        ]));
+    }
+
 }

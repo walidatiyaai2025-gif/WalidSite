@@ -32,6 +32,13 @@ final class ProviderRouter
             $limit = max(1, (int) ($candidate['concurrent_limit'] ?? 1));
             $inFlight = max(0, (int) ($candidate['in_flight'] ?? 0));
             $budgetRemaining = (float) ($candidate['daily_budget_remaining'] ?? 0);
+            // Self-hosted Ollama inference has no paid-provider reservation.
+            // A zero *paid* budget must not disable otherwise healthy local
+            // inference. Unknown or managed types remain strictly funded.
+            $budgetEligible = is_finite($budgetRemaining)
+                && ($candidate['provider_type'] ?? null) === 'ollama-compatible'
+                    ? $budgetRemaining >= 0
+                    : is_finite($budgetRemaining) && $budgetRemaining > 0;
 
             return is_string($id) && $id !== ''
                 && ($candidate['enabled'] ?? false) === true
@@ -39,8 +46,7 @@ final class ProviderRouter
                 && is_array($capabilities)
                 && in_array($capability, $capabilities, true)
                 && $inFlight < $limit
-                && is_finite($budgetRemaining)
-                && $budgetRemaining > 0;
+                && $budgetEligible;
         });
 
         usort($eligible, static fn (array $a, array $b): int =>
