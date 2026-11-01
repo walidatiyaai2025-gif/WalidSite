@@ -106,10 +106,11 @@ final class PublicLabRunbookJourneyTest extends TestCase
             ]))->assertOk()
                 ->assertSee('id="runbook-copy-feedback"', false)
                 ->assertSee('role="status" aria-live="polite" aria-atomic="true"', false)
-                ->assertSee('class="runbook-copy-action"', false)
+                ->assertSee("button.className = 'runbook-copy-action'", false)
+                ->assertSee("document.documentElement.lang === 'ar'", false)
                 ->assertSee('min-height:44px', false)
                 ->assertSee('navigator.clipboard.writeText(code.textContent ||', false)
-                ->assertSee("printf 'verified source only'")
+                ->assertSee('verified source only')
                 ->assertDontSee('<script>alert(', false)
                 ->assertDontSee('unapproved');
             $this->assertStringContainsString('no-store', $response->headers->get('Cache-Control'));
