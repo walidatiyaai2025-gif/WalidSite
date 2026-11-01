@@ -85,6 +85,13 @@ class Article extends Model
 
     public function isReadyToPublish(): bool
     {
+        // A reviewed revision is tied to the persisted article identity and
+        // bilingual titles. Do not claim publication succeeded while unsaved
+        // metadata would immediately invalidate that approval in updating().
+        if ($this->isDirty(self::REVIEWED_PUBLIC_FIELDS)) {
+            return false;
+        }
+
         if (trim($this->title_en ?? '') === '' || trim($this->title_ar ?? '') === ''
             || ! in_array($this->canonical_lang, ['ar', 'en'], true)) {
             return false;
