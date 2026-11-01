@@ -127,11 +127,19 @@ class ArticleRevision extends Model
         $parameters = (string) ($parts['query'] ?? '')
             .'&'.(string) ($parts['fragment'] ?? '');
         for ($depth = 0; $depth < 4; $depth++) {
-            if (preg_match(
-                '/(?:^|[?#&;])(?:access[_-]?token|refresh[_-]?token|id[_-]?token|token|api[_-]?key|key|auth(?:orization)?|password|passwd|secret|signature|sig|session(?:id)?|jwt|bearer|client[_-]?secret|private[_-]?key|code|ticket|awsaccesskeyid|x[-_]amz[-_][a-z0-9_-]+|x[-_]goog[-_][a-z0-9_-]+)=/i',
-                $parameters
-            ) === 1) {
-                return false;
+            // Inspect each key component, not only the outer query name:
+            // source[api_key], token[0], and filter[outer][access_token]
+            // must all be rejected after each bounded decoding layer.
+            foreach (preg_split('/[&;?#]/', $parameters) as $parameter) {
+                $key = explode('=', ltrim($parameter, '?#'), 2)[0];
+                foreach (preg_split('/[\\[\\]]+/', $key) as $segment) {
+                    if (preg_match(
+                        '/\\A(?:access[_-]?token|refresh[_-]?token|id[_-]?token|token|api[_-]?key|key|auth(?:orization)?|password|passwd|secret|signature|sig|session(?:id)?|jwt|bearer|client[_-]?secret|private[_-]?key|code|ticket|awsaccesskeyid|x[-_]amz[-_][a-z0-9_-]+|x[-_]goog[-_][a-z0-9_-]+)\\z/i',
+                        $segment
+                    ) === 1) {
+                        return false;
+                    }
+                }
             }
 
             $decoded = rawurldecode($parameters);
