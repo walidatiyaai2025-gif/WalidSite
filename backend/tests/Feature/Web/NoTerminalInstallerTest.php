@@ -5,6 +5,7 @@ namespace Tests\Feature\Web;
 use App\Support\Deployment\DatabaseConfiguration;
 use App\Support\Deployment\FirstRunBootstrap;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Mockery;
 use Tests\TestCase;
 
@@ -180,6 +181,64 @@ class NoTerminalInstallerTest extends TestCase
             'db_username' => 'different_writer',
             'db_password' => 'different-private-password',
         ])->assertForbidden();
+        $this->assertFileDoesNotExist($path);
+    }
+
+    public function test_incompatible_migration_history_does_not_unlock_database_replacement(): void
+    {
+        $path = storage_path('app/no-terminal-schema-mismatch-test');
+        $token = str_repeat('m', 40);
+        $future = '2099_12_31_235959_future_schema_version';
+        config([
+            'site.setup_enabled' => true,
+            'site.setup_token' => $token,
+            'site.setup_database_ready' => true,
+            'site.environment_path' => $path,
+        ]);
+
+        $this->post('/setup/unlock', ['token' => $token])->assertRedirect('/setup');
+        DB::table('migrations')->insert(['migration' => $future, 'batch' => 999]);
+
+        // A genuinely connected database with unknown applied migrations
+        // is NOT a credential failure. Do not show a replacement-DB form.
+        $this->get('/setup?lang=en')->assertOk()
+            ->assertSee('The installed code does not match the database migration history')
+            ->assertDontSee('The saved database connection is unavailable')
+            ->assertDontSee('name="db_password"', false)
+            ->assertDontSee('Apply migrations & Next')
+            ->assertDontSee($future);
+        $this->get('/setup?lang=ar')->assertOk()
+            ->assertSee('سجل ترحيلات قاعدة البيانات لا يتوافق')
+            ->assertDontSee('name="db_database"', false)
+            ->assertDontSee('تنفيذ الترحيلات والتالي')
+            ->assertDontSee($future);
+
+        // The reconfiguration route must fail closed even if manually
+        // posted directly, before trying any new credentials/probe.
+        $database = Mockery::mock(DatabaseConfiguration::class)->makePartial();
+        $database->shouldNotReceive('probe');
+        $database->shouldNotReceive('save');
+        $this->app->instance(DatabaseConfiguration::class, $database);
+
+        $this->post('/setup/configure', [
+            'site_url' => 'https://replacement.example.test',
+            'db_host' => 'localhost',
+            'db_port' => 3306,
+            'db_database' => 'replacement_db',
+            'db_username' => 'replacement_writer',
+            'db_password' => 'replacement-private-secret',
+        ])->assertForbidden();
+        $this->assertFileDoesNotExist($path);
+
+        $this->post('/setup/database')->assertRedirect()->assertSessionHasErrors('setup');
+        $this->get('/setup')->assertDontSee('name="password"', false);
+
+        // Once the false future record is removed, normal verified
+        // migration status is shown again. No credentials were changed.
+        DB::table('migrations')->where('migration', $future)->delete();
+        $this->get('/setup?lang=en')->assertOk()
+            ->assertSee('Connection passed. Pending migrations:')
+            ->assertSee('Apply migrations & Next');
         $this->assertFileDoesNotExist($path);
     }
 
