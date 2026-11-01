@@ -14,9 +14,10 @@ final class SiteUpdater
 {
     /**
      * Compare checked-in local Laravel migration files with the actual database
-     * migration repository. A failed connection is never reported as "up to date".
+     * migration repository. An unreachable database or a migration record from
+     * an unknown (possibly newer) release must never be reported as current.
      *
-     * @return array{ready: bool, pending: list<string>}
+     * @return array{ready: bool, pending: list<string>, history_mismatch: bool}
      */
     public function inspect(): array
     {
@@ -28,15 +29,27 @@ final class SiteUpdater
                 ? DB::table('migrations')->pluck('migration')->all()
                 : [];
 
+            // A DB previously migrated by newer/different source is NOT
+            // compatible with this release merely because nothing is pending.
+            // Fail closed without exposing migration identifiers in logs/UI.
+            $unexpected = array_values(array_diff($ran, $known));
+            if ($unexpected !== []) {
+                Log::warning('site.updates.unknown_applied_migrations', [
+                    'count' => count($unexpected),
+                ]);
+
+                return ['ready' => false, 'pending' => [], 'history_mismatch' => true];
+            }
+
             $pending = array_values(array_diff($known, $ran));
             sort($pending, SORT_STRING);
 
-            return ['ready' => true, 'pending' => $pending];
+            return ['ready' => true, 'pending' => $pending, 'history_mismatch' => false];
         } catch (Throwable $exception) {
             // Do not display database error messages or credentials in the UI.
             Log::warning('site.updates.database_unavailable', ['type' => $exception::class]);
 
-            return ['ready' => false, 'pending' => []];
+            return ['ready' => false, 'pending' => [], 'history_mismatch' => false];
         }
     }
 
@@ -56,7 +69,8 @@ final class SiteUpdater
         try {
             $before = $this->inspect();
             if (! $before['ready']) {
-                return ['state' => 'database_unavailable', 'applied' => 0];
+                return ['state' => $before['history_mismatch'] ? 'schema_mismatch' : 'database_unavailable',
+                    'applied' => 0];
             }
             if ($before['pending'] === []) {
                 return ['state' => 'current', 'applied' => 0];
