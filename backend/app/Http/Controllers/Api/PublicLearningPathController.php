@@ -75,6 +75,18 @@ final class PublicLearningPathController extends Controller
         ];
     }
 
+    /**
+     * The same strict publication/outline policy used by the anonymous feed,
+     * reused by authenticated interview practice. Never trust a path ID alone.
+     */
+    public function verifiedTrack(string $id): ?array
+    {
+        $row = DB::table('learning_paths')->where('id', $id)
+            ->where('published', true)->first();
+
+        return $row === null ? null : $this->publicData($row);
+    }
+
     public function index(Request $request): JsonResponse
     {
         $input = $request->validate([
