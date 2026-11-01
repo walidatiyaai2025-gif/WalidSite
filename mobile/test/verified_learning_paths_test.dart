@@ -60,6 +60,74 @@ void main() {
         'Check documented backups');
   });
 
+  test('learning pages require unique IDs and slugs before rendering', () {
+    // A response with different UUIDs but the same slug was previously
+    // accepted, creating duplicate ListTile navigation keys.
+    for (final page in [1, 2]) {
+      expect(
+        () => VerifiedLearningPage.parse(response(page, [
+          track(),
+          track(id: idTwo, title: 'Another published lesson'),
+        ]), page),
+        throwsFormatException,
+        reason: 'A duplicate slug on page $page must reject the whole page',
+      );
+
+      final verified = VerifiedLearningPage.parse(response(page, [
+        track(),
+        track(
+          id: idTwo,
+          slug: 'verified-devops',
+          title: 'Another published lesson',
+        ),
+      ]), page);
+      expect(verified.tracks, hasLength(2));
+      expect(verified.tracks.map((t) => t.slug).toSet(),
+          {'database-recovery', 'verified-devops'});
+    }
+  });
+
+  testWidgets('duplicate first-page slug shows generic Arabic retry and recovers',
+      (tester) async {
+    var attempts = 0;
+    await tester.pumpWidget(MaterialApp(home: VerifiedLearningLibrary(
+      arabic: true,
+      pageLoader: (page) async {
+        attempts++;
+        if (attempts == 1) {
+          return VerifiedLearningPage.parse(response(page, [
+            track(title: 'المسار الأساسي'),
+            track(id: idTwo, title: 'عنوان غير موثوق'),
+          ]), page);
+        }
+        return VerifiedLearningPage.parse(response(page, [
+          track(title: 'المسار الأساسي'),
+          track(
+            id: idTwo,
+            slug: 'verified-devops',
+            title: 'مسار موثق آخر',
+          ),
+        ]), page);
+      },
+    )));
+    await tester.pumpAndSettle();
+    expect(attempts, 1);
+    expect(find.byKey(const Key('learning-retry')), findsOneWidget);
+    expect(find.text('تعذر تحميل المسارات.'), findsOneWidget);
+    expect(find.text('عنوان غير موثوق'), findsNothing);
+    expect(find.textContaining('Unverified learning track'), findsNothing);
+
+    await tester.tap(find.byKey(const Key('learning-retry')));
+    await tester.pumpAndSettle();
+    expect(attempts, 2);
+    expect(find.byKey(const Key('learning-retry')), findsNothing);
+    expect(find.byKey(const Key('learning-track-database-recovery')),
+        findsOneWidget);
+    expect(find.byKey(const Key('learning-track-verified-devops')),
+        findsOneWidget);
+    expect(find.text('مسار موثق آخر'), findsOneWidget);
+  });
+
   test('parser fails closed on malformed, oversized and private records', () {
     final cases = <String>[
       '{}',
