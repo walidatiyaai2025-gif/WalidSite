@@ -55,4 +55,60 @@ class DatabaseConfigurationTest extends TestCase
         }
     }
 
+    public function test_production_canonical_site_url_rejects_private_dns_zones_but_preserves_public_https(): void
+    {
+        $old = $this->app['env'];
+        $this->app->instance('env', 'production');
+        try {
+            $database = new DatabaseConfiguration;
+
+            foreach ([
+                'https://metadata.google.internal',
+                'https://service.svc',
+                'https://printer.lan',
+                'https://router.home',
+                'https://gateway.home.arpa',
+                'https://node.localdomain',
+                'https://api.dev.local',
+                'https://admin.localhost',
+                'https://cluster.corp',
+                'https://intranet',
+                'https://staging.intranet',
+                'https://database.private',
+                'https://spoofed.invalid',
+                'https://source.example.test',
+                'https://site.onion',
+                'https://ROUTER.HOME.ARPA',
+                'https://sub.service.svc:443',
+            ] as $url) {
+                $this->assertNull(
+                    $database->canonicalSiteUrl($url),
+                    'Private DNS site URL must not be installed: '.$url
+                );
+            }
+
+            // Exact DNS label boundaries matter: normal public names using
+            // the same substrings must not become false positives.
+            foreach ([
+                'https://walidatiya.com',
+                'https://myhome.example.com',
+                'https://lantern.example.org',
+                'https://service-svc.example.org',
+                'https://example.com:8443',
+                'https://8.8.8.8',
+            ] as $url) {
+                $this->assertSame($url, $database->canonicalSiteUrl($url));
+            }
+        } finally {
+            $this->app->instance('env', $old);
+        }
+
+        // Example/test domains used by the local suite are not released as
+        // real site URLs; their behavior in a test environment is unchanged.
+        $this->assertSame(
+            'https://example.test',
+            (new DatabaseConfiguration)->canonicalSiteUrl('https://example.test')
+        );
+    }
+
 }

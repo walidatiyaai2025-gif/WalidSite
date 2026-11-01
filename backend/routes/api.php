@@ -35,6 +35,8 @@ Route::get('/public/projects/{slug}', [PublicPortfolioController::class, 'projec
     ->where('slug', '[a-zA-Z0-9-]+')->name('api.public.project')->middleware('throttle:60,1');
 Route::get('/public/profile', [PublicPortfolioController::class, 'profile'])
     ->name('api.public.profile')->middleware('throttle:60,1');
+Route::get('/public/expertise', [PublicPortfolioController::class, 'expertise'])
+    ->name('api.public.expertise')->middleware('throttle:60,1');
 
 // T012 read-only editorial API: pinned, citation-checked public revisions only.
 Route::get('/public/articles', [PublicArticleController::class, 'index'])

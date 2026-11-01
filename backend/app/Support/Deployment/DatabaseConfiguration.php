@@ -80,6 +80,23 @@ class DatabaseConfiguration
             return null;
         }
 
+        if (! $isIp && app()->environment('production')) {
+            // The public canonical site URL must not point at a private DNS
+            // namespace. These names may resolve to internal hosts even when
+            // the URL uses HTTPS. Compare at label boundaries so legitimate
+            // public domains containing those words are unaffected. This is
+            // pure validation: never issue a DNS lookup during setup.
+            foreach ([
+                'localhost', 'local', 'localdomain', 'internal', 'lan',
+                'home', 'arpa', 'svc', 'corp', 'intranet', 'private',
+                'test', 'invalid', 'onion',
+            ] as $suffix) {
+                if ($host === $suffix || str_ends_with($host, '.'.$suffix)) {
+                    return null;
+                }
+            }
+        }
+
         return $scheme.'://'.$host
             .(isset($parts['port']) ? ':'.$parts['port'] : '');
     }

@@ -96,6 +96,56 @@ class PublicPortfolioController extends Controller
         ]]);
     }
 
+    /**
+     * WEB-03 contract: an independently consumable public expertise feed.
+     * A verified skill is only publishable under the active owner's published
+     * profile; other users' CV data and unreviewed rows never enter the feed.
+     */
+    public function expertise(Request $request): JsonResponse
+    {
+        $input = $request->validate([
+            'lang' => ['sometimes', 'in:ar,en'],
+            'category' => ['sometimes', 'string', 'max:80'],
+            'page' => ['sometimes', 'integer', 'min:1', 'max:10000'],
+        ]);
+        $page = (int) ($input['page'] ?? 1);
+        $empty = static fn () => response()->json([
+            'data' => [],
+            'meta' => ['current_page' => $page, 'last_page' => 1, 'total' => 0],
+        ]);
+
+        $profile = Profile::query()->published()
+            ->whereHas('user', fn ($user) => $user->where('status', 'active')
+                ->whereHas('roles', fn ($roles) => $roles->where('name', 'owner')))
+            ->first();
+        if ($profile === null) {
+            return $empty();
+        }
+
+        $query = \App\Models\Skill::query()->withVerifiedEvidence()
+            ->whereIn('id', \Illuminate\Support\Facades\DB::table('profile_skill')
+                ->where('profile_id', $profile->id)->select('skill_id'));
+        if (isset($input['category']) && $input['category'] !== '') {
+            $query->where('category', $input['category']);
+        }
+
+        $skills = $query->orderBy('category')->orderBy('name_en')->orderBy('id')
+            ->paginate(25, ['*'], 'page', $page);
+        $arabic = ($input['lang'] ?? 'en') === 'ar';
+        return response()->json([
+            'data' => $skills->getCollection()->map(static fn (\App\Models\Skill $skill) => [
+                'slug' => $skill->slug,
+                'name' => $arabic ? $skill->name_ar : $skill->name_en,
+                'category' => $skill->category,
+            ])->values()->all(),
+            'meta' => [
+                'current_page' => $skills->currentPage(),
+                'last_page' => $skills->lastPage(),
+                'total' => $skills->total(),
+            ],
+        ]);
+    }
+
     /** Shared verified DTO serializer for public web cards and API responses.
      * Callers must apply publiclyVerified() and discard empty evidence lists.
      */
