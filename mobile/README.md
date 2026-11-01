@@ -1,6 +1,6 @@
-# Waleed Tech Companion — Flutter bootstrap (T001)
+# Waleed Tech Companion â€” Flutter bootstrap (T001)
 
-This folder contains **executable Flutter UI and widget tests**, not an Android/iOS store package yet. Generate platform runners once mobile CI and developer signing requirements are checked; do not pretend APK/IPA artifacts exist.
+This folder contains executable Flutter UI, widget tests, and generated **Android/iOS native project runners**. Platform scaffolds are not signed store artifacts; production package identifiers, signing, iOS/Xcode and staging verification are still required.
 
 ## Development
 
@@ -22,19 +22,19 @@ The mobile shell uses canonical v6 light design colors and Flutter SDK localizat
 
 `flutter pub get`, `flutter analyze`, and `flutter test` are enforced in PR CI.
 
-**Platform runner limitation:** Android/iOS runner directories are not yet checked into this repo. A developer with a current Flutter SDK can generate and review those files from `mobile/` using `flutter create --platforms=android,ios .` before a signed/device build. Do not mark T005 fully complete, release an APK/IPA, or close its Issue on widget tests alone. The canonical owner will only test after a verified app build is available.
+**T005 platform runner status (2026-11-01):** Generated from Flutter stable 3.44.8 with `flutter create --platforms=android,ios --project-name waleed_tech_companion .`. Android launcher and iOS AppIcon images were derived from the approved `../assets/app-icons/app-icon-*.png` assets rather than Flutter demo artwork. The app title is `Waleed Tech Companion`. Both platform project trees are source controlled; no signing keys or certificate profiles are included. **Flutter-generated `com.example` Android application ID and iOS bundle identifier are temporary development placeholders** and must be replaced with approved identifiers before any store submission. Flutter analyze and widget tests passed on Windows; iOS Xcode/device/signing and staging are unverified. T005 remains open until release acceptance evidence is complete.
 
 
 ## T013 offline navigation and packaged runbooks
 
-The Home → Offline runbooks → Runbook detail flow works from an application asset without an HTTP request, including after a cold restart or in airplane mode. A version, original bundle source, last sync and prominent stale/unverified warning are displayed on library and detail views. The bundled content is short, original educational draft guidance only: **never treat it as a verified operational runbook**.
+The Home â†’ Offline runbooks â†’ Runbook detail flow works from an application asset without an HTTP request, including after a cold restart or in airplane mode. A version, original bundle source, last sync and prominent stale/unverified warning are displayed on library and detail views. The bundled content is short, original educational draft guidance only: **never treat it as a verified operational runbook**.
 
 This is the first offline-cache fallback, NOT the completed remote sync/download feature: the runbook API, signed update integrity check, persisted downloaded snapshots, storage quotas, and verified content publishing belong to later integration. A missing/invalid bundle displays a real error state; there is no fabricated live server data. CI runs `flutter analyze` and `flutter test`.
 
 
 ## T019 verified article reading (increment)
 
-The bilingual Home → Verified technical articles → Article detail route reads actual
+The bilingual Home â†’ Verified technical articles â†’ Article detail route reads actual
 source-verified public article JSON from the implemented Laravel endpoint
 `/api/v1/public/articles?lang=en|ar`. Configure the HTTPS **origin only** at
 build time with `--dart-define=WALIDSITE_API_ORIGIN=https://your-real-host.example`;
