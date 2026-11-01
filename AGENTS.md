@@ -1,5 +1,13 @@
 # Waleed Atiya — worker entrypoint (v6 baseline)
 
+## P0 — OWNER ORDER: Reproduce the exact supplied visual designs (ADR-010, 2026-11-01)
+
+**Mandatory for every web, admin and Flutter task.** The 40 PNG files in `assets/screen-reference/` (indexed by `contracts/screens.json`) are **binding UI implementations**, NOT inspiration, an approximate reference or permission to invent a new layout. Match the actual supplied composition, hierarchy, spacing, colors, typography, navigation, cards, icons and images **as exactly as possible at the reference screenshot's pixel resolution**; use the approved Tajawal/Inter tokens and actual owner portrait. No creative reinterpretations, generic templates, redesigns or "reference-inspired" substitutes.
+
+**Visual acceptance is not assumed from passing ordinary tests.** Before calling a screen visually complete, render the real website/admin/Flutter UI at the original PNG dimensions, run zero-tolerance decoded-RGBA screenshot comparison and record a genuine captured screenshot, tested SHA, locale, viewport/DPR and command. The original 40 images are not application test screenshots. Record screen-by-screen evidence in `design/visual-fidelity-evidence.json`, enforced by `qa/validate_visual_fidelity.py` in existing CI. An entry marked `pending` means NOT verified to match, even if its functional code is merged. No masking, reducing thresholds or fabricating a screenshot.
+
+**Precedence:** Owner's later, explicit exact-design directive [ADR-010](docs/VISUAL_FIDELITY_CONTRACT.md) supersedes the immutable v6 boilerplate phrase saying visual references are "intent only" **for UI fidelity only**. Never modify the checksum-protected baseline or use fake placeholder data to create a false match. Security, real facts, accessibility and working AR/EN + responsive states remain mandatory. Note the smallest conflict as an unverified defect rather than silently redesigning. No interim owner review; include visual acceptance in the completed T027 handoff.
+
 **Read `worker-contracts/AGENTS.md` in full before any work.** It is the authoritative execution constitution. Live GitHub Issues/PRs/branches/CI and the source contracts take precedence over old chat instructions, mockup text, or worker reports.
 
 ## Mandatory preflight
