@@ -30,12 +30,16 @@
 @elseif($articles->isEmpty() && $projects->isEmpty())
 <div class="ed-card" role="status">{{ $locale === 'ar' ? 'لا توجد نتائج عامة موثقة.' : 'No verified public matches.' }}</div>
 @else
+@if($articles->isNotEmpty())
 <section class="ed-card" aria-labelledby="articles-h"><h2 id="articles-h">{{ $locale === 'ar' ? 'المقالات' : 'Articles' }}</h2><ul>
 @foreach($articles as $a)<li><a href="{{ route('public.article', ['slug'=>$a->slug,'lang'=>$locale]) }}">{{ $locale === 'ar' ? $a->title_ar : $a->title_en }}</a></li>@endforeach
 </ul></section>
+@endif
+@if($projects->isNotEmpty())
 <section class="ed-card" aria-labelledby="projects-h"><h2 id="projects-h">{{ $locale === 'ar' ? 'المشاريع' : 'Projects' }}</h2><ul>
 @foreach($projects as $p)<li><a href="{{ route('public.project', ['slug'=>$p['slug'],'lang'=>$locale]) }}">{{ $p['name'] }}</a></li>@endforeach
 </ul></section>
+@endif
 @endif
 </section>
 @endsection
