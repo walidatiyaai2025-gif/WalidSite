@@ -32,7 +32,9 @@ button.secondary{background:var(--primary)}.muted{color:#55718B}.actions{display
 <div class="shell">
 <aside><h2>{{ $locale === 'ar' ? 'إدارة وليد سايت' : 'Waleed Site Admin' }}</h2>
 <nav aria-label="{{ $locale === 'ar' ? 'قائمة الإدارة' : 'Admin navigation' }}">
+<a href="{{ route('admin.home', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'نظرة عامة' : 'Overview' }}</a>
 <a href="{{ route('admin.providers.index', ['lang' => $locale]) }}" aria-current="page">{{ $locale === 'ar' ? 'مزودو AI' : 'AI providers' }}</a>
+<a href="{{ route('admin.usage.index', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'سجل استخدام AI' : 'AI usage audit' }}</a>
 <a href="{{ route('home', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'الموقع العام' : 'Public website' }}</a></nav></aside>
 <main id="content" class="body">
 <div class="top">
@@ -45,7 +47,8 @@ button.secondary{background:var(--primary)}.muted{color:#55718B}.actions{display
   </div>
 </div>
 <p>{{ $locale === 'ar' ? 'تعديل مزودات AI المحلية والمدفوعة من لوحة الإدارة. المفاتيح تبقى مشفرة على الخادم ولا تُعرض بعد حفظها.' : 'Manage local and paid AI providers here. API secrets remain encrypted on the server and are never shown after saving.' }}</p>
-<p class="note">{{ $locale === 'ar' ? 'قيم الميزانية والتزامن إعدادات محفوظة؛ تطبيق حدود الإنفاق الفعلي وتقارير الاستهلاك ينتظر نظام جدولة AI (T011). لا توجد أرقام مصروفات مختلقة.' : 'Budgets and concurrency are persisted settings. Runtime enforcement and usage reports are pending AI orchestration (T011); no spending figures are invented.' }}</p>
+<p class="note">{{ $locale === 'ar' ? 'الميزانيات والتزامن إعدادات محفوظة، ولا يُفترض تطبيق حدود الإنفاق قبل التحقق من جدولة AI (T011). سجل الاستخدام يعرض إيصالات التكلفة المحفوظة بالفعل حسب مزود الخدمة والعملة ويوم UTC، وليس بيانات افتراضية أو فاتورة نهائية.' : 'Budgets and concurrency are saved settings; do not assume runtime budget enforcement until AI orchestration (T011) is verified. The usage audit shows persisted UTC-day receipts grouped by provider and currency, not simulated metrics or a final invoice.' }}</p>
+<p><a href="{{ route('admin.usage.index', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'عرض سجل الاستخدام الموثق' : 'View persisted usage audit' }}</a></p>
 @if(session('status'))<p class="status" role="status">{{ session('status') }}</p>@endif
 @if($errors->any())<div role="alert" class="status"><strong>{{ $locale === 'ar' ? 'خطأ في البيانات' : 'Check the submitted fields' }}</strong>
 <ul>@foreach($errors->all() as $message)<li>{{ $message }}</li>@endforeach</ul></div>@endif
