@@ -76,7 +76,8 @@ final class PublicLabRunbookJourneyTest extends TestCase
             ->assertSee('Version-reviewed operational guide')
             ->assertSee('Reviewed recovery runbook')
             ->assertSee('<strong>Checked</strong>', false)
-            ->assertDontSee('<script>', false)
+            ->assertDontSee("<script>alert('leak')</script>", false)
+            ->assertSee('&lt;script&gt;alert', false)
             ->assertDontSee('href="javascript:', false)
             ->assertSee('href="'.$urlAr.'"', false)
             ->assertSee('href="'.route('public.lab', ['lang' => 'en']).'"', false);
