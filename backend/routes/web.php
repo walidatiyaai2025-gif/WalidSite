@@ -264,17 +264,25 @@ Route::middleware('auth:web')->group(function (): void {
     // Keep receipts partitioned by their *actual* currency and provider.
     Route::get('/admin/ai/usage', function (Request $request) {
         abort_unless($request->user()?->canAccessAdmin(), 403);
-        $request->validate([
+        $todayUtc = now('UTC')->startOfDay();
+        $todayDay = $todayUtc->toDateString();
+        $oldestDay = $todayUtc->copy()->subDays(90)->toDateString();
+        $input = $request->validate([
             'lang' => ['sometimes', 'in:ar,en'],
             'page' => ['sometimes', 'integer', 'min:1', 'max:10000'],
+            'day' => ['sometimes', 'date_format:Y-m-d',
+                'after_or_equal:'.$oldestDay, 'before_or_equal:'.$todayDay],
         ]);
-        $today = now('UTC')->startOfDay();
-        $tomorrow = $today->copy()->addDay();
+        // This is a read-only UTC calendar-day window, never a floating 24h
+        // interval or a live provider cost assertion. Bound queries to 90 days.
+        $day = $input['day'] ?? $todayDay;
+        $dayStart = \Carbon\CarbonImmutable::parse($day, 'UTC')->startOfDay();
+        $dayEnd = $dayStart->addDay();
         $rows = \Illuminate\Support\Facades\DB::table('ai_providers as provider')
-            ->leftJoin('ai_usage as usage', function ($join) use ($today, $tomorrow) {
+            ->leftJoin('ai_usage as usage', function ($join) use ($dayStart, $dayEnd) {
                 $join->on('usage.provider_id', '=', 'provider.id')
-                    ->where('usage.created_at', '>=', $today)
-                    ->where('usage.created_at', '<', $tomorrow);
+                    ->where('usage.created_at', '>=', $dayStart)
+                    ->where('usage.created_at', '<', $dayEnd);
             })
             // Provider archival revokes credentials, not financial history.
             // Keep active zero-use rows and only archived rows with receipts
@@ -288,9 +296,15 @@ Route::middleware('auth:web')->group(function (): void {
                 'provider.currency', 'provider.deleted_at', 'usage.cost_currency')
             ->orderBy('provider.display_name')->orderBy('provider.id')
             ->orderBy('usage.cost_currency')
-            ->paginate(20)->appends(['lang' => $request->query('lang') === 'ar' ? 'ar' : 'en']);
+            ->paginate(20)->appends(array_filter([
+                'lang' => $request->query('lang') === 'ar' ? 'ar' : 'en',
+                // Preserve canonical today links unless the admin chose a
+                // day explicitly. Historical reports must retain the filter.
+                'day' => isset($input['day']) ? $day : null,
+            ], static fn ($value): bool => $value !== null));
 
-        return view('admin.ai.usage', compact('rows'));
+        return response()->view('admin.ai.usage', compact('rows', 'day', 'oldestDay', 'todayDay'))
+            ->header('Cache-Control', 'no-store');
     })->name('admin.usage.index');
 
     // Laravel web middleware enforces CSRF. API controller remains the only
