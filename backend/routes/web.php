@@ -46,6 +46,13 @@ Route::get('/', function (Request $request) {
             ->whereNotNull('verified_at')->where('verified_at', '<=', now())
             ->orderBy('id')->limit(50)])
         ->orderByDesc('published_at')->orderBy('id')->lazy(100) as $project) {
+        // Featured CTAs must resolve to the exact public case-study route.
+        // A stored slug with underscores/spaces can satisfy publication and
+        // evidence checks but never match /projects/{slug}; skip it before
+        // consuming one of the three visible homepage slots.
+        if (preg_match('/\\A[A-Za-z0-9-]+\\z/D', $project->slug) !== 1) {
+            continue;
+        }
         $data = $api->publicProjectData($project, $request);
         if (empty($data['evidence_urls'])) {
             continue;
