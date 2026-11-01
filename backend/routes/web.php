@@ -871,6 +871,18 @@ foreach (['about', 'expertise', 'hire'] as $professionalPage) {
             'software' => ['Software & Integration', 'Infrastructure & Security'],
             'delivery' => ['Project Delivery'],
         ];
+        // WEB-03 supports filtering *on the expertise page*, not solely
+        // navigating to the recruiter page. Accept canonical category keys
+        // only; arbitrary query strings are never interpolated into SQL.
+        $expertiseCategories = [
+            'database' => 'Database & Reliability',
+            'integration' => 'Software & Integration',
+            'security' => 'Infrastructure & Security',
+            'delivery' => 'Project Delivery',
+        ];
+        $rawExpertiseCategory = $request->query()['category'] ?? '';
+        $expertiseCategory = is_string($rawExpertiseCategory)
+            && isset($expertiseCategories[$rawExpertiseCategory]) ? $rawExpertiseCategory : '';
         if (! isset($tracks[$track])) {
             $track = 'all';
         }
@@ -887,6 +899,9 @@ foreach (['about', 'expertise', 'hire'] as $professionalPage) {
                         ->where('profile_id', $profile->id)->select('skill_id'));
                 if ($professionalPage === 'hire' && $track !== 'all') {
                     $skillsQuery->whereIn('category', $tracks[$track]);
+                }
+                if ($professionalPage === 'expertise' && $expertiseCategory !== '') {
+                    $skillsQuery->where('category', $expertiseCategories[$expertiseCategory]);
                 }
                 $skills = $skillsQuery->orderBy('category')->orderBy('name_en')->get();
             }
@@ -906,6 +921,8 @@ foreach (['about', 'expertise', 'hire'] as $professionalPage) {
             'skills' => $skills,
             'approvedClaims' => $approvedClaims,
             'track' => $track,
+            'expertiseCategories' => $expertiseCategories,
+            'expertiseCategory' => $expertiseCategory,
         ]);
     })->name('public.'.$professionalPage);
 }
