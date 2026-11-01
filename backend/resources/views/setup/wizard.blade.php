@@ -20,20 +20,37 @@ a,button:focus-visible,input:focus-visible{outline-offset:3px}a{color:var(--acce
 <body><main>
 <h1>{{ $locale === 'ar' ? 'إعداد وليد سايت لأول مرة' : 'Set up WalidSite' }}</h1>
 <nav aria-label="{{ $locale === 'ar' ? 'مراحل الإعداد' : 'Setup steps' }}">
-<ol class="steps"><li>1 — {{ $locale === 'ar' ? 'التحقق' : 'Verify' }}</li><li>2 — {{ $locale === 'ar' ? 'قاعدة البيانات' : 'Database' }}</li><li>3 — {{ $locale === 'ar' ? 'المالك' : 'Owner' }}</li></ol>
+<ol class="steps"><li>1 — {{ $locale === 'ar' ? 'التحقق' : 'Verify' }}</li><li>2 — {{ $locale === 'ar' ? 'قاعدة البيانات' : 'Database' }}</li><li>3 — {{ $locale === 'ar' ? 'الترحيلات' : 'Migrations' }}</li><li>4 — {{ $locale === 'ar' ? 'المالك' : 'Owner' }}</li></ol>
 </nav>
 <a href="{{ route('site.setup', ['lang' => $locale === 'ar' ? 'en' : 'ar']) }}">{{ $locale === 'ar' ? 'English' : 'العربية' }}</a>
 @if($errors->any())<div role="alert" class="error"><ul>@foreach($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></div>@endif
 
 @if($step === 'unlock')
 <h2>{{ $locale === 'ar' ? 'الخطوة 1: رمز الإعداد السري' : 'Step 1: Server setup token' }}</h2>
-<p>{{ $locale === 'ar' ? 'أدخل رمز SITE_SETUP_TOKEN الذي وضعته داخل بيئة الخادم، وليس داخل GitHub.' : 'Enter SITE_SETUP_TOKEN from the private server configuration, never from GitHub.' }}</p>
+<p>{{ $locale === 'ar' ? 'رمز الأمان يتم توليده تلقائيًا. افتح File Manager ثم application/storage/app/site-first-run.json وانسخ قيمة token فقط. لا تعدّل أي ملف.' : 'Your private token is generated automatically. In cPanel File Manager open application/storage/app/site-first-run.json and copy only the token value. Do not edit any file.' }}</p>
 <form method="post" action="{{ route('site.setup.unlock') }}">@csrf
 <label for="token">{{ $locale === 'ar' ? 'رمز الإعداد' : 'Setup token' }}</label><input id="token" type="password" name="token" autocomplete="off" required maxlength="256">
 <button type="submit">{{ $locale === 'ar' ? 'التالي' : 'Next' }}</button></form>
+@elseif($step === 'configure')
+<h2>{{ $locale === 'ar' ? 'الخطوة 2: إعداد قاعدة البيانات' : 'Step 2: Configure database' }}</h2>
+<p>{{ $locale === 'ar' ? 'أنشئ قاعدة بيانات فارغة ومستخدمًا لها من قسم MySQL Databases في cPanel، ثم أدخل البيانات هنا. سيتم إنشاء APP_KEY وحفظ ملف .env تلقائيًا دون Terminal.' : 'Create an empty database and user in cPanel MySQL Databases, then enter the credentials here. APP_KEY and private .env will be generated automatically; no Terminal is needed.' }}</p>
+<form method="post" action="{{ route('site.setup.configure') }}">@csrf
+<label for="db_host">{{ $locale === 'ar' ? 'خادم قاعدة البيانات' : 'Database host' }}</label>
+<input id="db_host" name="db_host" value="{{ old('db_host', 'localhost') }}" required maxlength="253" autocomplete="off">
+<label for="db_port">{{ $locale === 'ar' ? 'المنفذ' : 'Port' }}</label>
+<input id="db_port" name="db_port" type="number" min="1" max="65535" value="{{ old('db_port', 3306) }}" required>
+<label for="db_database">{{ $locale === 'ar' ? 'اسم قاعدة البيانات' : 'Database name' }}</label>
+<input id="db_database" name="db_database" value="{{ old('db_database') }}" required maxlength="64" autocomplete="off">
+<label for="db_username">{{ $locale === 'ar' ? 'مستخدم قاعدة البيانات' : 'Database username' }}</label>
+<input id="db_username" name="db_username" value="{{ old('db_username') }}" required maxlength="64" autocomplete="off">
+<label for="db_password">{{ $locale === 'ar' ? 'كلمة مرور قاعدة البيانات' : 'Database password' }}</label>
+<input id="db_password" name="db_password" type="password" required maxlength="255" autocomplete="new-password">
+<button type="submit">{{ $locale === 'ar' ? 'فحص الاتصال وحفظ الإعدادات — التالي' : 'Test connection, save settings & Next' }}</button>
+</form>
+<p><small>{{ $locale === 'ar' ? 'تُحفظ كلمة المرور على الخادم فقط، ولا يتم عرضها مرة أخرى أو تسجيلها في السجلات.' : 'Credentials are only stored in private server configuration, never echoed or logged.' }}</small></p>
 @elseif($step === 'database')
 <h2>{{ $locale === 'ar' ? 'الخطوة 2: الاتصال وMigrations' : 'Step 2: Database and migrations' }}</h2>
-<p>{{ $locale === 'ar' ? 'يجب ضبط APP_KEY وقاعدة البيانات في إعدادات الخادم أولاً. لا تُعرض كلمات مرور قاعدة البيانات هنا.' : 'Configure APP_KEY and database credentials on the server first. Secrets are never displayed here.' }}</p>
+<p>{{ $locale === 'ar' ? 'تم حفظ بيانات الاتصال. نفّذ الآن الترحيلات المطلوبة من خلال هذه الصفحة.' : 'Database settings saved. Apply the pending migrations directly from this page.' }}</p>
 @if(!$status['ready'])
 <p role="alert" class="error">{{ $locale === 'ar' ? 'تعذر الاتصال بقاعدة البيانات. راجع الإعدادات الخاصة بالخادم.' : 'Database connection failed. Check the private server settings.' }}</p>
 @else
