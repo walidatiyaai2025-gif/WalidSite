@@ -142,7 +142,7 @@ final class VerifiedReadingReturnJourneyTest extends TestCase
                 ]);
                 $this->get($index)->assertOk()
                     ->assertSee('href="'.e($link).'"', false)
-                    ->assertSee('Verified results:')
+                    ->assertSee($lang === 'ar' ? 'نتائج موثقة:' : 'Verified results:')
                     ->assertDontSee('not-for-publication');
                 $other = $lang === 'ar' ? 'en' : 'ar';
                 $this->get($link)->assertOk()
