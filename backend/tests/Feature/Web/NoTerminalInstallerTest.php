@@ -183,6 +183,67 @@ class NoTerminalInstallerTest extends TestCase
         $this->assertFileDoesNotExist($path);
     }
 
+    public function test_invalid_database_validation_never_flashes_password_but_preserves_safe_fields(): void
+    {
+        $token = str_repeat('v', 40);
+        $path = storage_path('app/no-terminal-validation-secret-test');
+        config([
+            'site.setup_enabled' => true,
+            'site.setup_token' => $token,
+            'site.setup_database_ready' => false,
+            'site.environment_path' => $path,
+        ]);
+
+        try {
+            $this->post('https://localhost/setup/unlock', ['token' => $token])
+                ->assertRedirect('/setup');
+
+            $secret = 'do-not-flash-this-private-db-password-123!';
+            // Validation rejects the port before any database probe or .env
+            // write; redirect input must retain harmless form fields ONLY.
+            $response = $this->post('https://localhost/setup/configure', [
+                'site_url' => 'https://example.test',
+                'db_host' => 'localhost',
+                'db_port' => 70000,
+                'db_database' => 'private_db',
+                'db_username' => 'private_user',
+                'db_password' => $secret,
+            ]);
+            $response->assertSessionHasErrors('db_port')
+                ->assertSessionHas('_old_input.db_host', 'localhost')
+                ->assertSessionHas('_old_input.site_url', 'https://example.test')
+                ->assertSessionMissing('_old_input.db_password')
+                ->assertDontSee($secret);
+
+            $this->get('https://localhost/setup')
+                ->assertOk()
+                ->assertDontSee($secret)
+                ->assertSee('name="db_password"', false);
+            $this->assertFileDoesNotExist($path);
+        } finally {
+            @unlink($path);
+        }
+    }
+
+    public function test_invalid_setup_unlock_token_is_never_kept_in_old_session_input(): void
+    {
+        config([
+            'site.setup_enabled' => true,
+            'site.setup_token' => str_repeat('v', 40),
+            'site.setup_database_ready' => false,
+        ]);
+
+        $secret = str_repeat('Z', 257);
+        $this->post('https://localhost/setup/unlock', ['token' => $secret])
+            ->assertSessionHasErrors('token')
+            ->assertSessionMissing('_old_input.token')
+            ->assertDontSee($secret);
+        $this->get('https://localhost/setup')
+            ->assertOk()
+            ->assertDontSee($secret)
+            ->assertSee('name="token"', false);
+    }
+
     public function test_invalid_database_form_never_overwrites_private_configuration(): void
     {
         $path = storage_path('app/no-terminal-denied-test');
