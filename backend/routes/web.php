@@ -4,7 +4,28 @@ use App\Domain\Identity\WebLoginController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
-Route::view('/', 'welcome')->name('home');
+/*
+ * WEB-01 public landing: do not turn mockup counts or CV draft rows into
+ * published professional claims. Reuse the API's owner/URL approval policy.
+ * Render only evidence-safe projects and publication-validated articles.
+ */
+Route::get('/', function (Request $request) {
+    $api = app(\App\Http\Controllers\Api\PublicPortfolioController::class);
+    $publicProfile = $api->profile($request)->getData(true)['data'] ?? null;
+
+    $featuredProjects = \App\Models\Project::query()->publiclyVerified()
+        ->orderByDesc('published_at')->orderBy('id')->limit(24)->get()
+        ->map(fn (\App\Models\Project $project) => $api->publicProjectData($project, $request))
+        ->filter(fn (array $project) => ! empty($project['evidence_urls']))
+        ->take(3)->values();
+
+    $featuredArticles = \App\Models\Article::query()->publiclyVisible()
+        ->orderByDesc('published_at')->orderBy('id')->limit(24)->get()
+        ->filter(fn (\App\Models\Article $article) => $article->publicRevision() !== null)
+        ->take(3)->values();
+
+    return view('welcome', compact('publicProfile', 'featuredProjects', 'featuredArticles'));
+})->name('home');
 
 /*
  * T012 public SEO sitemap: derive destinations from the SAME publication and
