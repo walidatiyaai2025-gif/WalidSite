@@ -75,7 +75,7 @@ body:has(.recruiter-screen) .header-links a[href*="/contact"]{background:#00A999
             <figcaption>{{ $locale === 'ar' ? 'الصورة الأصلية المقدمة من المالك' : 'Owner-supplied original portrait' }}</figcaption>
         </figure>
     </header>
-    <main class="recruiter-body" id="recruiter-fit">
+    <section class="recruiter-body" id="recruiter-fit">
         <form class="recruiter-focus" action="{{ route('public.hire') }}" method="get"
               aria-label="{{ $locale === 'ar' ? 'اختيار المسار المهني' : 'Choose career focus' }}">
             <input type="hidden" name="lang" value="{{ $locale }}">
@@ -152,5 +152,5 @@ body:has(.recruiter-screen) .header-links a[href*="/contact"]{background:#00A999
             <a href="{{ route('public.contact', array_merge(['lang' => $locale], $track !== 'all' ? ['track' => $track] : [])) }}">{{ $locale === 'ar' ? 'التواصل بشأن المجال' : 'Contact about this focus' }}</a>
             <a href="{{ route('public.projects', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'دراسات حالة موثقة' : 'Verified case studies' }}</a>
         </nav>
-    </main>
+    </section>
 </div>
