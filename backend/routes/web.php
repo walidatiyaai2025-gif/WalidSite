@@ -589,7 +589,8 @@ Route::get('/resume', function (Request $request) {
  * in source or exposed to the browser; activation requires verified mail
  * delivery and a configured contact recipient on the server.
  */
-Route::get('/contact', function () {
+Route::get('/contact', function (Request $request) {
+    $request->validate(['lang' => ['sometimes', 'in:ar,en']]);
     $recipient = config('mail.contact_recipient');
     $available = is_string($recipient) && filter_var($recipient, FILTER_VALIDATE_EMAIL)
         && in_array(config('mail.default'), ['smtp', 'sendmail', 'ses', 'ses-v2', 'postmark', 'resend'], true);
