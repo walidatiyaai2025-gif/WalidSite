@@ -46,14 +46,14 @@
 <div class="about-screen">
     <header class="about-hero">
         <div>
-            <p class="about-kicker">{{ $locale === 'ar' ? 'المسيرة المهنية المنشورة بعد مراجعة الأدلة' : 'Publication-reviewed career profile' }}</p>
+            <p class="about-kicker">{{ $locale === 'ar' ? 'المسيرة المهنية المنشورة بعد مراجعة الأدلة' : 'Evidence-gated public profile' }}</p>
             <h1 id="about-screen-title">{{ $locale === 'ar' ? 'نبذة عن وليد عطية' : 'About Waleed Atiya' }}</h1>
             <p>{{ $locale === 'ar'
                 ? 'الخبرات والشهادات المعروضة هنا مستمدة من سجلات المالك المعتمدة للنشر. لا تظهر بيانات أصحاب الحسابات الأخرى أو الادعاءات التي لم تجتز مراجعة المصادر.'
                 : 'The experience and credentials below come from the owner’s publication-reviewed records. Other accounts and unapproved career statements remain private.' }}</p>
             <nav class="about-actions" aria-label="{{ $locale === 'ar' ? 'الخطوات المهنية التالية' : 'Professional next steps' }}">
                 <a href="{{ route('public.resume', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'افتح السيرة القابلة للطباعة أو حفظ PDF' : 'Open printable CV / save PDF' }}</a>
-                <a href="{{ route('public.projects', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'دراسات الحالة الموثقة' : 'Verified case studies' }}</a>
+                <a href="{{ route('public.projects', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'دراسات حالة موثقة' : 'Verified case studies' }}</a>
                 <a href="{{ route('public.contact', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'التواصل' : 'Contact' }}</a>
             </nav>
             <nav class="about-jump-links" aria-label="{{ $locale === 'ar' ? 'أقسام النبذة' : 'About sections' }}">
@@ -116,7 +116,7 @@
             @endif
         </section>
         <section id="about-evidence" class="about-panel about-panel--proof" aria-labelledby="about-evidence-heading">
-            <h2 id="about-evidence-heading">{{ $locale === 'ar' ? 'عبارات مهنية مع روابط أدلتها' : 'Professional statements with source links' }}</h2>
+            <h2 id="about-evidence-heading">{{ $locale === 'ar' ? 'عبارات مهنية مع روابط أدلتها' : 'Evidence-backed professional statements' }}</h2>
             <p>{{ $locale === 'ar' ? 'تؤدي الروابط إلى مصادر عامة اجتازت سياسة التحقق؛ لا تعتمد هذه القائمة أي شهادة أو جهة عمل إضافية.' : 'Each source link passed public evidence checks; this list does not invent further credentials or employers.' }}</p>
             @if(count($approvedClaims) === 0)
                 <p class="about-empty" role="status">{{ $locale === 'ar' ? 'لا توجد عبارات مهنية إضافية معتمدة بأدلة عامة حاليًا.' : 'No additional source-backed professional statements have been approved for display.' }}</p>
