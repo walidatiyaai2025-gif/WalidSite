@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\AiProviderController;
 use App\Http\Controllers\Api\PublicPortfolioController;
 use App\Http\Controllers\Api\PublicHomeController;
 use App\Http\Controllers\Api\MobileHomeController;
+use App\Http\Controllers\Api\MobileBootstrapController;
 use App\Http\Controllers\Api\PublicLabController;
 use App\Http\Controllers\Api\PublicArticleController;
 use App\Http\Controllers\Api\PublicRunbookController;
@@ -36,6 +37,13 @@ Route::middleware([RequireSecureApiTransport::class, 'auth:sanctum'])->group(fun
         ->name('api.admin.ai.providers.destroy');
     Route::post('/admin/ai/providers/{provider}/test', [AiProviderController::class, 'test'])->middleware('throttle:5,1');
 });
+
+// MOBILE-01: guest-only bootstrap and local preference capabilities. No
+// private config, server-persisted user preferences or invented policy URLs.
+Route::get('/public/app-bootstrap', [MobileBootstrapController::class, 'bootstrap'])
+    ->name('api.public.app-bootstrap')->middleware('throttle:60,1');
+Route::get('/mobile/preferences', [MobileBootstrapController::class, 'preferences'])
+    ->name('api.mobile.preferences')->middleware('throttle:60,1');
 
 // WEB-01: same evidence-qualified owner, project and article feed as the web home.
 Route::get('/public/home', [PublicHomeController::class, 'index'])
