@@ -105,6 +105,12 @@ final class MobileDiagnosisDispatcher
                 ."Allowed reviewed runbooks:\n"
                 .json_encode($candidatePrompt, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
 
+            // A queued request can expire while the reviewed catalog is being loaded.
+            // Recheck at the last safe boundary before private input leaves the server.
+            if ($request->expires_at->isPast()) {
+                throw new DomainException('Mobile diagnosis request is unavailable.');
+            }
+
             $base = ProviderEndpoint::normalize($provider->base_url);
             if ($provider->provider_type === 'openai-compatible') {
                 $response = Http::acceptJson()
