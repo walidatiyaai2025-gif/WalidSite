@@ -101,6 +101,12 @@ class PublicPortfolioSecurityTest extends TestCase
             'https://localhost/login',
             'https://service.internal/status',
             'https://server.local/config',
+            'https://metadata.kubernetes.default.svc/secrets',
+            'https://printer.lan/admin',
+            'https://gateway.home/status',
+            'https://router.home.arpa/private',
+            'https://service.localdomain/internal',
+            'https://ROUTER.HOME.ARPA./config',
             'https://docs.example.org:8443/private',
         ] as $url) {
             $this->proof($unproven, 'public', true, $url);
@@ -121,6 +127,54 @@ class PublicPortfolioSecurityTest extends TestCase
         $this->getJson('/api/v1/public/projects/'.$safe->slug)
             ->assertOk()->assertJsonCount(1, 'data.evidence_urls')
             ->assertJsonPath('data.evidence_urls.0', 'https://docs.example.test/public-proof');
+    }
+
+    public function test_private_dns_evidence_cannot_be_published_as_owner_claim_proof(): void
+    {
+        $user = User::create([
+            'email' => 'dns-claim-owner@example.test', 'status' => 'active',
+        ]);
+        $user->roles()->attach(Role::firstOrCreate(['name' => 'owner'])->id);
+        $profile = Profile::create([
+            'user_id' => $user->id,
+            'public_name' => 'Verified Portfolio Owner',
+            'publish_status' => 'published',
+        ]);
+
+        foreach ([
+            'https://service.svc/internal',
+            'https://router.lan/console',
+            'https://node.home/status',
+            'https://gateway.home.arpa/private',
+            'https://host.localdomain/diagnostic',
+        ] as $index => $unsafe) {
+            ProfessionalClaim::create([
+                'profile_id' => $profile->id,
+                'claim_en' => 'Unusable private DNS claim '.$index,
+                'claim_ar' => 'ادعاء شبكة خاصة '.$index,
+                'evidence_url' => $unsafe,
+                'status' => 'approved',
+                'is_public' => true,
+            ]);
+        }
+        ProfessionalClaim::create([
+            'profile_id' => $profile->id,
+            'claim_en' => 'Independent public evidence',
+            'claim_ar' => 'دليل عام صالح',
+            'evidence_url' => 'https://docs.example.test/approved',
+            'status' => 'approved',
+            'is_public' => true,
+        ]);
+
+        $this->getJson('/api/v1/public/profile?lang=ar')->assertOk()
+            ->assertJsonPath('data.name', 'Verified Portfolio Owner')
+            ->assertJsonCount(1, 'data.claims')
+            ->assertJsonPath('data.claims.0.text', 'دليل عام صالح')
+            ->assertJsonPath('data.claims.0.evidence_url', 'https://docs.example.test/approved')
+            ->assertDontSee('service.svc')
+            ->assertDontSee('router.lan')
+            ->assertDontSee('gateway.home.arpa')
+            ->assertDontSee('Unusable private DNS claim');
     }
 
     public function test_project_page_counts_exclude_unsafe_evidence_without_leaking_hidden_rows(): void
