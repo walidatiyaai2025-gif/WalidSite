@@ -8,6 +8,7 @@ use App\Models\Role;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class MediaRightsConsoleTest extends TestCase
@@ -119,4 +120,86 @@ class MediaRightsConsoleTest extends TestCase
             ->assertSee('No');
         $this->assertFalse($asset->fresh()->isPubliclyUsable());
     }
+    private function generatedArtwork(bool $validEvidence = true): Asset
+    {
+        Storage::fake('local');
+        $key = 'ai-artwork/'.Str::uuid().'.png';
+        $bytes = 'test-raster-bytes';
+        $asset = Asset::create([
+            'asset_key' => 'generated-'.Str::random(8),
+            'mime_type' => 'image/png',
+            'storage_key' => $key,
+            'sha256' => hash('sha256', $bytes),
+            'origin' => 'ai-generated',
+            'rights_status' => 'unverified',
+            'publishable' => false,
+        ]);
+        Storage::disk('local')->put($key, $bytes);
+        if ($validEvidence) {
+            Storage::disk('local')->put($key.'.provenance.json', json_encode([
+                'asset_id' => $asset->id,
+                'sha256' => $asset->sha256,
+                'provider_id' => 'internal-test',
+                'model' => 'test',
+                'prompt_sha256' => str_repeat('b', 64),
+            ]));
+        }
+        return $asset;
+    }
+
+    public function test_guest_reader_and_invalid_confirmation_cannot_approve_artwork(): void
+    {
+        $asset = $this->generatedArtwork();
+        $url = '/admin/ai/images/'.$asset->id.'/approve';
+        $payload = [
+            'confirm_asset_key' => $asset->asset_key,
+            'licensed_for_publication' => '1',
+            'no_owner_impersonation' => '1',
+        ];
+        $this->post($url, $payload)->assertRedirect('/admin/login');
+        $this->actingAs($this->userWithRole('reader'), 'web');
+        $this->post($url, $payload)->assertForbidden();
+        $this->actingAs($this->userWithRole('admin'), 'web');
+        $this->post($url, array_merge($payload, ['confirm_asset_key' => 'wrong']))
+            ->assertSessionHasErrors('confirm_asset_key');
+        $this->post($url, array_merge($payload, ['no_owner_impersonation' => '0']))
+            ->assertSessionHasErrors('no_owner_impersonation');
+        $this->assertFalse($asset->fresh()->publishable);
+        $this->assertFalse(Storage::disk('local')->exists($asset->storage_key.'.rights.json'));
+    }
+
+    public function test_approval_requires_private_provenance_and_persists_rights_attestation(): void
+    {
+        $this->actingAs($this->userWithRole('owner'), 'web');
+        $asset = $this->generatedArtwork();
+        $payload = [
+            'confirm_asset_key' => $asset->asset_key,
+            'licensed_for_publication' => '1',
+            'no_owner_impersonation' => '1',
+        ];
+        $this->get('/admin/ai/images?lang=ar')->assertOk()
+            ->assertSee('التحقق واعتماد الحقوق')
+            ->assertDontSee($asset->storage_key);
+        $this->post('/admin/ai/images/'.$asset->id.'/approve', $payload)
+            ->assertRedirect();
+        $this->assertSame('cleared', $asset->fresh()->rights_status);
+        $this->assertTrue($asset->fresh()->publishable);
+        $this->assertTrue(Storage::disk('local')->exists($asset->storage_key.'.rights.json'));
+        $this->post('/admin/ai/images/'.$asset->id.'/revoke')->assertRedirect();
+        $this->assertFalse($asset->fresh()->isPubliclyUsable());
+    }
+
+    public function test_missing_provenance_fails_closed_without_publication(): void
+    {
+        $this->actingAs($this->userWithRole('admin'), 'web');
+        $asset = $this->generatedArtwork(false);
+        $this->post('/admin/ai/images/'.$asset->id.'/approve', [
+            'confirm_asset_key' => $asset->asset_key,
+            'licensed_for_publication' => '1',
+            'no_owner_impersonation' => '1',
+        ])->assertSessionHasErrors('approval');
+        $this->assertFalse($asset->fresh()->publishable);
+        $this->assertFalse(Storage::disk('local')->exists($asset->storage_key.'.rights.json'));
+    }
+
 }
