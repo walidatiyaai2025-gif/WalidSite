@@ -7,7 +7,7 @@
 .contact form,.contact-notice{background:#fff;border:1px solid var(--wa-soft-border);padding:24px;border-radius:18px}
 .contact label{display:block;font-weight:700;margin-top:14px}.contact input,.contact textarea{display:block;width:100%;padding:10px;border:1px solid #97B4C8;border-radius:8px;font:inherit;min-height:44px}
 .contact textarea{min-height:140px}.contact button{margin-top:18px;min-height:44px;background:var(--wa-cta);color:#fff;border:0;border-radius:10px;padding:10px 20px;font:inherit;font-weight:700;cursor:pointer}
-.contact .contact-again{display:inline-flex;align-items:center;min-height:44px;margin-top:12px;text-decoration:underline;text-underline-offset:3px;font-weight:700}.contact .contact-again:focus-visible{outline:3px solid var(--wa-primary);outline-offset:3px}.contact-trap{position:absolute;left:-10000px;width:1px;height:1px;overflow:hidden}.contact-error{color:#9D2735}
+.contact .contact-error-summary{border:2px solid #9D2735;border-radius:10px;padding:14px 18px;margin-bottom:18px}.contact .contact-error-summary a{text-decoration:underline;text-underline-offset:3px}.contact .contact-error-summary a:focus-visible{outline:3px solid var(--wa-primary);outline-offset:3px}.contact .contact-again{display:inline-flex;align-items:center;min-height:44px;margin-top:12px;text-decoration:underline;text-underline-offset:3px;font-weight:700}.contact .contact-again:focus-visible{outline:3px solid var(--wa-primary);outline-offset:3px}.contact-trap{position:absolute;left:-10000px;width:1px;height:1px;overflow:hidden}.contact-error{color:#9D2735}
 .contact .contact-consent{display:flex;gap:12px;align-items:flex-start;line-height:1.55;cursor:pointer}
 .contact .contact-consent input{display:inline-block;width:20px;height:20px;min-height:20px;flex:none;margin:3px 0 0;accent-color:var(--wa-cta)}
 </style>
@@ -24,6 +24,24 @@
 @else
 <form method="post" action="{{ route('public.contact.submit', ['lang'=>$locale]) }}">
 @csrf
+@if($errors->any())
+<div class="contact-error-summary" role="alert" aria-labelledby="contact-error-summary-heading">
+<h2 id="contact-error-summary-heading">{{ $locale === 'ar' ? 'يرجى تصحيح الحقول التالية' : 'Please correct the following fields' }}</h2>
+<ul>
+@foreach(['name', 'email', 'subject', 'message', 'privacy_consent'] as $field)
+@if($errors->has($field))
+<li><a href="#{{ $field === 'privacy_consent' ? 'contact-privacy-consent' : 'contact-'.$field }}">{{ match($field) {
+'name' => $locale === 'ar' ? 'الاسم' : 'Name',
+'email' => $locale === 'ar' ? 'البريد' : 'Email',
+'subject' => $locale === 'ar' ? 'الموضوع' : 'Subject',
+'message' => $locale === 'ar' ? 'الرسالة' : 'Message',
+default => $locale === 'ar' ? 'الموافقة على الخصوصية' : 'Privacy consent'
+} }}</a></li>
+@endif
+@endforeach
+</ul>
+</div>
+@endif
 <div class="contact-trap" aria-hidden="true"><label for="website">Leave blank</label><input id="website" name="website" tabindex="-1" autocomplete="off"></div>
 @foreach(['name','email','subject'] as $field)
 <label for="contact-{{ $field }}">{{ match($field) {
