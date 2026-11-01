@@ -7,6 +7,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Mail\Mailable;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Throwable;
@@ -64,7 +65,8 @@ final class PublicContactController extends Controller
                     ->subject('WalidSite contact inquiry')
             );
         } catch (Throwable $exception) {
-            report($exception);
+            // Mail exceptions may include transport credentials or user PII.
+            Log::warning('public.contact.delivery_failed', ['type' => $exception::class]);
             abort(503, 'Contact delivery is temporarily unavailable.');
         }
 
