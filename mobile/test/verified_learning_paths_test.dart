@@ -182,6 +182,33 @@ void main() {
     expect(find.text('استعادة البيانات'), findsOneWidget);
   });
 
+  testWidgets('rebuild preserves terminal pagination and never reloads page two',
+      (tester) async {
+    final calls = <int>[];
+    final loader = (int page) async {
+      calls.add(page);
+      return VerifiedLearningPage.parse(response(page, [
+        track(id: page == 1 ? idOne : idTwo,
+            slug: page == 1 ? 'database-recovery' : 'verified-devops'),
+      ], more: page == 1), page);
+    };
+    await tester.pumpWidget(MaterialApp(home: VerifiedLearningLibrary(
+      arabic: false, pageLoader: loader,
+    )));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('learning-more')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('learning-more')));
+    await tester.pumpAndSettle();
+    expect(calls, [1, 2]);
+    expect(find.byKey(const Key('learning-more')), findsNothing);
+    await tester.pumpWidget(MaterialApp(home: VerifiedLearningLibrary(
+      arabic: false, pageLoader: loader,
+    )));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('learning-more')), findsNothing);
+    expect(calls, [1, 2]);
+  });
+
   testWidgets('Arabic content and genuinely empty published catalog', (tester) async {
     await tester.pumpWidget(MaterialApp(home: VerifiedLearningLibrary(
       arabic: true,

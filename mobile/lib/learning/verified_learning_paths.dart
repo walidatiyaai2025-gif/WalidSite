@@ -234,7 +234,15 @@ class _VerifiedLearningLibraryState extends State<VerifiedLearningLibrary> {
   }
 
   Future<void> _loadMore() async {
-    if (_loadingMore || !_more || _nextPage > 10000) return;
+    if (_loadingMore || _nextPage > 10000) return;
+    // The first page's continuation is immutable until page two succeeds.
+    // Later pages use the last successful response's continuation flag.
+    if (_nextPage == 2) {
+      final first = await _firstPage;
+      if (!first.hasMorePages || !mounted) return;
+    } else if (!_more) {
+      return;
+    }
     final token = _generation;
     final page = _nextPage;
     setState(() {
@@ -323,7 +331,7 @@ class _VerifiedLearningLibraryState extends State<VerifiedLearningLibrary> {
                   }
                   final first = snapshot.data!;
                   final tracks = [...first.tracks, ..._additional];
-                  _more = _additional.isEmpty && _nextPage == 2
+                  final canLoadMore = _nextPage == 2
                       ? first.hasMorePages
                       : _more;
                   if (tracks.isEmpty) {
@@ -364,7 +372,7 @@ class _VerifiedLearningLibraryState extends State<VerifiedLearningLibrary> {
                         ),
                       if (_moreError != null)
                         Text(_moreError!, key: const Key('learning-more-error')),
-                      if (_more)
+                      if (canLoadMore)
                         FilledButton(
                           key: const Key('learning-more'),
                           onPressed: _loadingMore ? null : _loadMore,
