@@ -89,11 +89,12 @@ final class ResearchSourceIntake
      */
     private function containsCredentialParameter(string $value): bool
     {
-        // Repeated encoding is common in redirect URLs. Bound decoding work and
-        // inspect each layer so a secret key cannot bypass the public URL gate.
-        for ($depth = 0; $depth < 3; $depth++) {
+        // These candidate URLs can be copied into paid-provider AI prompts,
+        // before the later public ArticleRevision evidence safety gate runs.
+        // Match its sensitive keys and fail closed on excess nesting.
+        for ($depth = 0; $depth < 4; $depth++) {
             if (preg_match(
-                '/(?:^|[?&;])(?:access[_-]?token|refresh[_-]?token|id[_-]?token|token|api[_-]?key|auth(?:orization)?|password|passwd|secret|client[_-]?secret|private[_-]?key|signature|sig|session(?:id)?|jwt|bearer|awsaccesskeyid|x-amz-(?:credential|signature|security-token)|x-goog-(?:credential|signature))=/i',
+                '/(?:^|[?#&;])(?:access[_-]?token|refresh[_-]?token|id[_-]?token|token|api[_-]?key|key|auth(?:orization)?|password|passwd|secret|client[_-]?secret|private[_-]?key|signature|sig|session(?:id)?|jwt|bearer|code|ticket|awsaccesskeyid|x[-_]amz[-_][a-z0-9_-]+|x[-_]goog[-_][a-z0-9_-]+)=/i',
                 $value,
             ) === 1) {
                 return true;
@@ -101,18 +102,20 @@ final class ResearchSourceIntake
 
             $decoded = rawurldecode($value);
             if ($decoded === $value) {
-                break;
+                return false;
             }
 
             $value = $decoded;
         }
 
-        return false;
+        // If four decoding rounds still change the URL, there is no safe
+        // public interpretation. Fail closed before a model sees the source.
+        return true;
     }
 
     private function isLocalHost(string $host): bool
     {
-        foreach (['localhost', '.localhost', '.local', '.internal', '.test', '.invalid'] as $suffix) {
+        foreach (['localhost', '.localhost', '.local', '.internal', '.test', '.invalid', '.onion'] as $suffix) {
             if ($host === $suffix || str_ends_with($host, $suffix)) {
                 return true;
             }
