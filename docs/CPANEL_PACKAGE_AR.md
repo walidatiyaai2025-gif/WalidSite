@@ -22,33 +22,16 @@
 
 إذا كنت تستعمل جذرًا آخر للدومين الإضافي، انقل محتويات public_html إليه واضبط مسار application في index.php ليتوافق مع موقع التطبيق خارج مجلد الويب العام. لا تنقل مجلد application أو .env أو contracts إلى public_html.
 
-## إعداد التطبيق لأول مرة
+## التثبيت الجديد — من المتصفح فقط دون Terminal أو تحرير .env
 
-1. من File Manager انسخ application/.env.example إلى application/.env ثم عدّل إعدادات هذا الملف الخاص:
-    APP_ENV=production
-    APP_DEBUG=false
-    APP_URL=https://YOUR-DOMAIN
-    DB_CONNECTION=mysql
-    DB_HOST=localhost
-    DB_PORT=3306
-    DB_DATABASE=YOUR_CPANEL_DATABASE
-    DB_USERNAME=YOUR_CPANEL_DATABASE_USER
-    DB_PASSWORD=YOUR_PRIVATE_DATABASE_PASSWORD
-    CACHE_STORE=file
-    SESSION_DRIVER=file
-    QUEUE_CONNECTION=sync
-    SITE_SETUP_ENABLED=true
-    SITE_SETUP_TOKEN=YOUR_RANDOM_PRIVATE_TOKEN
-    SITE_UPDATES_ENABLED=true
-    SITE_AUTO_MIGRATE=false
+1. جهّز **قاعدة بيانات فارغة** واسم مستخدم وكلمة مرور لها من **cPanel → MySQL Databases**. هذه خطوة الاستضافة الوحيدة قبل المعالج؛ الموقع لا يستطيع إنشاء قاعدة MySQL من دون صلاحيات لوحة الاستضافة.
+2. فك الباكيدج في **/home/USERNAME**، بحيث تكون application وcontracts خارج public_html. شغّل الدومين باستخدام HTTPS. Laravel يولّد مفتاح APP_KEY ورمز التثبيت تلقائيًا بمجرد التشغيل لأول مرة؛ لا تحتاج Terminal أو كتابة .env.
+3. افتح **https://YOUR-DOMAIN/setup**. داخل cPanel File Manager افتح الملف الخاص **/home/USERNAME/application/storage/app/site-first-run.json** باستخدام **View**، وانسخ قيمة **token** فقط، ثم الصقها في أول خطوة. **لا تنشر هذا الملف أو ترسله إلى أحد**: يحتوي على بيانات تأسيس سرية. وجود الرمز خارج public_html ضروري لمنع زائر غريب من الاستيلاء على الموقع قبل إنشاء حساب المالك.
+4. اضغط **Next**: أدخل Database Host (عادة localhost)، Port (عادة 3306)، اسم قاعدة البيانات، اسم المستخدم وكلمة المرور. المعالج **يفحص الاتصال ويتأكد أن قاعدة البيانات فارغة** قبل الحفظ. لا يعرض كلمة المرور أو يكتبها في سجل HTTP. يُنشئ التطبيق ملف application/.env تلقائيًا بصلاحيات خاصة، ويُفعّل APP_DEBUG=false.
+5. اضغط **Next** لتنفيذ Laravel Migrations من الواجهة، ثم **Next** لتعيين كلمة مرور حساب المالك من CV الحقيقي المعتمد. يمنع النظام إعادة التثبيت على قاعدة مفعلة؛ ويغلق الرمز والمعالج بعد النجاح.
+6. افتح **/admin/login** وسجّل الدخول. بعد ذلك التحديثات: **/admin/updates**. لا تعطل حماية التخزين أو تنقل application تحت public_html.
 
-2. أنشئ APP_KEY فريدًا قبل فتح الموقع من cPanel Terminal إن كان متاحًا:
-    cd ~/application && php artisan key:generate
-   أو ولّد مفتاحًا صحيحًا بطول 32 بايت عشوائيًا بواسطة أداة موثوقة وأضفه بصيغة base64 إلى .env. لا تستخدم مفتاح PHP Unit أو مثالًا ثابتًا.
-3. أنشئ SITE_SETUP_TOKEN عشوائيًا بـ 32 حرفًا على الأقل (الأفضل 64 حرف hex من الأمر openssl rand -hex 32) واحفظه في .env فقط. لا تضف هذا الرمز إلى رابط المتصفح أو مستودع GitHub.
-4. فعّل الكتابة لدى مستخدم PHP في application/storage و application/bootstrap/cache دون منح الجميع صلاحيات 777.
-5. افتح https://YOUR-DOMAIN/setup عبر HTTPS. أدخل رمز التثبيت، ثم Next لفحص اتصال قاعدة البيانات وتشغيل migrations، ثم Next لتفعيل حساب المالك الحقيقي الموجود في مصدر CV بكلمة مرور جديدة قوية. التثبيت يمنع إعادة الإنشاء على نفس القاعدة بعد تفعيل المدير.
-6. بعد نجاح التثبيت، اجعل SITE_SETUP_ENABLED=false، وامسح SITE_SETUP_TOKEN فورًا، ثم نفّذ php artisan config:clear إذا كان Config Cache مفعّلًا. افتح /admin/login.
+إذا لم يظهر الملف الخاص site-first-run.json، راجع صلاحيات كتابة application/storage/app وتأكد أن PHP 8.3+ وHTTPS يعملان، من دون 777. إذا كانت الاستضافة تمنع كتابة application/.env، تظهر رسالة واضحة دون تسريب معلومات الاتصال. لا تُدخل بيانات Production لقاعدة تحتوي بيانات موجودة؛ استخدم قاعدة جديدة وفارغة.
 
 ## بعد التثبيت والتحديثات
 

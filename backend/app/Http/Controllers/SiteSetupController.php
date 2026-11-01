@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Support\Deployment\SiteInstaller;
+use App\Support\Deployment\DatabaseConfiguration;
 use App\Support\Deployment\SiteUpdater;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -21,18 +22,19 @@ final class SiteSetupController extends Controller
         abort_unless($request->session()->get('site_setup_authorized') === true, 403);
     }
 
-    public function show(Request $request, SiteInstaller $installer, SiteUpdater $updater): View
+    public function show(Request $request, SiteInstaller $installer, SiteUpdater $updater, DatabaseConfiguration $database): View
     {
         $this->guard($installer);
         $unlocked = $request->session()->get('site_setup_authorized') === true;
-        $status = $unlocked ? $updater->inspect() : null;
+        $configured = $unlocked && $database->isConfigured();
+        $status = $configured ? $updater->inspect() : null;
         // If a deployment introduced new migrations or the DB went offline
         // between steps, return safely to the database step instead of
         // trapping the owner on an unusable final form.
-        $migrated = $unlocked
+        $migrated = $configured
             && $request->session()->get('site_setup_migrated') === true
             && $status['ready'] && $status['pending'] === [];
-        $step = ! $unlocked ? 'unlock' : ($migrated ? 'owner' : 'database');
+        $step = ! $unlocked ? 'unlock' : (! $configured ? 'configure' : ($migrated ? 'owner' : 'database'));
         $ownerEmail = $migrated ? $installer->ownerEmail() : null;
 
         return view('setup.wizard', compact('step', 'status', 'ownerEmail'));
@@ -55,6 +57,7 @@ final class SiteSetupController extends Controller
     {
         $this->guard($installer);
         $this->unlocked($request);
+        abort_unless(config('site.setup_database_ready'), 403);
 
         try {
             $result = $updater->apply();
