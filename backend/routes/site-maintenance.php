@@ -7,11 +7,11 @@ use Illuminate\Support\Facades\Route;
 // Web group (session + CSRF) is supplied by bootstrap/app.php.
 Route::get('/setup', [SiteSetupController::class, 'show'])->name('site.setup');
 Route::post('/setup/unlock', [SiteSetupController::class, 'unlock'])
-    ->middleware('throttle:5,1')->name('site.setup.unlock');
+    ->middleware('throttle:site-setup-unlock')->name('site.setup.unlock');
 Route::post('/setup/database', [SiteSetupController::class, 'database'])
-    ->middleware('throttle:3,1')->name('site.setup.database');
+    ->middleware('throttle:site-setup-actions')->name('site.setup.database');
 Route::post('/setup/finish', [SiteSetupController::class, 'finish'])
-    ->middleware('throttle:3,1')->name('site.setup.finish');
+    ->middleware('throttle:site-setup-actions')->name('site.setup.finish');
 
 Route::middleware('auth:web')->group(function (): void {
     Route::get('/admin/updates', [AdminUpdateController::class, 'index'])
