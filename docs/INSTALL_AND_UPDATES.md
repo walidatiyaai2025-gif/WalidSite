@@ -17,6 +17,8 @@ If the DB or APP_KEY are not configured, the wizard cannot configure them remote
 
 The owner-only **Admin → Updates & patches** screen shows SITE_RELEASE_REF (an operator-supplied release identifier), a DB connection check and exactly which checked-in migrations have not run. POST Apply (CSRF protected) runs only Laravel's own migrate --force with a non-overlapping cache lock, then re-checks the migration repository. There is no arbitrary uploaded code or downloading unreviewed ZIP packages. The application log records counts/failures; this is not a substitute for backups.
 
+**Incompatible migration history is not a disconnected database.** If the database includes migrations unknown to this installed code release, the owner panel and first-run wizard show a bilingual mismatch warning. The update runner refuses to migrate, and the setup wizard cannot replace an otherwise reachable configured database; only genuine connection failures permit the original token-protected credential recovery. Do not delete migration repository rows or re-point the database to silence this warning. Restore a verified matching code release or an approved backup and review private redacted logs; no unreviewed downgrade or automatic schema rollback is offered.
+
 For unattended updates **after the trusted code release has been installed by your deployment pipeline**, set SITE_AUTO_MIGRATE=true and run the normal cPanel cron every minute:
 
     cd /absolute/path/to/WalidSite/backend && /usr/bin/php artisan schedule:run >/dev/null 2>&1
