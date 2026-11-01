@@ -525,4 +525,93 @@ final class MobileAiDiagnoseTest extends TestCase
         $this->assertNull($request->fresh()->request_blob);
         $this->assertNull($request->fresh()->selected_runbook_id);
     }
+
+    public function test_owner_can_poll_completed_job_without_repeating_inference_or_spend(): void
+    {
+        $this->configure();
+        $runbook = $this->reviewedRunbook();
+        $user = $this->user();
+        $bearer = $this->token($user);
+        Http::fake([
+            'http://127.0.0.1:11434/api/generate' => Http::response([
+                'response' => json_encode(['runbook_id' => $runbook], JSON_THROW_ON_ERROR),
+            ]),
+        ]);
+
+        $jobId = $this->withToken($bearer)
+            ->postJson('/api/v1/mobile/ai/diagnose', $this->payload())
+            ->assertOk()
+            ->json('data.id');
+
+        for ($i = 0; $i < 2; $i++) {
+            $response = $this->withToken($bearer)
+                ->getJson('/api/v1/mobile/ai/jobs/'.$jobId)
+                ->assertOk()
+                ->assertJsonPath('data.id', $jobId)
+                ->assertJsonPath('data.status', 'completed')
+                ->assertJsonPath('data.progress_percent', 100)
+                ->assertJsonPath('data.result_url', '/api/v1/mobile/solutions/'.$runbook)
+                ->assertJsonPath('data.retry_after_seconds', null);
+            $this->assertStringContainsString('no-store', (string) $response->headers->get('Cache-Control'));
+            $this->assertStringNotContainsString('RESTORE DATABASE', $response->getContent());
+            $this->assertStringNotContainsString('SQL Server', $response->getContent());
+        }
+
+        Http::assertSentCount(1);
+        $this->assertDatabaseCount('ai_diagnosis_requests', 1);
+        $this->assertDatabaseCount('ai_jobs', 1);
+    }
+
+    public function test_poll_is_private_mobile_scoped_and_never_processes_queued_job(): void
+    {
+        [$provider, $model] = $this->configure();
+        $owner = $this->user();
+        $other = $this->user();
+        $inactive = $this->user('inactive');
+        $private = 'never-return-this-private-question';
+        $diagnosis = AiDiagnosisRequest::create([
+            'user_id' => $owner->id,
+            'model_id' => $model->id,
+            'request_blob' => Crypt::encryptString($private),
+            'expires_at' => now()->addHour(),
+        ]);
+        $jobId = app(DurableAiQueue::class)->enqueue(
+            $provider, 'mobile-diagnosis', 'mobile-diagnosis:'.$diagnosis->id,
+            ['classify'], 0, 1
+        );
+        $diagnosis->forceFill(['job_id' => $jobId])->save();
+        Http::fake();
+
+        $endpoint = '/api/v1/mobile/ai/jobs/'.$jobId;
+        $this->getJson($endpoint)->assertUnauthorized();
+        $this->withToken($this->token($other))
+            ->getJson($endpoint)->assertNotFound();
+        Auth::forgetGuards();
+        $this->withToken($this->token($owner, 'admin'))
+            ->getJson($endpoint)->assertForbidden();
+        Auth::forgetGuards();
+        $this->withToken($this->token($inactive))
+            ->getJson($endpoint)->assertForbidden();
+        Auth::forgetGuards();
+
+        $response = $this->withToken($this->token($owner))
+            ->getJson($endpoint)
+            ->assertOk()
+            ->assertJsonPath('data.id', $jobId)
+            ->assertJsonPath('data.status', 'queued')
+            ->assertJsonPath('data.progress_percent', 0)
+            ->assertJsonPath('data.result_url', null)
+            ->assertJsonPath('data.retry_after_seconds', 30);
+
+        $this->assertStringNotContainsString($private, $response->getContent());
+        $this->assertStringNotContainsString($provider->id, $response->getContent());
+        $this->assertStringContainsString('no-store', (string) $response->headers->get('Cache-Control'));
+        $this->withToken($this->token($owner))
+            ->getJson('/api/v1/mobile/ai/jobs/not-a-uuid')->assertNotFound();
+
+        Http::assertNothingSent();
+        $this->assertDatabaseCount('ai_diagnosis_requests', 1);
+        $this->assertDatabaseCount('ai_jobs', 1);
+    }
+
 }
