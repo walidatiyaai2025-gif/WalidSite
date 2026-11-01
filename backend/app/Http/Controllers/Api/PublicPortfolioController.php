@@ -166,7 +166,10 @@ class PublicPortfolioController extends Controller
             return false;
         }
 
-        foreach (['localhost', 'local', 'internal', 'invalid', 'onion'] as $suffix) {
+        // Internal resolver zones can resolve to private/LAN services even when
+        // they look like valid public HTTPS hostnames. This validation is for
+        // displaying public proof links; no DNS lookup or network fetch occurs.
+        foreach (['localhost', 'local', 'localdomain', 'internal', 'svc', 'lan', 'home', 'home.arpa', 'invalid', 'onion'] as $suffix) {
             if ($hostname === $suffix || str_ends_with($hostname, '.'.$suffix)) {
                 return false;
             }
