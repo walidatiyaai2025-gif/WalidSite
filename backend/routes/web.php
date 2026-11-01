@@ -999,7 +999,15 @@ Route::middleware('auth:web')->group(function (): void {
             'lang' => ['sometimes', 'in:ar,en'],
             'drafts_page' => ['sometimes', 'integer', 'min:1', 'max:10000'],
             'jobs_page' => ['sometimes', 'integer', 'min:1', 'max:10000'],
+            'job_status' => ['sometimes', 'nullable', 'in:retry,failed'],
+            'job_id' => ['sometimes', 'nullable', 'uuid'],
+            'inspect_job' => ['sometimes', 'nullable', 'uuid'],
         ]);
+        // HTML GET forms submit empty filter controls. Normalize optional
+        // values after validation; never turn empty into WHERE id IS NULL.
+        $jobStatus = $request->query('job_status') ?: '';
+        $jobFilterId = $request->query('job_id') ?: '';
+        $inspectJobId = $request->query('inspect_job') ?: '';
 
         $qualityRows = \App\Models\ArticleRevision::query()
             ->with(['article.heroAsset'])
@@ -1012,6 +1020,9 @@ Route::middleware('auth:web')->group(function (): void {
             ->appends(array_filter([
                 'lang' => $request->query('lang') === 'ar' ? 'ar' : 'en',
                 'jobs_page' => $request->query('jobs_page'),
+                'job_status' => $jobStatus ?: null,
+                'job_id' => $jobFilterId ?: null,
+                'inspect_job' => $inspectJobId ?: null,
             ], static fn ($value) => $value !== null))
             ->through(function ($revision): array {
                 $article = $revision->article;
@@ -1038,6 +1049,8 @@ Route::middleware('auth:web')->group(function (): void {
         $failedJobs = \Illuminate\Support\Facades\DB::table('ai_jobs as job')
             ->join('ai_providers as provider', 'provider.id', '=', 'job.provider_id')
             ->whereIn('job.status', ['retry', 'failed'])
+            ->when($jobStatus !== '', static fn ($q) => $q->where('job.status', $jobStatus))
+            ->when($jobFilterId !== '', static fn ($q) => $q->where('job.id', $jobFilterId))
             ->select([
                 'job.id', 'job.job_type', 'job.status',
                 'job.attempt_count', 'job.max_attempts',
@@ -1051,14 +1064,51 @@ Route::middleware('auth:web')->group(function (): void {
             ->appends(array_filter([
                 'lang' => $request->query('lang') === 'ar' ? 'ar' : 'en',
                 'drafts_page' => $request->query('drafts_page'),
+                'job_status' => $jobStatus ?: null,
+                'job_id' => $jobFilterId ?: null,
+                'inspect_job' => $inspectJobId ?: null,
             ], static fn ($value) => $value !== null));
 
-        return view('admin.quality', compact('qualityRows', 'failedJobs'));
+        // An inspection is a *read-only*, allowlisted view of stored
+        // incidents. Never pass a raw AI job or checkpoint model to Blade.
+        $inspectedJob = null;
+        $checkpointRows = collect();
+        $inspectionLeased = false;
+        if ($inspectJobId !== '') {
+            $inspectedJob = \Illuminate\Support\Facades\DB::table('ai_jobs as job')
+                ->join('ai_providers as provider', 'provider.id', '=', 'job.provider_id')
+                ->whereIn('job.status', ['failed', 'retry'])
+                ->where('job.id', $inspectJobId)
+                ->first([
+                    'job.id', 'job.job_type', 'job.status',
+                    'job.attempt_count', 'job.max_attempts',
+                    'job.next_attempt_at', 'job.last_error_code',
+                    'job.updated_at', 'provider.display_name as provider_name',
+                ]);
+            abort_if($inspectedJob === null, 404);
+            $checkpointRows = \Illuminate\Support\Facades\DB::table('ai_job_steps')
+                ->where('job_id', $inspectJobId)
+                ->orderBy('position')->limit(20)
+                ->get(['position', 'status', 'attempt_no', 'completed_at']);
+            $inspectionLeased = \Illuminate\Support\Facades\DB::table('job_leases')
+                ->where('job_id', $inspectJobId)->exists();
+        }
+
+        return view('admin.quality', compact(
+            'qualityRows', 'failedJobs', 'jobStatus', 'jobFilterId',
+            'inspectJobId', 'inspectedJob', 'checkpointRows', 'inspectionLeased'
+        ));
     })->name('admin.quality.index');
 
     Route::post('/admin/quality/jobs/{job}/retry', function (Request $request, string $job) {
         abort_unless($request->user()?->canAccessAdmin(), 403);
-        $request->validate(['lang' => ['sometimes', 'in:ar,en']]);
+        $request->validate([
+            'lang' => ['sometimes', 'in:ar,en'],
+            'inspect_job' => ['sometimes', 'uuid'],
+        ]);
+        // The existing retry transaction remains the sole authority.
+        // Optional navigation context may only point to this same job.
+        $returnToInspection = $request->query('inspect_job') === $job;
 
         $retried = \Illuminate\Support\Facades\DB::transaction(function () use ($job): bool {
             $record = \Illuminate\Support\Facades\DB::table('ai_jobs')
@@ -1093,6 +1143,7 @@ Route::middleware('auth:web')->group(function (): void {
 
         return redirect()->route('admin.quality.index', [
             'lang' => $request->query('lang') === 'ar' ? 'ar' : 'en',
+            ...($returnToInspection ? ['inspect_job' => $job] : []),
         ])->with('status', $request->query('lang') === 'ar'
             ? 'أصبحت المهمة جاهزة لمحاولة العامل التالية ضمن حدودها الحالية.'
             : 'The job is ready for the next worker attempt within its existing limits.');
