@@ -94,7 +94,10 @@ final class PublicLabCatalogTest extends TestCase
         $expected = [];
         for ($i = 1; $i <= 16; $i++) {
             $article = $this->publishArticle(sprintf('z-reviewed-%02d', $i));
-            $article->forceFill(['published_at' => now()->subDay()])->save();
+            // The API sorts by published_at DESC then random UUID. Distinct
+            // timestamps make this fixture's 01..16 order deterministic;
+            // revoked articles remain newer but must never consume a slot.
+            $article->forceFill(['published_at' => now()->subDay()->subMinutes($i)])->save();
             $expected[] = $article->slug;
         }
 
