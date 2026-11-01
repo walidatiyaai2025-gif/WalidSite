@@ -74,15 +74,15 @@ class ProfessionalPagesTest extends TestCase
         foreach (['database', 'software', 'delivery'] as $track) {
             $this->get('/hire?lang=ar&track='.$track)
                 ->assertOk()
-                ->assertSee('rel="canonical" href="'.route('public.hire', ['lang' => 'ar', 'track' => $track]).'"', false)
-                ->assertSee('rel="alternate" hreflang="en" href="'.route('public.hire', ['lang' => 'en', 'track' => $track]).'"', false);
+                ->assertSee('rel="canonical" href="'.e(route('public.hire', ['lang' => 'ar', 'track' => $track])).'"', false)
+                ->assertSee('rel="alternate" hreflang="en" href="'.e(route('public.hire', ['lang' => 'en', 'track' => $track])).'"', false);
         }
 
         foreach (['/hire?lang=ar&track[]=database', '/hire?lang=ar&track=invalid'] as $path) {
             $this->get($path)
                 ->assertOk()
                 ->assertSee('rel="canonical" href="'.route('public.hire', ['lang' => 'ar']).'"', false)
-                ->assertDontSee('rel="canonical" href="'.route('public.hire', ['lang' => 'ar', 'track' => 'database']).'"', false);
+                ->assertDontSee('rel="canonical" href="'.e(route('public.hire', ['lang' => 'ar', 'track' => 'database'])).'"', false);
         }
     }
 
