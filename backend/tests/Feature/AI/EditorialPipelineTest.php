@@ -429,7 +429,7 @@ class EditorialPipelineTest extends TestCase
         Storage::fake('local');
         $bytes = str_repeat('P', 4 * 1024 * 1024 + 1);
         $sha = hash('sha256', $bytes);
-        $key = 'ai-artwork/oversized-review.png';
+        $key = 'ai-artwork/'.(string) \Illuminate\Support\Str::uuid().'.png';
         $asset = \App\Models\Asset::create([
             'asset_key' => 'oversized-artwork-review',
             'mime_type' => 'image/png',
@@ -474,7 +474,7 @@ class EditorialPipelineTest extends TestCase
         );
         $this->assertIsString($bytes);
         $sha = hash('sha256', $bytes);
-        $key = 'ai-artwork/oversized-manifest.png';
+        $key = 'ai-artwork/'.(string) \Illuminate\Support\Str::uuid().'.png';
         $asset = \App\Models\Asset::create([
             'asset_key' => 'oversized-provenance-review',
             'mime_type' => 'image/png',
