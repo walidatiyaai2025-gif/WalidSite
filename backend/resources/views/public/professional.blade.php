@@ -61,6 +61,9 @@
         background: white; color: var(--wa-strong); border: 1px solid #97B4C8; border-radius: 10px; }
     .professional-filter button { background: var(--wa-cta); color: white; border: none;
         border-radius: 10px; padding: 11px 18px; font: inherit; font-weight: 800; min-height: 44px; cursor: pointer; }
+    .professional-filter a { display: inline-flex; align-items: center; min-height: 44px;
+        color: var(--wa-cta); font-weight: 700; text-underline-offset: 3px; }
+    .professional-filter a:focus-visible { outline: 3px solid var(--wa-cta); outline-offset: 3px; }
     @media (max-width: 850px) { .professional-columns { grid-template-columns:1fr; } }
 </style>
 @endpush
@@ -128,6 +131,23 @@
                     'Project Delivery' => 'delivery',
                 ])
                 <h2 id="professional-section">{{ $locale === 'ar' ? 'المهارات المعتمدة' : 'Evidence-verified skills' }}</h2>
+                <form class="professional-filter" action="{{ route('public.expertise') }}" method="get"
+                      role="search" aria-label="{{ $locale === 'ar' ? 'تصفية المهارات الموثقة' : 'Filter verified skills' }}">
+                    <input type="hidden" name="lang" value="{{ $locale }}">
+                    <div>
+                        <label for="expertise-category">{{ $locale === 'ar' ? 'التخصص' : 'Specialty' }}</label>
+                        <select id="expertise-category" name="category">
+                            <option value="" @selected($expertiseCategory === '')>{{ $locale === 'ar' ? 'كل التخصصات' : 'All specialties' }}</option>
+                            @foreach ($expertiseCategories as $key => $category)
+                                <option value="{{ $key }}" @selected($expertiseCategory === $key)>{{ $locale === 'ar' ? ($categoryLabelsAr[$category] ?? $category) : $category }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <button type="submit">{{ $locale === 'ar' ? 'تطبيق التصفية' : 'Apply filter' }}</button>
+                    @if ($expertiseCategory !== '')
+                        <a href="{{ route('public.expertise', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'إزالة التصفية' : 'Clear filter' }}</a>
+                    @endif
+                </form>
                 @if ($skills->isEmpty())
                     <div class="professional-empty" role="status">{{ $locale === 'ar' ? 'لم تُعتمد مهارات للنشر بعد.' : 'No skills have been approved with verified evidence yet.' }}</div>
                 @else
