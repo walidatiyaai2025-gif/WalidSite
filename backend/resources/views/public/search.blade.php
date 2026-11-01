@@ -32,7 +32,7 @@
     <option value="projects" @selected($type === 'projects')>{{ $locale === 'ar' ? 'المشاريع' : 'Projects' }}</option>
 </select>
 <button type="submit">{{ $locale === 'ar' ? 'بحث' : 'Search' }}</button>
-@if($search !== '')
+@if($search !== '' || $type !== 'all')
 <a class="ed-clear" href="{{ route('public.search', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'مسح البحث' : 'Clear search' }}</a>
 @endif
 </form>
@@ -55,7 +55,7 @@
 </p>
 @if($articles->isNotEmpty())
 <section class="ed-card" aria-labelledby="articles-h"><h2 id="articles-h">{{ $locale === 'ar' ? 'المقالات' : 'Articles' }}</h2><ul>
-@foreach($articles as $a)<li><a href="{{ route('public.article', ['slug'=>$a->slug,'lang'=>$locale]) }}">{{ $locale === 'ar' ? $a->title_ar : $a->title_en }}</a></li>@endforeach
+@foreach($articles as $a)<li><a href="{{ route('public.article', ['slug' => $a->slug, 'lang' => $locale, 'source' => 'search', 'q' => $search, 'type' => $type]) }}">{{ $locale === 'ar' ? $a->title_ar : $a->title_en }}</a></li>@endforeach
 </ul>
 <a class="ed-more" href="{{ route('public.blog', ['lang' => $locale, 'q' => $search]) }}">{{ $locale === 'ar' ? 'استعراض جميع المقالات المطابقة' : 'Browse all matching articles' }}</a>
 </section>
