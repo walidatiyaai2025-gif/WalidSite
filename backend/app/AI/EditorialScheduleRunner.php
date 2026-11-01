@@ -3,6 +3,7 @@
 namespace App\AI;
 
 use App\Models\Article;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -71,7 +72,7 @@ final class EditorialScheduleRunner
     {
         return DB::transaction(function () use ($id, $refreshDays): ?string {
             $schedule = DB::table('editorial_schedules')->where('id', $id)->lockForUpdate()->first();
-            if (! $schedule || $schedule->status !== 'pending' || $schedule->due_at > now()) {
+            if (! $schedule || $schedule->status !== 'pending' || CarbonImmutable::parse($schedule->due_at)->isFuture()) {
                 return null;
             }
             $article = Article::query()->whereKey($schedule->article_id)->lockForUpdate()->first();
@@ -104,13 +105,27 @@ final class EditorialScheduleRunner
     {
         return DB::transaction(function () use ($id): bool {
             $schedule = DB::table('editorial_schedules')->where('id', $id)->lockForUpdate()->first();
-            if (! $schedule || $schedule->status !== 'published' || $schedule->refresh_due_at > now()) {
+            if (! $schedule || $schedule->status !== 'published' || CarbonImmutable::parse($schedule->refresh_due_at)->isFuture()) {
                 return false;
             }
             // Stale content is removed from public circulation until
             // editorial review. It must not quietly inherit old approval.
             $article = Article::query()->whereKey($schedule->article_id)->lockForUpdate()->first();
             if ($article && $article->status === 'published') {
+                // The old reviewed evidence must not be immediately reused
+                // for manual publication without a new editorial decision.
+                $reviewed = $article->revisions()
+                    ->where('revision_no', $article->published_revision_no)->first();
+                if ($reviewed) {
+                    $checks = $reviewed->validation_json ?? [];
+                    $reviewed->update([
+                        'status' => 'draft',
+                        'validation_json' => array_merge($checks, [
+                            'citations_passed' => false, 'technical_passed' => false,
+                            'auto_publish_approved' => false,
+                        ]),
+                    ]);
+                }
                 $article->forceFill([
                     'status' => 'draft', 'published_at' => null,
                     'published_revision_no' => null,
