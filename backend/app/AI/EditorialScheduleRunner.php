@@ -111,6 +111,20 @@ final class EditorialScheduleRunner
             // Stale content is removed from public circulation until
             // editorial review. It must not quietly inherit old approval.
             $article = Article::query()->whereKey($schedule->article_id)->lockForUpdate()->first();
+            // A schedule owns the expiry of its EXACT approved revision.
+            // An editor may have unpublished it and independently reviewed a
+            // newer revision. Never let the older deadline revoke that newer
+            // public content or invalidate its fresh evidence.
+            if ($article && $article->status === 'published'
+                && (int) $article->published_revision_no !== (int) $schedule->revision_no) {
+                DB::table('editorial_schedules')->where('id', $id)->update([
+                    'status' => 'requires_review', 'refresh_due_at' => null, 'updated_at' => now(),
+                ]);
+                $this->event('refresh:superseded:'.$id, $schedule->article_id,
+                    $schedule->revision_no, null, 'refresh_superseded',
+                    'pinned_revision_changed');
+                return false;
+            }
             if ($article && $article->status === 'published') {
                 // The old reviewed evidence must not be immediately reused
                 // for manual publication without a new editorial decision.

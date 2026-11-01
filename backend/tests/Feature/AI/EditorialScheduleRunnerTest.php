@@ -196,6 +196,66 @@ class EditorialScheduleRunnerTest extends TestCase
         ]);
     }
 
+    public function test_old_refresh_deadline_cannot_unpublish_a_newly_reviewed_revision(): void
+    {
+        $actor = $this->actor();
+        $article = $this->article();
+        $this->enable($actor, 1);
+        $this->schedule($actor, $article);
+        $this->travel(2)->minutes();
+
+        $runner = app(EditorialScheduleRunner::class);
+        $this->assertSame(1, $runner->run()['published']);
+        $this->assertSame(1, $article->fresh()->published_revision_no);
+
+        // Legitimate editor action removes the scheduled first revision,
+        // then independently validates and publishes a new second revision.
+        $this->actingAs($actor, 'web')
+            ->post('/admin/content/'.$article->id.'/unpublish')
+            ->assertRedirect();
+        $this->assertSame('draft', $article->fresh()->status);
+
+        $approved = $article->revisions()->where('revision_no', 1)->firstOrFail();
+        $article->revisions()->create([
+            'revision_no' => 2,
+            'body_md' => 'Independently reviewed replacement guidance',
+            'citations_json' => $approved->citations_json,
+            'validation_json' => $approved->validation_json,
+            'status' => 'validated',
+        ]);
+        $this->actingAs($actor, 'web')
+            ->post('/admin/content/'.$article->id.'/publish')
+            ->assertRedirect();
+        $this->assertSame(2, $article->fresh()->published_revision_no);
+
+        // The abandoned revision-1 timer must not touch the new publication.
+        $this->travel(2)->days();
+        $due = $runner->run();
+        $this->assertSame(0, $due['refreshed']);
+        $this->assertSame('published', $article->fresh()->status);
+        $this->assertSame(2, $article->fresh()->published_revision_no);
+        $this->assertTrue($article->revisions()
+            ->where('revision_no', 2)->firstOrFail()->hasVerifiedEvidence());
+        $this->getJson('/api/v1/public/articles/'.$article->slug)->assertOk();
+        $this->assertDatabaseHas('editorial_schedules', [
+            'article_id' => $article->id,
+            'revision_no' => 1,
+            'status' => 'requires_review',
+            'refresh_due_at' => null,
+        ]);
+        $this->assertDatabaseHas('editorial_events', [
+            'article_id' => $article->id,
+            'revision_no' => 1,
+            'action' => 'refresh_superseded',
+            'reason' => 'pinned_revision_changed',
+        ]);
+
+        // Retired timers are not repeatedly scanned or logged.
+        $this->assertSame(0, $runner->run()['refreshed']);
+        $this->assertSame(1, DB::table('editorial_events')
+            ->where('action', 'refresh_superseded')->count());
+    }
+
     public function test_only_admin_roles_can_change_policy_or_schedule_and_events_are_redacted(): void
     {
         $article = $this->article();
