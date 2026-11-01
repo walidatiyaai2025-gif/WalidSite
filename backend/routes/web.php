@@ -193,6 +193,49 @@ Route::middleware('auth:web')->group(function (): void {
             ->header('Cache-Control', 'no-store');
     })->whereUuid('provider')->name('admin.providers.show');
 
+    // ADMIN-04: render redacted settings-audit history for an active provider.
+    // Match the API's field-name allowlist. A stored event is never trusted as
+    // HTML or as a source of credential values, endpoint URLs or actor PII.
+    Route::get('/admin/ai/providers/{provider}/audit', function (
+        Request $request, \App\Models\AiProvider $provider
+    ) {
+        abort_unless($request->user()?->canAccessAdmin(), 403);
+        $request->validate([
+            'lang' => ['sometimes', 'in:ar,en'],
+            'page' => ['sometimes', 'integer', 'min:1', 'max:10000'],
+        ]);
+
+        $allowedFields = [
+            'display_name', 'provider_type', 'base_url', 'enabled',
+            'concurrent_limit', 'timeout_seconds', 'daily_budget_minor',
+            'currency', 'routing_priority', 'secret_rotated', 'secret_removed',
+        ];
+        $events = \Illuminate\Support\Facades\DB::table('ai_provider_audit_events')
+            ->where('provider_id', $provider->id)
+            ->select('id', 'action', 'changed_fields_json', 'created_at')
+            ->orderByDesc('created_at')->orderByDesc('id')
+            ->paginate(20)
+            ->appends(['lang' => $request->query('lang') === 'ar' ? 'ar' : 'en']);
+
+        // Decode/redact only this bounded page, preserving true audit totals.
+        $events->getCollection()->transform(static function ($event) use ($allowedFields) {
+            $decoded = json_decode($event->changed_fields_json, true);
+            $event->changed_fields = array_values(array_unique(array_filter(
+                is_array($decoded) ? $decoded : [],
+                static fn ($field): bool => is_string($field)
+                    && in_array($field, $allowedFields, true)
+            )));
+            $event->action = in_array($event->action, ['created', 'updated', 'tested', 'deleted'], true)
+                ? $event->action : 'other';
+            unset($event->changed_fields_json);
+
+            return $event;
+        });
+
+        return response()->view('admin.ai.audit', compact('provider', 'events'))
+            ->header('Cache-Control', 'no-store');
+    })->whereUuid('provider')->name('admin.providers.audit');
+
     // ADMIN-05: one read-only routing projection for authorized web admins.
     // Persisted limits and observed health are not live provider eligibility
     // or proof that an AI task can run. Never select endpoint or secret fields.
