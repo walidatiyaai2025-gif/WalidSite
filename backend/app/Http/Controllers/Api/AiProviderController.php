@@ -102,6 +102,53 @@ class AiProviderController extends Controller
         return response()->json(['data' => $provider->toPublicArray()]);
     }
 
+    /**
+     * Read-only audit ledger for one provider. Expose only known setting names,
+     * never credential values, raw event JSON or encrypted secrets.
+     */
+    public function auditHistory(Request $request, AiProvider $provider): JsonResponse
+    {
+        $this->authorizeAdmin($request);
+        $request->validate(['page' => ['sometimes', 'integer', 'between:1,10000']]);
+
+        $allowedFields = [
+            'display_name', 'provider_type', 'base_url', 'enabled',
+            'concurrent_limit', 'timeout_seconds', 'daily_budget_minor',
+            'currency', 'routing_priority', 'secret_rotated', 'secret_removed',
+        ];
+
+        $events = DB::table('ai_provider_audit_events')
+            ->where('provider_id', $provider->id)
+            ->select('id', 'actor_id', 'action', 'changed_fields_json', 'created_at')
+            ->orderByDesc('created_at')->orderByDesc('id')
+            ->paginate(20);
+
+        $data = $events->getCollection()->map(static function ($event) use ($allowedFields): array {
+            $fields = json_decode($event->changed_fields_json, true);
+            $fields = is_array($fields) ? $fields : [];
+
+            return [
+                'id' => $event->id,
+                'actor_id' => $event->actor_id,
+                'action' => $event->action,
+                'changed_fields' => array_values(array_filter(
+                    $fields,
+                    static fn ($field): bool => is_string($field) && in_array($field, $allowedFields, true)
+                )),
+                'created_at' => $event->created_at,
+            ];
+        })->all();
+
+        return response()->json([
+            'data' => $data,
+            'meta' => [
+                'current_page' => $events->currentPage(),
+                'last_page' => $events->lastPage(),
+                'total' => $events->total(),
+            ],
+        ]);
+    }
+
     public function store(Request $request): JsonResponse
     {
         $this->authorizeAdmin($request);
