@@ -19,7 +19,7 @@ void main() {
     stepsEn: ['Verify backup access'],
     stepsAr: ['تحقق من الوصول للنسخة'],
   );
-  final pack = OfflineRunbookPack(
+  const pack = OfflineRunbookPack(
     version: '0.1.0',
     source: 'Bundled educational draft',
     lastSynced: null,
