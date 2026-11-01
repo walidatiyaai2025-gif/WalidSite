@@ -7,7 +7,7 @@
 .contact form,.contact-notice{background:#fff;border:1px solid var(--wa-soft-border);padding:24px;border-radius:18px}
 .contact label{display:block;font-weight:700;margin-top:14px}.contact input,.contact textarea{display:block;width:100%;padding:10px;border:1px solid #97B4C8;border-radius:8px;font:inherit;min-height:44px}
 .contact textarea{min-height:140px}.contact button{margin-top:18px;min-height:44px;background:var(--wa-cta);color:#fff;border:0;border-radius:10px;padding:10px 20px;font:inherit;font-weight:700;cursor:pointer}
-.contact-trap{position:absolute;left:-10000px;width:1px;height:1px;overflow:hidden}.contact-error{color:#9D2735}
+.contact .contact-again{display:inline-flex;align-items:center;min-height:44px;margin-top:12px;text-decoration:underline;text-underline-offset:3px;font-weight:700}.contact .contact-again:focus-visible{outline:3px solid var(--wa-primary);outline-offset:3px}.contact-trap{position:absolute;left:-10000px;width:1px;height:1px;overflow:hidden}.contact-error{color:#9D2735}
 .contact .contact-consent{display:flex;gap:12px;align-items:flex-start;line-height:1.55;cursor:pointer}
 .contact .contact-consent input{display:inline-block;width:20px;height:20px;min-height:20px;flex:none;margin:3px 0 0;accent-color:var(--wa-cta)}
 </style>
@@ -18,6 +18,7 @@
 <p>{{ $locale === 'ar' ? 'تُستخدم بيانات الرسالة فقط للرد على طلب التواصل، ولا تنشر على الموقع.' : 'Messages are used only to reply to the inquiry; they are not published.' }}</p>
 @if(session('contact_delivered'))
 <div class="contact-notice" role="status">{{ $locale === 'ar' ? 'تم تسليم الرسالة لخادم البريد المهيأ.' : 'The message was handed to the configured mail transport.' }}</div>
+<p><a class="contact-again" href="{{ route('public.contact', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'إرسال رسالة أخرى' : 'Send another message' }}</a></p>
 @elseif(!$available)
 <div class="contact-notice" role="status">{{ $locale === 'ar' ? 'استقبال الرسائل غير مفعل حتى تهيئة البريد والتحقق منه.' : 'Contact delivery is unavailable until a verified mail transport and recipient are configured.' }}</div>
 @else
