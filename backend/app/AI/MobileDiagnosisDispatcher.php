@@ -5,6 +5,8 @@ namespace App\AI;
 use App\Http\Controllers\Api\PublicRunbookController;
 use App\Models\AiDiagnosisRequest;
 use App\Models\AiModel;
+use App\Models\AiProvider;
+use App\Models\AiRoute;
 use DomainException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Crypt;
@@ -58,14 +60,7 @@ final class MobileDiagnosisDispatcher
                 throw new RuntimeException('Invalid private diagnosis payload.');
             }
 
-            $model = AiModel::query()->with('provider')->find($request->model_id);
-            $provider = $model?->provider;
-            if ($model === null || $provider === null || $provider->id !== $job->provider_id
-                || ! $model->enabled || ! $provider->enabled
-                || $provider->health_status !== 'healthy'
-                || ! in_array('text', $model->capabilities_json ?? [], true)) {
-                throw new DomainException('Diagnosis model configuration changed.');
-            }
+            [$model, $provider] = $this->currentConfiguration($request, $job);
 
             $catalogResponse = $this->runbooks->index(Request::create(
                 '/api/v1/mobile/runbooks', 'GET', ['page' => 1]
@@ -111,6 +106,10 @@ final class MobileDiagnosisDispatcher
                 throw new DomainException('Mobile diagnosis request is unavailable.');
             }
 
+            // The reviewed-catalog lookup can take time while an admin
+            // changes pricing, route, provider credentials or model state.
+            // Never send private input using a stale selection or currency.
+            [$model, $provider] = $this->currentConfiguration($request, $job);
             $base = ProviderEndpoint::normalize($provider->base_url);
             if ($provider->provider_type === 'openai-compatible') {
                 $response = Http::acceptJson()
@@ -186,5 +185,50 @@ final class MobileDiagnosisDispatcher
             $request->forceFill(['request_blob' => null])->save();
             throw new RuntimeException('Mobile diagnosis failed safely.');
         }
+    }
+
+    /**
+     * Re-evaluate a queued model at execution boundaries. Configuration can
+     * change after admission, including during the reviewed-catalog lookup.
+     * Paid job reservation units must still match the active model, task
+     * route and provider currency before any private input is transmitted.
+     *
+     * @return array{AiModel,AiProvider}
+     */
+    private function currentConfiguration(AiDiagnosisRequest $request, stdClass $job): array
+    {
+        $model = AiModel::query()->with('provider')->find($request->model_id);
+        $provider = $model?->provider;
+        if ($model === null || $provider === null || $provider->id !== $job->provider_id
+            || ! $model->enabled || ! $provider->enabled
+            || $provider->health_status !== 'healthy'
+            || ! in_array('text', $model->capabilities_json ?? [], true)) {
+            throw new DomainException('Diagnosis model configuration changed.');
+        }
+
+        if ($provider->provider_type === 'openai-compatible') {
+            $route = AiRoute::query()
+                ->where('task_type', MobileDiagnosisAdmission::TASK_TYPE)->first();
+            $budget = $route?->budget_json;
+            $policy = $model->cost_policy_json;
+            $routeCurrency = is_array($budget) ? ($budget['currency'] ?? null) : null;
+            $modelCurrency = is_array($policy) ? ($policy['currency'] ?? null) : null;
+            $reservation = is_array($budget) ? ($budget['reservation_minor'] ?? null) : null;
+            $fallbacks = $route?->fallback_model_ids_json;
+            $configuredModels = $route === null || ! is_array($fallbacks)
+                ? [] : [$route->primary_model_id, ...$fallbacks];
+
+            if (! is_string($modelCurrency) || $modelCurrency !== $provider->currency
+                || ($routeCurrency !== null && $routeCurrency !== $provider->currency)
+                || ! is_int($reservation) || $reservation < 1
+                || $reservation !== (int) ($job->reserved_budget_minor ?? 0)
+                || ! in_array($model->id, $configuredModels, true)
+                || ! is_string($provider->secret_ciphertext)
+                || trim($provider->secret_ciphertext) === '') {
+                throw new DomainException('Diagnosis paid model or route policy changed.');
+            }
+        }
+
+        return [$model, $provider];
     }
 }
