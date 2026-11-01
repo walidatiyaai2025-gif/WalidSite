@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\IdentityController;
 use App\Http\Controllers\Api\AiProviderController;
 use App\Http\Controllers\Api\PublicPortfolioController;
 use App\Http\Controllers\Api\PublicArticleController;
+use App\Http\Controllers\Api\PublicRunbookController;
 use App\Http\Middleware\RequireSecureApiTransport;
 use Illuminate\Support\Facades\Route;
 
@@ -37,6 +38,13 @@ Route::get('/public/profile', [PublicPortfolioController::class, 'profile'])
     ->name('api.public.profile')->middleware('throttle:60,1');
 Route::get('/public/expertise', [PublicPortfolioController::class, 'expertise'])
     ->name('api.public.expertise')->middleware('throttle:60,1');
+
+// MOBILE-04/MOBILE-05: anonymous read-only, reviewed version-pinned guides.
+// A missing/unreviewed guide is an honest 404; never return the bundled draft.
+Route::get('/mobile/runbooks', [PublicRunbookController::class, 'index'])
+    ->name('api.mobile.runbooks')->middleware('throttle:60,1');
+Route::get('/mobile/solutions/{id}', [PublicRunbookController::class, 'show'])
+    ->whereUuid('id')->name('api.mobile.solution')->middleware('throttle:60,1');
 
 // T012 read-only editorial API: pinned, citation-checked public revisions only.
 Route::get('/public/articles', [PublicArticleController::class, 'index'])
