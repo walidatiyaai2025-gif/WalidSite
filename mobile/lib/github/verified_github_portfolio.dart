@@ -83,7 +83,10 @@ class VerifiedGithubPortfolio {
           url.hasQuery ||
           url.hasFragment ||
           url.path.toLowerCase() != '/' + name.toLowerCase() ||
-          url.toString().contains('%') ||
+          // Dart Uri canonicalizes encoded path letters. Inspect the raw
+          // server string before parsing so %76 cannot masquerade as a
+          // canonical browser destination.
+          (item['url'] as String).contains('%') ||
           verifiedAt == null ||
           verifiedAt.isAfter(DateTime.now().toUtc().add(const Duration(minutes: 5)))) {
         throw const FormatException('Unsafe GitHub link or verification');
