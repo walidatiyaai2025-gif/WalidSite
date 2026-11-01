@@ -39,6 +39,40 @@ void main() {
       ),
       throwsFormatException,
     );
+
+    // No private infrastructure, signed links, credential-bearing URLs, or
+    // unusual ports may be shown as public citations, even if the API regresses.
+    for (final unsafe in <String>[
+      'https://localhost.example.internal/guide',
+      'https://docs.private.local/guide',
+      'https://docs.example.test/guide',
+      'https://docs.example.invalid/guide',
+      'https://docs.example.org:8443/guide',
+      'https://user:password@docs.example.org/guide',
+      'https://docs.example.org/guide?api_key=private',
+      'https://docs.example.org/guide?X-Amz-Signature=private',
+      'https://docs.example.org/guide?lang=en',
+      'https://docs.example.org/guide#private-token',
+      'https://[::1]/guide',
+    ]) {
+      expect(
+        () => VerifiedArticle.parseList(
+          safeJson.replaceFirst('https://docs.example.org/recovery', unsafe),
+        ),
+        throwsFormatException,
+        reason: 'Unsafe citation must be rejected: $unsafe',
+      );
+    }
+
+    expect(
+      VerifiedArticle.parseList(
+        safeJson.replaceFirst(
+          'https://docs.example.org/recovery',
+          'https://docs.example.org/guide/recovery',
+        ),
+      ).single.citations.single,
+      'https://docs.example.org/guide/recovery',
+    );
   });
 
   testWidgets('unconfigured article server has an honest offline state', (tester) async {
