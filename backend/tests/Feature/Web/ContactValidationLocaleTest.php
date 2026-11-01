@@ -50,7 +50,7 @@ class ContactValidationLocaleTest extends TestCase
         config(['mail.contact_recipient' => 'contact@example.org', 'mail.default' => 'smtp']);
         Mail::fake();
         // The test exercises form re-rendering, not the independent 4/min throttle.
-        $this->withoutMiddleware(\\Illuminate\\Routing\\Middleware\\ThrottleRequests::class);
+        $this->withoutMiddleware(\Illuminate\Routing\Middleware\ThrottleRequests::class);
 
         foreach (['en', 'ar'] as $locale) {
             $this->from('/contact?lang='.$locale)
@@ -79,7 +79,7 @@ class ContactValidationLocaleTest extends TestCase
     {
         config(['mail.contact_recipient' => 'contact@example.org', 'mail.default' => 'smtp']);
         Mail::fake();
-        $this->withoutMiddleware(\\Illuminate\\Routing\\Middleware\\ThrottleRequests::class);
+        $this->withoutMiddleware(\Illuminate\Routing\Middleware\ThrottleRequests::class);
 
         foreach (['en', 'ar'] as $locale) {
             $this->from('/contact?lang='.$locale)
