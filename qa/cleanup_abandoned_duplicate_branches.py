@@ -34,6 +34,11 @@ DUPLICATES = (
     AbandonedDuplicate(131, "fix/T010-editorial-approval-integrity", "97bd3cd8a79a0fcb2f14bc0ed56faf57c977246a", 134),
     AbandonedDuplicate(133, "fix/T010-unsaved-publication-metadata", "29af40455f9358764bc790870f438f3f51ccb9da", 134),
     AbandonedDuplicate(141, "fix/139-nested-encoded-citation-secrets", "6ac98f8e21ef99949cfd999e1eb906771b4e42db", 142),
+    # Verified closed-unmerged PRs with newer accepted replacements on main.
+    AbandonedDuplicate(150, "chore/145-guarded-abandoned-cleanup", "64974e45e859a2fe55615007c871878ba51a0cba", 149),
+    AbandonedDuplicate(156, "fix/setup-production-https-all-steps", "5f8077063851664212865ca8771f1605f8963bec", 159),
+    AbandonedDuplicate(170, "fix/168-setup-schema-mismatch-recovery-guard", "c7a19ce12cdf81e3f00b00ae42688f2b2dcf3f9a", 171),
+    AbandonedDuplicate(172, "fix/169-schema-mismatch-recovery-guard", "a267bf9bf2d7f459ca16e0d8a87098292d37c717", 171),
 )
 
 
@@ -75,7 +80,7 @@ def reconcile_one(candidate: AbandonedDuplicate, api, repo: str) -> str:
     if (
         candidate not in DUPLICATES
         or not _sha(candidate.sha)
-        or not candidate.branch.startswith("fix/")
+        or not candidate.branch.startswith(("fix/", "chore/"))
         or not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo)
     ):
         return "preserved"
