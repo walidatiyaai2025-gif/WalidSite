@@ -86,7 +86,7 @@ final class PublicArticleSlugDiscoveryTest extends TestCase
         $related->categories()->attach($validCategory->id);
         $unroutable = $this->published('bad_related');
         $unroutable->categories()->attach([$validCategory->id, $invalidCategory->id]);
-        $unroutable->forceFill(['published_at' => now()->addMinute()])->save();
+        $unroutable->forceFill(['published_at' => now()->subSeconds(5)])->save();
 
         $this->get('/blog?lang=en')->assertOk()
             ->assertSee('Routable Topic')->assertDontSee('Unroutable Topic')
