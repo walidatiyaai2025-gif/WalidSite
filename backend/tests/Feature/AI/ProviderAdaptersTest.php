@@ -79,6 +79,47 @@ class ProviderAdaptersTest extends TestCase
         }
     }
 
+    public function test_rejects_internal_dns_names_even_when_provider_url_uses_https(): void
+    {
+        foreach ([
+            'https://metadata.google.internal/v1',
+            'https://service.local:443/api',
+            'https://kubernetes.default.svc/v1',
+            'https://dashboard.cluster.local/v1',
+            'https://router.lan/v1',
+            'https://server.home/v1',
+            'https://admin.localhost/v1',
+            'https://example.invalid/v1',
+            'https://gateway.onion/v1',
+            'HTTPS://SERVICE.INTERNAL./v1',
+            'https://localhost.evil.internal/v1',
+            'https://model', // Single-label destinations can resolve privately.
+            'https://api..public.com/v1',
+            'https://internal_model.example.com/v1',
+        ] as $url) {
+            try {
+                ProviderEndpoint::normalize($url);
+                $this->fail('Internal or malformed provider host was accepted: '.$url);
+            } catch (InvalidArgumentException $exception) {
+                $this->assertContains($exception->getMessage(), [
+                    'Unsafe provider URL.',
+                    'Internal provider DNS destinations are not allowed.',
+                ]);
+            }
+        }
+    }
+
+    public function test_internal_provider_hosts_are_rejected_before_any_health_request(): void
+    {
+        Http::fake(['*' => Http::response(['data' => [], 'models' => []], 200)]);
+
+        $this->assertFalse((new OpenAiCompatibleAdapter)->checkHealth(
+            'https://metadata.google.internal/v1', 'dummy-test-token'
+        ));
+        $this->assertFalse((new OllamaAdapter)->checkHealth('https://kubernetes.default.svc'));
+        Http::assertNothingSent();
+    }
+
     public function test_preserves_canonical_local_ollama_and_public_https_provider_hosts(): void
     {
         foreach ([
