@@ -1,6 +1,11 @@
 @php($locale = request()->query('lang') === 'ar' ? 'ar' : 'en')
 @extends('layouts.site')
 @section('title', $project['name'].' — Waleed Atiya')
+@push('head')
+<link rel="canonical" href="{{ route('public.project', ['slug' => $project['slug'], 'lang' => $locale]) }}">
+<link rel="alternate" hreflang="ar" href="{{ route('public.project', ['slug' => $project['slug'], 'lang' => 'ar']) }}">
+<link rel="alternate" hreflang="en" href="{{ route('public.project', ['slug' => $project['slug'], 'lang' => 'en']) }}">
+@endpush
 @push('styles')
 <style>
 .study {padding-block:48px;max-width:940px}
