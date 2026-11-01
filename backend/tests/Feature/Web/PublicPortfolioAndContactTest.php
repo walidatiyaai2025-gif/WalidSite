@@ -322,6 +322,7 @@ class PublicPortfolioAndContactTest extends TestCase
             'subject' => 'Technical inquiry',
             'message' => 'This is a technical inquiry for review.',
             'website' => 'https://bot.test/',
+            'privacy_consent' => '1',
         ])->assertRedirect();
         Mail::assertNothingSent();
     }

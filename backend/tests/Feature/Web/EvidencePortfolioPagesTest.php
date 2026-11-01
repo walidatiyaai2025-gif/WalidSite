@@ -156,6 +156,7 @@ class EvidencePortfolioPagesTest extends TestCase
             'email' => 'visitor@example.test',
             'subject' => 'A verified project inquiry',
             'message' => 'I would like to discuss the published work.',
+            'privacy_consent' => '1',
         ];
 
         $this->post('/contact?lang=en', array_merge($input, ['website' => 'spam.example']))

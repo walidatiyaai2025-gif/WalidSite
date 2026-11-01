@@ -8,6 +8,8 @@
 .contact label{display:block;font-weight:700;margin-top:14px}.contact input,.contact textarea{display:block;width:100%;padding:10px;border:1px solid #97B4C8;border-radius:8px;font:inherit;min-height:44px}
 .contact textarea{min-height:140px}.contact button{margin-top:18px;min-height:44px;background:var(--wa-cta);color:#fff;border:0;border-radius:10px;padding:10px 20px;font:inherit;font-weight:700;cursor:pointer}
 .contact-trap{position:absolute;left:-10000px;width:1px;height:1px;overflow:hidden}.contact-error{color:#9D2735}
+.contact .contact-consent{display:flex;gap:12px;align-items:flex-start;line-height:1.55;cursor:pointer}
+.contact .contact-consent input{display:inline-block;width:20px;height:20px;min-height:20px;flex:none;margin:3px 0 0;accent-color:var(--wa-cta)}
 </style>
 @endpush
 @section('content')
@@ -33,6 +35,11 @@ default => $locale === 'ar' ? 'الموضوع' : 'Subject' } }}</label>
 <label for="contact-message">{{ $locale === 'ar' ? 'الرسالة' : 'Message' }}</label>
 <textarea id="contact-message" name="message" required maxlength="3000" @error('message') aria-invalid="true" aria-describedby="contact-message-error" @enderror>{{ old('message') }}</textarea>
 @error('message')<p id="contact-message-error" class="contact-error" role="alert">{{ $message }}</p>@enderror
+<label class="contact-consent" for="contact-privacy-consent">
+<input id="contact-privacy-consent" type="checkbox" name="privacy_consent" value="1" @checked(old('privacy_consent') == '1') @error('privacy_consent') aria-invalid="true" aria-describedby="contact-privacy-consent-error" @enderror>
+<span>{{ $locale === 'ar' ? 'أوافق على استخدام اسمي وبريدي الإلكتروني ونص الرسالة للرد على استفساري فقط.' : 'I consent to using my name, email address and message solely to respond to my inquiry.' }}</span>
+</label>
+@error('privacy_consent')<p id="contact-privacy-consent-error" class="contact-error" role="alert">{{ $message }}</p>@enderror
 <button type="submit">{{ $locale === 'ar' ? 'إرسال' : 'Send message' }}</button>
 </form>
 @endif

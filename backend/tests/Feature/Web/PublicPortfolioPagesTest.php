@@ -135,6 +135,7 @@ class PublicPortfolioPagesTest extends TestCase
             'subject' => 'Project question',
             'message' => 'A meaningful question about verified work.',
             'website' => 'https://spam.example.test',
+            'privacy_consent' => '1',
         ])->assertRedirect(route('public.contact', ['lang' => 'ar']));
 
         Mail::assertNothingSent();

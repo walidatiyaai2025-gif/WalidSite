@@ -610,7 +610,9 @@ Route::post('/contact', function (Request $request) {
         'name' => ['required', 'string', 'min:2', 'max:100', 'not_regex:/[\\x00-\\x1F\\x7F]/u'],
         'email' => ['required', 'email:rfc', 'max:254'],
         'subject' => ['required', 'string', 'min:3', 'max:140', 'not_regex:/[\\x00-\\x1F\\x7F]/u'],
-        'message' => ['required', 'string', 'min:10', 'max:3000'],
+        'message' => ['required', 'string', 'min:10', 'max:3000',
+            'not_regex:/[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F\\x7F]/u'],
+        'privacy_consent' => ['required', 'boolean', 'accepted'],
         'website' => ['nullable', 'string', 'max:200'],
     ]);
 
@@ -631,7 +633,11 @@ Route::post('/contact', function (Request $request) {
                 ->subject('WalidSite contact: '.$input['subject'])
         );
     } catch (\Throwable $exception) {
-        report($exception);
+        // Mail transport errors can embed SMTP passwords or the message body.
+        // Never report the raw exception; log only its non-sensitive class.
+        \Illuminate\Support\Facades\Log::warning('public.contact.web.delivery_failed', [
+            'type' => $exception::class,
+        ]);
         abort(503, 'Contact delivery is temporarily unavailable.');
     }
 
