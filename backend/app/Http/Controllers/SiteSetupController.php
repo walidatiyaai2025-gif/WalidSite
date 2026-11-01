@@ -41,7 +41,7 @@ final class SiteSetupController extends Controller
         $step = ! $unlocked ? 'unlock' : ((! $configured || $connectionFailed) ? 'configure' : ($migrated ? 'owner' : 'database'));
         $ownerEmail = $migrated ? $installer->ownerEmail() : null;
 
-        return view('setup.wizard', compact('step', 'status', 'ownerEmail'));
+        return view('setup.wizard', compact('step', 'status', 'ownerEmail', 'connectionFailed'));
     }
 
     public function unlock(Request $request, SiteInstaller $installer): RedirectResponse
