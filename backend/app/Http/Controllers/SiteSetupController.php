@@ -31,7 +31,10 @@ final class SiteSetupController extends Controller
         // A saved but unreachable database must not strand the owner on an
         // error page with no way to fix the credentials without a terminal.
         // A healthy configured database remains locked against re-pointing.
-        $connectionFailed = $configured && ! $status['ready'];
+        $historyMismatch = $configured && ($status['history_mismatch'] ?? false);
+        // Only an actual connectivity failure may trigger credential recovery.
+        // An incompatible migration history must remain pinned and visible.
+        $connectionFailed = $configured && ! $status['ready'] && ! $historyMismatch;
         // If a deployment introduced new migrations or the DB went offline
         // between steps, return safely to the database step instead of
         // trapping the owner on an unusable final form.
@@ -41,7 +44,7 @@ final class SiteSetupController extends Controller
         $step = ! $unlocked ? 'unlock' : ((! $configured || $connectionFailed) ? 'configure' : ($migrated ? 'owner' : 'database'));
         $ownerEmail = $migrated ? $installer->ownerEmail() : null;
 
-        return view('setup.wizard', compact('step', 'status', 'ownerEmail', 'connectionFailed'));
+        return view('setup.wizard', compact('step', 'status', 'ownerEmail', 'connectionFailed', 'historyMismatch'));
     }
 
     public function unlock(Request $request, SiteInstaller $installer): RedirectResponse
@@ -70,6 +73,9 @@ final class SiteSetupController extends Controller
             return back()->withErrors(['setup' => 'Migration failed. See the private application log. Restore your backup before retrying.']);
         }
 
+        if ($result['state'] === 'schema_mismatch') {
+            return back()->withErrors(['setup' => 'Database migration history is incompatible with this release. Deploy compatible code or restore a verified backup.']);
+        }
         if (! in_array($result['state'], ['applied', 'current'], true)) {
             return back()->withErrors(['setup' => 'Database unavailable or an update is already running.']);
         }

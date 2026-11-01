@@ -61,7 +61,11 @@ a,button:focus-visible,input:focus-visible{outline-offset:3px}a{color:var(--acce
 @elseif($step === 'database')
 <h2>{{ $locale === 'ar' ? 'الخطوة 2: الاتصال وMigrations' : 'Step 2: Database and migrations' }}</h2>
 <p>{{ $locale === 'ar' ? 'تم حفظ بيانات الاتصال. نفّذ الآن الترحيلات المطلوبة من خلال هذه الصفحة.' : 'Database settings saved. Apply the pending migrations directly from this page.' }}</p>
-@if(!$status['ready'])
+@if($historyMismatch)
+<p role="alert" class="error">{{ $locale === 'ar'
+    ? 'قاعدة البيانات تحتوي على ترحيلات من إصدار مختلف أو أحدث. حفاظًا على البيانات، لا يمكن تغيير الاتصال أو تشغيل ترحيلات جديدة. انشر إصدار الكود المتوافق أو استعد نسخة احتياطية موثقة.'
+    : 'Database migration history belongs to a different or newer release. To protect your data, setup cannot switch databases or run migrations. Deploy compatible code or restore a verified backup.' }}</p>
+@elseif(!$status['ready'])
 <p role="alert" class="error">{{ $locale === 'ar' ? 'تعذر الاتصال بقاعدة البيانات. راجع الإعدادات الخاصة بالخادم.' : 'Database connection failed. Check the private server settings.' }}</p>
 @else
 <p>{{ $locale === 'ar' ? 'الاتصال ناجح. عدد الترحيلات المنتظرة:' : 'Connection passed. Pending migrations:' }} <strong>{{ count($status['pending']) }}</strong></p>

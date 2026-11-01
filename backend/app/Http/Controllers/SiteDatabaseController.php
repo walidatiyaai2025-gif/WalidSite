@@ -19,7 +19,10 @@ final class SiteDatabaseController extends Controller
         // Keep a healthy database pinned; the destination must still pass the
         // empty-database probe and all original setup protections.
         if ($database->isConfigured()) {
-            abort_if($updater->inspect()['ready'], 403);
+            $status = $updater->inspect();
+            // A newer/incompatible schema is reachable, not a credential
+            // failure. Never offer a database re-pointing escape hatch.
+            abort_if($status['ready'] || ($status['history_mismatch'] ?? false), 403);
         }
         if (app()->environment('production') && ! $request->isSecure()) {
             abort(403, 'HTTPS is required for setup.');
