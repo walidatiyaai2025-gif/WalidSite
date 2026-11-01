@@ -2,9 +2,9 @@
 @extends('layouts.site')
 @section('title', $locale === 'ar' ? 'المدونة التقنية — وليد عطية' : 'Technical Blog — Waleed Atiya')
 @push('head')
-<link rel="canonical" href="{{ request()->url() }}">
-<link rel="alternate" hreflang="ar" href="{{ request()->fullUrlWithQuery(['lang' => 'ar']) }}">
-<link rel="alternate" hreflang="en" href="{{ request()->fullUrlWithQuery(['lang' => 'en']) }}">
+<link rel="canonical" href="{{ route('public.blog', ['lang' => $locale]) }}">
+<link rel="alternate" hreflang="ar" href="{{ route('public.blog', ['lang' => 'ar']) }}">
+<link rel="alternate" hreflang="en" href="{{ route('public.blog', ['lang' => 'en']) }}">
 @endpush
 @push('styles')
 <style>
