@@ -132,7 +132,9 @@ class PublicPortfolioAndContactTest extends TestCase
         }
         for ($i = 1; $i <= 10; $i++) {
             $safe = $this->project('safe-web-'.$i);
-            $safe->update(['published_at' => now()->subDays(2)]);
+            // Published timestamps are distinct: UUID ties otherwise make
+            // the expected page-two project nondeterministic in CI.
+            $safe->update(['published_at' => now()->subDays(2)->subMinutes($i)]);
             $this->evidence($safe, 'public', true, 'https://docs.example.org/approved');
         }
 
