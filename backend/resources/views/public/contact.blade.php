@@ -3,7 +3,24 @@
 {{-- Direct view-render tests and callers without article context remain valid. --}}
 @php($reportArticle = $reportArticle ?? null)
 @php($reportProject = $reportProject ?? null)
+{{-- Recruiter track is an optional topic of inquiry, never verified CV proof.
+     Do not mix it with authoritative article/case-study contexts or reflect
+     array/unknown values into an editable subject or locale-switch URL. --}}
+@php($contactTrackRaw = request()->query()['track'] ?? null)
+@php($contactTrack = !$reportArticle && !$reportProject
+    && !array_key_exists('article', request()->query())
+    && !array_key_exists('project', request()->query())
+    && is_string($contactTrackRaw)
+    && in_array($contactTrackRaw, ['database', 'software', 'delivery'], true) ? $contactTrackRaw : null)
+@php($contactTrackLabels = [
+    'database' => $locale === 'ar' ? 'هندسة قواعد البيانات' : 'Database engineering',
+    'software' => $locale === 'ar' ? 'هندسة البرمجيات والبنية التحتية' : 'Software and infrastructure engineering',
+    'delivery' => $locale === 'ar' ? 'إدارة وتسليم المشاريع' : 'Project delivery',
+])
 @php($suggestedSubject = $suggestedSubject ?? '')
+@php($suggestedSubject = $suggestedSubject !== '' ? $suggestedSubject
+    : ($contactTrack ? ($locale === 'ar' ? 'استفسار عن مجال: ' : 'Inquiry about: ')
+        .$contactTrackLabels[$contactTrack] : ''))
 @section('title', $locale === 'ar' ? 'التواصل — وليد عطية' : 'Contact — Waleed Atiya')
 @push('styles')
 <style>
