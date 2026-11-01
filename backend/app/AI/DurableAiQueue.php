@@ -161,6 +161,44 @@ final class DurableAiQueue
         return null;
     }
 
+    /**
+     * Renew an active worker lease without allowing indefinite worker runtime.
+     *
+     * The caller must still own a running, unexpired lease. Each attempt has
+     * an absolute five-minute ceiling from its original claim; a heartbeat
+     * cannot revive a crashed worker or silently extend a cPanel cron tick.
+     * Existing longer expiration is never shortened by a shorter heartbeat.
+     */
+    public function heartbeat(string $jobId, string $owner, int $ttlSeconds = 60): void
+    {
+        $this->validateOwner($owner, $ttlSeconds);
+
+        DB::transaction(function () use ($jobId, $owner, $ttlSeconds): void {
+            $this->requireLease($jobId, $owner);
+            $lease = DB::table('job_leases')->where('job_id', $jobId)
+                ->lockForUpdate()->first();
+            $deadline = \Illuminate\Support\Carbon::parse($lease->created_at)->addMinutes(5);
+            if (now()->greaterThanOrEqualTo($deadline)) {
+                throw new DomainException('Worker attempt runtime limit reached.');
+            }
+
+            $expiresAt = now()->addSeconds($ttlSeconds);
+            if ($expiresAt->greaterThan($deadline)) {
+                $expiresAt = $deadline;
+            }
+            $previousExpiry = \Illuminate\Support\Carbon::parse($lease->expires_at);
+            if ($expiresAt->lessThan($previousExpiry)) {
+                $expiresAt = $previousExpiry;
+            }
+
+            DB::table('job_leases')->where('job_id', $jobId)->update([
+                'expires_at' => $expiresAt,
+                'lease_version' => (int) $lease->lease_version + 1,
+                'updated_at' => now(),
+            ]);
+        }, 3);
+    }
+
     public function completeStep(string $jobId, string $owner, string $step, ?string $outputRef): void
     {
         $this->validateOutputRef($outputRef);

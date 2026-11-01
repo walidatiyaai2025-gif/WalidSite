@@ -80,6 +80,98 @@ class DurableAiQueueTest extends TestCase
         $this->assertSame($second, $queue->claimNext('worker-b')?->id);
     }
 
+    public function test_heartbeat_extends_active_lease_without_losing_checkpoints(): void
+    {
+        $queue = new DurableAiQueue();
+        $jobId = $queue->enqueue($this->provider(), 'draft', 'heartbeat:active', ['research']);
+        $this->assertSame($jobId, $queue->claimNext('worker-a', 60)?->id);
+        $initialExpiry = DB::table('job_leases')->where('job_id', $jobId)->value('expires_at');
+
+        $this->travel(45)->seconds();
+        $queue->heartbeat($jobId, 'worker-a', 60);
+        $updated = DB::table('job_leases')->where('job_id', $jobId)->first();
+        $this->assertSame(2, (int) $updated->lease_version);
+        $this->assertTrue(\Illuminate\Support\Carbon::parse($updated->expires_at)
+            ->greaterThan(\Illuminate\Support\Carbon::parse($initialExpiry)));
+
+        // The original lease would have expired; the renewed owner may still
+        // checkpoint and complete, and the lease disappears at completion.
+        $this->travel(30)->seconds();
+        $queue->completeStep($jobId, 'worker-a', 'research', 'drafts/heartbeat');
+        $queue->completeJob($jobId, 'worker-a', 'drafts/heartbeat');
+        $this->assertSame('completed', DB::table('ai_jobs')->where('id', $jobId)->value('status'));
+        $this->assertDatabaseCount('job_leases', 0);
+    }
+
+    public function test_heartbeat_rejects_wrong_owner_and_does_not_change_the_lease(): void
+    {
+        $queue = new DurableAiQueue();
+        $jobId = $queue->enqueue($this->provider(), 'draft', 'heartbeat:unauthorized', ['research']);
+        $queue->claimNext('worker-a', 60);
+
+        try {
+            $queue->heartbeat($jobId, 'worker-b', 120);
+            $this->fail('Other worker extended the lease.');
+        } catch (DomainException $exception) {
+            $this->assertSame('An active matching lease is required.', $exception->getMessage());
+        }
+        $this->assertSame(1, (int) DB::table('job_leases')
+            ->where('job_id', $jobId)->value('lease_version'));
+    }
+
+    public function test_heartbeat_cannot_resurrect_expired_or_completed_work(): void
+    {
+        $queue = new DurableAiQueue();
+        $expired = $queue->enqueue($this->provider(), 'draft', 'heartbeat:expired', ['research']);
+        $queue->claimNext('worker-a', 60);
+        $this->travel(61)->seconds();
+
+        try {
+            $queue->heartbeat($expired, 'worker-a');
+            $this->fail('Expired worker lease was revived.');
+        } catch (DomainException $exception) {
+            $this->assertSame('An active matching lease is required.', $exception->getMessage());
+        }
+        $this->assertSame(1, $queue->recoverExpired());
+        $this->assertSame('retry', DB::table('ai_jobs')->where('id', $expired)->value('status'));
+
+        $completed = $queue->enqueue($this->provider(), 'draft', 'heartbeat:finished', ['research']);
+        $queue->claimNext('worker-b');
+        $queue->completeStep($completed, 'worker-b', 'research', 'drafts/finished');
+        $queue->completeJob($completed, 'worker-b');
+        $this->expectException(DomainException::class);
+        $queue->heartbeat($completed, 'worker-b');
+    }
+
+    public function test_heartbeat_is_capped_at_five_minutes_per_claim(): void
+    {
+        $queue = new DurableAiQueue();
+        $jobId = $queue->enqueue($this->provider(), 'draft', 'heartbeat:deadline', ['research']);
+        $queue->claimNext('worker-a', 60);
+        $claimedAt = \Illuminate\Support\Carbon::parse(DB::table('job_leases')
+            ->where('job_id', $jobId)->value('created_at'));
+
+        for ($i = 0; $i < 7; ++$i) {
+            $this->travel(40)->seconds();
+            $queue->heartbeat($jobId, 'worker-a', 120);
+        }
+
+        $lease = DB::table('job_leases')->where('job_id', $jobId)->first();
+        $this->assertSame(8, (int) $lease->lease_version);
+        $this->assertTrue(\Illuminate\Support\Carbon::parse($lease->expires_at)
+            ->lessThanOrEqualTo($claimedAt->copy()->addMinutes(5)));
+
+        $this->travel(21)->seconds();
+        try {
+            $queue->heartbeat($jobId, 'worker-a', 120);
+            $this->fail('Worker heartbeat escaped the maximum attempt duration.');
+        } catch (DomainException $exception) {
+            $this->assertSame('An active matching lease is required.', $exception->getMessage());
+        }
+        $this->assertSame(1, $queue->recoverExpired());
+        $this->assertSame('retry', DB::table('ai_jobs')->where('id', $jobId)->value('status'));
+    }
+
     public function test_wrong_owner_cannot_write_other_workers_checkpoint(): void
     {
         $queue = new DurableAiQueue();
