@@ -48,4 +48,16 @@ class PublicLayoutTest extends TestCase
             )
             ->assertSee('Approved real portrait of Waleed Atiya');
     }
+
+    public function test_google_fonts_are_available_on_public_and_sign_in_pages(): void
+    {
+        foreach (['/', '/?lang=ar', '/admin/login'] as $path) {
+            $this->get($path)
+                ->assertOk()
+                ->assertSee('fonts.googleapis.com/css2?family=Inter', false)
+                ->assertSee('family=Tajawal', false)
+                ->assertSee('display=swap', false)
+                ->assertSee('font-family: var(--wa-font-ui)', false);
+        }
+    }
 }

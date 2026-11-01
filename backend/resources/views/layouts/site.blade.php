@@ -60,6 +60,7 @@
     <link rel="sitemap" type="application/xml" href="{{ route('public.sitemap') }}">
     @stack('head')
     @stack('styles')
+    @include('partials.web-fonts')
 </head>
 <body>
     <a class="skip-link" href="#main-content">{{ $locale === 'ar' ? 'تجاوز إلى المحتوى' : 'Skip to content' }}</a>

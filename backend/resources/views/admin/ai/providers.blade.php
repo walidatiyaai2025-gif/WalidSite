@@ -26,6 +26,7 @@ button.secondary{background:var(--primary)}.muted{color:#55718B}.actions{display
 .status{padding:12px 16px;border:1px solid var(--line);background:white;border-radius:8px}
 @media(max-width:700px){.shell{grid-template-columns:1fr}aside{padding:14px}aside h2{display:inline}aside a{display:inline-block;margin-inline:10px}.card{padding:18px}}
 </style>
+    @include('partials.web-fonts')
 </head>
 <body>
 <a class="skip" href="#content">{{ $locale === 'ar' ? 'تجاوز إلى المحتوى' : 'Skip to content' }}</a>
