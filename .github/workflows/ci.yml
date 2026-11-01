@@ -47,6 +47,8 @@ jobs:
           python -m unittest discover -s qa/tests -p 'test_visual_*.py'
       - name: Verify cPanel ZIP safety rules
         run: python3 -m unittest discover -s qa/tests -p test_cpanel_package.py
+      - name: Verify fail-closed abandoned branch cleanup
+        run: python3 -m unittest discover -s qa/tests -p test_abandoned_branch_cleanup.py
       - name: Validate active CI workflow policy
         run: python3 qa/validate_ci_policy.py
       - name: Validate canonical owner CV source
@@ -248,3 +250,9 @@ jobs:
           29 feat/T001-governance-and-ci c89c0a080515cb846e0a408e7ecb27c6d15de26f
           30 feat/T001-runtime-scaffold 1803e74a477217597eee93a6d9f210f775b66deb
           MERGED_PRE_HOOK
+
+      - name: Reconcile allowlisted abandoned duplicate PR branches
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 qa/cleanup_abandoned_branches.py
