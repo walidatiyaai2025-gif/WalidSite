@@ -120,6 +120,111 @@ class PublicPortfolioAndContactTest extends TestCase
             ->assertSee('rel="noopener noreferrer"', false);
     }
 
+    public function test_web_project_pages_count_only_safe_evidence_and_fill_all_nine_slots(): void
+    {
+        // The first 11 DB rows pass the verified SQL scope but have private
+        // query strings. They must not occupy page slots or inflate page count.
+        for ($i = 1; $i <= 11; $i++) {
+            $unsafe = $this->project('hidden-web-'.$i);
+            $unsafe->update(['published_at' => now()->subMinutes(2)]);
+            $this->evidence($unsafe, 'public', true,
+                'https://docs.example.org/internal?token=not-for-publication');
+        }
+        for ($i = 1; $i <= 10; $i++) {
+            $safe = $this->project('safe-web-'.$i);
+            $safe->update(['published_at' => now()->subDays(2)]);
+            $this->evidence($safe, 'public', true, 'https://docs.example.org/approved');
+        }
+
+        $first = $this->get('/projects?lang=en')->assertOk()
+            ->assertSee('Page 1 / 2')
+            ->assertSee('safe-web-1')
+            ->assertSee('safe-web-9')
+            ->assertDontSee('safe-web-10')
+            ->assertDontSee('hidden-web-1')
+            ->assertDontSee('token=not-for-publication')
+            ->assertSee('page=2');
+        $second = $this->get('/projects?page=2&lang=ar')->assertOk()
+            ->assertSee('dir="rtl"', false)
+            ->assertSee('safe-web-10')
+            ->assertDontSee('safe-web-1"')
+            ->assertDontSee('hidden-web-11')
+            ->assertDontSee('page=3');
+        $this->get('/projects?page=3')->assertOk()
+            ->assertSee('No evidence-verified public case studies')
+            ->assertDontSee('hidden-web-11');
+    }
+
+    public function test_home_features_safe_projects_and_articles_beyond_unusable_first_24(): void
+    {
+        for ($i = 1; $i <= 25; $i++) {
+            $unsafe = $this->project('unusable-home-project-'.$i);
+            $unsafe->update(['published_at' => now()->subMinutes(2)]);
+            $this->evidence($unsafe, 'public', true,
+                'https://docs.example.org/private?auth=secret');
+
+            $article = \App\Models\Article::create([
+                'slug' => 'unusable-home-article-'.$i,
+                'title_en' => 'Unavailable home article '.$i,
+                'title_ar' => 'مقال غير صالح '.$i,
+                'canonical_lang' => 'en',
+            ]);
+            $revision = $article->revisions()->create([
+                'revision_no' => 1, 'body_md' => '# Verified at publication',
+                'status' => 'validated',
+                'citations_json' => [['source_url' => 'https://docs.example.org/public',
+                    'verified' => true]],
+                'validation_json' => ['citations_passed' => true, 'technical_passed' => true],
+            ]);
+            $article->publishVerified();
+            $article->forceFill(['published_at' => now()->subMinute()])->save();
+            // Revoke evidence in persisted storage without changing the initial
+            // SQL publication flags. The live publicRevision gate must win.
+            \Illuminate\Support\Facades\DB::table('article_revisions')
+                ->where('id', $revision->id)
+                ->update(['citations_json' => json_encode([
+                    ['source_url' => 'https://docs.example.org/secret?token=private',
+                        'verified' => true],
+                ], JSON_THROW_ON_ERROR)]);
+        }
+        for ($i = 1; $i <= 3; $i++) {
+            $safe = $this->project('approved-home-project-'.$i);
+            $safe->update(['published_at' => now()->subDays(2)]);
+            $this->evidence($safe, 'public', true, 'https://docs.example.org/approved');
+
+            $article = \App\Models\Article::create([
+                'slug' => 'approved-home-article-'.$i,
+                'title_en' => 'Approved home article '.$i,
+                'title_ar' => 'مقال منشور معتمد '.$i,
+                'canonical_lang' => 'en',
+            ]);
+            $article->revisions()->create([
+                'revision_no' => 1, 'body_md' => '# Reviewed',
+                'status' => 'validated',
+                'citations_json' => [['source_url' => 'https://docs.example.org/public',
+                    'verified' => true]],
+                'validation_json' => ['citations_passed' => true, 'technical_passed' => true],
+            ]);
+            $article->publishVerified();
+            $article->forceFill(['published_at' => now()->subDays(2)])->save();
+        }
+
+        $page = $this->get('/?lang=en')->assertOk()
+            ->assertSee('approved-home-project-1')
+            ->assertSee('approved-home-project-2')
+            ->assertSee('approved-home-project-3')
+            ->assertSee('Approved home article 1')
+            ->assertSee('Approved home article 2')
+            ->assertSee('Approved home article 3')
+            ->assertDontSee('unusable-home-project-1')
+            ->assertDontSee('Unavailable home article 1')
+            ->assertDontSee('token=private');
+        $this->get('/?lang=ar')->assertOk()
+            ->assertSee('مقال منشور معتمد 1')
+            ->assertSee('approved-home-project-1')
+            ->assertDontSee('مقال غير صالح 1');
+    }
+
     public function test_public_resume_never_exposes_pending_private_cv(): void
     {
         $user = User::create(['email' => 'resume@example.test', 'status' => 'pending_activation']);
