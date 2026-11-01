@@ -35,10 +35,9 @@ final class ProviderRouter
             // Self-hosted Ollama inference has no paid-provider reservation.
             // A zero *paid* budget must not disable otherwise healthy local
             // inference. Unknown or managed types remain strictly funded.
+            $local = ($candidate['provider_type'] ?? null) === 'ollama-compatible';
             $budgetEligible = is_finite($budgetRemaining)
-                && ($candidate['provider_type'] ?? null) === 'ollama-compatible'
-                    ? $budgetRemaining >= 0
-                    : is_finite($budgetRemaining) && $budgetRemaining > 0;
+                && ($local ? $budgetRemaining >= 0 : $budgetRemaining > 0);
 
             return is_string($id) && $id !== ''
                 && ($candidate['enabled'] ?? false) === true
