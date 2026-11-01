@@ -158,6 +158,34 @@ class DurableAiQueueTest extends TestCase
         $this->assertNull($queue->claimNext('worker-b'));
     }
 
+    public function test_ineligible_provider_backlog_cannot_starve_later_healthy_jobs(): void
+    {
+        $queue = new DurableAiQueue();
+        $disabled = $this->provider();
+        $unhealthy = $this->provider();
+        $archived = $this->provider();
+
+        // More than the 20-job admission scan is blocked, across three
+        // distinct administrative revocation states.
+        foreach ([$disabled, $unhealthy, $archived] as $provider) {
+            for ($i = 0; $i < 9; ++$i) {
+                $queue->enqueue($provider, 'draft', 'blocked:'.$provider->id.':'.$i, ['research']);
+            }
+        }
+        $disabled->update(['enabled' => false]);
+        $unhealthy->update(['health_status' => 'failed']);
+        $archived->delete();
+
+        $healthy = $this->provider();
+        $ready = $queue->enqueue($healthy, 'draft', 'eligible:after-backlog', ['research']);
+
+        $this->assertSame($ready, $queue->claimNext('worker-a')?->id);
+        $this->assertSame(27, DB::table('ai_jobs')
+            ->whereIn('provider_id', [$disabled->id, $unhealthy->id, $archived->id])
+            ->where('status', 'queued')->count());
+        $this->assertDatabaseCount('job_leases', 1);
+    }
+
     public function test_paid_job_without_reserved_budget_cannot_claim(): void
     {
         $queue = new DurableAiQueue();
