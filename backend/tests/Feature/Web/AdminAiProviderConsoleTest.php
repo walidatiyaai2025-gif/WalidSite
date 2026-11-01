@@ -66,6 +66,29 @@ class AdminAiProviderConsoleTest extends TestCase
             ->assertSee('مزودو الذكاء الاصطناعي');
     }
 
+    public function test_provider_console_links_to_real_usage_audit_in_both_locales(): void
+    {
+        $this->get('/admin/ai/usage')->assertRedirect('/admin/login');
+
+        $this->actingAs($this->account('reader'), 'web')
+            ->get('/admin/ai/usage')->assertForbidden();
+
+        $this->actingAs($this->account(), 'web');
+
+        $this->get('/admin/ai/providers?lang=en')->assertOk()
+            ->assertSee('AI usage audit')
+            ->assertSee('View persisted usage audit')
+            ->assertSee('admin/ai/usage?lang=en', false)
+            ->assertSee('do not assume runtime budget enforcement')
+            ->assertDontSee('usage reports are pending');
+
+        $this->get('/admin/ai/providers?lang=ar')->assertOk()
+            ->assertSee('dir="rtl"', false)
+            ->assertSee('سجل استخدام AI')
+            ->assertSee('عرض سجل الاستخدام الموثق')
+            ->assertSee('admin/ai/usage?lang=ar', false);
+    }
+
     public function test_web_form_reuses_encryption_and_never_displays_saved_secret(): void
     {
         Http::fake();
