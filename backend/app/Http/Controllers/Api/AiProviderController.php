@@ -25,7 +25,8 @@ class AiProviderController extends Controller
         $token = $user?->currentAccessToken();
         $apiToken = $token instanceof PersonalAccessToken && $token->can('admin');
         $webForm = $request->routeIs(
-            'admin.providers.create', 'admin.providers.update', 'admin.providers.test'
+            'admin.providers.create', 'admin.providers.update', 'admin.providers.test',
+            'admin.providers.delete'
         ) && $request->hasSession() && \Illuminate\Support\Facades\Auth::guard('web')->check();
 
         abort_unless($user?->canAccessAdmin() && ($apiToken || $webForm), 403);

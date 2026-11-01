@@ -178,6 +178,51 @@ class AdminAiProviderConsoleTest extends TestCase
         $this->assertSame('unverified', $provider->fresh()->health_status);
     }
 
+    public function test_provider_archive_requires_admin_session_and_exact_name_confirmation(): void
+    {
+        Http::fake();
+        $this->delete('/admin/ai/providers/00000000-0000-4000-8000-000000000000')
+            ->assertRedirect('/admin/login');
+
+        $this->actingAs($this->account(), 'web');
+        $this->post('/admin/ai/providers', $this->providerForm())
+            ->assertRedirect('/admin/ai/providers');
+        $provider = AiProvider::firstOrFail();
+
+        $this->get('/admin/ai/providers?lang=en')->assertOk()
+            ->assertSee('Archive provider and revoke credential')
+            ->assertSee('name="confirm_name"', false)
+            ->assertDontSee('super-private-test-credential');
+        $this->get('/admin/ai/providers?lang=ar')->assertOk()
+            ->assertSee('أرشفة المزود نهائيًا');
+
+        $this->actingAs($this->account('reader'), 'web');
+        $this->delete('/admin/ai/providers/'.$provider->id, [
+            'confirm_name' => $provider->display_name,
+        ])->assertForbidden();
+        $this->assertNotNull(AiProvider::find($provider->id));
+
+        $this->actingAs($this->account(), 'web');
+        $this->delete('/admin/ai/providers/'.$provider->id, [
+            'confirm_name' => 'Incorrect name',
+        ])->assertSessionHasErrors('confirm_name');
+        $this->assertNotNull(AiProvider::find($provider->id));
+        $this->assertSame('super-private-test-credential', $provider->fresh()->secret_ciphertext);
+
+        $this->delete('/admin/ai/providers/'.$provider->id.'?lang=ar', [
+            'confirm_name' => $provider->display_name,
+        ])->assertRedirect(route('admin.providers.index', ['lang' => 'ar']));
+        $this->get('/admin/ai/providers?lang=en')->assertDontSee('Production-like Fixture');
+
+        $archived = AiProvider::withTrashed()->findOrFail($provider->id);
+        $this->assertTrue($archived->trashed());
+        $this->assertFalse($archived->enabled);
+        $this->assertNull($archived->secret_ciphertext);
+        $this->assertSame(1, DB::table('ai_provider_audit_events')
+            ->where('provider_id', $provider->id)->where('action', 'deleted')->count());
+        Http::assertNothingSent();
+    }
+
     public function test_url_validation_and_api_privileges_remain_fail_closed(): void
     {
         $this->actingAs($this->account(), 'web');

@@ -125,6 +125,22 @@ button.secondary{background:var(--primary)}.muted{color:#55718B}.actions{display
 </form>
 <form method="post" action="{{ route('admin.providers.test', ['provider' => $provider->id]) }}" style="margin-top:12px">@csrf
 <button type="submit" class="secondary">{{ $locale === 'ar' ? 'اختبار الاتصال الآن' : 'Check connection now' }}</button></form>
+<details class="note" style="margin-bottom:0">
+  <summary>{{ $locale === 'ar' ? 'أرشفة المزود وإبطال المفتاح' : 'Archive provider and revoke credential' }}</summary>
+  <p>{{ $locale === 'ar'
+      ? 'سيتم تعطيل المزود وحذف مفتاحه المشفر مع الاحتفاظ بسجل التدقيق. اكتب الاسم كما هو للتأكيد.'
+      : 'The provider will be disabled and its encrypted credential erased while audit history is preserved. Type the exact name to confirm.' }}</p>
+  <form method="post" action="{{ route('admin.providers.delete', ['provider' => $provider->id, 'lang' => $locale]) }}">
+    @csrf @method('DELETE')
+    <div class="field">
+      <label for="delete-name-{{ $provider->id }}">{{ $locale === 'ar' ? 'تأكيد اسم المزود' : 'Confirm provider name' }}</label>
+      <input id="delete-name-{{ $provider->id }}" name="confirm_name" required
+             maxlength="160" autocomplete="off" aria-describedby="delete-warning-{{ $provider->id }}">
+    </div>
+    <p class="muted" id="delete-warning-{{ $provider->id }}">{{ $provider->display_name }}</p>
+    <button type="submit" style="background:#A52F3B">{{ $locale === 'ar' ? 'أرشفة المزود نهائيًا' : 'Archive provider' }}</button>
+  </form>
+</details>
 </section>
 @endforeach
 </div>

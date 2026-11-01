@@ -203,6 +203,30 @@ Route::middleware('auth:web')->group(function (): void {
             ->with('status', 'Connection check recorded: '.$health.'.');
     })->middleware('throttle:5,1')->name('admin.providers.test');
 
+    // T016: explicit destructive browser operation is CSRF-protected and
+    // name-confirmed. Reuse T015's encrypted credential revocation and audit
+    // rather than duplicating provider deletion logic in the web layer.
+    Route::delete('/admin/ai/providers/{provider}', function (
+        Request $request, \App\Models\AiProvider $provider
+    ) {
+        abort_unless($request->user()?->canAccessAdmin(), 403);
+        $request->validate([
+            'confirm_name' => [
+                'required', 'string', 'max:160',
+                \Illuminate\Validation\Rule::in([$provider->display_name]),
+            ],
+        ]);
+
+        app(\App\Http\Controllers\Api\AiProviderController::class)
+            ->destroy($request, $provider);
+
+        return redirect()->route('admin.providers.index', [
+            'lang' => $request->query('lang') === 'ar' ? 'ar' : 'en',
+        ])->with('status', $request->query('lang') === 'ar'
+            ? 'تمت أرشفة المزود وإبطال مفتاحه.'
+            : 'Provider archived; credential revoked.');
+    })->middleware('throttle:5,1')->name('admin.providers.delete');
+
     // T020: editorial decisions remain server-authorized and fail closed.
     Route::get('/admin/content', function (Request $request) {
         abort_unless($request->user()?->canAccessAdmin(), 403);
