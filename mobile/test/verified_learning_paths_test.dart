@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -207,6 +208,38 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('learning-more')), findsNothing);
     expect(calls, [1, 2]);
+  });
+
+  testWidgets('pending page two disables repeated loads and adds one card',
+      (tester) async {
+    final pending = Completer<VerifiedLearningPage>();
+    var pageTwoCalls = 0;
+    await tester.pumpWidget(MaterialApp(home: VerifiedLearningLibrary(
+      arabic: false,
+      pageLoader: (page) async {
+        if (page == 1) {
+          return VerifiedLearningPage.parse(
+              response(1, [track()], more: true), 1);
+        }
+        pageTwoCalls++;
+        return pending.future;
+      },
+    )));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('learning-more')));
+    await tester.pump();
+    expect(pageTwoCalls, 1);
+    final button = tester.widget<FilledButton>(
+        find.byKey(const Key('learning-more')));
+    expect(button.onPressed, isNull);
+    pending.complete(VerifiedLearningPage.parse(response(2, [
+      track(id: idTwo, slug: 'verified-devops'),
+    ]), 2));
+    await tester.pumpAndSettle();
+    expect(pageTwoCalls, 1);
+    expect(find.byKey(const Key('learning-track-verified-devops')),
+        findsOneWidget);
+    expect(find.byKey(const Key('learning-more-error')), findsNothing);
   });
 
   testWidgets('Arabic content and genuinely empty published catalog', (tester) async {
