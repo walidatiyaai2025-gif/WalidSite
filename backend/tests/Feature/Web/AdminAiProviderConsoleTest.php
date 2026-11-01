@@ -204,6 +204,45 @@ class AdminAiProviderConsoleTest extends TestCase
         $this->assertSame('unverified', $provider->fresh()->health_status);
     }
 
+    public function test_web_health_check_does_not_report_success_after_concurrent_provider_change(): void
+    {
+        $this->actingAs($this->account(), 'web');
+        $this->post('/admin/ai/providers', $this->providerForm())
+            ->assertRedirect('/admin/ai/providers');
+        $provider = AiProvider::firstOrFail();
+        $this->get('/admin/ai/providers')->assertOk();
+
+        $priority = 40;
+        foreach ([
+            'en' => 'Provider settings changed during the connection check. No result was recorded; test the current settings again.',
+            'ar' => 'تغيّرت إعدادات المزود أثناء فحص الاتصال. لم تُسجّل نتيجة؛ أعد الفحص للإعدادات الحالية.',
+        ] as $locale => $message) {
+            // Simulate a second administrator editing the provider while the
+            // adapter is awaiting its external health response.
+            Http::fake(function () use ($provider, &$priority) {
+                DB::table('ai_providers')->where('id', $provider->id)
+                    ->update(['routing_priority' => ++$priority]);
+                return Http::response(['data' => []], 200);
+            });
+
+            $this->post('/admin/ai/providers/'.$provider->id.'/test?lang='.$locale)
+                ->assertRedirect(route('admin.providers.index', ['lang' => $locale]))
+                ->assertSessionHas('error', $message);
+
+            $this->get('/admin/ai/providers?lang='.$locale)->assertOk()
+                ->assertSee('role="alert"', false)
+                ->assertSee($message)
+                ->assertDontSee('Connection check recorded: healthy.')
+                ->assertDontSee('تم تسجيل نتيجة فحص الاتصال: healthy.');
+
+            $this->assertSame('unverified', $provider->fresh()->health_status);
+            $this->assertDatabaseMissing('ai_provider_audit_events', [
+                'provider_id' => $provider->id,
+                'action' => 'tested',
+            ]);
+        }
+    }
+
     public function test_arabic_provider_workflow_preserves_locale_and_secures_credentials(): void
     {
         $this->actingAs($this->account(), 'web');
