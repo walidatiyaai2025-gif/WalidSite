@@ -2,10 +2,13 @@
 
 namespace Tests\Feature\Web;
 
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 class PublicLayoutTest extends TestCase
 {
+    use RefreshDatabase;
+
     public function test_english_landing_has_accessible_light_site_shell(): void
     {
         $this->get('/')
