@@ -182,6 +182,149 @@ final class PublicLabRunbookJourneyTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_full_library_browses_verified_runbooks_across_pages_in_arabic_and_english(): void
+    {
+        Http::fake();
+        // Both the public preview limit (15) and the authoritative API page
+        // limit (20) must be crossed without disclosing invalid earlier rows.
+        for ($i = 1; $i <= 22; $i++) {
+            $id = $this->guide(sprintf('a-revoked-%02d', $i));
+            DB::table('runbook_versions')->where('runbook_id', $id)
+                ->update(['checksum' => str_repeat('f', 64)]);
+        }
+        $draftId = $this->guide('private-unapproved', false,
+            '# PRIVATE-RUNBOOK-CONTENT-MUST-NOT-LEAK');
+        $ids = [];
+        for ($i = 1; $i <= 22; $i++) {
+            $ids[] = $this->guide(sprintf('z-approved-%02d', $i),
+                true, '# Reviewed content '.$i);
+        }
+
+        foreach (['en', 'ar'] as $lang) {
+            $lab = $this->get(route('public.lab', ['lang' => $lang]))->assertOk()
+                ->assertSee('href="'.e(route('public.lab.runbooks', [
+                    'lang' => $lang,
+                ])).'"', false)
+                ->assertSee('Reviewed z-approved-15 runbook')
+                ->assertDontSee('Reviewed z-approved-16 runbook')
+                ->assertDontSee('a-revoked-')
+                ->assertDontSee('private-unapproved');
+
+            $first = $this->get(route('public.lab.runbooks', [
+                'lang' => $lang,
+            ]))->assertOk()
+                ->assertSee('lang="'.$lang.'"', false)
+                ->assertSee('Reviewed z-approved-01 runbook')
+                ->assertSee('Reviewed z-approved-20 runbook')
+                ->assertDontSee('Reviewed z-approved-21 runbook')
+                ->assertDontSee('Reviewed z-approved-22 runbook')
+                ->assertDontSee('a-revoked-')
+                ->assertDontSee('private-unapproved')
+                ->assertDontSee('PRIVATE-RUNBOOK-CONTENT-MUST-NOT-LEAK')
+                ->assertSee('href="'.e(route('public.lab.runbooks', [
+                    'lang' => $lang, 'page' => 2,
+                ])).'"', false);
+            $this->assertStringContainsString(
+                'no-store', $first->headers->get('Cache-Control')
+            );
+            for ($i = 0; $i < 20; $i++) {
+                $first->assertSee('href="'.e(route('public.lab.runbook', [
+                    'id' => $ids[$i], 'lang' => $lang, 'page' => 1,
+                ])).'"', false);
+            }
+
+            $second = $this->get(route('public.lab.runbooks', [
+                'lang' => $lang, 'page' => 2,
+            ]))->assertOk()
+                ->assertSee('Reviewed z-approved-21 runbook')
+                ->assertSee('Reviewed z-approved-22 runbook')
+                ->assertDontSee('Reviewed z-approved-20 runbook')
+                ->assertDontSee('a-revoked-')
+                ->assertDontSee('private-unapproved')
+                ->assertDontSee('PRIVATE-RUNBOOK-CONTENT-MUST-NOT-LEAK')
+                ->assertSee('href="'.e(route('public.lab.runbooks', [
+                    'lang' => $lang, 'page' => 1,
+                ])).'"', false)
+                ->assertDontSee('rel="next"', false);
+            $this->assertStringContainsString(
+                'no-store', $second->headers->get('Cache-Control')
+            );
+            if ($lang === 'ar') {
+                $second->assertSee('dir="rtl"', false)
+                    ->assertSee('مكتبة أدلة التشغيل المعتمدة')
+                    ->assertSee('الصفحة السابقة');
+            } else {
+                $second->assertSee('dir="ltr"', false)
+                    ->assertSee('Approved runbook library')
+                    ->assertSee('Previous page');
+            }
+            $detail = $this->get(route('public.lab.runbook', [
+                'id' => $ids[21], 'lang' => $lang, 'page' => 2,
+            ]))->assertOk()
+                ->assertSee('Reviewed z-approved-22 runbook')
+                ->assertSee('href="'.e(route('public.lab.runbooks', [
+                    'lang' => $lang, 'page' => 2,
+                ])).'"', false);
+            $this->assertStringContainsString(
+                'no-store', $detail->headers->get('Cache-Control')
+            );
+            $lab->assertSee($lang === 'ar'
+                ? 'تصفح مكتبة أدلة التشغيل كاملة'
+                : 'Browse the full approved runbook library');
+        }
+        $this->get('/lab/runbooks/'.$draftId)->assertNotFound();
+        Http::assertNothingSent();
+    }
+
+    public function test_library_paging_rechecks_revocations_and_rejects_malformed_inputs(): void
+    {
+        Http::fake();
+        $ids = [];
+        for ($i = 1; $i <= 21; $i++) {
+            $ids[] = $this->guide(sprintf('z-still-approved-%02d', $i));
+        }
+
+        $this->get('/lab/runbooks?lang=en&page=2')->assertOk()
+            ->assertSee('Reviewed z-still-approved-21 runbook');
+        // De-authorize two distinct snapshots AFTER a successful read. The
+        // next request must repack verified page 1 and drop page 2 entirely.
+        DB::table('runbook_versions')->where('runbook_id', $ids[0])
+            ->update(['checksum' => str_repeat('0', 64)]);
+        DB::table('runbooks')->where('id', $ids[1])
+            ->update(['title' => 'PRIVATE-EDITED-WITHOUT-APPROVAL']);
+
+        $list = $this->get('/lab/runbooks?lang=en')->assertOk()
+            ->assertSee('Reviewed z-still-approved-21 runbook')
+            ->assertDontSee('Reviewed z-still-approved-01 runbook')
+            ->assertDontSee('PRIVATE-EDITED-WITHOUT-APPROVAL')
+            ->assertDontSee('rel="next"', false);
+        $empty = $this->get('/lab/runbooks?lang=ar&page=2')->assertOk()
+            ->assertSee('لا توجد أدلة تشغيل معتمدة في هذه الصفحة حاليًا.')
+            ->assertSee('href="'.e(route('public.lab.runbooks', [
+                'lang' => 'ar', 'page' => 1,
+            ])).'"', false)
+            ->assertDontSee('PRIVATE-EDITED-WITHOUT-APPROVAL');
+        $this->assertStringContainsString(
+            'no-store', $empty->headers->get('Cache-Control')
+        );
+
+        foreach ([$ids[0], $ids[1]] as $revoked) {
+            $this->get('/lab/runbooks/'.$revoked)->assertNotFound();
+        }
+        foreach ([
+            'page%5B%5D=2', 'page=0', 'page=-1', 'page=10001',
+            'page=not-an-integer', 'lang%5B%5D=ar', 'lang=fr',
+        ] as $invalid) {
+            $this->getJson('/lab/runbooks?'.$invalid)->assertUnprocessable();
+        }
+        $this->getJson('/lab/runbooks/'.$ids[2].'?page[]=2')
+            ->assertUnprocessable();
+        $this->get('/lab/runbooks?page=10000')->assertOk()
+            ->assertDontSee('PRIVATE-EDITED-WITHOUT-APPROVAL')
+            ->assertSee('No currently approved runbooks on this page.');
+        Http::assertNothingSent();
+    }
+
     public function test_lab_delegation_keeps_verified_article_links_and_rejects_invalid_inputs(): void
     {
         $article = Article::create([
@@ -203,6 +346,7 @@ final class PublicLabRunbookJourneyTest extends TestCase
             ->assertSee('Reviewed lab article')
             ->assertSee('href="'.route('public.article', ['slug' => $article->slug, 'lang' => 'en']).'"', false);
         $this->get('/lab?lang=ar')->assertOk()
+            ->assertSee('href="'.route('public.blog', ['lang' => 'ar']).'"', false)
             ->assertSee('مقال مختبر موثق')
             ->assertSee('href="'.route('public.article', ['slug' => $article->slug, 'lang' => 'ar']).'"', false);
 
