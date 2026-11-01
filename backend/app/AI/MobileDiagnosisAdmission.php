@@ -84,16 +84,32 @@ final class MobileDiagnosisAdmission
             if ($provider->provider_type === 'openai-compatible' && $reserve < 1) {
                 continue;
             }
-            $spent = (int) DB::table('ai_usage')->where('provider_id', $provider->id)
-                ->where('created_at', '>=', now()->startOfDay())->sum('cost_minor');
+            // Minor units cannot be added across currencies. Legacy or
+            // externally imported receipts may predate recordUsage() currency
+            // validation. Never admit paid work on a mixed-currency ledger.
+            $todayReceipts = DB::table('ai_usage')->where('provider_id', $provider->id)
+                ->where('created_at', '>=', now('UTC')->startOfDay());
+            if ((clone $todayReceipts)->where('cost_currency', '!=', $provider->currency)->exists()) {
+                continue;
+            }
+            $spent = (int) $todayReceipts->sum('cost_minor');
             $outstanding = 0;
+            $foreignRunningReceipt = false;
             $runningJobs = DB::table('ai_jobs')->where('provider_id', $provider->id)
                 ->where('status', 'running')->get(['id', 'reserved_budget_minor']);
             foreach ($runningJobs as $job) {
-                $recorded = (int) DB::table('ai_usage')->where('job_id', $job->id)->sum('cost_minor');
+                // A job's lifetime reservation crosses UTC days. An earlier
+                // foreign-currency receipt must not reduce that reservation.
+                $jobReceipts = DB::table('ai_usage')->where('job_id', $job->id);
+                if ((clone $jobReceipts)->where('cost_currency', '!=', $provider->currency)->exists()) {
+                    $foreignRunningReceipt = true;
+                    break;
+                }
+                $recorded = (int) $jobReceipts->sum('cost_minor');
                 $outstanding += max(0, (int) $job->reserved_budget_minor - $recorded);
             }
-            if ($spent + $outstanding + $reserve > $provider->daily_budget_minor) {
+            if ($foreignRunningReceipt ||
+                $spent + $outstanding + $reserve > $provider->daily_budget_minor) {
                 continue;
             }
 
