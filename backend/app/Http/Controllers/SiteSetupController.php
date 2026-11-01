@@ -25,9 +25,14 @@ final class SiteSetupController extends Controller
     {
         $this->guard($installer);
         $unlocked = $request->session()->get('site_setup_authorized') === true;
-        $migrated = $unlocked && $request->session()->get('site_setup_migrated') === true;
-        $step = ! $unlocked ? 'unlock' : ($migrated ? 'owner' : 'database');
         $status = $unlocked ? $updater->inspect() : null;
+        // If a deployment introduced new migrations or the DB went offline
+        // between steps, return safely to the database step instead of
+        // trapping the owner on an unusable final form.
+        $migrated = $unlocked
+            && $request->session()->get('site_setup_migrated') === true
+            && $status['ready'] && $status['pending'] === [];
+        $step = ! $unlocked ? 'unlock' : ($migrated ? 'owner' : 'database');
         $ownerEmail = $migrated ? $installer->ownerEmail() : null;
 
         return view('setup.wizard', compact('step', 'status', 'ownerEmail'));
