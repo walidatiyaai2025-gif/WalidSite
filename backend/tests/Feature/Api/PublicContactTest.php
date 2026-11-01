@@ -37,7 +37,10 @@ final class PublicContactTest extends TestCase
             ['mail.contact_recipient' => 'owner@example.test', 'mail.default' => 'log'],
             ['mail.contact_recipient' => 'owner@example.test', 'mail.default' => 'array'],
             ['mail.contact_recipient' => 'owner@example.test', 'mail.default' => 'failover'],
-        ] as $settings) {
+        ] as $index => $settings) {
+            // Route throttling is tested separately; vary the remote IP so
+            // this fixture matrix exercises every disabled-mail branch.
+            $this->withServerVariables(['REMOTE_ADDR' => '192.0.2.'.(30 + $index)]);
             config($settings);
             $this->postJson('/api/v1/public/contact', $this->contact())
                 ->assertStatus(503)
@@ -89,13 +92,15 @@ final class PublicContactTest extends TestCase
             [['message' => str_repeat('x', 3001)], 'message'],
             [['email' => 'visitor@example.test', 'attachment' => 'private-data'], 'payload'],
             [['subject' => 'Header override'], 'payload'],
-        ] as [$changes, $field]) {
+        ] as $index => [$changes, $field]) {
+            $this->withServerVariables(['REMOTE_ADDR' => '198.51.100.'.(30 + $index)]);
             $this->postJson('/api/v1/public/contact', $this->contact($changes))
                 ->assertUnprocessable()
                 ->assertJsonValidationErrors([$field]);
         }
 
         // The required boolean must be present, not just defaulted to true.
+        $this->withServerVariables(['REMOTE_ADDR' => '198.51.100.100']);
         $noConsent = $this->contact();
         unset($noConsent['privacy_consent']);
         $this->postJson('/api/v1/public/contact', $noConsent)
