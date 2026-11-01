@@ -509,11 +509,13 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
   Widget build(BuildContext context) {
     final ar = widget.arabic;
     final resultId = _job?.reviewedRunbookId();
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(ar ? 'مساعد تشخيص الأعطال' : 'AI Troubleshooter'),
-      ),
-      body: SafeArea(
+    return Directionality(
+      textDirection: ar ? TextDirection.rtl : TextDirection.ltr,
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(ar ? 'مساعد تشخيص الأعطال' : 'AI Troubleshooter'),
+        ),
+        body: SafeArea(
         child: !_apiConfigured
             ? Center(
                 child: Padding(
@@ -762,6 +764,7 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
                   ],
                 ],
               ),
+        ),
       ),
     );
   }
