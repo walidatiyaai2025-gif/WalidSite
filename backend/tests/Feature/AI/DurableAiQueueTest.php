@@ -278,6 +278,36 @@ class DurableAiQueueTest extends TestCase
         $this->assertDatabaseCount('job_leases', 1);
     }
 
+    public function test_unfunded_paid_backlog_cannot_starve_runnable_work(): void
+    {
+        $queue = new DurableAiQueue();
+        $paid = $this->provider('openai-compatible', 100);
+
+        // Both kinds of impossible paid work must be excluded BEFORE the
+        // 20-candidate scan: no reservation and reservation over daily cap.
+        for ($i = 0; $i < 13; ++$i) {
+            $queue->enqueue($paid, 'draft', 'unfunded:zero:'.$i, ['write'], 0);
+        }
+        $firstLarge = null;
+        for ($i = 0; $i < 13; ++$i) {
+            $id = $queue->enqueue($paid, 'draft', 'unfunded:large:'.$i, ['write'], 200);
+            $firstLarge ??= $id;
+        }
+
+        $local = $this->provider('ollama-compatible', 0);
+        $ready = $queue->enqueue($local, 'draft', 'unfunded:runnable', ['research'], 0);
+        $this->assertSame($ready, $queue->claimNext('worker-a')?->id);
+        $this->assertSame(26, DB::table('ai_jobs')->where('provider_id', $paid->id)
+            ->where('status', 'queued')->count());
+        $queue->completeStep($ready, 'worker-a', 'research', 'drafts/runnable');
+        $queue->completeJob($ready, 'worker-a');
+
+        // These jobs were not discarded. Raising the admin budget makes the
+        // previously oversized reservations runnable without re-enqueueing.
+        $paid->update(['daily_budget_minor' => 250]);
+        $this->assertSame($firstLarge, $queue->claimNext('worker-b')?->id);
+    }
+
     public function test_paid_job_without_reserved_budget_cannot_claim(): void
     {
         $queue = new DurableAiQueue();

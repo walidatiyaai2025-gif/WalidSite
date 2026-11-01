@@ -81,6 +81,13 @@ final class DurableAiQueue
             ->whereNull('ai_providers.deleted_at')
             ->where('ai_providers.enabled', true)
             ->where('ai_providers.health_status', 'healthy')
+            // Managed jobs without a reservation cannot be admitted. Likewise
+            // a reservation over the configured daily ceiling is impossible
+            // until an admin increases that ceiling. Exclude both before the
+            // bounded scan so they do not starve runnable later work.
+            ->where(fn ($q) => $q->where('ai_providers.provider_type', '!=', 'openai-compatible')
+                ->orWhere('ai_jobs.reserved_budget_minor', '>', 0))
+            ->whereColumn('ai_jobs.reserved_budget_minor', '<=', 'ai_providers.daily_budget_minor')
             ->whereIn('ai_jobs.status', ['queued', 'retry'])
             ->where(fn ($q) => $q->whereNull('ai_jobs.next_attempt_at')
                 ->orWhere('ai_jobs.next_attempt_at', '<=', now()))
