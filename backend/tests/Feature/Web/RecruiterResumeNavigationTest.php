@@ -31,7 +31,7 @@ class RecruiterResumeNavigationTest extends TestCase
 
     public function test_untrusted_track_values_cannot_propagate_into_cv_or_language_links(): void
     {
-        foreach (['/hire?track=nonexistent', '/hire?track[]=database'] as $url) {
+        foreach (['/hire?track=nonexistent', '/hire?track[]=database', '/hire?track[role]=software', '/hire?track[0][role]=delivery'] as $url) {
             $this->get($url)->assertOk()
                 ->assertSee('href="'.e(route('public.resume', ['lang' => 'en', 'track' => 'all'])).'"', false)
                 ->assertSee('href="'.e(route('public.hire', ['lang' => 'ar', 'track' => 'all'])).'"', false)
