@@ -148,6 +148,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('الدروس المنشورة'), findsOneWidget);
     expect(find.text('استعادة البيانات'), findsOneWidget);
+    // Return to the original Navigator route before replacing the library.
+    await tester.pageBack();
+    await tester.pumpAndSettle();
 
     await tester.pumpWidget(MaterialApp(home: VerifiedLearningLibrary(
       arabic: true,
