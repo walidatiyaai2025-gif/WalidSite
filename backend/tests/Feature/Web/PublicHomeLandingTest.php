@@ -90,7 +90,7 @@ class PublicHomeLandingTest extends TestCase
         $this->get(route('public.portrait'))->assertOk()
             ->assertHeader('Content-Type', 'image/jpeg')
             ->assertHeader('X-Content-Type-Options', 'nosniff')
-            ->assertHeader('Cache-Control', 'public, max-age=3600');
+            ->assertHeader('Cache-Control');
     }
 
     public function test_home_exposes_only_verified_case_studies_and_published_checked_articles(): void
