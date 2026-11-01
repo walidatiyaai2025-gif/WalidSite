@@ -28,7 +28,7 @@ final class PublicRecruiterController extends Controller
             ->index($request)->getData(true)['data'] ?? null;
 
         if ($approved === null) {
-            return response()->json(['data' => null]);
+            return response()->json(['data' => null])->header('Cache-Control', 'no-store');
         }
 
         return response()->json(['data' => [
@@ -42,6 +42,6 @@ final class PublicRecruiterController extends Controller
             'recruiter_url' => route('public.hire', ['lang' => $lang, 'track' => $track]),
             'resume_url' => $approved['resume_url'],
             'contact_url' => $approved['contact_url'],
-        ]]);
+        ]])->header('Cache-Control', 'no-store');
     }
 }
