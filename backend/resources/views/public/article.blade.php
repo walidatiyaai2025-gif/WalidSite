@@ -1,4 +1,44 @@
 @php($locale = request()->query('lang') === 'ar' ? 'ar' : 'en')
+{{-- Preserve only validated, on-site browse context. Never accept caller
+     supplied return URLs, extra query keys, arrays or unapproved content. --}}
+@php
+    $rawBrowse = request()->query();
+    $rawSearch = $rawBrowse['q'] ?? null;
+    $browseSearch = is_string($rawSearch) && mb_strlen(trim($rawSearch)) <= 80
+        ? trim($rawSearch) : '';
+    $articleContextQuery = [];
+    $articleBackRoute = 'public.blog';
+    $articleBackArgs = ['lang' => $locale];
+    if (($rawBrowse['source'] ?? null) === 'search' && $browseSearch !== '') {
+        $articleBackRoute = 'public.search';
+        $articleContextQuery = ['source' => 'search', 'q' => $browseSearch];
+        $articleBackArgs['q'] = $browseSearch;
+        $rawType = $rawBrowse['type'] ?? 'all';
+        if (is_string($rawType) && in_array($rawType, ['all', 'articles'], true)) {
+            $articleContextQuery['type'] = $rawType;
+            $articleBackArgs['type'] = $rawType;
+        }
+    } elseif (($rawBrowse['source'] ?? null) === 'blog') {
+        $articleContextQuery = ['source' => 'blog'];
+        if ($browseSearch !== '') {
+            $articleBackArgs['q'] = $browseSearch;
+            $articleContextQuery['q'] = $browseSearch;
+        }
+        $rawCategory = $rawBrowse['category'] ?? null;
+        if (is_string($rawCategory) && mb_strlen($rawCategory) <= 110
+            && preg_match('/\A[a-z0-9-]+\z/D', $rawCategory) === 1) {
+            $articleBackArgs['category'] = $rawCategory;
+            $articleContextQuery['category'] = $rawCategory;
+        }
+        $rawPage = $rawBrowse['page'] ?? null;
+        if ((is_int($rawPage) || is_string($rawPage))
+            && ctype_digit((string) $rawPage) && (int) $rawPage > 1
+            && (int) $rawPage <= 10000) {
+            $articleBackArgs['page'] = (int) $rawPage;
+            $articleContextQuery['page'] = (int) $rawPage;
+        }
+    }
+@endphp
 @extends('layouts.site')
 @section('title', ($locale === 'ar' ? $article->title_ar : $article->title_en).' — Waleed Atiya')
 @push('head')
@@ -44,7 +84,9 @@
 @section('content')
 <article class="site-wrap article-shell" aria-labelledby="article-title">
     <nav class="article-nav" aria-label="{{ $locale === 'ar' ? 'تنقل المقال' : 'Article navigation' }}">
-        <a href="{{ route('public.blog', ['lang'=>$locale]) }}">{{ $locale === 'ar' ? 'العودة إلى المدونة' : 'Back to technical blog' }}</a>
+        <a href="{{ route($articleBackRoute, $articleBackArgs) }}">{{ $locale === 'ar'
+            ? ($articleBackRoute === 'public.search' ? 'العودة إلى نتائج البحث' : 'العودة إلى نتائج المدونة')
+            : ($articleBackRoute === 'public.search' ? 'Back to search results' : 'Back to technical blog results') }}</a>
         <a href="{{ route('public.contact', ['lang'=>$locale, 'article'=>$article->slug]) }}">{{ $locale === 'ar' ? 'التبليغ عن مشكلة بالمحتوى' : 'Report a content issue' }}</a>
     </nav>
     <p class="article-meta">{{ $locale === 'ar' ? 'محتوى منشور ومدعوم بمصادر موثقة' : 'Published with verified cited sources' }}</p>
@@ -71,7 +113,7 @@
         <ul class="article-related-list">
             @foreach($related as $suggestion)
                 <li><a class="article-related-link"
-                    href="{{ route('public.article', ['slug' => $suggestion->slug, 'lang' => $locale]) }}">
+                    href="{{ route('public.article', array_merge(['slug' => $suggestion->slug, 'lang' => $locale], $articleContextQuery)) }}">
                     {{ $locale === 'ar' ? $suggestion->title_ar : $suggestion->title_en }}
                 </a></li>
             @endforeach
