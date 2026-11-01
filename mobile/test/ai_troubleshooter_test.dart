@@ -365,6 +365,7 @@ void main() {
     await reveal(tester, const Key('ai-diagnose-submit'));
     await tester.tap(find.byKey(const Key('ai-diagnose-submit')));
     await tester.pumpAndSettle();
+    await reveal(tester, const Key('ai-job-status'));
     expect(find.textContaining('Retry after about 30 seconds'), findsOneWidget);
     expect(find.byKey(const Key('ai-open-solution')), findsNothing);
     expect(tester.widget<FilledButton>(
@@ -521,6 +522,207 @@ void main() {
     expect(find.byKey(const Key('ai-login-email')), findsOneWidget);
     expect(find.byKey(const Key('ai-job-card')), findsNothing);
     expect(find.text('Session expired. Sign in again.'), findsOneWidget);
+  });
+
+
+  testWidgets('queued and running status refresh reaches reviewed result safely',
+      (tester) async {
+    var postCalls = 0;
+    var getCalls = 0;
+    await pumpScreen(
+      tester,
+      arabic: true,
+      login: (_, __) async =>
+          const MobileAiSession(token: token, expiresAt: null),
+      diagnose: (_, __, ___, ____) async {
+        postCalls++;
+        return const MobileAiJob(
+          id: jobId,
+          status: 'queued',
+          progressPercent: 0,
+          resultUrl: null,
+          retryAfterSeconds: 1,
+        );
+      },
+      poll: (bearer, id) async {
+        expect(bearer, token);
+        expect(id, jobId);
+        getCalls++;
+        if (getCalls == 1) {
+          return const MobileAiJob(
+            id: jobId,
+            status: 'running',
+            progressPercent: 50,
+            resultUrl: null,
+            retryAfterSeconds: 1,
+          );
+        }
+        return const MobileAiJob(
+          id: jobId,
+          status: 'completed',
+          progressPercent: 100,
+          resultUrl: '/api/v1/mobile/solutions/$runbookId',
+          retryAfterSeconds: null,
+        );
+      },
+    );
+    await login(tester);
+    await tester.enterText(find.byKey(const Key('ai-technology')), 'SQL');
+    await tester.enterText(find.byKey(const Key('ai-question')),
+        'Why is this long-running job queued?');
+    await reveal(tester, const Key('ai-consent'));
+    await tester.tap(find.byKey(const Key('ai-consent')));
+    await reveal(tester, const Key('ai-diagnose-submit'));
+    await tester.tap(find.byKey(const Key('ai-diagnose-submit')));
+    await tester.pumpAndSettle();
+
+    await reveal(tester, const Key('ai-refresh-status'));
+    expect(find.text('تحديث حالة التشخيص'), findsOneWidget);
+    expect(getCalls, 0);
+    expect(tester.widget<OutlinedButton>(
+      find.byKey(const Key('ai-refresh-status')),
+    ).onPressed, isNull);
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pump();
+    await reveal(tester, const Key('ai-refresh-status'));
+    await tester.tap(find.byKey(const Key('ai-refresh-status')));
+    await tester.pumpAndSettle();
+    expect(getCalls, 1);
+    await reveal(tester, const Key('ai-job-status'));
+    expect(find.text('running · 50%'), findsOneWidget);
+    expect(find.byKey(const Key('ai-open-solution')), findsNothing);
+
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pump();
+    await reveal(tester, const Key('ai-refresh-status'));
+    await tester.tap(find.byKey(const Key('ai-refresh-status')));
+    await tester.pumpAndSettle();
+    expect(getCalls, 2);
+    expect(postCalls, 1);
+    await reveal(tester, const Key('ai-open-solution'));
+    expect(find.text('افتح الحل المراجع'), findsOneWidget);
+    expect(find.byKey(const Key('ai-refresh-status')), findsNothing);
+    expect(find.text(token), findsNothing);
+  });
+
+  testWidgets('401 on status refresh revokes local session and job',
+      (tester) async {
+    var postCalls = 0;
+    await pumpScreen(
+      tester,
+      login: (_, __) async =>
+          const MobileAiSession(token: token, expiresAt: null),
+      diagnose: (_, __, ___, ____) async {
+        postCalls++;
+        return const MobileAiJob(
+          id: jobId, status: 'queued', progressPercent: 0,
+          resultUrl: null, retryAfterSeconds: 1,
+        );
+      },
+      poll: (_, __) async => throw const MobileAiHttpException(401),
+    );
+    await login(tester);
+    await tester.enterText(find.byKey(const Key('ai-technology')), 'API');
+    await tester.enterText(find.byKey(const Key('ai-question')),
+        'Why does this request fail?');
+    await reveal(tester, const Key('ai-consent'));
+    await tester.tap(find.byKey(const Key('ai-consent')));
+    await reveal(tester, const Key('ai-diagnose-submit'));
+    await tester.tap(find.byKey(const Key('ai-diagnose-submit')));
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pump();
+    await reveal(tester, const Key('ai-refresh-status'));
+    await tester.tap(find.byKey(const Key('ai-refresh-status')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('ai-login-email')), findsOneWidget);
+    expect(find.byKey(const Key('ai-job-card')), findsNothing);
+    expect(find.text(
+        'Your session expired or is not authorized for this tool.'),
+        findsOneWidget);
+    expect(find.text(token), findsNothing);
+    expect(postCalls, 1);
+  });
+
+  testWidgets('missing job returns safe recovery without resending',
+      (tester) async {
+    var postCalls = 0;
+    await pumpScreen(
+      tester,
+      arabic: true,
+      login: (_, __) async =>
+          const MobileAiSession(token: token, expiresAt: null),
+      diagnose: (_, __, ___, ____) async {
+        postCalls++;
+        return const MobileAiJob(
+          id: jobId, status: 'running', progressPercent: 50,
+          resultUrl: null, retryAfterSeconds: 1,
+        );
+      },
+      poll: (_, __) async => throw const MobileAiHttpException(404),
+    );
+    await login(tester);
+    await tester.enterText(find.byKey(const Key('ai-technology')), 'API');
+    await tester.enterText(find.byKey(const Key('ai-question')),
+        'Where did the job go?');
+    await reveal(tester, const Key('ai-consent'));
+    await tester.tap(find.byKey(const Key('ai-consent')));
+    await reveal(tester, const Key('ai-diagnose-submit'));
+    await tester.tap(find.byKey(const Key('ai-diagnose-submit')));
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pump();
+    await reveal(tester, const Key('ai-refresh-status'));
+    await tester.tap(find.byKey(const Key('ai-refresh-status')));
+    await tester.pumpAndSettle();
+    expect(find.text('لم تعد مهمة التشخيص متاحة. يمكنك بدء طلب جديد.'),
+        findsOneWidget);
+    expect(find.byKey(const Key('ai-job-card')), findsNothing);
+    expect(find.byKey(const Key('ai-login-email')), findsNothing);
+    expect(postCalls, 1);
+  });
+
+  testWidgets('mismatched status identity cannot expose another job result',
+      (tester) async {
+    var getCalls = 0;
+    await pumpScreen(
+      tester,
+      login: (_, __) async =>
+          const MobileAiSession(token: token, expiresAt: null),
+      diagnose: (_, __, ___, ____) async => const MobileAiJob(
+        id: jobId, status: 'queued', progressPercent: 0,
+        resultUrl: null, retryAfterSeconds: 1,
+      ),
+      poll: (_, __) async {
+        getCalls++;
+        return const MobileAiJob(
+          id: runbookId,
+          status: 'completed',
+          progressPercent: 100,
+          resultUrl: '/api/v1/mobile/solutions/$runbookId',
+          retryAfterSeconds: null,
+        );
+      },
+    );
+    await login(tester);
+    await tester.enterText(find.byKey(const Key('ai-technology')), 'Dart');
+    await tester.enterText(find.byKey(const Key('ai-question')),
+        'Is this the correct diagnosis?');
+    await reveal(tester, const Key('ai-consent'));
+    await tester.tap(find.byKey(const Key('ai-consent')));
+    await reveal(tester, const Key('ai-diagnose-submit'));
+    await tester.tap(find.byKey(const Key('ai-diagnose-submit')));
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pump();
+    await reveal(tester, const Key('ai-refresh-status'));
+    await tester.tap(find.byKey(const Key('ai-refresh-status')));
+    await tester.pumpAndSettle();
+    expect(getCalls, 1);
+    await reveal(tester, const Key('ai-job-status'));
+    expect(find.text('queued · 0%'), findsOneWidget);
+    expect(find.byKey(const Key('ai-open-solution')), findsNothing);
+    expect(find.text(token), findsNothing);
   });
 
 }
