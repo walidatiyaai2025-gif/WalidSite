@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\AiProviderController;
 use App\Http\Controllers\Api\PublicPortfolioController;
 use App\Http\Controllers\Api\PublicHomeController;
 use App\Http\Controllers\Api\MobileHomeController;
+use App\Http\Controllers\Api\MobileSavedController;
 use App\Http\Controllers\Api\MobileBootstrapController;
 use App\Http\Controllers\Api\PublicLabController;
 use App\Http\Controllers\Api\PublicArticleController;
@@ -25,6 +26,15 @@ Route::post('/auth/login', [IdentityController::class, 'login'])
 // Block insecure bearer-token requests before Sanctum or privileged handlers.
 Route::middleware([RequireSecureApiTransport::class, 'auth:sanctum'])->group(function (): void {
     Route::get('/mobile/me', [IdentityController::class, 'me']);
+    // MOBILE-11: token-scoped, own-account saved resources. Live publication
+    // authorization is checked again before every saved item is returned.
+    Route::get('/mobile/saved', [MobileSavedController::class, 'index'])
+        ->name('api.mobile.saved')->middleware('throttle:60,1');
+    Route::post('/mobile/saved', [MobileSavedController::class, 'store'])
+        ->name('api.mobile.saved.store')->middleware('throttle:30,1');
+    Route::delete('/mobile/saved/{resource_type}/{resource_id}', [MobileSavedController::class, 'destroy'])
+        ->where('resource_type', 'article|runbook')->whereUuid('resource_id')
+        ->name('api.mobile.saved.destroy')->middleware('throttle:30,1');
     Route::post('/auth/logout', [IdentityController::class, 'logout']);
     Route::get('/admin/identity-check', [IdentityController::class, 'adminCheck']);
 
