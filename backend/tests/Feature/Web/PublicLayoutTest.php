@@ -46,13 +46,32 @@ class PublicLayoutTest extends TestCase
     {
         $this->assertFileExists(base_path('../assets/portraits/portrait-light-derived.jpg'));
 
-        $this->get('/')
-            ->assertOk()
-            ->assertSee(
-                'src="https://raw.githubusercontent.com/walidatiyaai2025-gif/WalidSite/main/assets/portraits/portrait-light-derived.jpg"',
-                false,
-            )
-            ->assertSee('Approved real portrait of Waleed Atiya');
+        foreach (['/', '/?lang=ar'] as $path) {
+            $this->get($path)
+                ->assertOk()
+                ->assertSee('src="'.route('public.owner-portrait').'"', false)
+                ->assertDontSee('raw.githubusercontent.com');
+        }
+        $this->get('/')->assertSee('Approved real portrait of Waleed Atiya');
+        $this->get('/?lang=ar')->assertSee('الصورة الشخصية الأصلية المعتمدة لوليد عطية');
+    }
+
+    public function test_owner_portrait_is_served_locally_with_safe_image_headers(): void
+    {
+        $response = $this->get(route('public.owner-portrait'));
+        $response->assertOk()
+            ->assertHeader('Content-Type', 'image/jpeg')
+            ->assertHeader('X-Content-Type-Options', 'nosniff');
+
+        $this->assertStringContainsString('max-age=86400', $response->headers->get('Cache-Control', ''));
+        $this->assertSame(
+            realpath(base_path('../assets/portraits/portrait-light-derived.jpg')),
+            realpath($response->baseResponse->getFile()->getPathname()),
+        );
+
+        // Query parameters must never select a different file on disk.
+        $this->get('/media/owner-portrait.jpg?path=../../.env')->assertOk()
+            ->assertHeader('Content-Type', 'image/jpeg');
     }
 
     public function test_google_fonts_are_available_on_public_and_sign_in_pages(): void
