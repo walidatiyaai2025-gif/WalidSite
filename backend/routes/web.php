@@ -1027,11 +1027,32 @@ Route::get('/resume', function (Request $request) {
  */
 Route::get('/contact', function (Request $request) {
     $request->validate(['lang' => ['sometimes', 'in:ar,en']]);
+
+    // WEB-08: a report link is context, not authority. Display only an
+    // existing, currently public article with its pinned evidence gate intact.
+    // Ignore malformed/array-valued query input rather than echoing it.
+    $rawArticle = $request->query()['article'] ?? null;
+    $reportArticle = null;
+    if (is_string($rawArticle)
+        && preg_match('/\A[A-Za-z0-9-]{1,180}\z/D', $rawArticle) === 1) {
+        $candidate = \App\Models\Article::query()->publiclyVisible()
+            ->where('slug', $rawArticle)->first();
+        if ($candidate !== null && $candidate->publicRevision() !== null) {
+            $reportArticle = $candidate;
+        }
+    }
+    // Limit the suggestion to the existing 140-character subject field.
+    // Visitors can edit the subject; no sent message is treated as verified.
+    $locale = $request->query('lang') === 'ar' ? 'ar' : 'en';
+    $suggestedSubject = $reportArticle === null ? ''
+        : ($locale === 'ar' ? 'ملاحظة بشأن المقال: ' : 'Article issue: ')
+            .mb_substr($reportArticle->slug, 0, 100);
+
     $recipient = config('mail.contact_recipient');
     $available = is_string($recipient) && filter_var($recipient, FILTER_VALIDATE_EMAIL)
         && in_array(config('mail.default'), ['smtp', 'sendmail', 'ses', 'ses-v2', 'postmark', 'resend'], true);
 
-    return view('public.contact', compact('available'));
+    return view('public.contact', compact('available', 'reportArticle', 'suggestedSubject'));
 })->name('public.contact');
 
 Route::post('/contact', function (Request $request) {
