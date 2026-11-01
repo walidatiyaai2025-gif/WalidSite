@@ -162,6 +162,38 @@ class PublicPortfolioAndContactTest extends TestCase
         ])->assertStatus(503);
     }
 
+
+    public function test_contact_validation_errors_are_linked_to_fields_in_both_locales(): void
+    {
+        config(['mail.contact_recipient' => 'contact@example.test', 'mail.default' => 'smtp']);
+        Mail::fake();
+
+        $invalid = [
+            'name' => 'V',
+            'email' => 'not-email',
+            'subject' => 'a',
+            'message' => 'short',
+        ];
+
+        foreach (['en', 'ar'] as $locale) {
+            $page = $this->from('/contact?lang='.$locale)
+                ->followingRedirects()
+                ->post('/contact?lang='.$locale, $invalid);
+
+            $page->assertOk()
+                ->assertSee('lang="'.$locale.'"', false)
+                ->assertSee('aria-describedby="contact-name-error"', false)
+                ->assertSee('aria-describedby="contact-email-error"', false)
+                ->assertSee('aria-describedby="contact-subject-error"', false)
+                ->assertSee('aria-describedby="contact-message-error"', false)
+                ->assertSee('id="contact-email-error" class="contact-error" role="alert"', false)
+                ->assertSee('id="contact-message-error" class="contact-error" role="alert"', false)
+                ->assertSee('aria-invalid="true"', false);
+        }
+
+        Mail::assertNothingSent();
+    }
+
     public function test_contact_form_validates_and_honeypot_never_sends(): void
     {
         config(['mail.contact_recipient' => 'contact@example.test', 'mail.default' => 'smtp']);
