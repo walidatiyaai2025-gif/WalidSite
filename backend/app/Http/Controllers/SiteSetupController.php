@@ -28,13 +28,17 @@ final class SiteSetupController extends Controller
         $unlocked = $request->session()->get('site_setup_authorized') === true;
         $configured = $unlocked && $database->isConfigured();
         $status = $configured ? $updater->inspect() : null;
+        // A saved but unreachable database must not strand the owner on an
+        // error page with no way to fix the credentials without a terminal.
+        // A healthy configured database remains locked against re-pointing.
+        $connectionFailed = $configured && ! $status['ready'];
         // If a deployment introduced new migrations or the DB went offline
         // between steps, return safely to the database step instead of
         // trapping the owner on an unusable final form.
         $migrated = $configured
             && $request->session()->get('site_setup_migrated') === true
             && $status['ready'] && $status['pending'] === [];
-        $step = ! $unlocked ? 'unlock' : (! $configured ? 'configure' : ($migrated ? 'owner' : 'database'));
+        $step = ! $unlocked ? 'unlock' : ((! $configured || $connectionFailed) ? 'configure' : ($migrated ? 'owner' : 'database'));
         $ownerEmail = $migrated ? $installer->ownerEmail() : null;
 
         return view('setup.wizard', compact('step', 'status', 'ownerEmail'));

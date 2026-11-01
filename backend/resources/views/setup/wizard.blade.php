@@ -33,6 +33,9 @@ a,button:focus-visible,input:focus-visible{outline-offset:3px}a{color:var(--acce
 <button type="submit">{{ $locale === 'ar' ? 'التالي' : 'Next' }}</button></form>
 @elseif($step === 'configure')
 <h2>{{ $locale === 'ar' ? 'الخطوة 2: إعداد قاعدة البيانات' : 'Step 2: Configure database' }}</h2>
+@if($connectionFailed)
+<p role="alert" class="error">{{ $locale === 'ar' ? 'تعذر الاتصال بقاعدة البيانات المحفوظة. أدخل بيانات اتصال صحيحة لقاعدة فارغة لإعادة المحاولة دون تعديل ملفات الخادم.' : 'The saved database connection is unavailable. Enter working credentials for an empty database to retry without editing server files.' }}</p>
+@endif
 <p>{{ $locale === 'ar' ? 'أنشئ قاعدة بيانات فارغة ومستخدمًا لها من قسم MySQL Databases في cPanel، ثم أدخل البيانات هنا. سيتم إنشاء APP_KEY وحفظ ملف .env تلقائيًا دون Terminal.' : 'Create an empty database and user in cPanel MySQL Databases, then enter the credentials here. APP_KEY and private .env will be generated automatically; no Terminal is needed.' }}</p>
 <form method="post" action="{{ route('site.setup.configure') }}">@csrf
 <label for="db_host">{{ $locale === 'ar' ? 'خادم قاعدة البيانات' : 'Database host' }}</label>
