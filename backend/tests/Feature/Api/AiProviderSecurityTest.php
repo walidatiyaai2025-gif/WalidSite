@@ -83,6 +83,47 @@ class AiProviderSecurityTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_provider_audit_history_is_admin_only_paginated_and_never_leaks_secrets(): void
+    {
+        $this->getJson('/api/v1/admin/ai/providers/00000000-0000-4000-8000-000000000000/audit')
+            ->assertUnauthorized();
+
+        $this->withToken($this->tokenFor('owner'));
+        $first = $this->postJson('/api/v1/admin/ai/providers', $this->input())
+            ->assertCreated()->json('data.id');
+        $second = $this->postJson('/api/v1/admin/ai/providers', array_merge(
+            $this->input(), ['display_name' => 'Isolated Local Provider']
+        ))->assertCreated()->json('data.id');
+        $this->patchJson('/api/v1/admin/ai/providers/'.$first, [
+            'secret' => 'replacement-super-secret-987',
+            'enabled' => true,
+        ])->assertOk();
+
+        $path = '/api/v1/admin/ai/providers/'.$first.'/audit';
+        $result = $this->getJson($path)->assertOk()
+            ->assertJsonPath('meta.total', 2)
+            ->assertJsonCount(2, 'data');
+        $updated = collect($result->json('data'))->firstWhere('action', 'updated');
+        $this->assertNotNull($updated);
+        $this->assertContains('secret_rotated', $updated['changed_fields']);
+        $this->assertNotContains('secret_ciphertext', $updated['changed_fields']);
+        $this->assertStringNotContainsString('private-test-credential-123', $result->getContent());
+        $this->assertStringNotContainsString('replacement-super-secret-987', $result->getContent());
+
+        $this->getJson('/api/v1/admin/ai/providers/'.$second.'/audit')
+            ->assertOk()->assertJsonPath('meta.total', 1)
+            ->assertJsonCount(1, 'data');
+        $this->getJson($path.'?page=0')->assertUnprocessable()->assertJsonValidationErrors('page');
+        $this->getJson($path.'?page=10001')->assertUnprocessable()->assertJsonValidationErrors('page');
+
+        Auth::forgetGuards();
+        $this->withToken($this->tokenFor('reader'))
+            ->getJson($path)->assertForbidden();
+        Auth::forgetGuards();
+        $this->withToken($this->tokenFor('owner', 'mobile'))
+            ->getJson($path)->assertForbidden();
+    }
+
     public function test_endpoint_validation_and_explicit_health_test_are_safe(): void
     {
         $this->withToken($this->tokenFor('owner'));

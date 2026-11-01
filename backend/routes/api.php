@@ -18,6 +18,8 @@ Route::middleware('auth:sanctum')->group(function (): void {
     Route::get('/admin/ai/providers', [AiProviderController::class, 'index']);
     Route::post('/admin/ai/providers', [AiProviderController::class, 'store'])->middleware('throttle:10,1');
     Route::get('/admin/ai/providers/{provider}', [AiProviderController::class, 'show']);
+    Route::get('/admin/ai/providers/{provider}/audit', [AiProviderController::class, 'auditHistory'])
+        ->middleware('throttle:60,1');
     Route::patch('/admin/ai/providers/{provider}', [AiProviderController::class, 'update'])->middleware('throttle:20,1');
     Route::delete('/admin/ai/providers/{provider}', [AiProviderController::class, 'destroy'])
         ->name('api.admin.ai.providers.destroy');
