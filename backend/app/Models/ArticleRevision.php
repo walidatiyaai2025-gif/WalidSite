@@ -111,15 +111,41 @@ class ArticleRevision extends Model
             }
         }
 
-        // Signed documentation URLs and OAuth fragments can contain
-        // credentials even when an editor has marked the source reviewed.
-        // Keep ordinary public docs query strings, but never publish common
-        // API keys, capability tokens or cloud signing parameters.
-        $parameters = urldecode((string) ($parts['query'] ?? ''))
-            .'&'.urldecode((string) ($parts['fragment'] ?? ''));
+        // A URL marked "verified" is never permission to leak bearer
+        // credentials, signed storage links or OAuth fragments. Inspect both
+        // raw and repeatedly decoded layers: nested redirects may encode '?'
+        // and '&' as well as the sensitive key name (even more than once).
+        // Never fetch, print or persist decoded source parameters.
+        return ! self::hasSensitiveParameters((string) ($parts['query'] ?? ''))
+            && ! self::hasSensitiveParameters((string) ($parts['fragment'] ?? ''));
+    }
+
+    private static function hasSensitiveParameters(string $parameters): bool
+    {
+        // Five bounded rounds cover common multi-encoded redirects. If a
+        // sixth decode would still change the content, deny rather than
+        // silently accept a deeply encoded credential-bearing URL.
+        for ($depth = 0; $depth < 5; ++$depth) {
+            if (preg_match(
+                '/(?:^|[?&;])(?:access[_-]?token|refresh[_-]?token|id[_-]?token|token|api[_-]?key|key|auth(?:orization)?|bearer|password|passwd|secret|signature|sig|session(?:id)?|jwt|client[_-]?secret|private[_-]?key|code|ticket|awsaccesskeyid|x[-_]amz[-_][a-z0-9_-]+|x[-_]goog[-_][a-z0-9_-]+)=/i',
+                $parameters
+            ) === 1) {
+                return true;
+            }
+
+            $decoded = rawurldecode($parameters);
+            if ($decoded === $parameters) {
+                return false;
+            }
+            $parameters = $decoded;
+        }
+
+        // The final decoded layer also needs examination (the last decode
+        // can reveal the dangerous key). An unresolved percent encoding after
+        // the bounded scan is conservatively rejected.
         return preg_match(
-            '/(?:^|[?&;])(?:access[_-]?token|token|api[_-]?key|key|auth(?:orization)?|password|secret|signature|sig|session|jwt|client[_-]?secret|private[_-]?key|code|ticket|awsaccesskeyid|x[-_]amz[-_][a-z0-9_-]+|x[-_]goog[-_][a-z0-9_-]+)=/i',
+            '/(?:^|[?&;])(?:access[_-]?token|refresh[_-]?token|id[_-]?token|token|api[_-]?key|key|auth(?:orization)?|bearer|password|passwd|secret|signature|sig|session(?:id)?|jwt|client[_-]?secret|private[_-]?key|code|ticket|awsaccesskeyid|x[-_]amz[-_][a-z0-9_-]+|x[-_]goog[-_][a-z0-9_-]+)=/i',
             $parameters
-        ) !== 1;
+        ) === 1 || rawurldecode($parameters) !== $parameters;
     }
 }
