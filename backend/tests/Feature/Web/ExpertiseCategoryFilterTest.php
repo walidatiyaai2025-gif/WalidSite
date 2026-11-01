@@ -111,4 +111,59 @@ final class ExpertiseCategoryFilterTest extends TestCase
             ->assertDontSee('مهارة private-owner')
             ->assertSee('لم تُعتمد مهارات للنشر بعد.');
     }
+
+    public function test_language_switch_and_seo_keep_each_verified_expertise_category(): void
+    {
+        $owner = $this->profile('expertise-switch-owner@example.test', true);
+        $categories = [
+            'database' => 'Database & Reliability',
+            'integration' => 'Software & Integration',
+            'security' => 'Infrastructure & Security',
+            'delivery' => 'Project Delivery',
+        ];
+        foreach ($categories as $key => $category) {
+            $this->addSkill($owner, 'approved-'.$key, $category);
+        }
+        $this->addSkill($owner, 'private-database', 'Database & Reliability', false);
+
+        foreach ($categories as $key => $category) {
+            foreach (['en', 'ar'] as $locale) {
+                $targetLocale = $locale === 'en' ? 'ar' : 'en';
+                $pageUrl = route('public.expertise', ['lang' => $locale, 'category' => $key]);
+                $targetUrl = route('public.expertise', ['lang' => $targetLocale, 'category' => $key]);
+                $response = $this->get($pageUrl)->assertOk()
+                    ->assertSee('href="'.e($targetUrl).'"', false)
+                    ->assertSee('rel="canonical" href="'.e($pageUrl).'"', false)
+                    ->assertSee('rel="alternate" hreflang="'.$targetLocale.'" href="'.e($targetUrl).'"', false)
+                    ->assertSee('value="'.$key.'" selected', false)
+                    ->assertSee(($locale === 'ar' ? 'مهارة ' : 'Claim ').'approved-'.$key)
+                    ->assertDontSee('private-database');
+
+                foreach (array_keys($categories) as $different) {
+                    if ($different !== $key) {
+                        $response->assertDontSee(($locale === 'ar' ? 'مهارة ' : 'Claim ').'approved-'.$different);
+                    }
+                }
+                // Switching back follows the same filtered category rather
+                // than silently restarting at the unfiltered expertise page.
+                $this->get($targetUrl)->assertOk()
+                    ->assertSee('href="'.e($pageUrl).'"', false);
+            }
+        }
+    }
+
+    public function test_invalid_expertise_category_is_never_propagated_to_language_or_seo_links(): void
+    {
+        foreach (['category[]=database', 'category=unknown', 'category='.str_repeat('x', 700)] as $input) {
+            $response = $this->get('/expertise?lang=en&'.$input)->assertOk()
+                ->assertSee('href="'.e(route('public.expertise', ['lang' => 'ar'])).'"', false)
+                ->assertSee('rel="canonical" href="'.e(route('public.expertise', ['lang' => 'en'])).'"', false)
+                ->assertDontSee('category%5B')
+                ->assertDontSee('category=unknown');
+            $this->assertStringNotContainsString(
+                'href="'.e(route('public.expertise', ['lang' => 'ar', 'category' => 'database'])).'"',
+                $response->getContent()
+            );
+        }
+    }
 }
