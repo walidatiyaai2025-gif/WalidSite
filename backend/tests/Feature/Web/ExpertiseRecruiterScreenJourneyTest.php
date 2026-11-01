@@ -69,7 +69,7 @@ final class ExpertiseRecruiterScreenJourneyTest extends TestCase
                         ->assertSee('href="#recruiter-fit"', false)
                         ->assertSee('id="career-track"', false)
                         ->assertSee('src="'.route('public.owner-portrait').'"', false)
-                        ->assertSee('href="'.route('public.resume', ['lang' => $locale, 'track' => 'all']).'"', false)
+                        ->assertSee('href="'.e(route('public.resume', ['lang' => $locale, 'track' => 'all'])).'"', false)
                         ->assertSee('href="'.route('public.contact', ['lang' => $locale]).'"', false)
                         ->assertSee($locale === 'ar'
                             ? 'لا توجد مهارات موثقة ومتاحة'
