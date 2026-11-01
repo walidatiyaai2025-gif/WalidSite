@@ -786,8 +786,11 @@ Route::get('/lab/runbooks/{id}', function (Request $request, string $id) {
 })->whereUuid('id')->name('public.lab.runbook')->middleware('throttle:60,1');
 
 Route::get('/search', function (Request $request) {
-    $raw = $request->query('q', '');
-    $search = is_string($raw) ? mb_substr(trim($raw), 0, 80) : '';
+    $input = $request->validate([
+        'q' => ['sometimes', 'string', 'max:80'],
+        'lang' => ['sometimes', 'in:ar,en'],
+    ]);
+    $search = trim($input['q'] ?? '');
     $articles = collect();
     $projects = collect();
 
