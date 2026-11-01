@@ -112,6 +112,10 @@ final class SiteInstaller
             }
             fwrite($handle, now()->toIso8601String().PHP_EOL);
             fclose($handle);
+            if (config('site.setup_database_ready')) {
+                // Revoke the temporary setup token after owner activation.
+                app(DatabaseConfiguration::class)->disableSetup();
+            }
 
             return true;
         } finally {
