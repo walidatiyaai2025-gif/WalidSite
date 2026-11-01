@@ -2,6 +2,7 @@
 @extends('layouts.site')
 {{-- Direct view-render tests and callers without article context remain valid. --}}
 @php($reportArticle = $reportArticle ?? null)
+@php($reportProject = $reportProject ?? null)
 @php($suggestedSubject = $suggestedSubject ?? '')
 @section('title', $locale === 'ar' ? 'التواصل — وليد عطية' : 'Contact — Waleed Atiya')
 @push('styles')
