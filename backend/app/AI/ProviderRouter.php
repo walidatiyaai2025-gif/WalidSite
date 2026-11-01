@@ -33,7 +33,14 @@ final class ProviderRouter
             // Unsupported types must not outrank a known provider merely
             // because an imported candidate advertises more paid budget.
             $type = $candidate['provider_type'] ?? null;
-            $supported = in_array($type, ['ollama-compatible', 'openai-compatible'], true);
+            // The installed Ollama adapter supports local generation of
+            // text (and advertised read capabilities), but image output uses
+            // OpenAI-compatible /images/generations exclusively. The backend
+            // executor and queue admission also enforce this restriction.
+            // Do not route a paid image job to a healthy but incapable local
+            // provider just because the stored capability flag was enabled.
+            $supported = in_array($type, ['ollama-compatible', 'openai-compatible'], true)
+                && ($capability !== 'image-generation' || $type === 'openai-compatible');
             // Missing capacity defaults to the documented single worker.
             // An explicit zero/negative limit means NO available slot.
             $limit = (int) ($candidate['concurrent_limit'] ?? 1);
