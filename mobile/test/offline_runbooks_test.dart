@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -9,6 +10,78 @@ void main() {
     expect(() => OfflineRunbookPack.parse('{}'), throwsFormatException);
     expect(
       () => OfflineRunbookPack.parse('{"schema":"walidsite.offline-runbook-pack.v1","version":"0.1.0","source":"draft","items":[{"id":"unsafe","title_en":"Test","title_ar":"تجربة","steps_en":["a"],"steps_ar":[]}]}'),
+      throwsFormatException,
+    );
+  });
+
+  test('offline parser bounds oversized and malformed bundled content', () {
+    final item = <String, dynamic>{
+      'id': 'safe-checklist',
+      'title_en': 'Safe checklist',
+      'title_ar': 'قائمة آمنة',
+      'steps_en': ['Verify a backup'],
+      'steps_ar': ['تحقق من النسخة'],
+    };
+    final valid = <String, dynamic>{
+      'schema': 'walidsite.offline-runbook-pack.v1',
+      'version': '0.1.0',
+      'source': 'Bundled educational content',
+      'items': [item],
+    };
+
+    OfflineRunbookPack read(Map<String, dynamic> pack) =>
+        OfflineRunbookPack.parse(jsonEncode(pack));
+
+    expect(read(valid).items.single.id, 'safe-checklist');
+    expect(() => read({...valid, 'version': '   '}), throwsFormatException);
+    expect(
+      () => read({...valid, 'version': List.filled(65, 'x').join()}),
+      throwsFormatException,
+    );
+    expect(
+      () => read({...valid, 'source': List.filled(257, 'x').join()}),
+      throwsFormatException,
+    );
+    expect(
+      () => read({
+        ...valid,
+        'items': List.generate(201, (i) => {...item, 'id': 'entry-$i'}),
+      }),
+      throwsFormatException,
+    );
+    expect(
+      () => read({
+        ...valid,
+        'items': [
+          {...item, 'title_ar': List.filled(251, 'x').join()},
+        ],
+      }),
+      throwsFormatException,
+    );
+    expect(
+      () => read({
+        ...valid,
+        'items': [
+          {...item, 'steps_en': [List.filled(4001, 'x').join()]},
+        ],
+      }),
+      throwsFormatException,
+    );
+    expect(
+      () => read({
+        ...valid,
+        'items': [
+          {
+            ...item,
+            'steps_en': List.filled(51, 'Step'),
+            'steps_ar': List.filled(51, 'خطوة'),
+          },
+        ],
+      }),
+      throwsFormatException,
+    );
+    expect(
+      () => read({...valid, 'source': List.filled(512 * 1024, 'x').join()}),
       throwsFormatException,
     );
   });
