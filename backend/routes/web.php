@@ -298,8 +298,16 @@ Route::middleware('auth:web')->group(function (): void {
         $revisions = $selected
             ? $selected->revisions()->orderByDesc('revision_no')->limit(30)->get()
             : collect();
+        $latestRevision = $revisions->first();
+        $latestChecks = $latestRevision && is_array($latestRevision->validation_json)
+            ? $latestRevision->validation_json : [];
+        $requiresExceptionReview = $latestRevision !== null
+            && (($latestChecks['risk_level'] ?? null) !== 'low'
+                || ($latestChecks['contains_professional_claims'] ?? null) !== false);
 
-        return view('admin.content.index', compact('articles', 'selected', 'revisions'));
+        return view('admin.content.index', compact(
+            'articles', 'selected', 'revisions', 'requiresExceptionReview'
+        ));
     })->name('admin.content.index');
 
     Route::post('/admin/content/{article}/publish', function (
