@@ -63,16 +63,26 @@ class VerifiedArticle {
         if (citation is! String || citation.length > 2048) {
           throw const FormatException('Unsafe citation');
         }
+        // Treat API citations as untrusted input even when upstream says
+        // the article was verified. Query strings can contain signed URLs,
+        // private redirects or access credentials; never expose them in UI.
         final url = Uri.tryParse(citation);
         final host = url?.host.toLowerCase() ?? '';
+        const privateSuffixes = [
+          'localhost', 'local', 'internal', 'test', 'invalid', 'onion',
+        ];
         if (url == null ||
             url.scheme != 'https' ||
-            host.isEmpty ||
-            !host.contains('.') ||
             url.userInfo.isNotEmpty ||
-            host == 'localhost' ||
-            host.endsWith('.local') ||
-            host.endsWith('.internal') ||
+            url.hasQuery ||
+            url.hasFragment ||
+            (url.hasPort && url.port != 443) ||
+            !RegExp(
+              r'^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$',
+            ).hasMatch(host) ||
+            privateSuffixes.any(
+              (suffix) => host == suffix || host.endsWith('.$suffix'),
+            ) ||
             InternetAddress.tryParse(host) != null) {
           throw const FormatException('Unsafe citation');
         }
