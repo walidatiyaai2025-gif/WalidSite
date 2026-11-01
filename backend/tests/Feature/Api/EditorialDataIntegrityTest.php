@@ -198,6 +198,9 @@ class EditorialDataIntegrityTest extends TestCase
             )),
             'https://docs.example.org/guide#chapter%253Frefresh_token%253Dsynthetic-value',
             'https://docs.example.org/guide#%2558-Amz-Signature=synthetic-value',
+            'https://docs.example.org/guide?redirect='.rawurlencode(rawurlencode(
+                'https://docs.example.org/consent#access_token=synthetic-value'
+            )),
             'https://docs.example.org/guide?next='.rawurlencode(rawurlencode(
                 '?X-Goog-Credential=synthetic-value'
             )),
