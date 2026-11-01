@@ -23,11 +23,11 @@ class PublicArticlePublicationTest extends TestCase
         ]);
     }
 
-    private function revision(Article $article, int $number = 1, bool $valid = true): ArticleRevision
+    private function revision(Article $article, int $number = 1, bool $valid = true, ?string $body = null): ArticleRevision
     {
         return $article->revisions()->create([
             'revision_no' => $number,
-            'body_md' => '# Verified step '.$number,
+            'body_md' => $body ?? '# Verified step '.$number,
             'status' => $valid ? 'validated' : 'draft',
             'citations_json' => $valid
                 ? [['source_url' => 'https://example.org/verified', 'verified' => true]]
@@ -243,6 +243,108 @@ class PublicArticlePublicationTest extends TestCase
         $this->getJson('/api/v1/public/articles?q=technical&lang=ar')->assertOk()
             ->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.title', 'دليل تقني موثق');
+    }
+
+
+    public function test_api_body_search_uses_only_current_pinned_verified_revision(): void
+    {
+        $article = $this->article('body-search-guide');
+        $this->revision($article, 1, true, '# Published database-recovery-window instructions');
+        $article->publishVerified();
+
+        $this->getJson('/api/v1/public/articles?q=database-recovery-window&lang=en')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.slug', 'body-search-guide')
+            ->assertJsonPath('data.0.body_markdown', '# Published database-recovery-window instructions')
+            ->assertJsonPath('meta.has_more_pages', false);
+        $this->getJson('/api/v1/public/articles?q=database-recovery-window&lang=ar')
+            ->assertOk()
+            ->assertJsonPath('data.0.title', 'دليل تقني موثق');
+
+        // Creating later draft or merely validated unpinned material must
+        // never change the published search index.
+        $this->revision($article, 2, false, 'PRIVATE_DRAFT_SEARCH_SENTINEL');
+        $this->revision($article, 3, true, 'UNPINNED_VALIDATED_SEARCH_SENTINEL');
+        foreach (['PRIVATE_DRAFT_SEARCH_SENTINEL', 'UNPINNED_VALIDATED_SEARCH_SENTINEL'] as $term) {
+            $this->getJson('/api/v1/public/articles?q='.$term)
+                ->assertOk()->assertJsonCount(0, 'data')
+                ->assertJsonPath('meta.has_more_pages', false);
+        }
+        $this->getJson('/api/v1/public/articles?q=database-recovery-window')
+            ->assertOk()->assertJsonCount(1, 'data');
+
+        $article->revisions()->where('revision_no', 1)->firstOrFail()->update([
+            'validation_json' => ['citations_passed' => false, 'technical_passed' => true],
+        ]);
+        $this->getJson('/api/v1/public/articles?q=database-recovery-window')
+            ->assertOk()->assertJsonCount(0, 'data')
+            ->assertJsonPath('meta.has_more_pages', false);
+    }
+
+    public function test_published_body_search_escapes_like_metacharacters(): void
+    {
+        $specific = $this->article('body-literal-markers');
+        $this->revision($specific, 1, true, 'SQL_query verification achieved 50% coverage.');
+        $specific->publishVerified();
+
+        $unrelated = $this->article('body-no-metacharacters');
+        $this->revision($unrelated, 1, true, 'Plain documented operation.');
+        $unrelated->publishVerified();
+
+        foreach (['%25', '_', 'SQL_query', '50%25'] as $term) {
+            $this->getJson('/api/v1/public/articles?q='.$term)
+                ->assertOk()->assertJsonCount(1, 'data')
+                ->assertJsonPath('data.0.slug', 'body-literal-markers')
+                ->assertJsonPath('meta.has_more_pages', false);
+        }
+        $this->getJson('/api/v1/public/articles?q=%25_')
+            ->assertOk()->assertJsonCount(0, 'data');
+        $this->getJson('/api/v1/public/articles?q=Plain')
+            ->assertOk()->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.slug', 'body-no-metacharacters');
+    }
+
+    public function test_article_body_search_paginates_only_live_approved_results(): void
+    {
+        for ($i = 1; $i <= 13; $i++) {
+            $invalid = $this->article('revoked-body-hit-'.$i);
+            $review = $this->revision($invalid, 1, true, 'Reference-only articlebodytoken.');
+            $invalid->publishVerified();
+            $invalid->forceFill(['published_at' => now()->subMinute()])->save();
+            $review->update([
+                'validation_json' => ['citations_passed' => false, 'technical_passed' => true],
+            ]);
+        }
+
+        $safeSlugs = [];
+        for ($i = 1; $i <= 13; $i++) {
+            $safe = $this->article('approved-body-hit-'.$i);
+            $this->revision($safe, 1, true, 'Approved articlebodytoken procedure.');
+            $safe->publishVerified();
+            $safe->forceFill(['published_at' => now()->subDays(2)])->save();
+            $safeSlugs[] = $safe->slug;
+        }
+
+        $first = $this->getJson('/api/v1/public/articles?q=articlebodytoken&page=1')
+            ->assertOk()->assertJsonCount(12, 'data')
+            ->assertJsonPath('meta.current_page', 1)
+            ->assertJsonPath('meta.has_more_pages', true);
+        $second = $this->getJson('/api/v1/public/articles?q=articlebodytoken&page=2')
+            ->assertOk()->assertJsonCount(1, 'data')
+            ->assertJsonPath('meta.current_page', 2)
+            ->assertJsonPath('meta.has_more_pages', false);
+        $this->getJson('/api/v1/public/articles?q=articlebodytoken&page=3')
+            ->assertOk()->assertJsonCount(0, 'data')
+            ->assertJsonPath('meta.has_more_pages', false);
+
+        $returned = array_merge(
+            array_column($first->json('data'), 'slug'),
+            array_column($second->json('data'), 'slug'),
+        );
+        $this->assertEqualsCanonicalizing($safeSlugs, $returned);
+        $first->assertDontSee('revoked-body-hit-');
+        $second->assertDontSee('revoked-body-hit-');
     }
 
 }
