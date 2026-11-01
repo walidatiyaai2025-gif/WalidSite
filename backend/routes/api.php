@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\AiProviderController;
 use App\Http\Controllers\Api\PublicPortfolioController;
 use App\Http\Controllers\Api\PublicArticleController;
 use App\Http\Controllers\Api\PublicRunbookController;
+use App\Http\Controllers\Api\PublicSearchController;
 use App\Http\Middleware\RequireSecureApiTransport;
 use Illuminate\Support\Facades\Route;
 
@@ -38,6 +39,8 @@ Route::get('/public/profile', [PublicPortfolioController::class, 'profile'])
     ->name('api.public.profile')->middleware('throttle:60,1');
 Route::get('/public/expertise', [PublicPortfolioController::class, 'expertise'])
     ->name('api.public.expertise')->middleware('throttle:60,1');
+Route::get('/public/search', [PublicSearchController::class, 'index'])
+    ->name('api.public.search')->middleware('throttle:60,1');
 
 // MOBILE-04/MOBILE-05: anonymous read-only, reviewed version-pinned guides.
 // A missing/unreviewed guide is an honest 404; never return the bundled draft.
