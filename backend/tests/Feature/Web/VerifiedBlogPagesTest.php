@@ -107,4 +107,36 @@ class VerifiedBlogPagesTest extends TestCase
         $this->getJson('/blog?category=../../hidden')->assertUnprocessable();
         $this->getJson('/blog?lang=invalid')->assertUnprocessable();
     }
+
+    public function test_blog_search_indexes_only_citation_verified_pinned_body_not_newer_drafts(): void
+    {
+        $article = $this->article();
+        // This phrase exists ONLY in a reviewed article body, never its title.
+        $this->get('/blog?q=cites')->assertOk()
+            ->assertSee('Verified database guide');
+        $this->get('/blog?q=cites&lang=ar')->assertOk()
+            ->assertSee('دليل قواعد البيانات الموثق');
+
+        // A subsequently added draft may be stored without replacing the
+        // published revision. Its unique phrase must not enter public search.
+        $article->revisions()->create([
+            'revision_no' => 2,
+            'body_md' => 'PRIVATE-SUBSEQUENT-DRAFT-ONLY-FLAG',
+            'status' => 'draft',
+            'citations_json' => [['source_url' => 'https://example.org/unreviewed', 'verified' => false]],
+            'validation_json' => ['citations_passed' => false, 'technical_passed' => false],
+        ]);
+        $this->get('/blog?q=PRIVATE-SUBSEQUENT-DRAFT-ONLY-FLAG')
+            ->assertOk()->assertDontSee($article->title_en);
+        $this->get('/blog?q=cites')->assertOk()
+            ->assertSee($article->title_en);
+
+        // Publication evidence revocation must remove body matches too.
+        $article->revisions()->where('revision_no', 1)->firstOrFail()->update([
+            'validation_json' => ['citations_passed' => false, 'technical_passed' => true],
+        ]);
+        $this->get('/blog?q=cites')->assertOk()
+            ->assertDontSee($article->title_en);
+    }
+
 }
