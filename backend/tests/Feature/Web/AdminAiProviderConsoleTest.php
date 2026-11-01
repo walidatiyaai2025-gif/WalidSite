@@ -245,7 +245,7 @@ class AdminAiProviderConsoleTest extends TestCase
             'lang=fr', 'lang[]=ar', 'page=0', 'page=10001',
             'page[]=2', 'page=abc',
         ] as $query) {
-            $this->get('/admin/ai/providers?'.$query)->assertUnprocessable();
+            $this->get('/admin/ai/providers?'.$query)->assertRedirect()\n                ->assertSessionHasErrors();
         }
 
         $this->get('/admin/ai/providers?lang=ar&page=1')->assertOk()
