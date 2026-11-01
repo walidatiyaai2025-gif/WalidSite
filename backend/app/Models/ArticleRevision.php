@@ -11,6 +11,9 @@ class ArticleRevision extends Model
 {
     use HasUuids;
 
+    private const SENSITIVE_PARAMETER_PATTERN =
+        '/(?:^|[?&;])(?:access[_-]?token|refresh[_-]?token|id[_-]?token|token|api[_-]?key|key|auth(?:orization)?|bearer|password|passwd|secret|signature|sig|session(?:id)?|jwt|client[_-]?secret|private[_-]?key|code|ticket|awsaccesskeyid|x[-_]amz[-_][a-z0-9_-]+|x[-_]goog[-_][a-z0-9_-]+)=/i';
+
     protected $fillable = [
         'article_id', 'revision_no', 'body_md', 'citations_json',
         'validation_json', 'status',
@@ -127,7 +130,7 @@ class ArticleRevision extends Model
         // silently accept a deeply encoded credential-bearing URL.
         for ($depth = 0; $depth < 5; ++$depth) {
             if (preg_match(
-                '/(?:^|[?&;])(?:access[_-]?token|refresh[_-]?token|id[_-]?token|token|api[_-]?key|key|auth(?:orization)?|bearer|password|passwd|secret|signature|sig|session(?:id)?|jwt|client[_-]?secret|private[_-]?key|code|ticket|awsaccesskeyid|x[-_]amz[-_][a-z0-9_-]+|x[-_]goog[-_][a-z0-9_-]+)=/i',
+                self::SENSITIVE_PARAMETER_PATTERN,
                 $parameters
             ) === 1) {
                 return true;
@@ -144,7 +147,7 @@ class ArticleRevision extends Model
         // can reveal the dangerous key). An unresolved percent encoding after
         // the bounded scan is conservatively rejected.
         return preg_match(
-            '/(?:^|[?&;])(?:access[_-]?token|refresh[_-]?token|id[_-]?token|token|api[_-]?key|key|auth(?:orization)?|bearer|password|passwd|secret|signature|sig|session(?:id)?|jwt|client[_-]?secret|private[_-]?key|code|ticket|awsaccesskeyid|x[-_]amz[-_][a-z0-9_-]+|x[-_]goog[-_][a-z0-9_-]+)=/i',
+            self::SENSITIVE_PARAMETER_PATTERN,
             $parameters
         ) === 1 || rawurldecode($parameters) !== $parameters;
     }
