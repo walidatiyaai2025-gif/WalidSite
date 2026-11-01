@@ -999,13 +999,15 @@ Route::middleware('auth:web')->group(function (): void {
             'lang' => ['sometimes', 'in:ar,en'],
             'drafts_page' => ['sometimes', 'integer', 'min:1', 'max:10000'],
             'jobs_page' => ['sometimes', 'integer', 'min:1', 'max:10000'],
-            'job_status' => ['sometimes', 'in:retry,failed'],
-            'job_id' => ['sometimes', 'uuid'],
-            'inspect_job' => ['sometimes', 'uuid'],
+            'job_status' => ['sometimes', 'nullable', 'in:retry,failed'],
+            'job_id' => ['sometimes', 'nullable', 'uuid'],
+            'inspect_job' => ['sometimes', 'nullable', 'uuid'],
         ]);
-        $jobStatus = $request->query('job_status', '');
-        $jobFilterId = $request->query('job_id', '');
-        $inspectJobId = $request->query('inspect_job', '');
+        // HTML GET forms submit empty filter controls. Normalize optional
+        // values after validation; never turn empty into WHERE id IS NULL.
+        $jobStatus = $request->query('job_status') ?: '';
+        $jobFilterId = $request->query('job_id') ?: '';
+        $inspectJobId = $request->query('inspect_job') ?: '';
 
         $qualityRows = \App\Models\ArticleRevision::query()
             ->with(['article.heroAsset'])
