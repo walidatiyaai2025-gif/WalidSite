@@ -61,7 +61,8 @@ final class WebContactPrivacySecurityTest extends TestCase
                 ->assertSee('id="contact-privacy-consent-error"', false);
         }
 
-        $this->post('/contact', $this->message(['privacy_consent' => '0']))
+        $this->from('/contact')->followingRedirects()
+            ->post('/contact', $this->message(['privacy_consent' => '0']))
             ->assertOk()
             ->assertSee('id="contact-privacy-consent-error"', false);
         Mail::assertNothingSent();
