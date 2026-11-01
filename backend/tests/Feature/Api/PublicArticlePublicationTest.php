@@ -347,4 +347,70 @@ class PublicArticlePublicationTest extends TestCase
         $second->assertDontSee('revoked-body-hit-');
     }
 
+
+    public function test_contract_mobile_articles_returns_identical_verified_pages_and_locales(): void
+    {
+        Http::fake();
+        for ($i = 1; $i <= 13; $i++) {
+            $article = $this->article('mobile-verified-'.$i);
+            $this->revision($article, 1, true, '# Reviewed mobile article '.$i);
+            $article->publishVerified();
+        }
+
+        foreach (['en', 'ar'] as $lang) {
+            foreach ([1 => 12, 2 => 1, 3 => 0] as $page => $count) {
+                $path = '?lang='.$lang.'&page='.$page;
+                $public = $this->getJson('/api/v1/public/articles'.$path)
+                    ->assertOk()->assertJsonCount($count, 'data');
+                $mobile = $this->getJson('/api/v1/mobile/articles'.$path)
+                    ->assertOk()->assertJsonCount($count, 'data');
+                $this->assertSame($public->json(), $mobile->json());
+                $mobile->assertJsonPath('meta.current_page', $page)
+                    ->assertJsonPath('meta.has_more_pages', $page === 1);
+                if ($page === 1) {
+                    $mobile->assertJsonPath('data.0.title',
+                        $lang === 'ar' ? 'دليل تقني موثق' : 'Verified technical guide');
+                }
+            }
+        }
+
+        Http::assertNothingSent();
+    }
+
+    public function test_contract_mobile_articles_enforces_live_revocation_search_and_validation(): void
+    {
+        Http::fake();
+        $safe = $this->article('mobile-approved-body');
+        $review = $this->revision($safe, 1, true, '# Mobile-approved search phrase');
+        $safe->publishVerified();
+        // Newer, unapproved draft may not leak via search or serialization.
+        $this->revision($safe, 2, false, '# Mobile-secret-private-draft');
+
+        $draft = $this->article('mobile-unpublished');
+        $this->revision($draft, 1, true, '# Do not publish');
+        foreach (['/api/v1/mobile/articles', '/api/v1/public/articles'] as $path) {
+            $this->getJson($path.'?q=Mobile-approved&lang=ar')->assertOk()
+                ->assertJsonCount(1, 'data')
+                ->assertJsonPath('data.0.slug', 'mobile-approved-body')
+                ->assertJsonPath('data.0.body_markdown', '# Mobile-approved search phrase')
+                ->assertDontSee('Mobile-secret-private-draft')
+                ->assertDontSee('mobile-unpublished');
+            $this->getJson($path.'?q=Mobile-secret-private-draft')->assertOk()
+                ->assertJsonCount(0, 'data');
+        }
+
+        foreach (['?page=0', '?page=10001', '?lang=de', '?q='.str_repeat('x', 81)] as $query) {
+            $this->getJson('/api/v1/mobile/articles'.$query)->assertUnprocessable();
+        }
+
+        $review->update(['validation_json' => [
+            'citations_passed' => false, 'technical_passed' => true,
+        ]]);
+        $this->getJson('/api/v1/mobile/articles')->assertOk()
+            ->assertJsonCount(0, 'data')->assertJsonPath('meta.has_more_pages', false);
+        $this->getJson('/api/v1/public/articles')->assertOk()
+            ->assertJsonCount(0, 'data')->assertJsonPath('meta.has_more_pages', false);
+        Http::assertNothingSent();
+    }
+
 }

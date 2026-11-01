@@ -49,5 +49,10 @@ Route::get('/mobile/solutions/{id}', [PublicRunbookController::class, 'show'])
 // T012 read-only editorial API: pinned, citation-checked public revisions only.
 Route::get('/public/articles', [PublicArticleController::class, 'index'])
     ->name('api.public.articles')->middleware('throttle:60,1');
+
+// Canonical /mobile/articles contract is the SAME evidenced editorial feed.
+// Never introduce a separate mobile publication or citation policy.
+Route::get('/mobile/articles', [PublicArticleController::class, 'index'])
+    ->name('api.mobile.articles')->middleware('throttle:60,1');
 Route::get('/public/articles/{slug}', [PublicArticleController::class, 'show'])
     ->where('slug', '[a-zA-Z0-9-]+')->name('api.public.article')->middleware('throttle:60,1');
