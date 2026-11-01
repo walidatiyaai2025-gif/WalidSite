@@ -506,6 +506,7 @@ Route::middleware('auth:web')->group(function (): void {
         $request->validate([
             'lang' => ['sometimes', 'in:ar,en'],
             'page' => ['sometimes', 'integer', 'min:1', 'max:10000'],
+            'jobs_page' => ['sometimes', 'integer', 'min:1', 'max:10000'],
         ]);
 
         // ADMIN-06 queue form: display only server-registered models that can
@@ -550,7 +551,10 @@ Route::middleware('auth:web')->group(function (): void {
                 'job.id', 'job.status', 'job.attempt_count', 'job.max_attempts',
                 'job.reserved_budget_minor', 'job.last_error_code', 'job.updated_at',
                 'provider.display_name as provider_name', 'provider.currency',
-            ])->orderByDesc('job.created_at')->limit(20)->get();
+            ])->orderByDesc('job.created_at')->orderBy('job.id')
+            // A bounded independent page keeps old and retried artwork jobs
+            // inspectable without changing the registered-assets page.
+            ->paginate(20, ['*'], 'jobs_page')->withQueryString();
 
         return view('admin.ai.media', [
             'assets' => \App\Models\Asset::query()

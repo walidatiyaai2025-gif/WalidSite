@@ -390,4 +390,101 @@ final class AdminImageQueueTest extends TestCase
         $this->assertDatabaseCount('ai_jobs', 0);
         Http::assertNothingSent();
     }
+
+    public function test_artwork_history_and_assets_have_independent_bilingual_pages_without_secrets(): void
+    {
+        Http::fake();
+        $this->actingAs($this->account('owner'), 'web');
+        $provider = $this->provider('History Provider');
+        $jobIds = [];
+
+        for ($index = 0; $index < 43; $index++) {
+            $id = sprintf('00000000-0000-4000-8000-%012d', $index + 1);
+            $jobIds[] = $id;
+            DB::table('ai_jobs')->insert([
+                'id' => $id,
+                'provider_id' => $provider->id,
+                'job_type' => 'editorial-art',
+                'idempotency_key' => 'media:history:'.$index,
+                'payload_hash' => str_repeat('a', 64),
+                'status' => $index % 2 === 0 ? 'queued' : 'retry',
+                'attempt_count' => 0,
+                'max_attempts' => 3,
+                'reserved_budget_minor' => $index + 1,
+                'created_at' => now()->subMinutes($index),
+                'updated_at' => now()->subMinutes($index),
+            ]);
+        }
+
+        for ($index = 0; $index < 13; $index++) {
+            $asset = \App\Models\Asset::create([
+                'asset_key' => 'media-history-'.$index,
+                'mime_type' => 'image/png',
+                'storage_key' => 'private/history-'.$index.'.png',
+                'sha256' => str_repeat('a', 64),
+                'origin' => 'owner-supplied',
+                'rights_status' => 'unverified',
+                'publishable' => false,
+            ]);
+            $asset->forceFill([
+                'created_at' => now()->subMinutes($index),
+                'updated_at' => now()->subMinutes($index),
+            ])->save();
+        }
+
+        $first = $this->get('/admin/ai/images?lang=en')->assertOk()
+            ->assertSee('Artwork queue status (43)')
+            ->assertSee('Artwork queue pages')
+            ->assertSee('jobs_page=2', false)
+            ->assertSee($jobIds[0])
+            ->assertSee($jobIds[19])
+            ->assertDontSee($jobIds[20])
+            ->assertDontSee($jobIds[42])
+            ->assertSee('Registered assets (13)')
+            ->assertSee('media-history-0')
+            ->assertDontSee('media-history-12')
+            ->assertDontSee('PRIVATE-IMAGE-PROVIDER-SECRET')
+            ->assertDontSee($provider->base_url)
+            ->assertDontSee('idempotency_key');
+        $this->assertSame(20, substr_count($first->getContent(), '<td><code>'));
+
+        $second = $this->get('/admin/ai/images?lang=en&jobs_page=2&page=1')->assertOk()
+            ->assertSee($jobIds[20])
+            ->assertSee($jobIds[39])
+            ->assertDontSee($jobIds[0])
+            ->assertDontSee($jobIds[40])
+            ->assertSee('jobs_page=3', false)
+            ->assertSee('page=2', false);
+        $this->assertSame(20, substr_count($second->getContent(), '<td><code>'));
+
+        $last = $this->get('/admin/ai/images?lang=ar&jobs_page=3&page=2')->assertOk()
+            ->assertSee('dir="rtl"', false)
+            ->assertSee('صفحات مهام توليد الصور')
+            ->assertSee('حالة مهام الصور (43)')
+            ->assertSee($jobIds[40])
+            ->assertSee($jobIds[42])
+            ->assertDontSee($jobIds[39])
+            ->assertSee('media-history-12')
+            ->assertDontSee('media-history-0')
+            ->assertSee('jobs_page=3', false)
+            ->assertSee('page=1', false);
+        $this->assertSame(3, substr_count($last->getContent(), '<td><code>'));
+        Http::assertNothingSent();
+
+        $this->actingAs($this->account('reader'), 'web')
+            ->get('/admin/ai/images?jobs_page=2')->assertForbidden();
+    }
+
+    public function test_artwork_history_rejects_invalid_page_input_before_querying(): void
+    {
+        $this->actingAs($this->account('admin'), 'web');
+        foreach ([
+            'jobs_page[]=2', 'jobs_page=0', 'jobs_page=-1',
+            'jobs_page=10001', 'jobs_page=abc',
+        ] as $invalid) {
+            $this->get('/admin/ai/images?lang=ar&'.$invalid)
+                ->assertRedirect()
+                ->assertSessionHasErrors('jobs_page');
+        }
+    }
 }

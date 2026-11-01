@@ -74,7 +74,7 @@ button:disabled{opacity:.6}.actions{display:flex;gap:12px;align-items:center;fle
 </section>
 
 <section class="panel" aria-labelledby="jobs-title">
-<h2 id="jobs-title">{{ $locale === 'ar' ? 'حالة مهام الصور' : 'Artwork queue status' }}</h2>
+<h2 id="jobs-title">{{ $locale === 'ar' ? 'حالة مهام الصور' : 'Artwork queue status' }} ({{ $imageJobs->total() }})</h2>
 <p class="muted"><a href="{{ route('admin.quality.index', ['lang'=>$locale]) }}">{{ $locale === 'ar'
     ? 'راجع الأعطال وأعد محاولة المهام المؤهلة من بوابات الجودة'
     : 'Inspect failures and retry eligible jobs in Quality gates' }}</a></p>
@@ -99,6 +99,9 @@ button:disabled{opacity:.6}.actions{display:flex;gap:12px;align-items:center;fle
 <td>{{ $job->last_error_code ?? '—' }}</td>
 </tr>@endforeach
 </tbody></table></div>
+<nav aria-label="{{ $locale === 'ar' ? 'صفحات مهام توليد الصور' : 'Artwork queue pages' }}">
+{{ $imageJobs->links() }}
+</nav>
 @endif
 </section>
 
