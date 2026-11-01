@@ -76,9 +76,10 @@ void main() {
       response(1, [track()..['outline'] = [
         {'title': 'Safe', 'description': 'x' * 1501},
       ]]),
-      response(1, [track()..['outline'] = [
-        {'title': 'Safe', 'description': 'Fine'},
-      ]] * 21),
+      response(1, List.generate(21, (i) => track(
+        id: '00000000-0000-4000-8000-${(i + 1).toString().padLeft(12, '0')}',
+        slug: 'lesson-${i + 1}',
+      ))),
       'x' * (2 * 1024 * 1024 + 1),
     ];
     for (final candidate in cases) {
