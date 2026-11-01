@@ -7,6 +7,7 @@ import 'articles/verified_articles.dart';
 import 'learning/verified_learning_paths.dart';
 import 'github/verified_github_portfolio.dart';
 import 'solutions/offline_solution_finder.dart';
+import 'ai/ai_troubleshooter.dart';
 
 void main() => runApp(const WaleedTechApp());
 
@@ -140,6 +141,31 @@ class CompanionHome extends StatelessWidget {
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute<void>(
                     builder: (_) => ReviewedRunbookLibrary(arabic: arabic),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Card(
+              child: ListTile(
+                key: const Key('ai-troubleshooter-entry'),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+                leading: const Icon(Icons.auto_awesome_outlined, size: 30),
+                title: Text(arabic
+                    ? 'مساعد تشخيص الأعطال'
+                    : 'AI Troubleshooter'),
+                subtitle: Text(arabic
+                    ? 'تشخيص مسجّل الدخول يوجّهك إلى أدلة منشورة ومراجعة فقط'
+                    : 'Signed-in diagnosis that points only to reviewed published guides'),
+                trailing: Icon(arabic
+                    ? Icons.chevron_left
+                    : Icons.chevron_right),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => AiTroubleshooterScreen(arabic: arabic),
                   ),
                 ),
               ),
