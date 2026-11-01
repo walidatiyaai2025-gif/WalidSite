@@ -31,7 +31,8 @@ final class MobileBootstrapTest extends TestCase
             ->assertJsonPath('data.availability.guest_runbooks', true)
             ->assertJsonPath('data.availability.guest_learning_paths', true)
             ->assertJsonPath('data.availability.authenticated_ai_diagnosis', false)
-            ->assertJsonPath('data.availability.server_saved_resources', false)
+            ->assertJsonPath('data.availability.server_saved_resources', true)
+            ->assertJsonPath('data.availability.saved_resources_requires_auth', true)
             ->assertJsonPath('data.privacy_policy_url', null)
             ->assertJsonMissingPath('data.admin')
             ->assertJsonMissingPath('data.setup_token')
@@ -42,6 +43,7 @@ final class MobileBootstrapTest extends TestCase
             'articles' => 'api.mobile.articles',
             'runbooks' => 'api.mobile.runbooks',
             'learning_paths' => 'api.mobile.learn',
+            'saved_resources' => 'api.mobile.saved',
         ] as $name => $route) {
             $this->assertTrue(Route::has($route), 'Bootstrap advertised a missing route.');
             $result->assertJsonPath('data.routes.'.$name, route($route, [], false));
@@ -51,6 +53,28 @@ final class MobileBootstrapTest extends TestCase
             'internal-release-ref', 'SITE_SETUP_ENABLED', 'DB_PASSWORD'] as $secret) {
             $result->assertDontSee($secret);
         }
+        Http::assertNothingSent();
+    }
+
+    public function test_saved_discovery_is_truthful_but_still_private_to_signed_in_mobile_users(): void
+    {
+        Http::fake();
+        $bootstrap = $this->getJson('/api/v1/public/app-bootstrap?lang=ar')
+            ->assertOk()
+            ->assertJsonPath('data.locale', 'ar')
+            ->assertJsonPath('data.availability.server_saved_resources', true)
+            ->assertJsonPath('data.availability.saved_resources_requires_auth', true)
+            ->assertJsonPath('data.routes.saved_resources', route('api.mobile.saved', [], false))
+            ->assertJsonMissingPath('data.saved')
+            ->assertJsonMissingPath('data.saved_count')
+            ->assertJsonMissingPath('data.user_id');
+
+        // Bootstrap is a public capability descriptor, not a bookmark API.
+        // The announced route remains behind Sanctum and mobile token scope.
+        $this->getJson('/api/v1/mobile/saved')->assertUnauthorized();
+        $this->assertStringStartsWith('/api/v1/', $bootstrap->json('data.routes.saved_resources'));
+        $this->assertStringContainsString('no-store',
+            (string) $bootstrap->headers->get('Cache-Control'));
         Http::assertNothingSent();
     }
 
