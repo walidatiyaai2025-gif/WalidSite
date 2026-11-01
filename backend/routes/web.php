@@ -744,23 +744,28 @@ Route::get('/blog/{slug}', function (Request $request, string $slug) {
 })->where('slug', '[a-zA-Z0-9-]+')->name('public.article')->middleware('throttle:60,1');
 
 /* T012 additive LAB + SEARCH: never show unreviewed or private data. */
-Route::get('/lab', function () {
-    $articles = collect();
-    // SQL publication flags are not sufficient: revoked references and media
-    // must be filtered before applying the 15-link lab display limit.
-    foreach (\App\Models\Article::query()->publiclyVisible()
-        ->orderByDesc('published_at')->orderBy('id')->lazy(100) as $article) {
-        if (preg_match('/\A[A-Za-z0-9-]+\z/D', $article->slug) !== 1
-            || $article->publicRevision() === null) {
-            continue;
-        }
-        $articles->push($article);
-        if ($articles->count() === 15) {
-            break;
-        }
-    }
-    return view('public.lab', compact('articles'));
+Route::get('/lab', function (Request $request) {
+    // Reuse the canonical W1 publication/revocation gates. Independently
+    // scanning raw runbook rows here would weaken immutable review rules.
+    $catalog = app(\App\Http\Controllers\Api\PublicLabController::class)
+        ->index($request)->getData(true)['data'];
+    $articles = collect($catalog['articles']);
+    $runbooks = collect($catalog['runbooks']);
+
+    return response()->view('public.lab', compact('articles', 'runbooks'))
+        ->header('Cache-Control', 'no-store');
 })->name('public.lab')->middleware('throttle:60,1');
+
+Route::get('/lab/runbooks/{id}', function (Request $request, string $id) {
+    $request->validate(['lang' => ['sometimes', 'in:ar,en']]);
+    // The detail is checked afresh on every read: a changed version, title,
+    // review timestamp or checksum must fail closed with the API's own 404.
+    $runbook = app(\App\Http\Controllers\Api\PublicRunbookController::class)
+        ->show($id)->getData(true)['data'];
+
+    return response()->view('public.lab-runbook', compact('runbook'))
+        ->header('Cache-Control', 'no-store');
+})->whereUuid('id')->name('public.lab.runbook')->middleware('throttle:60,1');
 
 Route::get('/search', function (Request $request) {
     $raw = $request->query('q', '');
