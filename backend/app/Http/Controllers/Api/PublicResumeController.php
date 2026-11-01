@@ -38,7 +38,7 @@ class PublicResumeController extends Controller
         $public = app(PublicPortfolioController::class)
             ->profile($request)->getData(true)['data'] ?? null;
         if ($public === null) {
-            return response()->json(['data' => null]);
+            return response()->json(['data' => null])->header('Cache-Control', 'no-store');
         }
         $profile = Profile::query()->published()
             ->whereKey($public['id'])
@@ -94,6 +94,6 @@ class PublicResumeController extends Controller
             'claims' => $claims,
             'resume_url' => route('public.resume', ['lang' => $lang, 'track' => $track]),
             'contact_url' => route('public.contact', ['lang' => $lang]),
-        ]]);
+        ]])->header('Cache-Control', 'no-store');
     }
 }

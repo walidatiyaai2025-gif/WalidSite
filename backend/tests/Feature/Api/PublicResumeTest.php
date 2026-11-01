@@ -221,4 +221,9 @@ class PublicResumeTest extends TestCase
             $this->getJson($path)->assertUnprocessable();
         }
     }
+    public function test_empty_public_response_must_not_be_cached(): void
+    {
+        $response = $this->getJson('/api/v1/public/resume')->assertOk()->assertJsonPath('data', null);
+        $this->assertStringContainsString('no-store', (string) $response->headers->get('Cache-Control'));
+    }
 }
