@@ -6,16 +6,20 @@ import '../runbooks/offline_runbooks.dart';
 class OfflineSolutionSearch {
   const OfflineSolutionSearch._();
 
-  static List<OfflineRunbook> find(OfflineRunbookPack pack, String query) {
+  static List<OfflineRunbook> find(
+    OfflineRunbookPack pack,
+    String query, {
+    required bool arabic,
+  }) {
     final term = query.trim().toLowerCase();
     if (term.isEmpty) return const <OfflineRunbook>[];
 
     return pack.items.where((item) {
+      // A hidden translation is not a visible answer for this locale.
+      // Match the active language just like the offline runbook library.
       final searchable = <String>[
-        item.titleEn,
-        item.titleAr,
-        ...item.stepsEn,
-        ...item.stepsAr,
+        item.title(arabic),
+        ...item.steps(arabic),
       ];
       return searchable.any((entry) => entry.toLowerCase().contains(term));
     }).take(20).toList(growable: false);
@@ -71,7 +75,7 @@ class _OfflineSolutionFinderState extends State<OfflineSolutionFinder> {
             }
 
             final pack = snapshot.data!;
-            final results = OfflineSolutionSearch.find(pack, _query);
+            final results = OfflineSolutionSearch.find(pack, _query, arabic: arabic);
             return ListView(
               padding: const EdgeInsets.all(20),
               children: [
