@@ -122,6 +122,92 @@ class PublicPortfolioSecurityTest extends TestCase
             ->assertJsonPath('data.evidence_urls.0', 'https://docs.example.test/public-proof');
     }
 
+    public function test_project_page_counts_exclude_unsafe_evidence_without_leaking_hidden_rows(): void
+    {
+        $unsafe = $this->project();
+        $this->proof($unsafe, 'public', true, 'https://docs.example.test/private?access_token=secret');
+        $this->proof($unsafe, 'public', true, 'https://10.1.0.2/admin');
+
+        $this->getJson('/api/v1/public/projects')
+            ->assertOk()->assertJsonCount(0, 'data')
+            ->assertJsonPath('meta.current_page', 1)
+            ->assertJsonPath('meta.last_page', 1)
+            ->assertJsonPath('meta.total', 0)
+            ->assertDontSee($unsafe->slug)
+            ->assertDontSee('access_token');
+
+        $this->getJson('/api/v1/public/projects/'.$unsafe->slug)->assertNotFound();
+    }
+
+    public function test_project_pages_are_filled_from_safe_evidence_and_report_exact_totals(): void
+    {
+        $hiddenSlugs = [];
+        foreach (range(1, 13) as $i) {
+            // Unsafe records rank first in the SQL sort order, but MUST NOT
+            // occupy the public API's page slots or inflate its total.
+            $unsafe = $this->project();
+            $unsafe->update(['published_at' => now()->subMinutes(2)]);
+            $this->proof($unsafe, 'public', true, 'https://docs.example.test/doc?token=private');
+            $hiddenSlugs[] = $unsafe->slug;
+        }
+
+        $publicSlugs = [];
+        foreach (range(1, 13) as $i) {
+            $safe = $this->project();
+            $safe->update(['published_at' => now()->subDays(3)]);
+            $this->proof($safe, 'public', true, 'https://docs.example.test/public-proof');
+            $publicSlugs[] = $safe->slug;
+        }
+
+        $first = $this->getJson('/api/v1/public/projects?page=1');
+        $first->assertOk()->assertJsonCount(12, 'data')
+            ->assertJsonPath('meta.current_page', 1)
+            ->assertJsonPath('meta.total', 13)
+            ->assertJsonPath('meta.last_page', 2);
+        $second = $this->getJson('/api/v1/public/projects?page=2');
+        $second->assertOk()->assertJsonCount(1, 'data')
+            ->assertJsonPath('meta.current_page', 2)
+            ->assertJsonPath('meta.total', 13)
+            ->assertJsonPath('meta.last_page', 2);
+        $third = $this->getJson('/api/v1/public/projects?page=3');
+        $third->assertOk()->assertJsonCount(0, 'data')
+            ->assertJsonPath('meta.current_page', 3)
+            ->assertJsonPath('meta.total', 13)
+            ->assertJsonPath('meta.last_page', 2);
+
+        $returnedSlugs = array_merge(
+            array_column($first->json('data'), 'slug'),
+            array_column($second->json('data'), 'slug')
+        );
+        $this->assertCount(13, array_unique($returnedSlugs));
+        $this->assertEqualsCanonicalizing($publicSlugs, $returnedSlugs);
+        foreach ($hiddenSlugs as $slug) {
+            $first->assertDontSee($slug);
+            $second->assertDontSee($slug);
+        }
+        $first->assertDontSee('token=private');
+    }
+
+    public function test_project_proof_revocation_immediately_updates_public_data_and_count(): void
+    {
+        $project = $this->project();
+        $this->proof($project, 'public', true, 'https://docs.example.test/approved');
+
+        $this->getJson('/api/v1/public/projects')->assertOk()
+            ->assertJsonCount(1, 'data')->assertJsonPath('meta.total', 1);
+
+        // A previously approved record remains otherwise published but its
+        // sole evidence link is no longer safe for anonymous use.
+        ProjectEvidence::where('project_id', $project->id)
+            ->update(['url' => 'https://docs.example.test/approved?session=revoked']);
+
+        $this->getJson('/api/v1/public/projects')->assertOk()
+            ->assertJsonCount(0, 'data')->assertJsonPath('meta.total', 0)
+            ->assertJsonPath('meta.last_page', 1)
+            ->assertDontSee($project->slug);
+        $this->getJson('/api/v1/public/projects/'.$project->slug)->assertNotFound();
+    }
+
     public function test_public_profile_ignores_non_owner_and_inactive_owner_records(): void
     {
         $other = User::create(['email' => 'unrelated@example.test', 'status' => 'active']);
