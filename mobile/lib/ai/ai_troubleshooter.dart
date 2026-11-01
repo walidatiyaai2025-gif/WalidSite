@@ -6,6 +6,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import '../articles/verified_articles.dart';
+import 'diagnosis_report.dart';
 import '../runbooks/verified_online_runbooks.dart';
 import '../theme/waleed_theme.dart';
 
@@ -315,6 +316,7 @@ class AiTroubleshooterScreen extends StatefulWidget {
     this.diagnoseAction,
     this.jobStatusAction,
     this.saveAction,
+    this.reportAction,
     this.detailLoader,
     this.nowUtc,
     super.key,
@@ -325,6 +327,7 @@ class AiTroubleshooterScreen extends StatefulWidget {
   final MobileDiagnoseAction? diagnoseAction;
   final MobileJobStatusAction? jobStatusAction;
   final MobileSaveAction? saveAction;
+  final DiagnosisReportAction? reportAction;
   final Future<ReviewedRunbook> Function(String id)? detailLoader;
   /// Injectable clock for deterministic session-expiry regression tests.
   final DateTime Function()? nowUtc;
@@ -681,6 +684,17 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
     }
   }
 
+  void _openReport() {
+    if (_job == null) return;
+    Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => MobileDiagnosisReportScreen(
+        arabic: widget.arabic,
+        initialEmail: _email.text.trim(),
+        submitAction: widget.reportAction,
+      ),
+    ));
+  }
+
   void _openSolution() {
     final id = _job?.reviewedRunbookId();
     if (id == null || !_requireActiveSession()) return;
@@ -959,18 +973,13 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
                               ),
                             ],
                             const SizedBox(height: 8),
-                            Tooltip(
-                              message: ar
-                                  ? 'لا توجد واجهة إبلاغ بالخادم حتى الآن.'
-                                  : 'No server-side reporting endpoint is implemented yet.',
-                              child: OutlinedButton.icon(
-                                key: const Key('ai-report-error-disabled'),
-                                onPressed: null,
-                                icon: const Icon(Icons.report_gmailerrorred_outlined),
-                                label: Text(ar
-                                    ? 'الإبلاغ غير متاح حاليًا'
-                                    : 'Report error unavailable'),
-                              ),
+                            OutlinedButton.icon(
+                              key: const Key('ai-report-error'),
+                              onPressed: _openReport,
+                              icon: const Icon(Icons.report_gmailerrorred_outlined),
+                              label: Text(ar
+                                  ? 'الإبلاغ عن مشكلة التشخيص'
+                                  : 'Report a diagnosis issue'),
                             ),
                           ],
                         ),

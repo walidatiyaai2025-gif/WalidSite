@@ -211,8 +211,8 @@ void main() {
     await reveal(tester, const Key('ai-open-solution'));
     expect(find.byKey(const Key('ai-open-solution')), findsOneWidget);
     expect(find.byKey(const Key('ai-save-answer')), findsOneWidget);
-    await reveal(tester, const Key('ai-report-error-disabled'));
-    expect(find.byKey(const Key('ai-report-error-disabled')), findsOneWidget);
+    await reveal(tester, const Key('ai-report-error'));
+    expect(find.byKey(const Key('ai-report-error')), findsOneWidget);
 
     await reveal(tester, const Key('ai-open-solution'));
     await tester.tap(find.byKey(const Key('ai-open-solution')));
@@ -391,7 +391,7 @@ void main() {
     expect(reads, 1);
   });
 
-  testWidgets('Arabic journey is RTL and keeps reporting explicitly unavailable',
+  testWidgets('Arabic journey is RTL and exposes explicit report action',
       (tester) async {
     await pumpScreen(
       tester,
@@ -431,8 +431,8 @@ void main() {
 
     await reveal(tester, const Key('ai-open-solution'));
     expect(find.text('افتح الحل المراجع'), findsOneWidget);
-    await reveal(tester, const Key('ai-report-error-disabled'));
-    expect(find.text('الإبلاغ غير متاح حاليًا'), findsOneWidget);
+    await reveal(tester, const Key('ai-report-error'));
+    expect(find.text('الإبلاغ عن مشكلة التشخيص'), findsOneWidget);
   });
   testWidgets('expired login token is rejected without revealing credentials',
       (tester) async {
