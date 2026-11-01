@@ -504,7 +504,21 @@ Route::get('/blog/{slug}', function (Request $request, string $slug) {
     $revision = $article->publicRevision();
     abort_if($revision === null, 404);
 
-    return view('public.article', compact('article', 'revision'));
+    // WEB-08: only show same-category articles that independently pass the
+    // public revision evidence/rights gate. Never leak draft or revoked titles.
+    $related = collect();
+    $categoryIds = $article->categories()->pluck('categories.id')->all();
+    if ($categoryIds !== []) {
+        $related = \App\Models\Article::query()->publiclyVisible()
+            ->where('articles.id', '!=', $article->id)
+            ->whereHas('categories', fn ($query) => $query->whereIn('categories.id', $categoryIds))
+            ->orderByDesc('articles.published_at')->orderBy('articles.id')
+            ->limit(24)->get()
+            ->filter(fn (\App\Models\Article $candidate) => $candidate->publicRevision() !== null)
+            ->take(3)->values();
+    }
+
+    return view('public.article', compact('article', 'revision', 'related'));
 })->where('slug', '[a-zA-Z0-9-]+')->name('public.article')->middleware('throttle:60,1');
 
 /* T012 additive LAB + SEARCH: never show unreviewed or private data. */
