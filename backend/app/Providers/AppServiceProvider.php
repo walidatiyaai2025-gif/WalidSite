@@ -22,6 +22,8 @@ class AppServiceProvider extends ServiceProvider
             $registry = new \App\AI\AiStepHandlerRegistry();
             $app->make(\App\AI\EditorialJobDispatcher::class)
                 ->registerHandlers($registry);
+            $app->make(\App\AI\MobileDiagnosisDispatcher::class)
+                ->registerHandlers($registry);
 
             return $registry;
         });
