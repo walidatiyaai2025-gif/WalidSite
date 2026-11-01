@@ -119,6 +119,54 @@ class SiteMaintenanceTest extends TestCase
         $this->post('/admin/updates/apply')->assertRedirect();
     }
 
+
+    public function test_production_setup_denies_all_plain_http_steps_and_accepts_https_unlock(): void
+    {
+        $priorEnvironment = $this->app['env'];
+        $token = str_repeat('h', 40);
+        config([
+            'site.setup_enabled' => true,
+            'site.setup_token' => $token,
+            'site.setup_database_ready' => true,
+            'site.install_lock_path' => storage_path('app/setup-https-test-uncreated.lock'),
+        ]);
+
+        // This test exercises the route-level transport gate, not Laravel's
+        // separately tested CSRF middleware.
+        $this->withoutMiddleware(\Illuminate\Foundation\Http\Middleware\ValidateCsrfToken::class);
+        $this->app->instance('env', 'production');
+
+        try {
+            $this->get('http://localhost/setup')->assertForbidden();
+            $this->post('http://localhost/setup/unlock', ['token' => $token])
+                ->assertForbidden();
+            $this->post('http://localhost/setup/configure', [
+                'db_password' => 'would-be-exposed',
+            ])->assertForbidden();
+            $this->post('http://localhost/setup/database')->assertForbidden();
+            $this->post('http://localhost/setup/finish', [
+                'password' => 'Example-Owner-Password-1234',
+                'password_confirmation' => 'Example-Owner-Password-1234',
+            ])->assertForbidden();
+
+            // Correctly secured requests still reach the normal wizard.
+            $this->get('https://localhost/setup')->assertOk()
+                ->assertSee('Server setup token');
+            $this->post('https://localhost/setup/unlock', ['token' => $token])
+                ->assertRedirect('/setup');
+            $this->get('https://localhost/setup')->assertOk();
+
+            // Authenticated but incomplete setup still enforces its own step
+            // prerequisites; HTTPS is necessary, never a bypass.
+            $this->post('https://localhost/setup/finish', [
+                'password' => 'Example-Owner-Password-1234',
+                'password_confirmation' => 'Example-Owner-Password-1234',
+            ])->assertForbidden();
+        } finally {
+            $this->app->instance('env', $priorEnvironment);
+        }
+    }
+
     public function test_manual_updates_can_be_disabled_without_hiding_status(): void
     {
         config(['site.updates_enabled' => false]);
