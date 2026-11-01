@@ -10,6 +10,25 @@ Artisan::command('inspire', function () {
 })->purpose('Display an inspiring quote');
 
 /*
+ * T011: exactly one checkpoint per invocation, never a resident daemon.
+ * No job is claimed until a trusted T014 handler has been registered on the
+ * server. No raw prompts, provider credentials or errors printed to console.
+ */
+Artisan::command('ai:tick', function () {
+    $handlers = app(\App\AI\AiStepHandlerRegistry::class)->handlers();
+    $result = app(\App\AI\BoundedAiWorker::class)->tick(
+        'cpanel:'.\Illuminate\Support\Str::random(24), $handlers
+    );
+    $this->line('AI tick: '.$result['state']);
+    return in_array($result['state'], ['retry', 'lease_lost'], true) ? 1 : 0;
+})->purpose('Execute one bounded registered AI checkpoint and exit');
+
+Schedule::command('ai:tick')
+    ->everyMinute()
+    ->when(fn () => app(\App\AI\AiStepHandlerRegistry::class)->hasHandlers())
+    ->withoutOverlapping(4);
+
+/*
  * T022: one bounded page per scheduled invocation. No resident daemon, AI
  * inference, or automatic draft approval. Host cron must separately execute
  * Laravel's schedule:run; installing this code does not activate hosting.
