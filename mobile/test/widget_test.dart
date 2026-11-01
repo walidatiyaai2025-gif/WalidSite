@@ -26,6 +26,8 @@ void main() {
   ) async {
     await tester.pumpWidget(const WaleedTechApp());
     await tester.scrollUntilVisible(find.text('Database Engineering'), 140);
+    await tester.ensureVisible(find.text('Database Engineering'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Database Engineering'));
     await tester.pumpAndSettle();
 
