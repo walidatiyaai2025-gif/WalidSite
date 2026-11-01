@@ -176,6 +176,15 @@ class AppSupportRunbookStore implements RunbookSnapshotStore {
     return file.readAsString();
   }
 
+  /// Clear only the downloaded signed snapshot and its interrupted temp file.
+  /// The immutable bundled fallback and all server/account data stay intact.
+  Future<void> clearDownloadedSnapshot() async {
+    final target = await _file();
+    for (final file in [target, File(target.path + '.part')]) {
+      if (await file.exists()) await file.delete();
+    }
+  }
+
   @override
   Future<void> write(String envelope) async {
     final target = await _file();
