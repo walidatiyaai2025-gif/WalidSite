@@ -36,16 +36,37 @@ Route::get('/', function (Request $request) {
     $api = app(\App\Http\Controllers\Api\PublicPortfolioController::class);
     $publicProfile = $api->profile($request)->getData(true)['data'] ?? null;
 
-    $featuredProjects = \App\Models\Project::query()->publiclyVerified()
-        ->orderByDesc('published_at')->orderBy('id')->limit(24)->get()
-        ->map(fn (\App\Models\Project $project) => $api->publicProjectData($project, $request))
-        ->filter(fn (array $project) => ! empty($project['evidence_urls']))
-        ->take(3)->values();
+    // First select *usable* public proofs, then cap the homepage cards.
+    // A fixed pre-filter DB limit can hide all valid projects/articles if
+    // earlier rows have revoked evidence or an invalid pinned revision.
+    $featuredProjects = collect();
+    foreach (\App\Models\Project::query()->publiclyVerified()
+        ->with(['evidence' => static fn ($evidence) => $evidence
+            ->where('visibility', 'public')
+            ->whereNotNull('verified_at')->where('verified_at', '<=', now())
+            ->orderBy('id')->limit(50)])
+        ->orderByDesc('published_at')->orderBy('id')->lazy(100) as $project) {
+        $data = $api->publicProjectData($project, $request);
+        if (empty($data['evidence_urls'])) {
+            continue;
+        }
+        $featuredProjects->push($data);
+        if ($featuredProjects->count() === 3) {
+            break;
+        }
+    }
 
-    $featuredArticles = \App\Models\Article::query()->publiclyVisible()
-        ->orderByDesc('published_at')->orderBy('id')->limit(24)->get()
-        ->filter(fn (\App\Models\Article $article) => $article->publicRevision() !== null)
-        ->take(3)->values();
+    $featuredArticles = collect();
+    foreach (\App\Models\Article::query()->publiclyVisible()
+        ->orderByDesc('published_at')->orderBy('id')->lazy(100) as $article) {
+        if ($article->publicRevision() === null) {
+            continue;
+        }
+        $featuredArticles->push($article);
+        if ($featuredArticles->count() === 3) {
+            break;
+        }
+    }
 
     return view('welcome', compact('publicProfile', 'featuredProjects', 'featuredArticles'));
 })->name('home');
@@ -443,13 +464,36 @@ Route::get('/projects', function (Request $request) {
         });
     }
 
-    $paginated = $query->orderByDesc('published_at')->orderBy('id')
-        ->paginate(9)->withQueryString();
+    // Match the canonical public API policy: hidden/unsafe evidence must
+    // never consume page slots or inflate public pagination counts.
+    $page = filter_var($request->query('page', 1), FILTER_VALIDATE_INT, [
+        'options' => ['min_range' => 1, 'max_range' => 10000],
+    ]) ?: 1;
+    $perPage = 9;
+    $offset = ($page - 1) * $perPage;
+    $totalSafe = 0;
+    $selected = [];
     $api = app(\App\Http\Controllers\Api\PublicPortfolioController::class);
-    $projects = $paginated->getCollection()
-        ->map(fn ($project) => $api->publicProjectData($project, $request))
-        ->filter(fn (array $project): bool => count($project['evidence_urls'] ?? []) > 0)
-        ->values();
+    foreach ($query->with(['evidence' => static fn ($evidence) => $evidence
+        ->where('visibility', 'public')
+        ->whereNotNull('verified_at')->where('verified_at', '<=', now())
+        ->orderBy('id')->limit(50)])
+        ->orderByDesc('published_at')->orderBy('id')->lazy(100) as $record) {
+        $project = $api->publicProjectData($record, $request);
+        if (empty($project['evidence_urls'])) {
+            continue;
+        }
+        if ($totalSafe >= $offset && count($selected) < $perPage) {
+            $selected[] = $project;
+        }
+        $totalSafe++;
+    }
+    $projects = collect($selected);
+    $paginated = new \Illuminate\Pagination\LengthAwarePaginator(
+        $projects, $totalSafe, $perPage, $page, [
+            'path' => $request->url(), 'query' => $request->query(),
+        ]
+    );
 
     return view('public.projects', compact('projects', 'paginated', 'search', 'status'));
 })->name('public.projects');
