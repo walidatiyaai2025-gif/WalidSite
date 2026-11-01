@@ -94,7 +94,12 @@ final class ResearchSourceIntake
         // Match its sensitive keys and fail closed on excess nesting.
         for ($depth = 0; $depth < 4; $depth++) {
             if (preg_match(
-                '/(?:^|[?#&;])(?:access[_-]?token|refresh[_-]?token|id[_-]?token|token|api[_-]?key|key|auth(?:orization)?|password|passwd|secret|client[_-]?secret|private[_-]?key|signature|sig|session(?:id)?|jwt|bearer|code|ticket|awsaccesskeyid|x[-_]amz[-_][a-z0-9_-]+|x[-_]goog[-_][a-z0-9_-]+)=/i',
+                // Reject PHP-style nested credentials as well as plain keys:
+                // token[]=secret, nested[api_key]=secret and token[0][key]=x.
+                // The outer URL is bounded to 2048 bytes, so the bracketed
+                // key segments are also bounded without parsing untrusted
+                // arrays or ever forwarding a credential-bearing URL.
+                '/(?:^|[?#&;\\[])(?:access[_-]?token|refresh[_-]?token|id[_-]?token|token|api[_-]?key|key|auth(?:orization)?|password|passwd|secret|client[_-]?secret|private[_-]?key|signature|sig|session(?:id)?|jwt|bearer|code|ticket|awsaccesskeyid|x[-_]amz[-_][a-z0-9_-]+|x[-_]goog[-_][a-z0-9_-]+)\\]?(?:\\[[^\\]\\r\\n]*\\])*=/i',
                 $value,
             ) === 1) {
                 return true;
