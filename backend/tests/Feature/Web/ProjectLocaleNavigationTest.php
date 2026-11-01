@@ -2,10 +2,13 @@
 
 namespace Tests\Feature\Web;
 
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 class ProjectLocaleNavigationTest extends TestCase
 {
+    use RefreshDatabase;
+
     public function test_project_language_switch_keeps_search_and_allowlisted_status_in_both_directions(): void
     {
         $this->get('/projects?lang=ar&q=Cloud&status=research')->assertOk()
