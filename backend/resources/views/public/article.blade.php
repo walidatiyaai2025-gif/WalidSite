@@ -45,7 +45,7 @@
 <article class="site-wrap article-shell" aria-labelledby="article-title">
     <nav class="article-nav" aria-label="{{ $locale === 'ar' ? 'تنقل المقال' : 'Article navigation' }}">
         <a href="{{ route('public.blog', ['lang'=>$locale]) }}">{{ $locale === 'ar' ? 'العودة إلى المدونة' : 'Back to technical blog' }}</a>
-        <a href="{{ route('public.contact', ['lang'=>$locale]) }}">{{ $locale === 'ar' ? 'التبليغ عن مشكلة بالمحتوى' : 'Report a content issue' }}</a>
+        <a href="{{ route('public.contact', ['lang'=>$locale, 'article'=>$article->slug]) }}">{{ $locale === 'ar' ? 'التبليغ عن مشكلة بالمحتوى' : 'Report a content issue' }}</a>
     </nav>
     <p class="article-meta">{{ $locale === 'ar' ? 'محتوى منشور ومدعوم بمصادر موثقة' : 'Published with verified cited sources' }}</p>
     <h1 id="article-title">{{ $locale === 'ar' ? $article->title_ar : $article->title_en }}</h1>
