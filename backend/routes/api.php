@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\PublicHomeController;
 use App\Http\Controllers\Api\MobileHomeController;
 use App\Http\Controllers\Api\MobileSavedController;
 use App\Http\Controllers\Api\MobileAiDiagnoseController;
+use App\Http\Controllers\Api\MobileAiJobStatusController;
 use App\Http\Controllers\Api\MobileBootstrapController;
 use App\Http\Controllers\Api\PublicLabController;
 use App\Http\Controllers\Api\PublicArticleController;
@@ -44,6 +45,10 @@ Route::middleware([RequireSecureApiTransport::class, 'auth:sanctum'])->group(fun
     // already reviewed public solution. The controller applies route quotas.
     Route::post('/mobile/ai/diagnose', MobileAiDiagnoseController::class)
         ->name('api.mobile.ai.diagnose')->middleware('throttle:12,1');
+    // Poll an existing job without resubmitting prompts or reserving AI spend.
+    Route::get('/mobile/ai/jobs/{id}', MobileAiJobStatusController::class)
+        ->whereUuid('id')->name('api.mobile.ai.job-status')
+        ->middleware('throttle:60,1');
     Route::post('/auth/logout', [IdentityController::class, 'logout']);
     Route::get('/admin/identity-check', [IdentityController::class, 'adminCheck']);
     // ADMIN-01: aggregated persisted metrics, never fabricated health or spend.
