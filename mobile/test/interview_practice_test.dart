@@ -177,7 +177,11 @@ void main() {
     await tester.pumpAndSettle();
     expect(visited, [1, 2]);
     expect(find.text('Verified security lessons'), findsOneWidget);
+    // A newly paginated lesson list changes the sign-out button's viewport.
+    // Settle the scroll/layout before the hit test; otherwise the button may
+    // still be below the 800x600 widget-test viewport when tapped.
     await tester.ensureVisible(find.byKey(const Key('interview-sign-out')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('interview-sign-out')));
     await tester.pumpAndSettle();
     expect(logouts, 1);
