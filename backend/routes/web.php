@@ -182,6 +182,17 @@ Route::middleware('auth:web')->group(function (): void {
         ]);
     })->name('admin.providers.index');
 
+    // ADMIN-04: scoped editor for one active provider. API authorization
+    // remains on every writer, and the page must never print saved secrets.
+    Route::get('/admin/ai/providers/{provider}', function (
+        Request $request, \App\Models\AiProvider $provider
+    ) {
+        abort_unless($request->user()?->canAccessAdmin(), 403);
+        $request->validate(['lang' => ['sometimes', 'in:ar,en']]);
+        return response()->view('admin.ai.editor', compact('provider'))
+            ->header('Cache-Control', 'no-store');
+    })->whereUuid('provider')->name('admin.providers.show');
+
     // ADMIN-05: one read-only routing projection for authorized web admins.
     // Persisted limits and observed health are not live provider eligibility
     // or proof that an AI task can run. Never select endpoint or secret fields.
@@ -260,9 +271,10 @@ Route::middleware('auth:web')->group(function (): void {
         } elseif (trim((string) $request->input('secret', '')) === '') {
             $request->request->remove('secret');
         }
-        // Only the exact internal routing return marker may change the
-        // destination. Arbitrary URLs never become redirect targets.
+        // Only exact internal return markers are valid redirect targets.
+        // Arbitrary URLs never become destinations.
         $backToRouting = $request->query('return') === 'routing';
+        $backToEditor = $request->query('return') === 'editor';
         if ($backToRouting) {
             $request->validate([
                 'lang' => ['sometimes', 'in:ar,en'],
@@ -270,8 +282,12 @@ Route::middleware('auth:web')->group(function (): void {
             ]);
         }
         app(\App\Http\Controllers\Api\AiProviderController::class)->update($request, $provider);
-        $redirect = $backToRouting ? 'admin.routing.index' : 'admin.providers.index';
+        $redirect = $backToRouting ? 'admin.routing.index'
+            : ($backToEditor ? 'admin.providers.show' : 'admin.providers.index');
         $parameters = $request->query('lang') === 'ar' ? ['lang' => 'ar'] : [];
+        if ($backToEditor) {
+            $parameters['provider'] = $provider->id;
+        }
         if ($backToRouting && $request->query('page') !== null) {
             $parameters['page'] = (int) $request->query('page');
         }
@@ -285,20 +301,23 @@ Route::middleware('auth:web')->group(function (): void {
     ) {
         abort_unless($request->user()?->canAccessAdmin(), 403);
         $result = app(\App\Http\Controllers\Api\AiProviderController::class)->test($request, $provider);
+        $destination = $request->query('return') === 'editor'
+            ? 'admin.providers.show' : 'admin.providers.index';
+        $parameters = $request->query('lang') === 'ar' ? ['lang' => 'ar'] : [];
+        if ($destination === 'admin.providers.show') {
+            $parameters['provider'] = $provider->id;
+        }
         // The API correctly rejects stale health results when the provider is
         // changed during network I/O. Never relabel that 409 as a saved test.
         if ($result->getStatusCode() === 409) {
-            return redirect()->route('admin.providers.index',
-                $request->query('lang') === 'ar' ? ['lang' => 'ar'] : []
-            )->with('error', $request->query('lang') === 'ar'
+            return redirect()->route($destination, $parameters)->with('error', $request->query('lang') === 'ar'
                 ? 'تغيّرت إعدادات المزود أثناء فحص الاتصال. لم تُسجّل نتيجة؛ أعد الفحص للإعدادات الحالية.'
                 : 'Provider settings changed during the connection check. No result was recorded; test the current settings again.');
         }
         $health = $result->getData(true)['data']['health_status'] ?? 'unverified';
-        return redirect()->route('admin.providers.index',
-            $request->query('lang') === 'ar' ? ['lang' => 'ar'] : []
-        )->with('status', $request->query('lang') === 'ar'
-            ? 'تم تسجيل نتيجة فحص الاتصال: '.$health.'.'
+        return redirect()->route($destination, $parameters)
+            ->with('status', $request->query('lang') === 'ar'
+                ? 'تم تسجيل نتيجة فحص الاتصال: '.$health.'.'
             : 'Connection check recorded: '.$health.'.');
     })->middleware('throttle:5,1')->name('admin.providers.test');
 
