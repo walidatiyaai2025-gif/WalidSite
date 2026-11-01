@@ -15,6 +15,8 @@
 .blog-field :is(input,select){width:100%;min-height:44px;padding:9px 12px;border:1px solid #97B4C8;border-radius:10px;color:var(--wa-strong);background:#fff;font:inherit}
 .blog-action{min-height:44px;display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:10px;background:var(--wa-cta);color:#fff;font:inherit;font-weight:800;padding:10px 22px;cursor:pointer}
 .blog-field :is(input,select):focus-visible,.blog-action:focus-visible{outline:3px solid var(--wa-cta);outline-offset:3px}
+.blog-clear{min-height:44px;display:inline-flex;align-items:center;padding:9px 12px;color:var(--wa-cta);font-weight:700;text-underline-offset:3px}.blog-clear:focus-visible{outline:3px solid var(--wa-cta);outline-offset:3px}
+.blog-result-summary{color:var(--wa-body);font-weight:700;margin:-12px 0 20px}
 .blog-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,310px),1fr));gap:18px}
 .blog-card{background:#fff;border:1px solid var(--wa-soft-border);border-radius:20px;display:flex;flex-direction:column;gap:10px;padding:22px}
 .blog-card h2{margin:0;font-size:23px;line-height:1.4;color:var(--wa-primary)}
@@ -48,7 +50,13 @@
             </select>
         </div>
         <button class="blog-action" type="submit">{{ $locale === 'ar' ? 'تطبيق التصفية' : 'Apply filters' }}</button>
+        @if($search !== '' || $category !== '')
+            <a class="blog-clear" href="{{ route('public.blog', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'إزالة جميع التصفيات' : 'Clear all filters' }}</a>
+        @endif
     </form>
+    @if($search !== '' || $category !== '')
+        <p class="blog-result-summary" role="status" data-testid="blog-filter-summary">{{ $locale === 'ar' ? 'إجمالي المقالات الموثقة المطابقة: ' : 'Total verified matching articles: ' }}{{ $paginated->total() }}</p>
+    @endif
     @if($entries->isEmpty())
         <div class="blog-empty" role="status">{{ $locale === 'ar'
             ? 'لا توجد مقالات منشورة وموثقة تطابق البحث حاليًا.'
@@ -64,7 +72,7 @@
                     </p>
                     <h2>{{ $locale === 'ar' ? $article->title_ar : $article->title_en }}</h2>
                     <p>{{ \Illuminate\Support\Str::limit(trim(preg_replace('/[#*>]+/u', '', $revision->body_md)), 190) }}</p>
-                    <a href="{{ route('public.article', ['slug'=>$article->slug, 'lang'=>$locale]) }}">
+                    <a href="{{ route('public.article', array_merge(['slug' => $article->slug, 'lang' => $locale], ($search !== '' || $category !== '' || $paginated->currentPage() > 1) ? array_filter(['source' => 'blog', 'q' => $search, 'category' => $category, 'page' => $paginated->currentPage() > 1 ? $paginated->currentPage() : null], fn ($value) => $value !== '' && $value !== null) : [])) }}">
                         {{ $locale === 'ar' ? 'قراءة المقال والمصادر' : 'Read article and sources' }}
                     </a>
                 </article>
