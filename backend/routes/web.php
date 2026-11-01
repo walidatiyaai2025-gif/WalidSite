@@ -384,7 +384,8 @@ Route::middleware('auth:web')->group(function (): void {
                 ->whereNull('deleted_at')
                 ->where('enabled', true)
                 ->where('health_status', 'healthy')
-                ->where('provider_type', 'openai-compatible'))
+                ->where('provider_type', 'openai-compatible')
+                ->where('daily_budget_minor', '>', 0))
             ->orderBy('provider_model_id')->limit(100)->get()
             ->filter(fn ($model) => in_array(
                 'image-generation', $model->capabilities_json ?? [], true
