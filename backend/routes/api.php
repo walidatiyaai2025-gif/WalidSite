@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\IdentityController;
 use App\Http\Controllers\Api\AiProviderController;
 use App\Http\Controllers\Api\PublicPortfolioController;
 use App\Http\Controllers\Api\PublicHomeController;
+use App\Http\Controllers\Api\MobileHomeController;
 use App\Http\Controllers\Api\PublicLabController;
 use App\Http\Controllers\Api\PublicArticleController;
 use App\Http\Controllers\Api\PublicRunbookController;
@@ -54,6 +55,10 @@ Route::get('/public/search', [PublicSearchController::class, 'index'])
 // WEB-09: verified articles and signed-off runbooks only; no invented tools.
 Route::get('/public/tools', [PublicLabController::class, 'index'])
     ->name('api.public.tools')->middleware('throttle:60,1');
+
+// MOBILE-02: reviewed guest home, no account-specific saved resources.
+Route::get('/mobile/home', [MobileHomeController::class, 'index'])
+    ->name('api.mobile.home')->middleware('throttle:60,1');
 
 // MOBILE-08: published-only learning tracks with no private user progress.
 Route::get('/mobile/learn', [PublicLearningPathController::class, 'index'])
