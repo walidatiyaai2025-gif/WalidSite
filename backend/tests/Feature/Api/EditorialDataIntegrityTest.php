@@ -9,6 +9,8 @@ use App\Models\Category;
 use DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 class EditorialDataIntegrityTest extends TestCase
@@ -183,4 +185,115 @@ class EditorialDataIntegrityTest extends TestCase
         $this->assertNull($article->fresh()->publicRevision());
         $this->getJson('/api/v1/public/articles/'.$article->slug)->assertNotFound();
     }
+
+    public function test_nested_encoded_credentials_never_authorize_public_citations(): void
+    {
+        Http::fake();
+
+        $unsafe = [
+            'https://docs.example.org/guide?%2574oken=synthetic-value',
+            'https://docs.example.org/guide?next=%253Faccess_token%253Dsynthetic-value',
+            'https://docs.example.org/guide?redirect='.rawurlencode(rawurlencode(
+                'https://docs.example.org/next?client_secret=synthetic-value'
+            )),
+            'https://docs.example.org/guide#chapter%253Frefresh_token%253Dsynthetic-value',
+            'https://docs.example.org/guide#%2558-Amz-Signature=synthetic-value',
+            'https://docs.example.org/guide?next='.rawurlencode(rawurlencode(
+                '?X-Goog-Credential=synthetic-value'
+            )),
+            'https://docs.example.org/guide?next='.rawurlencode(rawurlencode(
+                '?sessionid=synthetic-value'
+            )),
+            'https://docs.example.org/guide?next='.rawurlencode(rawurlencode(
+                '?bearer=synthetic-value'
+            )),
+            // More layers than the bounded scanner must also fail closed.
+            'https://docs.example.org/guide?next='.array_reduce(
+                range(1, 7),
+                static fn (string $value): string => rawurlencode($value),
+                '?token=synthetic-value'
+            ),
+        ];
+
+        foreach ($unsafe as $index => $url) {
+            $article = Article::create([
+                'slug' => 'multi-encoded-secret-'.$index,
+                'title_en' => 'Unreviewed citation',
+                'title_ar' => 'مصدر غير معتمد',
+                'canonical_lang' => 'en',
+            ]);
+            $revision = $article->revisions()->create([
+                'revision_no' => 1,
+                'body_md' => 'Claim with sensitive link',
+                'citations_json' => [['source_url' => $url, 'verified' => true]],
+                'validation_json' => ['citations_passed' => true, 'technical_passed' => true],
+                'status' => 'validated',
+            ]);
+
+            $this->assertFalse($revision->hasVerifiedEvidence());
+            $this->assertFalse($article->isReadyToPublish());
+            $this->getJson('/api/v1/public/articles/'.$article->slug)
+                ->assertNotFound()->assertDontSee('synthetic-value');
+        }
+
+        $this->getJson('/api/v1/public/articles')->assertOk()
+            ->assertJsonCount(0, 'data')
+            ->assertDontSee('synthetic-value');
+        Http::assertNothingSent();
+    }
+
+    public function test_post_review_encoded_secret_change_hides_published_snapshot(): void
+    {
+        Http::fake();
+        $article = $this->article();
+        $revision = $this->revision($article);
+        $article->publishVerified();
+
+        $this->getJson('/api/v1/public/articles/'.$article->slug)
+            ->assertOk()->assertJsonPath('data.citations.0', 'https://example.org/evidence');
+
+        // Simulate a pre-approved stored row modified by an external import,
+        // bypassing Eloquent's own immediate approval-invalidation events.
+        // Every public read must still recheck the stored citation URL.
+        DB::table('article_revisions')->where('id', $revision->id)->update([
+            'citations_json' => json_encode([[
+                'source_url' => 'https://docs.example.org/guide?next=%253Ftoken%253Dsynthetic-value',
+                'verified' => true,
+            ]], JSON_THROW_ON_ERROR),
+        ]);
+
+        $this->assertSame('published', $article->fresh()->status);
+        $this->assertFalse($revision->fresh()->hasVerifiedEvidence());
+        $this->assertNull($article->fresh()->publicRevision());
+        $this->getJson('/api/v1/public/articles')->assertOk()
+            ->assertJsonCount(0, 'data')->assertDontSee('synthetic-value');
+        $this->getJson('/api/v1/public/articles/'.$article->slug)
+            ->assertNotFound()->assertDontSee('synthetic-value');
+
+        Http::assertNothingSent();
+    }
+
+    public function test_harmless_encoded_documentation_urls_and_fragments_remain_public(): void
+    {
+        Http::fake();
+        $article = $this->article();
+        $url = 'https://docs.example.org/guide?next='.rawurlencode(rawurlencode(
+            'https://docs.example.org/install?lang=ar&page=2#chapter-1'
+        )).'#section%2520two';
+
+        $revision = $article->revisions()->create([
+            'revision_no' => 1,
+            'body_md' => 'Public documentation with benign redirect',
+            'citations_json' => [['source_url' => $url, 'verified' => true]],
+            'validation_json' => ['citations_passed' => true, 'technical_passed' => true],
+            'status' => 'validated',
+        ]);
+
+        $this->assertTrue($revision->hasVerifiedEvidence());
+        $article->publishVerified();
+        $this->getJson('/api/v1/public/articles/'.$article->slug)
+            ->assertOk()->assertJsonPath('data.citations.0', $url);
+        Http::assertNothingSent();
+    }
+
 }
