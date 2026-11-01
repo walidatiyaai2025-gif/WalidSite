@@ -126,7 +126,7 @@
                         <li>
                             <p>{{ $claim['text'] }}</p>
                             <a href="{{ $claim['evidence_url'] }}" target="_blank" rel="noopener noreferrer"
-                                aria-label="{{ ($locale === 'ar' ? 'عرض المصدر الموثق: ' : 'Open reviewed source: ').$claim['text'] }}">{{ $locale === 'ar' ? 'عرض المصدر الأصلي' : 'Open original source' }}</a>
+                                aria-label="{{ ($locale === 'ar' ? 'عرض المصدر الموثق: ' : 'Open reviewed source: ').$claim['text'] }}">{{ $locale === 'ar' ? 'عرض الدليل' : 'View evidence' }}</a>
                         </li>
                     @endforeach
                 </ul>
