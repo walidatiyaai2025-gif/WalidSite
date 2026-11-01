@@ -579,8 +579,16 @@ Route::get('/blog', function (Request $request) {
 
     if ($search !== '') {
         $term = '%'.addcslashes($search, '%_\\').'%';
-        $query->where(fn ($builder) => $builder->where('title_en', 'like', $term)
-            ->orWhere('title_ar', 'like', $term));
+        // Match only the immutable published revision pinned to this article.
+        // A newer draft must never make an otherwise unrelated title appear
+        // searchable or reveal words from unpublished professional material.
+        $query->where(fn ($builder) => $builder
+            ->where('title_en', 'like', $term)
+            ->orWhere('title_ar', 'like', $term)
+            ->orWhereHas('revisions', fn ($revision) => $revision
+                ->where('status', 'validated')
+                ->whereColumn('article_revisions.revision_no', 'articles.published_revision_no')
+                ->where('body_md', 'like', $term)));
     }
     if ($category !== '') {
         $query->whereHas('categories', fn ($builder) => $builder->where('slug', $category));
@@ -642,8 +650,13 @@ Route::get('/search', function (Request $request) {
     if ($search !== '') {
         $term = '%'.addcslashes($search, '%_\\').'%';
         $articles = \App\Models\Article::query()->publiclyVisible()
-            ->where(fn ($builder) => $builder->where('title_en', 'like', $term)
-                ->orWhere('title_ar', 'like', $term))
+            ->where(fn ($builder) => $builder
+                ->where('title_en', 'like', $term)
+                ->orWhere('title_ar', 'like', $term)
+                ->orWhereHas('revisions', fn ($revision) => $revision
+                    ->where('status', 'validated')
+                    ->whereColumn('article_revisions.revision_no', 'articles.published_revision_no')
+                    ->where('body_md', 'like', $term)))
             ->orderBy('id')->limit(10)->get()
             ->filter(fn ($article) => $article->publicRevision() !== null)->values();
 

@@ -35,8 +35,8 @@
     <form class="blog-search" method="get" action="{{ route('public.blog') }}" role="search" aria-label="{{ $locale === 'ar' ? 'تصفية المدونة' : 'Filter articles' }}">
         <input type="hidden" name="lang" value="{{ $locale }}">
         <div class="blog-field">
-            <label for="blog-query">{{ $locale === 'ar' ? 'بحث في العناوين' : 'Search titles' }}</label>
-            <input type="search" id="blog-query" name="q" value="{{ $search }}" maxlength="80" placeholder="{{ $locale === 'ar' ? 'عنوان المقال' : 'Article title' }}">
+            <label for="blog-query">{{ $locale === 'ar' ? 'بحث في المقالات الموثقة' : 'Search verified articles' }}</label>
+            <input type="search" id="blog-query" name="q" value="{{ $search }}" maxlength="80" placeholder="{{ $locale === 'ar' ? 'عنوان أو نص المقال' : 'Title or article text' }}">
         </div>
         <div class="blog-field">
             <label for="blog-category">{{ $locale === 'ar' ? 'التصنيف' : 'Category' }}</label>
