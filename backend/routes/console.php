@@ -1,6 +1,7 @@
 <?php
 
 use App\AI\EditorialPublicationAudit;
+use App\AI\EditorialScheduleRunner;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -39,6 +40,31 @@ Artisan::command('editorial:audit-publications {--limit=20}', function () {
 Schedule::command('editorial:audit-publications --limit=20')
     ->everyTenMinutes()
     ->withoutOverlapping(9);
+
+/*
+ * T022: publish only persisted, explicitly approved low-risk schedules and
+ * refresh their publication deadline; opt-in policy defaults disabled.
+ * Both commands use one host schedule:run cron; no long-lived process.
+ */
+Artisan::command('editorial:publish-due {--limit=20}', function () {
+    $option = (string) $this->option('limit');
+    if (! ctype_digit($option) || (int) $option < 1 || (int) $option > 20) {
+        $this->error('Limit must be an integer between 1 and 20.');
+        return 1;
+    }
+    $result = app(EditorialScheduleRunner::class)->run((int) $option);
+    $this->line(sprintf(
+        'Editorial due: state=%s checked=%d published=%d review=%d refreshed=%d',
+        $result['state'], $result['checked'], $result['published'],
+        $result['review'], $result['refreshed']
+    ));
+    return 0;
+})->purpose('Process a bounded page of admin-approved editorial schedules');
+
+Schedule::command('editorial:publish-due --limit=20')
+    ->everyTenMinutes()
+    ->withoutOverlapping(9);
+
 
 
 /*
