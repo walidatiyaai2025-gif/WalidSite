@@ -190,7 +190,7 @@ final class AdminGlobalProviderAuditTest extends TestCase
             ->assertHeader('Content-Type', 'text/csv; charset=UTF-8');
         $data = $csv->streamedContent();
         $this->assertStringStartsWith("\xEF\xBB\xBF", $data);
-        $this->assertStringContainsString('UTC time,Provider,Action', $data);
+        $this->assertStringContainsString('"UTC time",Provider,Action', $data);
         $this->assertStringContainsString('Changed field names', $data);
         $this->assertStringContainsString("'=HYPERLINK(", $data);
         $this->assertStringContainsString('display_name', $data);
