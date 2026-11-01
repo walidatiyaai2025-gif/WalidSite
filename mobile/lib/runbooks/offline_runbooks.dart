@@ -304,14 +304,24 @@ class _PackStatus extends StatelessWidget {
   }
 }
 
-class OfflineRunbookDetail extends StatelessWidget {
+class OfflineRunbookDetail extends StatefulWidget {
   const OfflineRunbookDetail({required this.item, required this.pack, required this.arabic, super.key});
   final OfflineRunbook item;
   final OfflineRunbookPack pack;
   final bool arabic;
 
   @override
+  State<OfflineRunbookDetail> createState() => _OfflineRunbookDetailState();
+}
+
+class _OfflineRunbookDetailState extends State<OfflineRunbookDetail> {
+  final Set<int> _completed = <int>{};
+
+  @override
   Widget build(BuildContext context) {
+    final item = widget.item;
+    final pack = widget.pack;
+    final arabic = widget.arabic;
     final steps = item.steps(arabic);
     return Scaffold(
       appBar: AppBar(title: Text(item.title(arabic))),
@@ -354,12 +364,19 @@ class OfflineRunbookDetail extends StatelessWidget {
           for (var i = 0; i < steps.length; i++)
             Padding(
               padding: const EdgeInsets.only(bottom: 12),
-              child: Semantics(
-                label: arabic ? 'خطوة ${i + 1}' : 'Step ${i + 1}',
-                child: ListTile(
-                  leading: CircleAvatar(child: Text('${i + 1}')),
-                  title: SelectableText(steps[i]),
-                ),
+              child: CheckboxListTile(
+                key: Key('runbook-step-${i + 1}-complete'),
+                value: _completed.contains(i),
+                controlAffinity: ListTileControlAffinity.leading,
+                title: SelectableText(steps[i]),
+                subtitle: Text(arabic ? 'خطوة ${i + 1}' : 'Step ${i + 1}'),
+                onChanged: (value) => setState(() {
+                  if (value == true) {
+                    _completed.add(i);
+                  } else {
+                    _completed.remove(i);
+                  }
+                }),
               ),
             ),
         ],
