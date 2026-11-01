@@ -61,7 +61,7 @@ class PublicLayoutTest extends TestCase
 
         $response->assertOk()
             ->assertHeader('Content-Type', 'image/jpeg')
-            ->assertHeader('Cache-Control', 'public, max-age=86400')
+            ->assertHeader('Cache-Control', 'max-age=86400, public')
             ->assertHeader('X-Content-Type-Options', 'nosniff');
 
         $this->assertSame(
