@@ -249,6 +249,15 @@ Route::middleware('auth:web')->group(function (): void {
     ) {
         abort_unless($request->user()?->canAccessAdmin(), 403);
         $result = app(\App\Http\Controllers\Api\AiProviderController::class)->test($request, $provider);
+        // The API correctly rejects stale health results when the provider is
+        // changed during network I/O. Never relabel that 409 as a saved test.
+        if ($result->getStatusCode() === 409) {
+            return redirect()->route('admin.providers.index',
+                $request->query('lang') === 'ar' ? ['lang' => 'ar'] : []
+            )->with('error', $request->query('lang') === 'ar'
+                ? 'تغيّرت إعدادات المزود أثناء فحص الاتصال. لم تُسجّل نتيجة؛ أعد الفحص للإعدادات الحالية.'
+                : 'Provider settings changed during the connection check. No result was recorded; test the current settings again.');
+        }
         $health = $result->getData(true)['data']['health_status'] ?? 'unverified';
         return redirect()->route('admin.providers.index',
             $request->query('lang') === 'ar' ? ['lang' => 'ar'] : []
