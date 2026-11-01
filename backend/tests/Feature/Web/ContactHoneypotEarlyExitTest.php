@@ -29,6 +29,35 @@ class ContactHoneypotEarlyExitTest extends TestCase
         Mail::assertNothingSent();
     }
 
+    public function test_array_and_nested_honeypots_are_silently_discarded(): void
+    {
+        config(['mail.contact_recipient' => 'contact@example.org', 'mail.default' => 'smtp']);
+        Mail::fake();
+
+        foreach (['en', 'ar'] as $locale) {
+            foreach ([
+                ['https://bot.example'],
+                ['url' => 'https://bot.example'],
+                ['nested' => ['payload' => 'bot']],
+            ] as $malformedHoneypot) {
+                $this->from('/contact?lang='.$locale)
+                    ->post('/contact?lang='.$locale, [
+                        'website' => $malformedHoneypot,
+                        'name' => 'A',
+                        'email' => 'not-an-email',
+                        'subject' => 'x',
+                        'message' => 'short',
+                        'privacy_consent' => '0',
+                    ])
+                    ->assertRedirect('/contact?lang='.$locale)
+                    ->assertSessionHasNoErrors()
+                    ->assertSessionMissing('contact_delivered');
+            }
+        }
+
+        Mail::assertNothingSent();
+    }
+
     public function test_blank_honeypot_does_not_bypass_normal_validation(): void
     {
         config(['mail.contact_recipient' => 'contact@example.org', 'mail.default' => 'smtp']);
