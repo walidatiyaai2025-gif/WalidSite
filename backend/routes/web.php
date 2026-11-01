@@ -889,6 +889,26 @@ Route::post('/contact', function (Request $request) {
         'Contact delivery has not been configured.'
     );
 
+    $arabicValidation = $request->query('lang') === 'ar';
+    $contactMessages = $arabicValidation ? [
+        'required' => 'حقل :attribute مطلوب.',
+        'string' => 'يجب أن يكون :attribute نصًا.',
+        'email' => 'يجب إدخال بريد إلكتروني صحيح.',
+        'min' => 'يجب ألا يقل :attribute عن :min أحرف.',
+        'max' => 'يجب ألا يزيد :attribute عن :max أحرف.',
+        'boolean' => 'قيمة :attribute غير صحيحة.',
+        'accepted' => 'يجب الموافقة على :attribute.',
+        'not_regex' => 'يحتوي :attribute على أحرف غير مسموحة.',
+    ] : [];
+    $contactAttributes = $arabicValidation ? [
+        'name' => 'الاسم',
+        'email' => 'البريد الإلكتروني',
+        'subject' => 'الموضوع',
+        'message' => 'الرسالة',
+        'privacy_consent' => 'سياسة الخصوصية',
+        'website' => 'الموقع',
+    ] : [];
+
     $input = $request->validate([
         'name' => ['required', 'string', 'min:2', 'max:100', 'not_regex:/[\\x00-\\x1F\\x7F]/u'],
         'email' => ['required', 'email:rfc', 'max:254'],
@@ -897,7 +917,7 @@ Route::post('/contact', function (Request $request) {
             'not_regex:/[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F\\x7F]/u'],
         'privacy_consent' => ['required', 'boolean', 'accepted'],
         'website' => ['nullable', 'string', 'max:200'],
-    ]);
+    ], $contactMessages, $contactAttributes);
 
     // Silently discard bot honeypots; do not store or dispatch untrusted mail.
     if (! empty($input['website'])) {
