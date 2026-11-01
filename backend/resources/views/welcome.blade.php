@@ -169,7 +169,7 @@
             <a class="device device--phone" href="{{ route('public.lab', ['lang' => $locale]) }}">
                 <div class="device-top"><span class="device-mark">W</span><span>{{ $ar ? 'المعرفة' : 'Learn' }}</span></div>
                 <div class="device-screen">
-                    <h2>{{ $ar ? 'المختبر التقني' : 'Knowledge hub' }}</h2>
+                    <h2>{{ $ar ? 'المختبر التقني' : 'Tech lab' }}</h2>
                     <p>{{ $ar ? 'أدوات ومواد للتعلم' : 'Engineering tools and learning' }}</p>
                     <span class="device-link">{{ $ar ? 'افتح المختبر' : 'Open lab' }}</span>
                 </div>
