@@ -119,8 +119,7 @@ final class AdminGlobalProviderAuditTest extends TestCase
             ->assertDontSee('PRIVATE_ENDPOINT_NOT_FOR_UI')
             ->assertDontSee('PRIVATE_TOKEN_NOT_FOR_UI')
             ->assertDontSee($actor->email);
-        $this->assertSame(20, substr_count($first->getContent(), '<tbody>'."\n".'<tr>')
-            + substr_count($first->getContent(), '<tbody><tr>'));
+        $this->assertSame(20, substr_count($first->getContent(), '<tr>') - 1);
 
         $second = $this->get('/admin/audit?lang=en&page=2')->assertOk()
             ->assertSee('Recorded events (26)')
