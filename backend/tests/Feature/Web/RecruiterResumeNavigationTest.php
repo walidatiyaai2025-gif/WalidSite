@@ -39,6 +39,15 @@ class RecruiterResumeNavigationTest extends TestCase
         }
     }
 
+    public function test_nested_resume_focus_inputs_fail_closed_without_a_server_error(): void
+    {
+        foreach (['/resume?track[]=database', '/resume?track[role]=software'] as $url) {
+            $this->get($url)->assertOk()
+                ->assertSee('Public CV review is pending')
+                ->assertDontSee('Array to string conversion');
+        }
+    }
+
     public function test_unpublished_profiles_stay_hidden_across_recruiter_to_resume_journey(): void
     {
         $user = User::create(['email' => 'unpublished-hire@example.test', 'status' => 'active']);
