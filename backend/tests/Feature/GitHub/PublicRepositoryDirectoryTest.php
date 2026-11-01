@@ -79,6 +79,50 @@ class PublicRepositoryDirectoryTest extends TestCase
         $this->assertArrayNotHasKey('url', $repo);
     }
 
+    public function test_credential_bearing_or_noncanonical_github_links_are_never_published(): void
+    {
+        config(['portfolio.github_public_repos' => ['owner/public-repo']]);
+
+        foreach ([
+            'https://visitor:secret@github.com/owner/public-repo',
+            'https://visitor@github.com/owner/public-repo',
+            'https://github.com:8443/owner/public-repo',
+            'https://github.com:443/owner/public-repo',
+            'https://github.com/owner/public-repo?token=secret',
+            'https://github.com/owner/public-repo#token=secret',
+        ] as $untrusted) {
+            Cache::flush();
+            Http::fake([
+                'api.github.com/repos/*' => Http::response(array_merge(
+                    $this->publicResponse(), ['html_url' => $untrusted]
+                ), 200),
+            ]);
+
+            $repo = app(PublicRepositoryDirectory::class)->repositories()[0];
+            $this->assertSame('unavailable', $repo['status'], $untrusted);
+            $this->assertArrayNotHasKey('url', $repo, $untrusted);
+            Http::assertSentCount(1);
+        }
+    }
+
+    public function test_metadata_redirect_is_not_treated_as_verified_public_repository(): void
+    {
+        config(['portfolio.github_public_repos' => ['owner/public-repo']]);
+        Http::fake([
+            'api.github.com/repos/*' => Http::response([], 302, [
+                'Location' => 'http://127.0.0.1/private/metadata',
+            ]),
+            '127.0.0.1/*' => Http::response($this->publicResponse(), 200),
+        ]);
+
+        $repo = app(PublicRepositoryDirectory::class)->repositories()[0];
+        $this->assertSame('unavailable', $repo['status']);
+        $this->assertArrayNotHasKey('url', $repo);
+        Http::assertSentCount(1);
+        Http::assertSent(fn ($request) => $request->url() ===
+            'https://api.github.com/repos/owner/public-repo');
+    }
+
     public function test_untrusted_slugs_are_rejected_before_http_request(): void
     {
         config(['portfolio.github_public_repos' => ['https://github.com/owner/repo', 'owner/../private', 'owner/repo?token=x', 'owner/public-repo']]);

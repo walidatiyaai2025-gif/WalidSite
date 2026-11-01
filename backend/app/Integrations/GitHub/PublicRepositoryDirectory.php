@@ -73,6 +73,9 @@ final class PublicRepositoryDirectory
                 ->withHeaders(['User-Agent' => 'WalidSite-Public-Portfolio', 'X-GitHub-Api-Version' => '2022-11-28'])
                 ->connectTimeout(3)
                 ->timeout(5)
+                // A public metadata lookup must never follow a redirect to
+                // another host (including an internal/private destination).
+                ->withOptions(['allow_redirects' => false])
                 ->get('https://api.github.com/repos/'.$slug);
 
             // Never reuse a private/deleted/unknown repository snapshot. A network failure
@@ -91,6 +94,10 @@ final class PublicRepositoryDirectory
                 || strtolower($parts['scheme'] ?? '') !== 'https'
                 || strtolower($parts['host'] ?? '') !== 'github.com'
                 || strtolower(trim($parts['path'] ?? '', '/')) !== strtolower($slug)
+                // Host/path alone are insufficient: an attacker-controlled
+                // URL can also contain credentials or a non-GitHub port.
+                || isset($parts['user']) || isset($parts['pass'])
+                || isset($parts['port'])
                 || isset($parts['query']) || isset($parts['fragment'])) {
                 return $unavailable;
             }
