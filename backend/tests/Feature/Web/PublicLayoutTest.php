@@ -46,13 +46,26 @@ class PublicLayoutTest extends TestCase
     {
         $this->assertFileExists(base_path('../assets/portraits/portrait-light-derived.jpg'));
 
-        $this->get('/')
-            ->assertOk()
-            ->assertSee(
-                'src="https://raw.githubusercontent.com/walidatiyaai2025-gif/WalidSite/main/assets/portraits/portrait-light-derived.jpg"',
-                false,
-            )
-            ->assertSee('Approved real portrait of Waleed Atiya');
+        foreach (['/', '/?lang=ar'] as $page) {
+            $this->get($page)->assertOk()
+                ->assertSee('src="'.route('public.portrait').'"', false)
+                ->assertDontSee('raw.githubusercontent.com');
+        }
+        $this->get('/')->assertSee('Approved real portrait of Waleed Atiya');
+    }
+
+    public function test_portrait_is_served_locally_with_image_security_headers(): void
+    {
+        $portraitPath = base_path('../assets/portraits/portrait-light-derived.jpg');
+        $response = $this->get('/media/portrait-light.jpg');
+        $response->assertOk()
+            ->assertHeader('Content-Type', 'image/jpeg')
+            ->assertHeader('X-Content-Type-Options', 'nosniff');
+
+        $this->assertSame(
+            realpath($portraitPath),
+            realpath($response->baseResponse->getFile()->getPathname()),
+        );
     }
 
     public function test_google_fonts_are_available_on_public_and_sign_in_pages(): void
