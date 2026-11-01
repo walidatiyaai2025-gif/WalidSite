@@ -536,7 +536,8 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
 
   Future<void> _submit() async {
     // An in-flight job must be checked with GET, never resubmitted with POST.
-    if (_busyDiagnosis || _busyPoll || _isPending || !_requireActiveSession()) {
+    if (_busyDiagnosis || _busyPoll || _busySave || _isPending ||
+        !_requireActiveSession()) {
       return;
     }
     final question = _question.text.trim();
@@ -554,6 +555,7 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
       return;
     }
 
+    final requestToken = _token!;
     setState(() {
       _busyDiagnosis = true;
       _message = null;
@@ -563,15 +565,19 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
     });
     try {
       final job =
-          await _diagnose(_token!, question, technology, _code.text);
-      if (!mounted) return;
+          await _diagnose(requestToken, question, technology, _code.text);
+      if (!mounted || !_requireActiveSession() || _token != requestToken) {
+        return;
+      }
       setState(() {
         _job = job;
         _respectPollDelay(job);
         _message = _jobMessage(job);
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || !_requireActiveSession() || _token != requestToken) {
+        return;
+      }
       if (error is MobileAiHttpException &&
           (error.statusCode == 401 || error.statusCode == 403)) {
         _token = null;
@@ -641,13 +647,17 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
   Future<void> _saveResult() async {
     final id = _job?.reviewedRunbookId();
     if (_busySave || id == null || !_requireActiveSession()) return;
+    final requestToken = _token!;
     setState(() {
       _busySave = true;
       _message = null;
     });
     try {
-      await _save(_token!, id);
-      if (!mounted) return;
+      await _save(requestToken, id);
+      if (!mounted || !_requireActiveSession() || _token != requestToken ||
+          _job?.reviewedRunbookId() != id) {
+        return;
+      }
       setState(() {
         _saved = true;
         _message = widget.arabic
@@ -655,7 +665,10 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
             : 'The reviewed guide was saved to your account.';
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || !_requireActiveSession() || _token != requestToken ||
+          _job?.reviewedRunbookId() != id) {
+        return;
+      }
       if (error is MobileAiHttpException &&
           (error.statusCode == 401 || error.statusCode == 403)) {
         _token = null;
@@ -849,7 +862,7 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
                     const SizedBox(height: 8),
                     FilledButton.icon(
                       key: const Key('ai-diagnose-submit'),
-                      onPressed: _busyDiagnosis || _busyPoll || _isPending
+                      onPressed: _busyDiagnosis || _busyPoll || _busySave || _isPending
                           ? null : _submit,
                       icon: const Icon(Icons.auto_awesome),
                       label: Text(_busyDiagnosis
