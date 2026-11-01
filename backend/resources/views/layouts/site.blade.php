@@ -97,10 +97,13 @@
                 <a class="language-link" href="{{ route('public.github', ['lang' => $locale]) }}">
                     {{ $locale === 'ar' ? 'مشاريع GitHub' : 'GitHub projects' }}
                 </a>
-                @php($languageRoute = request()->routeIs('public.github', 'public.about', 'public.expertise', 'public.hire', 'public.projects', 'public.project', 'public.resume', 'public.contact', 'public.blog', 'public.article', 'public.lab', 'public.search') ? request()->route()->getName() : 'home')
+                @php($languageRoute = request()->routeIs('public.github', 'public.about', 'public.expertise', 'public.hire', 'public.projects', 'public.project', 'public.resume', 'public.contact', 'public.blog', 'public.article', 'public.lab', 'public.lab.runbook', 'public.search') ? request()->route()->getName() : 'home')
                 @php($languageArgs = ['lang' => $locale === 'ar' ? 'en' : 'ar'])
                 @if(request()->routeIs('public.project', 'public.article'))
                     @php($languageArgs['slug'] = request()->route('slug'))
+                @endif
+                @if(request()->routeIs('public.lab.runbook'))
+                    @php($languageArgs['id'] = request()->route('id'))
                 @endif
                 @if(request()->routeIs('public.blog'))
                     @php($languageArgs['q'] = request()->query('q', ''))
