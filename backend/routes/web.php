@@ -373,11 +373,142 @@ Route::middleware('auth:web')->group(function (): void {
             'lang' => ['sometimes', 'in:ar,en'],
             'page' => ['sometimes', 'integer', 'min:1', 'max:10000'],
         ]);
+
+        // ADMIN-06 queue form: display only server-registered models that can
+        // actually reach the installed image executor. Never expose endpoint
+        // URLs, credentials, routing internals or provider/model secrets.
+        $models = \App\Models\AiModel::query()
+            ->with('provider')
+            ->where('enabled', true)
+            ->whereHas('provider', fn ($provider) => $provider
+                ->whereNull('deleted_at')
+                ->where('enabled', true)
+                ->where('health_status', 'healthy')
+                ->where('provider_type', 'openai-compatible')
+                ->where('daily_budget_minor', '>', 0))
+            ->orderBy('provider_model_id')->limit(100)->get()
+            ->filter(function ($model): bool {
+                $capabilities = $model->capabilities_json;
+                $provider = $model->provider;
+                $savedCredential = $provider?->getRawOriginal('secret_ciphertext');
+
+                return is_array($capabilities)
+                    && in_array('image-generation', $capabilities, true)
+                    && is_string($savedCredential) && $savedCredential !== ''
+                    && preg_match('/^[A-Za-z0-9_.:\\-]{1,90}$/D', (string) $model->provider_model_id) === 1;
+            })
+            ->take(50)->values();
+
+        // Offer only the current draft revision for each draft article.
+        // The dispatcher refreshes and re-checks this invariant again at queue
+        // admission, so a concurrent editorial change fails closed.
+        $drafts = \App\Models\ArticleRevision::query()
+            ->with('article')
+            ->where('status', 'draft')
+            ->whereHas('article', fn ($article) => $article->where('status', 'draft'))
+            ->whereRaw('article_revisions.revision_no = (SELECT MAX(latest.revision_no) FROM article_revisions AS latest WHERE latest.article_id = article_revisions.article_id)')
+            ->orderByDesc('updated_at')->orderBy('id')->limit(50)->get();
+
+        $imageJobs = \Illuminate\Support\Facades\DB::table('ai_jobs as job')
+            ->join('ai_providers as provider', 'provider.id', '=', 'job.provider_id')
+            ->where('job.job_type', 'editorial-art')
+            ->select([
+                'job.id', 'job.status', 'job.attempt_count', 'job.max_attempts',
+                'job.reserved_budget_minor', 'job.last_error_code', 'job.updated_at',
+                'provider.display_name as provider_name', 'provider.currency',
+            ])->orderByDesc('job.created_at')->limit(20)->get();
+
         return view('admin.ai.media', [
             'assets' => \App\Models\Asset::query()
                 ->orderByDesc('created_at')->orderBy('id')->paginate(12)->withQueryString(),
+            'models' => $models,
+            'drafts' => $drafts,
+            'imageJobs' => $imageJobs,
         ]);
     })->name('admin.media.index');
+
+    Route::post('/admin/ai/images/queue', function (Request $request) {
+        abort_unless($request->user()?->canAccessAdmin(), 403);
+        $input = $request->validate([
+            'revision_id' => ['required', 'uuid'],
+            'model_id' => ['required', 'uuid'],
+            'estimated_cost_minor' => ['required', 'integer', 'min:1', 'max:100000000'],
+        ]);
+
+        $model = \App\Models\AiModel::query()->with('provider')
+            ->findOrFail($input['model_id']);
+        $provider = $model->provider;
+        $capabilities = $model->capabilities_json;
+        $savedCredential = $provider?->getRawOriginal('secret_ciphertext');
+        $eligible = $model->enabled
+            && is_array($capabilities)
+            && in_array('image-generation', $capabilities, true)
+            && preg_match('/^[A-Za-z0-9_.:\\-]{1,90}$/D', (string) $model->provider_model_id) === 1
+            && $provider !== null
+            && ! $provider->trashed()
+            && $provider->enabled
+            && $provider->health_status === 'healthy'
+            && $provider->provider_type === 'openai-compatible'
+            && is_string($savedCredential)
+            && $savedCredential !== '';
+        if (! $eligible) {
+            return back()->withErrors([
+                'model_id' => $request->query('lang') === 'ar'
+                    ? 'النموذج المحدد غير مؤهل حاليًا لتوليد الصور.'
+                    : 'The selected model is not currently eligible for image generation.',
+            ]);
+        }
+
+        $estimate = (int) $input['estimated_cost_minor'];
+        $today = now('UTC')->startOfDay();
+        $tomorrow = $today->copy()->addDay();
+        $spentToday = (int) \Illuminate\Support\Facades\DB::table('ai_usage')
+            ->where('provider_id', $provider->id)
+            ->where('created_at', '>=', $today)
+            ->where('created_at', '<', $tomorrow)
+            ->sum('cost_minor');
+
+        // Count still-unsettled reservations so repeated admin clicks cannot
+        // overbook the configured daily ceiling before workers claim jobs.
+        $outstanding = 0;
+        $pendingJobs = \Illuminate\Support\Facades\DB::table('ai_jobs')
+            ->where('provider_id', $provider->id)
+            ->whereIn('status', ['queued', 'retry', 'running'])
+            ->get(['id', 'reserved_budget_minor']);
+        foreach ($pendingJobs as $pendingJob) {
+            $recorded = (int) \Illuminate\Support\Facades\DB::table('ai_usage')
+                ->where('job_id', $pendingJob->id)->sum('cost_minor');
+            $outstanding += max(0, (int) $pendingJob->reserved_budget_minor - $recorded);
+        }
+        $remaining = max(0, (int) $provider->daily_budget_minor - $spentToday - $outstanding);
+        if ($estimate > $remaining) {
+            return back()->withErrors([
+                'estimated_cost_minor' => $request->query('lang') === 'ar'
+                    ? 'الحجز المطلوب يتجاوز الميزانية اليومية المتاحة للمزود.'
+                    : 'The requested reservation exceeds the provider daily budget still available.',
+            ]);
+        }
+
+        $revision = \App\Models\ArticleRevision::query()->with('article')
+            ->findOrFail($input['revision_id']);
+        try {
+            $jobId = app(\App\AI\EditorialJobDispatcher::class)->enqueue(
+                $revision, $provider, $model->provider_model_id, true, $estimate
+            );
+        } catch (\DomainException|\InvalidArgumentException $exception) {
+            return back()->withErrors([
+                'revision_id' => $request->query('lang') === 'ar'
+                    ? 'المسودة تغيرت أو لم تعد مؤهلة. حدّث الصفحة وحاول من أحدث مسودة.'
+                    : 'The draft changed or is no longer eligible. Refresh and use the latest draft.',
+            ]);
+        }
+
+        return redirect()->route('admin.media.index', [
+            'lang' => $request->query('lang') === 'ar' ? 'ar' : 'en',
+        ])->with('status', $request->query('lang') === 'ar'
+            ? 'تمت إضافة مهمة توليد الصورة إلى الطابور الآمن: '.$jobId
+            : 'Artwork generation queued safely: '.$jobId);
+    })->middleware('throttle:10,1')->name('admin.media.queue');
 
     Route::post('/admin/ai/images/{asset}/approve', function (
         Request $request, \App\Models\Asset $asset
