@@ -222,6 +222,118 @@ void main() {
     expect(find.textContaining('401'), findsNothing);
   });
 
+  testWidgets('expired Arabic login never sends a save and can retry safely',
+      (tester) async {
+    var loginCalls = 0;
+    var saveCalls = 0;
+    await pumpDetail(
+      tester,
+      arabic: true,
+      loginAction: (_, __) async {
+        loginCalls++;
+        return RunbookSession(
+          token: loginCalls == 1 ? 'EXPIRED_PRIVATE_BEARER' : bearer,
+          expiresAt: loginCalls == 1
+              ? DateTime.utc(2000, 1, 1)
+              : DateTime.utc(2100, 1, 1),
+        );
+      },
+      saveAction: (token, id) async {
+        saveCalls++;
+        expect(token, bearer);
+        expect(id, runbookId);
+      },
+    );
+    await reveal(tester, const Key('online-runbook-save'));
+    await tester.tap(find.byKey(const Key('online-runbook-save')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+        find.byKey(const Key('online-runbook-login-email')),
+        'reader@example.test');
+    await tester.enterText(
+        find.byKey(const Key('online-runbook-login-password')),
+        'PRIVATE_PASSWORD_SHOULD_CLEAR');
+    await tester.tap(find.byKey(const Key('online-runbook-login-submit')));
+    await tester.pumpAndSettle();
+
+    expect(loginCalls, 1);
+    expect(saveCalls, 0);
+    expect(find.text('انتهت صلاحية الجلسة. سجّل الدخول مرة أخرى.'),
+        findsOneWidget);
+    expect(find.byKey(const Key('online-runbook-login-email')),
+        findsOneWidget);
+    expect(find.text('PRIVATE_PASSWORD_SHOULD_CLEAR'), findsNothing);
+    expect(find.text('EXPIRED_PRIVATE_BEARER'), findsNothing);
+    expect(find.text(bearer), findsNothing);
+
+    await tester.enterText(
+        find.byKey(const Key('online-runbook-login-password')),
+        'NEW_PRIVATE_PASSWORD');
+    await tester.tap(find.byKey(const Key('online-runbook-login-submit')));
+    await tester.pumpAndSettle();
+    expect(loginCalls, 2);
+    expect(saveCalls, 1);
+    expect(find.byKey(const Key('online-runbook-login-email')), findsNothing);
+    expect(find.text('تم حفظ الدليل المراجع في حسابك.'), findsOneWidget);
+    expect(find.text('NEW_PRIVATE_PASSWORD'), findsNothing);
+    expect(find.text(bearer), findsNothing);
+  });
+
+  testWidgets('malformed login bearers cannot trigger a save', (tester) async {
+    var loginCalls = 0;
+    var saveCalls = 0;
+    await pumpDetail(
+      tester,
+      loginAction: (_, __) async {
+        loginCalls++;
+        return RunbookSession(
+          token: switch (loginCalls) {
+            1 => '',
+            2 => 'x' * 8193,
+            _ => bearer,
+          },
+          expiresAt: null,
+        );
+      },
+      saveAction: (token, id) async {
+        saveCalls++;
+        expect(token, bearer);
+        expect(id, runbookId);
+      },
+    );
+    await reveal(tester, const Key('online-runbook-save'));
+    await tester.tap(find.byKey(const Key('online-runbook-save')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+        find.byKey(const Key('online-runbook-login-email')),
+        'reader@example.test');
+    for (var attempt = 0; attempt < 2; attempt++) {
+      await tester.enterText(
+          find.byKey(const Key('online-runbook-login-password')),
+          'PRIVATE_RETRY_PASSWORD');
+      await tester.tap(find.byKey(const Key('online-runbook-login-submit')));
+      await tester.pumpAndSettle();
+      expect(saveCalls, 0);
+      expect(find.text('Could not sign in safely. Try again.'), findsOneWidget);
+      expect(find.text('PRIVATE_RETRY_PASSWORD'), findsNothing);
+      expect(find.byKey(const Key('online-runbook-login-email')),
+          findsOneWidget);
+    }
+    expect(loginCalls, 2);
+
+    await tester.enterText(
+        find.byKey(const Key('online-runbook-login-password')),
+        'PRIVATE_FINAL_PASSWORD');
+    await tester.tap(find.byKey(const Key('online-runbook-login-submit')));
+    await tester.pumpAndSettle();
+    expect(loginCalls, 3);
+    expect(saveCalls, 1);
+    expect(find.text('The reviewed guide was saved to your account.'),
+        findsOneWidget);
+    expect(find.text('PRIVATE_FINAL_PASSWORD'), findsNothing);
+    expect(find.text(bearer), findsNothing);
+  });
+
   testWidgets('withdrawn detail exposes no copy save or share controls',
       (tester) async {
     await pumpDetail(
