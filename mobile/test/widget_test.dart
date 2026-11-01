@@ -48,7 +48,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('رفيق وليد التقني'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('استكشف المجالات التقنية'), 140);
     expect(find.text('استكشف المجالات التقنية'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('هندسة قواعد البيانات'), 140);
     expect(find.text('هندسة قواعد البيانات'), findsOneWidget);
     expect(
       Directionality.of(tester.element(find.text('رفيق وليد التقني'))),

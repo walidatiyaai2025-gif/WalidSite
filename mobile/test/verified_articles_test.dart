@@ -43,6 +43,12 @@ void main() {
 
   testWidgets('unconfigured article server has an honest offline state', (tester) async {
     await tester.pumpWidget(const WaleedTechApp());
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('verified-articles-entry')),
+      140,
+    );
+    await tester.ensureVisible(find.byKey(const Key('verified-articles-entry')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('verified-articles-entry')));
     await tester.pumpAndSettle();
 
