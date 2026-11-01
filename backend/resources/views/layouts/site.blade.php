@@ -80,21 +80,21 @@
     <a class="skip-link" href="#main-content">{{ $locale === 'ar' ? 'تجاوز إلى المحتوى' : 'Skip to content' }}</a>
     <header class="site-header">
         <div class="site-wrap header-row">
-            <a class="brand" href="{{ route('home', ['lang' => $locale]) }}" aria-label="{{ $locale === 'ar' ? 'الصفحة الرئيسية — وليد عطية' : 'Home — Waleed Atiya' }}">
+            <a class="brand" href="{{ route('home', ['lang' => $locale]) }}" aria-label="{{ $locale === 'ar' ? 'الصفحة الرئيسية — وليد عطية' : 'Home — Waleed Atiya' }}"@if(request()->routeIs('home')) aria-current="page"@endif>
                 <span class="brand-mark" aria-hidden="true">W</span>
                 <span>{{ $locale === 'ar' ? 'وليد عطية' : 'Waleed Atiya' }}</span>
             </a>
             <nav class="header-links" aria-label="{{ $locale === 'ar' ? 'التنقل واللغة' : 'Navigation and language' }}">
-                <a class="language-link" href="{{ route('public.about', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'نبذة' : 'About' }}</a>
-                <a class="language-link" href="{{ route('public.expertise', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'الخبرات' : 'Expertise' }}</a>
-                <a class="language-link" href="{{ route('public.hire', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'التوظيف' : 'Recruiter' }}</a>
-                <a class="language-link" href="{{ route('public.projects', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'المشاريع' : 'Projects' }}</a>
-                <a class="language-link" href="{{ route('public.blog', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'المدونة' : 'Blog' }}</a>
-                <a class="language-link" href="{{ route('public.lab', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'المختبر' : 'Lab' }}</a>
-                <a class="language-link" href="{{ route('public.search', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'البحث' : 'Search' }}</a>
-                <a class="language-link" href="{{ route('public.resume', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'السيرة العامة' : 'Resume' }}</a>
-                <a class="language-link" href="{{ route('public.contact', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'التواصل' : 'Contact' }}</a>
-                <a class="language-link" href="{{ route('public.github', ['lang' => $locale]) }}">
+                <a class="language-link" href="{{ route('public.about', ['lang' => $locale]) }}"@if(request()->routeIs('public.about')) aria-current="page"@endif>{{ $locale === 'ar' ? 'نبذة' : 'About' }}</a>
+                <a class="language-link" href="{{ route('public.expertise', ['lang' => $locale]) }}"@if(request()->routeIs('public.expertise')) aria-current="page"@endif>{{ $locale === 'ar' ? 'الخبرات' : 'Expertise' }}</a>
+                <a class="language-link" href="{{ route('public.hire', ['lang' => $locale]) }}"@if(request()->routeIs('public.hire')) aria-current="page"@endif>{{ $locale === 'ar' ? 'التوظيف' : 'Recruiter' }}</a>
+                <a class="language-link" href="{{ route('public.projects', ['lang' => $locale]) }}"@if(request()->routeIs('public.projects', 'public.project')) aria-current="page"@endif>{{ $locale === 'ar' ? 'المشاريع' : 'Projects' }}</a>
+                <a class="language-link" href="{{ route('public.blog', ['lang' => $locale]) }}"@if(request()->routeIs('public.blog', 'public.article')) aria-current="page"@endif>{{ $locale === 'ar' ? 'المدونة' : 'Blog' }}</a>
+                <a class="language-link" href="{{ route('public.lab', ['lang' => $locale]) }}"@if(request()->routeIs('public.lab', 'public.lab.runbook')) aria-current="page"@endif>{{ $locale === 'ar' ? 'المختبر' : 'Lab' }}</a>
+                <a class="language-link" href="{{ route('public.search', ['lang' => $locale]) }}"@if(request()->routeIs('public.search')) aria-current="page"@endif>{{ $locale === 'ar' ? 'البحث' : 'Search' }}</a>
+                <a class="language-link" href="{{ route('public.resume', ['lang' => $locale]) }}"@if(request()->routeIs('public.resume')) aria-current="page"@endif>{{ $locale === 'ar' ? 'السيرة العامة' : 'Resume' }}</a>
+                <a class="language-link" href="{{ route('public.contact', ['lang' => $locale]) }}"@if(request()->routeIs('public.contact')) aria-current="page"@endif>{{ $locale === 'ar' ? 'التواصل' : 'Contact' }}</a>
+                <a class="language-link" href="{{ route('public.github', ['lang' => $locale]) }}"@if(request()->routeIs('public.github')) aria-current="page"@endif>
                     {{ $locale === 'ar' ? 'مشاريع GitHub' : 'GitHub projects' }}
                 </a>
                 @php($languageRoute = request()->routeIs('public.github', 'public.about', 'public.expertise', 'public.hire', 'public.projects', 'public.project', 'public.resume', 'public.contact', 'public.blog', 'public.article', 'public.lab', 'public.lab.runbook', 'public.search') ? request()->route()->getName() : 'home')
@@ -140,7 +140,7 @@
             </nav>
         </div>
     </header>
-    <main class="site-main" id="main-content">@yield('content')</main>
+    <main class="site-main" id="main-content" tabindex="-1">@yield('content')</main>
     <footer class="site-footer">
         <div class="site-wrap footer-row">
             <span>{{ $locale === 'ar' ? 'وليد عطية — الموقع المهني' : 'Waleed Atiya — Engineering portfolio' }}</span>

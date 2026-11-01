@@ -140,4 +140,41 @@ class PublicLayoutTest extends TestCase
                 ->assertSee('font-family: var(--wa-font-ui)', false);
         }
     }
+
+    public function test_public_keyboard_navigation_identifies_the_current_page_in_both_languages(): void
+    {
+        $pages = [
+            '/' => 'Waleed Atiya',
+            '/?lang=ar' => 'وليد عطية',
+            '/about' => 'About',
+            '/about?lang=ar' => 'نبذة',
+            '/expertise' => 'Expertise',
+            '/expertise?lang=ar' => 'الخبرات',
+            '/hire' => 'Recruiter',
+            '/hire?lang=ar' => 'التوظيف',
+        ];
+
+        foreach ($pages as $path => $expectedLinkText) {
+            $response = $this->get($path);
+            $response->assertOk()
+                ->assertSee('href="#main-content"', false)
+                ->assertSee('id="main-content" tabindex="-1"', false);
+
+            // Only the current navigation destination is announced to a
+            // screen reader, regardless of locale. The language switcher
+            // must remain a regular destination, not an active page.
+            $html = $response->getContent();
+            preg_match_all(
+                '/<a\\b[^>]*\\baria-current="page"[^>]*>(.*?)<\\/a>/s',
+                $html,
+                $matches,
+            );
+            $this->assertCount(1, $matches[1], 'Expected one active navigation link for '.$path);
+            $this->assertStringContainsString(
+                $expectedLinkText,
+                strip_tags($matches[1][0]),
+                'Wrong active navigation destination for '.$path,
+            );
+        }
+    }
 }
