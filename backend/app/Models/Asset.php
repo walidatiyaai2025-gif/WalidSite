@@ -30,7 +30,11 @@ class Asset extends Model
         return $this->publishable === true
             && $this->rights_status === 'cleared'
             && in_array($this->origin, ['owner-supplied', 'licensed', 'ai-generated'], true)
-            && str_starts_with($this->mime_type ?? '', 'image/')
+            // SVG, XML and arbitrary image/* types can carry active content
+            // or unsupported decoders. Public assets are raster-only.
+            && in_array($this->mime_type, [
+                'image/jpeg', 'image/png', 'image/webp', 'image/avif', 'image/gif',
+            ], true)
             && preg_match('/^[a-f0-9]{64}$/i', $this->sha256 ?? '') === 1
             && trim($this->storage_key ?? '') !== '';
     }
