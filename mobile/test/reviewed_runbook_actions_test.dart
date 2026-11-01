@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -276,4 +278,152 @@ void main() {
     expect(shared, isNot(contains(bearer)));
     expect(find.text('تم فتح خيارات المشاركة.'), findsOneWidget);
   });
+
+  testWidgets('switching reviewed guide ID reloads content and clears saved state',
+      (tester) async {
+    const secondId = '00000000-0000-4000-8000-000000000778';
+    final requestedIds = <String>[];
+    final savedIds = <String>[];
+    Future<ReviewedRunbook> load(String id) async {
+      requestedIds.add(id);
+      if (id == runbookId) return reviewed();
+      return ReviewedRunbook(
+        id: secondId,
+        title: 'Second approved procedure',
+        markdown: '# New current instructions',
+        version: 7,
+        validatedAt: DateTime.utc(2026, 11, 1, 13),
+      );
+    }
+    Future<void> save(String token, String id) async {
+      expect(token, bearer);
+      savedIds.add(id);
+    }
+    Widget screen(String id) => MaterialApp(
+      home: ReviewedRunbookDetail(
+        id: id,
+        arabic: false,
+        initialBearer: bearer,
+        loader: load,
+        saveAction: save,
+      ),
+    );
+
+    await tester.pumpWidget(screen(runbookId));
+    await tester.pumpAndSettle();
+    expect(find.text('Reviewed recovery plan'), findsOneWidget);
+    await reveal(tester, const Key('online-runbook-save'));
+    await tester.tap(find.byKey(const Key('online-runbook-save')));
+    await tester.pumpAndSettle();
+    expect(find.text('Saved'), findsOneWidget);
+    expect(savedIds, [runbookId]);
+
+    // Flutter reuses the same stateful element when only its constructor ID
+    // changes. The previous guide's saved flag must not follow it.
+    await tester.pumpWidget(screen(secondId));
+    await tester.pumpAndSettle();
+    expect(requestedIds, [runbookId, secondId]);
+    expect(find.text('Second approved procedure'), findsOneWidget);
+    expect(find.text('# New current instructions'), findsOneWidget);
+    expect(find.text('Reviewed recovery plan'), findsNothing);
+    expect(find.text('The reviewed guide was saved to your account.'),
+        findsNothing);
+    await reveal(tester, const Key('online-runbook-save'));
+    expect(find.text('Save'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('online-runbook-save')));
+    await tester.pumpAndSettle();
+    expect(savedIds, [runbookId, secondId]);
+    expect(find.text(bearer), findsNothing);
+  });
+
+  testWidgets('delayed old save never marks replacement guide as saved',
+      (tester) async {
+    const secondId = '00000000-0000-4000-8000-000000000778';
+    final oldSave = Completer<void>();
+    final savedIds = <String>[];
+    Future<ReviewedRunbook> load(String id) async => id == runbookId
+        ? reviewed()
+        : ReviewedRunbook(
+            id: secondId,
+            title: 'New verified runbook',
+            markdown: '# Latest approved steps',
+            version: 8,
+            validatedAt: DateTime.utc(2026, 11, 1, 14),
+          );
+    Future<void> save(String token, String id) {
+      expect(token, bearer);
+      savedIds.add(id);
+      return id == runbookId ? oldSave.future : Future<void>.value();
+    }
+    Widget screen(String id) => MaterialApp(
+      home: ReviewedRunbookDetail(
+        id: id,
+        arabic: true,
+        initialBearer: bearer,
+        loader: load,
+        saveAction: save,
+      ),
+    );
+
+    await tester.pumpWidget(screen(runbookId));
+    await tester.pumpAndSettle();
+    await reveal(tester, const Key('online-runbook-save'));
+    await tester.tap(find.byKey(const Key('online-runbook-save')));
+    await tester.pump();
+    expect(savedIds, [runbookId]);
+
+    await tester.pumpWidget(screen(secondId));
+    await tester.pumpAndSettle();
+    expect(find.text('New verified runbook'), findsOneWidget);
+    oldSave.complete();
+    await tester.pump();
+    await tester.pumpAndSettle();
+    expect(find.text('تم حفظ الدليل المراجع في حسابك.'), findsNothing);
+    await reveal(tester, const Key('online-runbook-save'));
+    expect(find.text('حفظ'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('online-runbook-save')));
+    await tester.pumpAndSettle();
+    expect(savedIds, [runbookId, secondId]);
+    expect(find.text('تم الحفظ'), findsOneWidget);
+    expect(find.text(bearer), findsNothing);
+  });
+
+  testWidgets('stale share completion cannot show success for a replacement',
+      (tester) async {
+    const secondId = '00000000-0000-4000-8000-000000000778';
+    final oldShare = Completer<bool>();
+    Future<ReviewedRunbook> load(String id) async => id == runbookId
+        ? reviewed()
+        : ReviewedRunbook(
+            id: secondId,
+            title: 'Updated public review',
+            markdown: '# Different safe steps',
+            version: 9,
+            validatedAt: DateTime.utc(2026, 11, 1, 15),
+          );
+    Widget screen(String id) => MaterialApp(
+      home: ReviewedRunbookDetail(
+        id: id,
+        arabic: false,
+        loader: load,
+        shareAction: (_, __) => oldShare.future,
+      ),
+    );
+    await tester.pumpWidget(screen(runbookId));
+    await tester.pumpAndSettle();
+    await reveal(tester, const Key('online-runbook-share'));
+    await tester.tap(find.byKey(const Key('online-runbook-share')));
+    await tester.pump();
+
+    await tester.pumpWidget(screen(secondId));
+    await tester.pumpAndSettle();
+    expect(find.text('Updated public review'), findsOneWidget);
+    oldShare.complete(true);
+    await tester.pump();
+    await tester.pumpAndSettle();
+    expect(find.text('Share options opened.'), findsNothing);
+    await reveal(tester, const Key('online-runbook-share'));
+    expect(find.text('Share'), findsOneWidget);
+  });
+
 }
