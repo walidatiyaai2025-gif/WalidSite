@@ -96,7 +96,7 @@ void main() {
           },
           profileAction: (token) async {
             expect(token, bearer);
-            return MobileAccount(articleId, email);
+            return const MobileAccount(articleId, email);
           },
           savedAction: (token, locale, number) async {
             expect(token, bearer);
