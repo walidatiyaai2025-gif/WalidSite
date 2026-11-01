@@ -52,6 +52,41 @@ class ProviderAdaptersTest extends TestCase
         ProviderEndpoint::normalize('http://192.168.1.22:11434');
     }
 
+
+    public function test_blocks_private_bracketed_ipv6_and_alternate_numeric_host_destinations(): void
+    {
+        foreach ([
+            'https://[::ffff:127.0.0.1]/v1',
+            'https://[::ffff:169.254.169.254]/v1',
+            'https://[fc00::1]/v1',
+            'https://[fe80::1]/v1',
+            'http://[::ffff:127.0.0.1]:11434',
+            'https://2130706433/v1',
+            'https://0177.0.0.1/v1',
+            'https://0x7f000001/v1',
+            'https://127.1/v1',
+        ] as $endpoint) {
+            try {
+                ProviderEndpoint::normalize($endpoint);
+                $this->fail('Private or ambiguous numeric provider address was accepted.');
+            } catch (InvalidArgumentException $exception) {
+                $this->assertSame('Unsafe provider URL.', $exception->getMessage());
+            }
+        }
+    }
+
+    public function test_preserves_canonical_local_ollama_and_public_https_provider_hosts(): void
+    {
+        foreach ([
+            'http://127.0.0.1:11434',
+            'http://[::1]:11434',
+            'https://api.example.test/v1',
+            'https://[2001:4860:4860::8888]/v1',
+        ] as $endpoint) {
+            $this->assertSame($endpoint, ProviderEndpoint::normalize($endpoint));
+        }
+    }
+
     public function test_rejects_userinfo_and_query_from_provider_base_url(): void
     {
         foreach ([
