@@ -111,6 +111,33 @@ class DurableAiQueueTest extends TestCase
         $this->assertNull($queue->claimNext('worker-b'));
     }
 
+    public function test_concurrent_claims_count_remaining_reservations_without_double_charging_receipts(): void
+    {
+        $queue = new DurableAiQueue();
+        $provider = $this->provider('openai-compatible', 250);
+        $provider->update(['concurrent_limit' => 3]);
+
+        $first = $queue->enqueue($provider, 'draft', 'remaining:first', ['write'], 100);
+        $second = $queue->enqueue($provider, 'draft', 'remaining:second', ['write'], 100);
+        $third = $queue->enqueue($provider, 'draft', 'remaining:third', ['write'], 100);
+
+        $this->assertSame($first, $queue->claimNext('worker-a')?->id);
+        $this->assertTrue($queue->recordUsage(
+            $first, 'worker-a', 'remaining:receipt', 80, 'USD'
+        ));
+
+        // Spend 80 plus the first job's outstanding 20 plus a new
+        // reservation of 100 is 200, below the provider's daily cap.
+        // Double-counting the full original 100 would reject this claim.
+        $this->assertSame($second, $queue->claimNext('worker-b')?->id);
+
+        // A third 100-cost reservation would require 300 in total
+        // (80 spent + 20 outstanding + 100 outstanding + 100 new).
+        $this->assertNull($queue->claimNext('worker-c'));
+        $this->assertSame('queued', DB::table('ai_jobs')->where('id', $third)->value('status'));
+        $this->assertSame(80, (int) DB::table('ai_usage')->sum('cost_minor'));
+    }
+
     public function test_archived_provider_cannot_claim_queued_ai_work_even_when_enabled(): void
     {
         $queue = new DurableAiQueue();
