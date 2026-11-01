@@ -198,12 +198,18 @@ void main() {
     expect(tester.widget<CheckboxListTile>(first).value, false);
     expect(tester.widget<CheckboxListTile>(second).value, false);
 
-    await tester.tap(first);
+    // SelectableText consumes a tile-center tap, but the actual checkbox
+    // is a separate accessible control. Exercise the real user target.
+    final firstCheckbox = find.descendant(
+      of: first,
+      matching: find.byType(Checkbox),
+    );
+    await tester.tap(firstCheckbox);
     await tester.pump();
     expect(tester.widget<CheckboxListTile>(first).value, true);
     expect(tester.widget<CheckboxListTile>(second).value, false);
 
-    await tester.tap(first);
+    await tester.tap(firstCheckbox);
     await tester.pump();
     expect(tester.widget<CheckboxListTile>(first).value, false);
     expect(find.text('تحقق من النسخة'), findsOneWidget);
