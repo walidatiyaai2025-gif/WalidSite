@@ -45,11 +45,11 @@ class SearchEmptyGroupsTest extends TestCase
         $article->publishVerified();
 
         $this->get('/search?lang=en&q=DistinctiveCountGuide')->assertOk()
-            ->assertSee('Verified results: 1 articles, 0 projects.')
+            ->assertSee('Verified results: 1 article, 0 projects.')
             ->assertSee('id="articles-h"', false)
             ->assertDontSee('id="projects-h"', false);
         $this->get('/search?lang=ar&q=DistinctiveCountGuide')->assertOk()
-            ->assertSee('نتائج موثقة: 1 مقالات، 0 مشاريع.')
+            ->assertSee('نتائج موثقة: 1 مقال، 0 مشاريع.')
             ->assertSee('dir="rtl"', false);
     }
 
