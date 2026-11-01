@@ -96,4 +96,37 @@ class PublicLabSearchTest extends TestCase
         $this->get('/search?q='.str_repeat('x', 200))
             ->assertOk()->assertSee('No verified public matches.');
     }
+
+    public function test_site_search_finds_verified_article_body_but_not_newer_private_revisions(): void
+    {
+        $article = $this->publishedArticle();
+        // "operation" is in the published Markdown, not in either title.
+        $this->get('/search?q=operation')->assertOk()
+            ->assertSee('Verified database runbook');
+        $this->get('/search?q=operation&lang=ar')->assertOk()
+            ->assertSee('دليل قواعد البيانات الموثق');
+
+        $article->revisions()->create([
+            'revision_no' => 2,
+            'body_md' => 'PRIVATE-UNPUBLISHED-SEARCH-SENTINEL',
+            'status' => 'draft',
+            'citations_json' => [['source_url' => 'https://example.org/unverified', 'verified' => false]],
+            'validation_json' => ['citations_passed' => false, 'technical_passed' => false],
+        ]);
+        $this->get('/search?q=PRIVATE-UNPUBLISHED-SEARCH-SENTINEL')
+            ->assertOk()->assertDontSee('Verified database runbook');
+        $this->get('/search?q=operation')->assertOk()->assertSee('Verified database runbook');
+
+        $article->revisions()->where('revision_no', 1)->firstOrFail()->update([
+            'validation_json' => ['citations_passed' => false, 'technical_passed' => true],
+        ]);
+        $this->get('/search?q=operation')->assertOk()
+            ->assertDontSee('Verified database runbook');
+
+        // SQL LIKE metacharacters stay escaped instead of returning every
+        // article or exposing a nonmatching verified article by accident.
+        $this->get('/search?q='.urlencode('%_'))->assertOk()
+            ->assertDontSee('Verified database runbook');
+    }
+
 }
