@@ -73,7 +73,7 @@ void main() {
     ];
     for (final raw in invalid) {
       expect(() => ReviewedRunbookPage.parse(raw, 1),
-          throwsFormatException, reason: raw.substring(0, raw.length.clamp(0, 80)));
+          throwsFormatException, reason: raw.substring(0, raw.length > 80 ? 80 : raw.length));
     }
     expect(() => ReviewedRunbookPage.parse(response(1, []), 0),
         throwsFormatException);
