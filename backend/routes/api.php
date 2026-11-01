@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\PublicPortfolioController;
 use App\Http\Controllers\Api\PublicHomeController;
 use App\Http\Controllers\Api\PublicArticleController;
 use App\Http\Controllers\Api\PublicRunbookController;
+use App\Http\Controllers\Api\PublicLearningPathController;
 use App\Http\Controllers\Api\PublicSearchController;
 use App\Http\Controllers\Api\PublicResumeController;
 use App\Http\Middleware\RequireSecureApiTransport;
@@ -48,6 +49,10 @@ Route::get('/public/resume', [PublicResumeController::class, 'index'])
     ->name('api.public.resume')->middleware('throttle:60,1');
 Route::get('/public/search', [PublicSearchController::class, 'index'])
     ->name('api.public.search')->middleware('throttle:60,1');
+
+// MOBILE-08: published-only learning tracks with no private user progress.
+Route::get('/mobile/learn', [PublicLearningPathController::class, 'index'])
+    ->name('api.mobile.learn')->middleware('throttle:60,1');
 
 // MOBILE-04/MOBILE-05: anonymous read-only, reviewed version-pinned guides.
 // A missing/unreviewed guide is an honest 404; never return the bundled draft.
