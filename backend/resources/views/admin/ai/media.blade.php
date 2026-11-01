@@ -64,7 +64,10 @@ button:disabled{opacity:.6}.actions{display:flex;gap:12px;align-items:center;fle
 @endforeach
 </select></div>
 <div class="field"><label for="estimated-cost">{{ $locale === 'ar' ? 'حجز التكلفة بالوحدات الصغرى' : 'Cost reservation (minor units)' }}</label>
-<input id="estimated-cost" type="number" name="estimated_cost_minor" min="1" max="100000000" value="{{ old('estimated_cost_minor', 1) }}" required></div>
+<p class="muted" id="reservation-help">{{ $locale === 'ar'
+    ? 'أدخل تقديرًا واقعيًا لتكلفة تشغيل المزود بوحدات العملة الصغرى قبل الإرسال. هذا حجز ميزانية يدوي، وليس سعرًا مؤكدًا أو تسعيرًا آليًا؛ لا تدخل مبلغًا رمزيًا.'
+    : 'Enter a realistic provider charge estimate in minor currency units before queueing. This is a manual budget reservation, not a quoted price or automatic pricing; do not enter a token amount.' }}</p>
+<input id="estimated-cost" type="number" name="estimated_cost_minor" min="1" max="100000000" inputmode="numeric" aria-describedby="reservation-help" value="{{ old('estimated_cost_minor', '') }}" required autocomplete="off"></div>
 <button type="submit">{{ $locale === 'ar' ? 'أضف مهمة توليد الصورة' : 'Queue artwork generation' }}</button>
 </form>
 @endif
@@ -72,6 +75,9 @@ button:disabled{opacity:.6}.actions{display:flex;gap:12px;align-items:center;fle
 
 <section class="panel" aria-labelledby="jobs-title">
 <h2 id="jobs-title">{{ $locale === 'ar' ? 'حالة مهام الصور' : 'Artwork queue status' }}</h2>
+<p class="muted"><a href="{{ route('admin.quality.index', ['lang'=>$locale]) }}">{{ $locale === 'ar'
+    ? 'راجع الأعطال وأعد محاولة المهام المؤهلة من بوابات الجودة'
+    : 'Inspect failures and retry eligible jobs in Quality gates' }}</a></p>
 @if($imageJobs->isEmpty())
 <p role="status">{{ $locale === 'ar' ? 'لا توجد مهام توليد صور مسجلة.' : 'No artwork generation jobs are recorded.' }}</p>
 @else
