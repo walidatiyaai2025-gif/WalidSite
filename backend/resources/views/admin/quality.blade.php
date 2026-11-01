@@ -30,7 +30,7 @@ a{color:var(--link)}a:focus-visible,button:focus-visible{outline:3px solid #00A9
 <a href="{{ route('admin.quality.index', ['lang'=>$locale]) }}" aria-current="page">{{ $locale === 'ar' ? 'بوابات الجودة' : 'Quality gates' }}</a>
 </nav>
 <form method="post" action="{{ route('admin.logout') }}">@csrf<button type="submit">{{ $locale === 'ar' ? 'خروج' : 'Sign out' }}</button></form>
-</aside><main id="content">
+</aside><main id="content" tabindex="-1">
 <div class="top"><h1>{{ $locale === 'ar' ? 'بوابات الجودة' : 'Quality gates' }}</h1>
 <a href="{{ route('admin.quality.index', ['lang'=>$locale === 'ar' ? 'en' : 'ar']) }}">{{ $locale === 'ar' ? 'English' : 'العربية' }}</a></div>
 <p>{{ $locale === 'ar'
@@ -59,7 +59,7 @@ a{color:var(--link)}a:focus-visible,button:focus-visible{outline:3px solid #00A9
 @foreach($qualityRows as $row)
 @php($pass = fn(bool $value) => $value ? ($locale === 'ar' ? 'ناجح' : 'Pass') : ($locale === 'ar' ? 'محظور' : 'Blocked'))
 <tr>
-<td>{{ $locale === 'ar' ? $row['title_ar'] : $row['title_en'] }}</td>
+<td><a href="{{ route('admin.content.index', ['article' => $row['article_id'], 'lang' => $locale]) }}">{{ $locale === 'ar' ? $row['title_ar'] : $row['title_en'] }}</a></td>
 <td>r{{ $row['revision_no'] }}</td>
 <td>{{ $row['revision_status'] }}</td>
 <td class="{{ $row['citations_passed'] ? 'pass' : 'block' }}">{{ $pass($row['citations_passed']) }}</td>
