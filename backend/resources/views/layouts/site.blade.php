@@ -7,15 +7,20 @@
     <meta name="color-scheme" content="light">
     <meta name="description" content="@yield('meta_description', $locale === 'ar' ? 'الموقع المهني لوليد عطية — المعلومات العامة المتاحة بعد التحقق.' : 'Waleed Atiya engineering portfolio — evidence-reviewed public information.')">
     <title>@yield('title', 'Waleed Atiya — Engineering')</title>
-    {{-- Only the T007 public screens are in this SEO scope. Recruiter variants
-         retain validated focus, while arrays and arbitrary query strings can
-         never be reflected into canonical or alternate-language URLs. --}}
+    {{-- Preserve only validated, source-backed filters in canonical/hreflang
+         URLs. WEB-03 expertise categories and WEB-12 recruiter tracks each
+         have different allowlists; never echo raw or array-valued query data. --}}
     @php($seoPage = request()->route()?->getName())
     @if (in_array($seoPage, ['home', 'public.about', 'public.expertise', 'public.hire'], true))
         @php($seoRawTrack = request()->query()['track'] ?? null)
+        @php($seoRawCategory = request()->query()['category'] ?? null)
         @php($seoFilters = $seoPage === 'public.hire' && is_string($seoRawTrack)
             && in_array($seoRawTrack, ['database', 'software', 'delivery'], true)
                 ? ['track' => $seoRawTrack] : [])
+        @if($seoPage === 'public.expertise' && is_string($seoRawCategory)
+            && in_array($seoRawCategory, ['database', 'integration', 'security', 'delivery'], true))
+            @php($seoFilters['category'] = $seoRawCategory)
+        @endif
         <link rel="canonical" href="{{ route($seoPage, array_merge(['lang' => $locale], $seoFilters)) }}">
         <link rel="alternate" hreflang="en" href="{{ route($seoPage, array_merge(['lang' => 'en'], $seoFilters)) }}">
         <link rel="alternate" hreflang="ar" href="{{ route($seoPage, array_merge(['lang' => 'ar'], $seoFilters)) }}">
@@ -125,6 +130,16 @@
                     @endif
                     @if($projectStatus !== '')
                         @php($languageArgs['status'] = $projectStatus)
+                    @endif
+                @endif
+                @if(request()->routeIs('public.expertise'))
+                    {{-- Preserve the actual server-side expertise filter, not
+                         arbitrary/array-valued category parameters. --}}
+                    @php($categoryParams = request()->query())
+                    @php($selectedCategory = $categoryParams['category'] ?? '')
+                    @if(is_string($selectedCategory)
+                        && in_array($selectedCategory, ['database', 'integration', 'security', 'delivery'], true))
+                        @php($languageArgs['category'] = $selectedCategory)
                     @endif
                 @endif
                 @if(request()->routeIs('public.resume', 'public.hire'))
