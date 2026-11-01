@@ -428,7 +428,7 @@ class EditorialPipelineTest extends TestCase
         // Normal Laravel boot must register the allowlist without manual
         // wiring in an admin request, unit test, or cPanel scheduler.
         $registry = app(\App\AI\AiStepHandlerRegistry::class);
-        $this->assertSame(['editorial-draft', 'editorial-art'],
+        $this->assertSame(['editorial-draft', 'editorial-art', 'mobile-diagnosis'],
             array_keys($registry->handlers()));
         $this->assertSame($registry, app(\App\AI\AiStepHandlerRegistry::class));
         $this->assertSame(0, Artisan::call('ai:tick'));
@@ -441,10 +441,10 @@ class EditorialPipelineTest extends TestCase
             ->where('status', 'completed')->count());
     }
 
-    public function test_fresh_boot_registry_runs_only_two_explicit_editorial_job_kinds(): void
+    public function test_fresh_boot_registry_registers_explicit_trusted_job_kinds(): void
     {
         $registry = app(\App\AI\AiStepHandlerRegistry::class);
-        $this->assertSame(['editorial-draft', 'editorial-art'],
+        $this->assertSame(['editorial-draft', 'editorial-art', 'mobile-diagnosis'],
             array_keys($registry->handlers()));
         $this->assertSame($registry, app(\App\AI\AiStepHandlerRegistry::class));
         $this->assertTrue($registry->hasHandlers());
