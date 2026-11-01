@@ -238,7 +238,16 @@ foreach (['about', 'expertise', 'hire'] as $professionalPage) {
 Route::get('/projects', function (Request $request) {
     $rawSearch = $request->query('q', '');
     $search = is_string($rawSearch) ? mb_substr(trim($rawSearch), 0, 80) : '';
+    // Never interpolate untrusted filter values into the query or reveal
+    // drafts: the public evidence gate remains authoritative.
+    $rawStatus = $request->query('status', '');
+    $status = is_string($rawStatus)
+        && in_array($rawStatus, ['completed', 'in_progress', 'research', 'archived'], true)
+            ? $rawStatus : '';
     $query = \App\Models\Project::query()->publiclyVerified();
+    if ($status !== '') {
+        $query->where('status', $status);
+    }
 
     if ($search !== '') {
         $term = '%'.addcslashes($search, '%_\\').'%';
@@ -257,7 +266,7 @@ Route::get('/projects', function (Request $request) {
         ->filter(fn (array $project): bool => count($project['evidence_urls'] ?? []) > 0)
         ->values();
 
-    return view('public.projects', compact('projects', 'paginated', 'search'));
+    return view('public.projects', compact('projects', 'paginated', 'search', 'status'));
 })->name('public.projects');
 
 Route::get('/projects/{slug}', function (Request $request, string $slug) {
@@ -271,7 +280,19 @@ Route::get('/projects/{slug}', function (Request $request, string $slug) {
     return view('public.case-study', compact('project'));
 })->where('slug', '[a-zA-Z0-9-]+')->name('public.project');
 
-Route::get('/resume', function () {
+Route::get('/resume', function (Request $request) {
+    // CV variants change emphasis, not the owner's verified career history.
+    // Unknown and array-valued parameters cannot select unapproved content.
+    $requestedTrack = $request->query('track', 'all');
+    $tracks = [
+        'all' => [],
+        'database' => ['Database & Reliability'],
+        'software' => ['Software & Integration', 'Infrastructure & Security'],
+        'delivery' => ['Project Delivery'],
+    ];
+    $track = is_string($requestedTrack) && array_key_exists($requestedTrack, $tracks)
+        ? $requestedTrack : 'all';
+
     $profile = \App\Models\Profile::query()->published()
         ->whereHas('user', fn ($user) => $user->where('status', 'active')
             ->whereHas('roles', fn ($roles) => $roles->where('name', 'owner')))
@@ -286,7 +307,18 @@ Route::get('/resume', function () {
             ->where('profile_id', $profile->id)->orderBy('title')->get()
         : collect();
 
-    return view('public.resume', compact('profile', 'positions', 'certifications'));
+    $skills = collect();
+    if ($profile) {
+        $skillsQuery = \App\Models\Skill::query()->withVerifiedEvidence()
+            ->whereIn('id', \Illuminate\Support\Facades\DB::table('profile_skill')
+                ->where('profile_id', $profile->id)->select('skill_id'));
+        if ($track !== 'all') {
+            $skillsQuery->whereIn('category', $tracks[$track]);
+        }
+        $skills = $skillsQuery->orderBy('category')->orderBy('name_en')->get();
+    }
+
+    return view('public.resume', compact('profile', 'positions', 'certifications', 'skills', 'track'));
 })->name('public.resume');
 
 /*
