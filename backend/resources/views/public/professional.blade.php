@@ -108,13 +108,21 @@
                     </ul>
                 @endif
             @elseif ($page === 'expertise')
+                {{-- Canonical skill category values are persisted in English and drive
+                     recruiter filters. Only the verified public heading is localized. --}}
+                @php($categoryLabelsAr = [
+                    'Database & Reliability' => 'قواعد البيانات والموثوقية',
+                    'Software & Integration' => 'البرمجيات والتكامل',
+                    'Infrastructure & Security' => 'البنية التحتية والأمن',
+                    'Project Delivery' => 'إدارة وتسليم المشاريع',
+                ])
                 <h2 id="professional-section">{{ $locale === 'ar' ? 'المهارات المعتمدة' : 'Evidence-verified skills' }}</h2>
                 @if ($skills->isEmpty())
                     <div class="professional-empty" role="status">{{ $locale === 'ar' ? 'لم تُعتمد مهارات للنشر بعد.' : 'No skills have been approved with verified evidence yet.' }}</div>
                 @else
                     @foreach ($skills->groupBy('category') as $category => $group)
                         <div class="professional-item">
-                            <h3>{{ $category }}</h3>
+                            <h3>{{ $locale === 'ar' ? ($categoryLabelsAr[$category] ?? $category) : $category }}</h3>
                             <div class="professional-tags">@foreach ($group as $skill)<span>{{ $locale === 'ar' ? $skill->name_ar : $skill->name_en }}</span>@endforeach</div>
                         </div>
                     @endforeach
