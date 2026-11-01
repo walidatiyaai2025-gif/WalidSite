@@ -92,6 +92,35 @@ class AdminAiProviderConsoleTest extends TestCase
             ->assertDontSee(' · Enabled · ', false);
     }
 
+    public function test_provider_health_status_is_last_recorded_and_localized_in_both_languages(): void
+    {
+        Http::fake();
+        $this->actingAs($this->account(), 'web');
+        $this->post('/admin/ai/providers', $this->providerForm())
+            ->assertRedirect('/admin/ai/providers');
+        $provider = AiProvider::firstOrFail();
+
+        foreach ([
+            'unverified' => ['en' => 'unverified', 'ar' => 'غير متحقق منه'],
+            'healthy' => ['en' => 'healthy', 'ar' => 'سليم'],
+            'unhealthy' => ['en' => 'unhealthy', 'ar' => 'غير سليم'],
+        ] as $health => $labels) {
+            $provider->forceFill(['health_status' => $health])->save();
+
+            $this->get('/admin/ai/providers?lang=en')->assertOk()
+                ->assertSee('Last recorded health: '.$labels['en'])
+                ->assertDontSee('Last recorded health: '.$labels['ar']);
+
+            $this->get('/admin/ai/providers?lang=ar')->assertOk()
+                ->assertSee('dir="rtl"', false)
+                ->assertSee('آخر حالة فحص: '.$labels['ar'])
+                ->assertDontSee('آخر حالة فحص: '.$health);
+        }
+
+        // Reading these health snapshots is never an outbound provider test.
+        Http::assertNothingSent();
+    }
+
     public function test_provider_console_links_to_real_usage_audit_in_both_locales(): void
     {
         $this->get('/admin/ai/usage')->assertRedirect('/admin/login');
