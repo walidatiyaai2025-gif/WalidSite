@@ -130,9 +130,13 @@ class PublicPortfolioAndContactTest extends TestCase
             $this->evidence($unsafe, 'public', true,
                 'https://docs.example.org/internal?token=not-for-publication');
         }
+        // The route orders published_at DESC, then UUID. Give each safe
+        // fixture a stable, distinct minute so the first nine and tenth
+        // stay on their expected pages regardless of DB timestamp precision.
+        $safePublishedAt = now()->subDays(2)->startOfMinute();
         for ($i = 1; $i <= 10; $i++) {
             $safe = $this->project('safe-web-'.$i);
-            $safe->update(['published_at' => now()->subDays(2)]);
+            $safe->update(['published_at' => $safePublishedAt->copy()->subMinutes($i)]);
             $this->evidence($safe, 'public', true, 'https://docs.example.org/approved');
         }
 
