@@ -52,6 +52,9 @@
     .professional-evidence { margin: 0; padding-inline-start: 24px; }
     .professional-evidence li { padding-block: 9px; border-top: 1px solid var(--wa-soft-border); }
     .professional-evidence a { color: var(--wa-cta); font-weight: 800; text-underline-offset: 3px; }
+    .professional-track-link { display: inline-flex; align-items: center; min-height: 44px; margin-top: 10px;
+        color: var(--wa-cta); font-weight: 800; text-underline-offset: 3px; }
+    .professional-track-link:focus-visible { outline: 3px solid var(--wa-cta); outline-offset: 3px; }
     .professional-filter { display: flex; gap: 10px; flex-wrap: wrap; align-items: end; margin-bottom: 24px; }
     .professional-filter label { display: block; font-weight: 700; color: var(--wa-primary); margin-bottom: 6px; }
     .professional-filter select { min-width: 200px; min-height: 44px; padding: 9px; font: inherit;
@@ -116,6 +119,14 @@
                     'Infrastructure & Security' => 'البنية التحتية والأمن',
                     'Project Delivery' => 'إدارة وتسليم المشاريع',
                 ])
+                {{-- Only documented canonical skill categories have a server-enforced
+                     recruiter track. Unknown categories never become guessed filters. --}}
+                @php($categoryTracks = [
+                    'Database & Reliability' => 'database',
+                    'Software & Integration' => 'software',
+                    'Infrastructure & Security' => 'software',
+                    'Project Delivery' => 'delivery',
+                ])
                 <h2 id="professional-section">{{ $locale === 'ar' ? 'المهارات المعتمدة' : 'Evidence-verified skills' }}</h2>
                 @if ($skills->isEmpty())
                     <div class="professional-empty" role="status">{{ $locale === 'ar' ? 'لم تُعتمد مهارات للنشر بعد.' : 'No skills have been approved with verified evidence yet.' }}</div>
@@ -124,6 +135,11 @@
                         <div class="professional-item">
                             <h3>{{ $locale === 'ar' ? ($categoryLabelsAr[$category] ?? $category) : $category }}</h3>
                             <div class="professional-tags">@foreach ($group as $skill)<span>{{ $locale === 'ar' ? $skill->name_ar : $skill->name_en }}</span>@endforeach</div>
+                            @if (isset($categoryTracks[$category]))
+                                <a class="professional-track-link" href="{{ route('public.hire', ['lang' => $locale, 'track' => $categoryTracks[$category]]) }}">
+                                    {{ $locale === 'ar' ? 'تصفية الخبرات حسب ' : 'Filter expertise by ' }}{{ $locale === 'ar' ? ($categoryLabelsAr[$category] ?? $category) : $category }}
+                                </a>
+                            @endif
                         </div>
                     @endforeach
                 @endif
