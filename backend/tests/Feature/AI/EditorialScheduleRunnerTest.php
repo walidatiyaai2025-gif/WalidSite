@@ -178,8 +178,12 @@ class EditorialScheduleRunnerTest extends TestCase
         $runner->run();
         $this->assertSame('published', $article->fresh()->status);
 
+        // Switching off NEW publication must not leave old public content
+        // beyond its enforced refresh deadline.
+        DB::table('editorial_policies')->where('id', 1)->update(['enabled' => false]);
         $this->travel(2)->days();
         $result = $runner->run();
+        $this->assertSame('disabled', $result['state']);
         $this->assertSame(1, $result['refreshed']);
         $this->assertSame('draft', $article->fresh()->status);
         $this->assertNull($article->fresh()->published_revision_no);
