@@ -186,8 +186,9 @@ void main() {
     // ensureVisible may leave the center outside the tappable region.
     await tester.scrollUntilVisible(
       find.byKey(const Key('verified-learning-entry')), 150,
-      alignment: 0.25,
     );
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const Key('verified-learning-entry')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('verified-learning-entry')));
     await tester.pumpAndSettle();
