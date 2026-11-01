@@ -43,6 +43,8 @@ jobs:
           python -m pip install --disable-pip-version-check --quiet Pillow==11.3.0
           python qa/validate_visual_fidelity.py
           python -m unittest discover -s qa/tests -p 'test_visual_*.py'
+      - name: Verify cPanel ZIP safety rules
+        run: python3 -m unittest discover -s qa/tests -p test_cpanel_package.py
       - name: Validate active CI workflow policy
         run: python3 qa/validate_ci_policy.py
       - name: Validate canonical owner CV source
@@ -136,6 +138,36 @@ jobs:
           flutter pub get
           flutter analyze
           flutter test
+
+  build-cpanel-package:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: required-ci-gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, xml, pdo_mysql, zip
+      - name: Prepare production dependencies
+        run: |
+          cd backend
+          composer install --no-dev --prefer-dist --no-interaction --no-progress --optimize-autoloader
+          composer check-platform-reqs --no-dev
+      - name: Package trusted checked-in code for cPanel
+        run: |
+          python3 qa/build_cpanel_package.py --source . --output dist/WalidSite-cPanel.zip --sha "$GITHUB_SHA"
+          unzip -t dist/WalidSite-cPanel.zip
+          sha256sum dist/WalidSite-cPanel.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: WalidSite-cPanel-installer
+          path: dist/WalidSite-cPanel.zip
+          if-no-files-found: error
+          retention-days: 30
 
   cleanup-merged-branch:
     # Runs only after an actual merge and only for a branch in this repository.
