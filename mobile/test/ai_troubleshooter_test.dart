@@ -112,6 +112,7 @@ void main() {
     expect(find.byKey(const Key('ai-diagnose-submit')), findsOneWidget);
     expect(find.text('correct horse battery staple'), findsNothing);
     expect(find.text(token), findsNothing);
+    await reveal(tester, const Key('ai-message'));
     expect(find.text('Signed in for this session only.'), findsOneWidget);
   });
 
@@ -178,6 +179,7 @@ void main() {
     await reveal(tester, const Key('ai-consent'));
     await tester.tap(find.byKey(const Key('ai-consent')));
     await tester.pump();
+    await reveal(tester, const Key('ai-diagnose-submit'));
     await tester.tap(find.byKey(const Key('ai-diagnose-submit')));
     await tester.pumpAndSettle();
 
@@ -281,12 +283,14 @@ void main() {
     expect(find.text('Usage limit reached. Try again later.'), findsOneWidget);
     expect(find.byKey(const Key('ai-login-email')), findsNothing);
 
+    await reveal(tester, const Key('ai-diagnose-submit'));
     await tester.tap(find.byKey(const Key('ai-diagnose-submit')));
     await tester.pumpAndSettle();
     expect(
       find.text('Your session expired or is not authorized for this tool.'),
       findsOneWidget,
     );
+    await reveal(tester, const Key('ai-login-email'));
     expect(find.byKey(const Key('ai-login-email')), findsOneWidget);
     expect(find.text(token), findsNothing);
   });
@@ -327,6 +331,7 @@ void main() {
     expect(find.textContaining('Retry after about 30 seconds'), findsOneWidget);
     expect(find.byKey(const Key('ai-open-solution')), findsNothing);
 
+    await reveal(tester, const Key('ai-diagnose-submit'));
     await tester.tap(find.byKey(const Key('ai-diagnose-submit')));
     await tester.pumpAndSettle();
     expect(find.text('The diagnosis could not complete safely.'), findsOneWidget);
