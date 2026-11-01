@@ -82,7 +82,7 @@ class TestCpanelPackage(unittest.TestCase):
         checksum_file = self.output.with_name(self.output.name + ".sha256")
         self.assertEqual(
             checksum_file.read_text(encoding="ascii"),
-            f"{result['sha256']}  {self.output.name}\\n",
+            f"{result['sha256']}  {self.output.name}\n",
         )
         proof = verify_archive(self.output, "e" * 40)
         self.assertEqual(proof["source_sha"], "e" * 40)
