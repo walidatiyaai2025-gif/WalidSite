@@ -151,6 +151,56 @@ class AdminAiProviderConsoleTest extends TestCase
         $this->assertNull($provider->fresh()->secret_ciphertext);
     }
 
+    public function test_provider_update_rejects_nested_secrets_without_changing_existing_credentials(): void
+    {
+        Http::fake();
+        $this->actingAs($this->account(), 'web');
+        $this->post('/admin/ai/providers', $this->providerForm())
+            ->assertRedirect('/admin/ai/providers');
+        $provider = AiProvider::firstOrFail();
+        $initialAuditCount = DB::table('ai_provider_audit_events')
+            ->where('provider_id', $provider->id)->count();
+
+        foreach (['en', 'ar'] as $locale) {
+            foreach ([['token' => 'not-a-valid-secret'], ['nested' => ['key' => 'also-invalid']]] as $secret) {
+                $this->patch('/admin/ai/providers/'.$provider->id.'?lang='.$locale, [
+                    'secret' => $secret,
+                    'enabled' => '1',
+                    'daily_budget_minor' => 999,
+                ])->assertRedirect()->assertSessionHasErrors('secret');
+
+                $unchanged = $provider->fresh();
+                $this->assertSame('super-private-test-credential', $unchanged->secret_ciphertext);
+                $this->assertFalse($unchanged->enabled);
+                $this->assertSame(500, $unchanged->daily_budget_minor);
+            }
+        }
+
+        $this->assertSame($initialAuditCount, DB::table('ai_provider_audit_events')
+            ->where('provider_id', $provider->id)->count());
+        Http::assertNothingSent();
+
+        // Ordinary blank secret inputs preserve credentials; a genuine new
+        // scalar credential still uses the encrypted, audited API writer.
+        foreach (['', '   ', null] as $blank) {
+            $this->patch('/admin/ai/providers/'.$provider->id, [
+                'secret' => $blank, 'routing_priority' => 25,
+            ])->assertRedirect('/admin/ai/providers')->assertSessionHasNoErrors();
+            $this->assertSame('super-private-test-credential', $provider->fresh()->secret_ciphertext);
+        }
+        $this->patch('/admin/ai/providers/'.$provider->id, [
+            'secret' => 'rotated-private-test-credential',
+        ])->assertRedirect('/admin/ai/providers')->assertSessionHasNoErrors();
+        $this->assertSame('rotated-private-test-credential', $provider->fresh()->secret_ciphertext);
+        $this->assertNotSame('rotated-private-test-credential',
+            DB::table('ai_providers')->where('id', $provider->id)->value('secret_ciphertext'));
+
+        $this->get('/admin/ai/providers?lang=ar')->assertOk()
+            ->assertDontSee('super-private-test-credential')
+            ->assertDontSee('rotated-private-test-credential')
+            ->assertDontSee('also-invalid');
+    }
+
     public function test_admin_can_change_routing_priority_but_invalid_values_are_rejected(): void
     {
         $this->actingAs($this->account(), 'web');

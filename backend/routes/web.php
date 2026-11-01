@@ -265,11 +265,16 @@ Route::middleware('auth:web')->group(function (): void {
         Request $request, \App\Models\AiProvider $provider
     ) {
         abort_unless($request->user()?->canAccessAdmin(), 403);
-        // Empty input must not silently erase an existing secret.
+        // Blank inputs must not erase a stored credential. Do not coerce
+        // array/object-shaped values into strings: leave malformed payloads
+        // intact for the API writer's strict string validation (no warnings).
         if ($request->boolean('clear_secret')) {
             $request->merge(['secret' => null]);
-        } elseif (trim((string) $request->input('secret', '')) === '') {
-            $request->request->remove('secret');
+        } else {
+            $secret = $request->input('secret');
+            if ($secret === null || (is_string($secret) && trim($secret) === '')) {
+                $request->request->remove('secret');
+            }
         }
         // Only exact internal return markers are valid redirect targets.
         // Arbitrary URLs never become destinations.
