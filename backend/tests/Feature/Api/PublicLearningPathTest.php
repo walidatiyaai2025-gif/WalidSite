@@ -148,4 +148,24 @@ final class PublicLearningPathTest extends TestCase
         $this->getJson('/api/v1/mobile/learn')->assertOk()
             ->assertJsonCount(0, 'data');
     }
+
+    public function test_withdrawn_learning_path_disappears_and_catalog_disallows_stale_caching(): void
+    {
+        $id = $this->path('revocable-training');
+
+        $published = $this->getJson('/api/v1/mobile/learn?lang=ar')->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $id);
+        $this->assertStringContainsString('no-store',
+            (string) $published->headers->get('Cache-Control'));
+
+        DB::table('learning_paths')->where('id', $id)->update(['published' => false]);
+
+        $withdrawn = $this->getJson('/api/v1/mobile/learn?lang=ar')->assertOk()
+            ->assertJsonCount(0, 'data')
+            ->assertDontSee($id)
+            ->assertDontSee('revocable-training');
+        $this->assertStringContainsString('no-store',
+            (string) $withdrawn->headers->get('Cache-Control'));
+    }
 }
