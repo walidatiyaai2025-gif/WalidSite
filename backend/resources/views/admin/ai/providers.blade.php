@@ -35,6 +35,7 @@ button.secondary{background:var(--primary)}.muted{color:#55718B}.actions{display
 <nav aria-label="{{ $locale === 'ar' ? 'قائمة الإدارة' : 'Admin navigation' }}">
 <a href="{{ route('admin.home', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'نظرة عامة' : 'Overview' }}</a>
 <a href="{{ route('admin.providers.index', ['lang' => $locale]) }}" aria-current="page">{{ $locale === 'ar' ? 'مزودو AI' : 'AI providers' }}</a>
+<a href="{{ route('admin.routing.index', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'توجيه AI' : 'AI routing' }}</a>
 <a href="{{ route('admin.usage.index', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'سجل استخدام AI' : 'AI usage audit' }}</a>
 <a href="{{ route('home', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'الموقع العام' : 'Public website' }}</a></nav></aside>
 <main id="content" class="body" tabindex="-1">
