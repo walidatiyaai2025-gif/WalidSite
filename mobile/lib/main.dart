@@ -8,6 +8,7 @@ import 'learning/verified_learning_paths.dart';
 import 'github/verified_github_portfolio.dart';
 import 'solutions/offline_solution_finder.dart';
 import 'ai/ai_troubleshooter.dart';
+import 'account/account_journey.dart';
 
 void main() => runApp(const WaleedTechApp());
 
@@ -230,6 +231,26 @@ class CompanionHome extends StatelessWidget {
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute<void>(
                     builder: (_) => VerifiedLearningLibrary(arabic: arabic),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Card(
+              child: ListTile(
+                key: const Key('account-saved-profile-entry'),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16, vertical: 12,
+                ),
+                leading: const Icon(Icons.person_outline, size: 30),
+                title: Text(arabic ? 'المحفوظات وحسابي' : 'Saved resources & account'),
+                subtitle: Text(arabic
+                    ? 'سجل الدخول لقراءة محفوظاتك وإدارة جلسة الحساب'
+                    : 'Sign in to access verified saved resources and your session'),
+                trailing: Icon(arabic ? Icons.chevron_left : Icons.chevron_right),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => MobileAccountJourney(arabic: arabic),
                   ),
                 ),
               ),
