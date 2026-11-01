@@ -1,18 +1,23 @@
-# T011 durable AI job foundation
+# T011 durable AI jobs and bounded cron ticks
 
-This implementation is intentionally **storage-only**. It does not call Ollama/OpenAI, launch a process, run a scheduler or pretend a provider credential exists. T014 owns the authenticated model execution and image/research pipeline, and must supply a bounded handler.
+The job queue and execution dispatcher are implemented. **No provider inference, paid request, image generation, or live cPanel scheduler is activated by this file.** Provider-specific handlers and editorial/image workflows belong to T014; host activation and production smoke belong to T025–T027.
 
-## Runtime contract
-- Queue through `App\\AI\\DurableAiQueue::enqueue()`: immutable idempotency key and ordered step keys, no raw prompts or secrets stored.
-- `claimNext(owner)` recovers at most five expired leases and claims **one** job per invocation, using a row lock on the provider as the MariaDB concurrency mutex. Default provider limit is one.
-- Only `enabled`, explicitly healthy providers may be claimed; managed providers require a positive cost reservation, and daily usage + active reservations must fit their admin-configured budget.
-- A worker that actually runs a step must call `completeStep` with an opaque storage reference; repeated equal checkpoints are safe. `completeJob` requires all checkpoints; paid jobs require at least one usage receipt.
-- A legitimate in-flight worker may call `heartbeat(jobId, owner, ttlSeconds)` to renew only its active unexpired lease. Renewal is bounded by **five minutes from the original claim**, never shortens an existing lease, and cannot revive completed or expired work. Use it before a lengthy checkpoint, not to run a continuous daemon; the caller must stop at the lease deadline.
-- `recordUsage` is idempotent by unique usage key, validates currency and nonnegative token-count metadata, checks daily limits and never stores prompts, provider secrets or responses.
-- `failJob` records only a redacted machine error code, schedules bounded exponential retries (maximum five attempts), and opens a five-minute circuit after three consecutive failures. Expired leases can be recovered in bounded batches.
-- Do not schedule a continuous worker process on cPanel. Future T014 must implement a one-action-per-request/cron-tick integration with a finite execution budget, explicit handler registration and safe errors.
+## Storage and safety
 
-## Verified scope / limits
-PHPUnit coverage tests duplicate suppression, owner leases, checkpoint immutability, spend caps, retry circuit, expired recovery, no outbound calls and opaque references. CI also runs MariaDB migration smoke. Concurrent multi-process load testing, global per-site caps, actual token pricing, model catalog and image generation are **not delivered** here; those are separate T014/T015/T024 acceptance gates.
+- `DurableAiQueue::enqueue()` takes an idempotency key, stable job kind, and **ordered** checkpoint names, with a maximum of 20 steps and five failure attempts. A conflicting idempotency key is rejected. No raw prompts, response text, credentials, or customer secrets are stored.
+- Queue admission is limited to enabled, explicitly healthy, non-archived providers with closed circuit breakers, configured concurrency and reservation/budget capacity. Default concurrency is one per provider. Paid-compatible jobs require positive reservation.
+- `claimNext(owner, ttl, allowedKinds)` claims at most one job through the provider row mutex. A worker registering specific kinds never consumes unrecognized jobs. Expired lease recovery is bounded to five per invocation.
+- Completed step checkpoints are immutable, with opaque storage-only output references. `yieldCheckpointedJob` releases the owned lease **only after a new successful checkpoint** and preserves the failure retry allowance for later cron ticks.
+- On failure only redacted machine error codes persist; bounded exponential retry and circuit breaker protect providers. On success, paid jobs require an idempotent usage receipt and all checkpoints; cost receipts cannot exceed the job reservation or provider daily budget.
+- `heartbeat` allows active lease owners to extend up to five minutes from claim, never resurrecting expired leases. Lease ownership is rechecked for every checkpoint, receipt, completion and failure.
 
-The admin panel persists daily budgets, concurrency, credentials and health; never assume stored budget settings alone mean all future providers are billed or executed. All web/API access remains protected by T002/T015.
+## One checkpoint per cPanel invocation
+
+- `BoundedAiWorker::tick(owner, handlers)` performs **at most one** registered checkpoint per call, then yields or completes. Missing handlers return `idle` with **no job claim**; exceptions become redacted failure/retry states; a lost lease is not overwritten.
+- `AiStepHandlerRegistry` is application-singleton and contains only trusted, explicit PHP closures supplied by server code. Nothing in a DB row or incoming request can select a handler class. The handler signature is `fn (stdClass $job, string $stepKey, string $owner, DurableAiQueue $queue): ?string`. It may record actual usage and return an opaque durable result reference; it must bound any HTTP work and not log prompts or credentials.
+- Laravel command `php artisan ai:tick` calls the bounded worker once and exits. The existing `schedule:run` registration runs each minute **only when handlers have been explicitly registered**, with overlap suppression. A fresh installation has no handlers and therefore makes no inference calls. Production hosting cron must separately invoke `php artisan schedule:run` as provisioned by the operator; the application does not install a cron daemon or pretend to have a running worker.
+- Step `position` is persisted to maintain enqueue order. Migration deterministically orders legacy checkpoints by creation timestamp / UUID when the old schema lacked an ordinal. Original legacy insertion order cannot be recovered if those values tie; no false claim of perfect reconstruction.
+
+## Acceptance boundary
+
+Automated tests cover idempotency, locks, checkpoints, resume across ticks, ordered execution, no-handler fail-closed behavior, retries, budget receipts, circuit breaker, leases, redacted errors and the CLI guard. This is a tested **generic orchestration runtime**, not proof that T014 content handlers exist, cPanel cron is installed, a provider credential is usable, staging was deployed, or real inference completed.
