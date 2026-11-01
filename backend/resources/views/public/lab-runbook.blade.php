@@ -26,6 +26,7 @@
 <article class="site-wrap runbook-shell" aria-labelledby="runbook-title">
     <nav class="runbook-nav" aria-label="{{ $locale === 'ar' ? 'تنقل الدليل' : 'Runbook navigation' }}">
         <a href="{{ route('public.lab', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'العودة إلى المختبر التقني' : 'Back to technology lab' }}</a>
+        <a href="{{ route('public.lab.runbooks', ['lang' => $locale, 'page' => $libraryPage]) }}">{{ $locale === 'ar' ? 'العودة إلى مكتبة الأدلة' : 'Back to runbook library' }}</a>
         <a href="{{ route('public.contact', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'التبليغ عن مشكلة بالمحتوى' : 'Report a content issue' }}</a>
     </nav>
     <p class="runbook-meta">{{ $locale === 'ar' ? 'دليل تشغيل معتمد بنسخة محددة' : 'Version-reviewed operational guide' }}</p>
