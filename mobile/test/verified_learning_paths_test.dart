@@ -186,6 +186,7 @@ void main() {
       find.byKey(const Key('verified-learning-entry')), 130,
     );
     await tester.ensureVisible(find.byKey(const Key('verified-learning-entry')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('verified-learning-entry')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('learning-unconfigured')), findsOneWidget);
