@@ -64,7 +64,7 @@ final class ProviderEndpoint
                 throw new InvalidArgumentException('Unsafe provider URL.');
             }
 
-            foreach (['localhost', 'local', 'internal', 'svc', 'lan', 'home', 'invalid', 'onion'] as $suffix) {
+            foreach (['localhost', 'local', 'localdomain', 'internal', 'svc', 'lan', 'home', 'arpa', 'invalid', 'onion'] as $suffix) {
                 if ($dnsHost === $suffix || str_ends_with($dnsHost, '.'.$suffix)) {
                     throw new InvalidArgumentException('Internal provider DNS destinations are not allowed.');
                 }
