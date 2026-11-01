@@ -463,7 +463,6 @@ class _MobileAccountJourneyState extends State<MobileAccountJourney> {
 
   @override
   Widget build(BuildContext context) {
-    final ar = widget.arabic;
     return Scaffold(
       appBar: AppBar(title: Text(_label('Saved & profile', 'المحفوظات والحساب'))),
       body: SafeArea(child: !_configured
