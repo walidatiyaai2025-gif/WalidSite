@@ -64,6 +64,7 @@ button{min-height:44px;border:0;border-radius:9px;background:var(--link);color:w
 <span class="muted">{{ $locale === 'ar' ? 'آخر حالة صحية' : 'Last recorded health' }}:
 {{ match($provider->health_status) { 'healthy' => $locale === 'ar' ? 'سليم' : 'healthy', 'unhealthy' => $locale === 'ar' ? 'غير سليم' : 'unhealthy', default => $locale === 'ar' ? 'غير متحقق منه' : 'unverified' } }}</span>
 </div>
+<p><a href="{{ route('admin.providers.show', ['provider' => $provider->id, 'lang' => $locale]) }}">{{ $locale === 'ar' ? 'فتح محرر المزود وفحص الاتصال' : 'Open provider editor and health check' }}</a></p>
 <form method="post" action="{{ route('admin.providers.update', [
     'provider' => $provider->id, 'lang' => $locale,
     'return' => 'routing', 'page' => $providers->currentPage(),
