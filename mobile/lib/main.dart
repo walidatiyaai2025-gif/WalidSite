@@ -3,6 +3,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'theme/waleed_theme.dart';
 import 'runbooks/offline_runbooks.dart';
 import 'articles/verified_articles.dart';
+import 'learning/verified_learning_paths.dart';
 import 'solutions/offline_solution_finder.dart';
 
 void main() => runApp(const WaleedTechApp());
@@ -158,6 +159,27 @@ class CompanionHome extends StatelessWidget {
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute<void>(
                     builder: (_) => VerifiedArticleLibrary(arabic: arabic),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Card(
+              child: ListTile(
+                key: const Key('verified-learning-entry'),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16, vertical: 12,
+                ),
+                leading: const Icon(Icons.school_outlined, size: 30),
+                title: Text(arabic ? 'مسارات التعلّم' : 'Learning paths'),
+                subtitle: Text(arabic
+                    ? 'استعرض الدروس المنشورة من المصدر المعتمد'
+                    : 'Explore published lessons from the verified catalog'),
+                trailing: Icon(arabic
+                    ? Icons.chevron_left : Icons.chevron_right),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => VerifiedLearningLibrary(arabic: arabic),
                   ),
                 ),
               ),
