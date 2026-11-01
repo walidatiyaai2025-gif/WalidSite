@@ -127,6 +127,43 @@ class EditorialPipelineTest extends TestCase
         ]);
     }
 
+    public function test_nested_credential_sources_never_reach_a_claimed_paid_ai_provider(): void
+    {
+        Http::fake(['*' => Http::response([
+            'choices' => [['message' => ['content' => 'Should not be generated']]],
+        ], 200)]);
+        $provider = $this->provider();
+        $article = $this->article();
+        $jobId = $this->claimedJob($provider, 'editorial-draft', 50);
+
+        foreach ([
+            'https://docs.example.org/guide?token[0]=private',
+            'https://docs.example.org/guide?source[api_key]=private',
+            'https://docs.example.org/guide?source%255Baccess_token%255D=private',
+            'https://docs.example.org/guide#sessionid[0]=private',
+        ] as $source) {
+            try {
+                app(EditorialAiGenerator::class)->draft(
+                    $article, $provider, 'chosen-model', [$source],
+                    'Research safe database recovery', $jobId, 'review-worker', 50
+                );
+                $this->fail('Secret-bearing nested source entered a leased model prompt.');
+            } catch (InvalidArgumentException $exception) {
+                $this->assertSame(
+                    'Research sources must use a safe public HTTPS URL.',
+                    $exception->getMessage()
+                );
+            }
+        }
+
+        Http::assertNothingSent();
+        $this->assertDatabaseCount('ai_usage', 0);
+        $this->assertSame(0, $article->revisions()->count());
+        $this->assertDatabaseHas('ai_jobs', [
+            'id' => $jobId, 'reserved_budget_minor' => 50, 'status' => 'running',
+        ]);
+    }
+
     public function test_independent_admin_review_approves_only_exact_current_draft_and_valid_sources(): void
     {
         $article = $this->article();
