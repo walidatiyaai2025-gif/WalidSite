@@ -259,6 +259,50 @@ class EditorialPipelineTest extends TestCase
             $jobId, 'review-worker', 50);
     }
 
+    public function test_arabic_and_romanized_owner_image_prompts_are_blocked_before_provider_request(): void
+    {
+        Http::fake(['*' => Http::response(['error' => 'should not be called'], 503)]);
+        $provider = $this->provider();
+        $jobId = $this->claimedJob($provider, 'illustration', 50);
+        $generator = app(EditorialAiGenerator::class);
+
+        foreach ([
+            'ارسم صورة وليد عطية الحقيقية',
+            'صورة شخصية لوليد عطية بالذكاء الاصطناعي',
+            'أنشئ رسماً لــوَلِيد عطية',
+            'اعمل سيلفي واقعي لصاحب الموقع',
+            'ارسم صورتي وملامحي بشكل واقعي',
+            'Create an illustration of Waleed',
+            'Draw Walid as a realistic engineer',
+            'Generate a headshot of the owner',
+        ] as $prompt) {
+            try {
+                $generator->illustration($provider, 'image-model', $prompt,
+                    $jobId, 'review-worker', 50);
+                $this->fail('Owner or personal likeness prompt was accepted.');
+            } catch (InvalidArgumentException $exception) {
+                $this->assertSame('Only bounded original technical artwork is allowed.',
+                    $exception->getMessage());
+            }
+        }
+
+        Http::assertNothingSent();
+        $this->assertDatabaseCount('assets', 0);
+        $this->assertDatabaseCount('ai_usage', 0);
+
+        // Arabic non-person technical artwork remains allowed up to the
+        // provider boundary. A failed provider creates no public asset.
+        $this->expectException(RuntimeException::class);
+        try {
+            $generator->illustration($provider, 'image-model',
+                'مخطط تقني تجريدي لاتصالات قواعد البيانات', $jobId,
+                'review-worker', 50);
+        } finally {
+            Http::assertSentCount(1);
+            $this->assertDatabaseCount('assets', 0);
+        }
+    }
+
     public function test_registered_durable_editorial_job_runs_one_safe_step_and_preserves_private_review(): void
     {
         Http::fake(['http://127.0.0.1:11434/api/generate' => Http::response([
