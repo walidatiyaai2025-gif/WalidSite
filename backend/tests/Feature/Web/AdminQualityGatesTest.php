@@ -168,6 +168,63 @@ final class AdminQualityGatesTest extends TestCase
             ->assertSee('أعد المحاولة الآن');
     }
 
+    public function test_quality_state_labels_and_retry_actions_are_accessible_in_both_locales(): void
+    {
+        Http::fake();
+        $this->actingAs($this->account('admin'), 'web');
+        $provider = $this->provider();
+        $retry = $this->job($provider, 'retry', 1, 3);
+        $failed = $this->job($provider, 'failed', 3, 3);
+
+        $article = Article::create([
+            'slug' => 'quality-localization-draft',
+            'title_en' => 'Quality localized draft',
+            'title_ar' => 'مسودة جودة مترجمة',
+            'canonical_lang' => 'ar',
+        ]);
+        $article->revisions()->create([
+            'revision_no' => 1,
+            'status' => 'draft',
+            'body_md' => 'NEVER-PUBLISH-PRIVATE-DRAFT-BODY',
+            'citations_json' => [],
+            'validation_json' => [
+                'citations_passed' => false,
+                'technical_passed' => false,
+            ],
+        ]);
+
+        $english = $this->get('/admin/quality?lang=en')->assertOk()
+            ->assertSee('<td>draft</td>', false)
+            ->assertSee('<td>retry</td>', false)
+            ->assertSee('<td>failed</td>', false)
+            ->assertSee('aria-label="Retry job '.$retry.' now"', false)
+            ->assertSee('href="'.e(route('admin.content.index', [
+                'article' => $article->id, 'lang' => 'en',
+            ])).'"', false)
+            ->assertDontSee('NEVER-PUBLISH-PRIVATE-DRAFT-BODY')
+            ->assertDontSee('PRIVATE-QUALITY-SECRET');
+
+        $arabic = $this->get('/admin/quality?lang=ar')->assertOk()
+            ->assertSee('dir="rtl"', false)
+            ->assertSee('<td>مسودة</td>', false)
+            ->assertSee('<td>بانتظار إعادة المحاولة</td>', false)
+            ->assertSee('<td>فشلت</td>', false)
+            ->assertSee('aria-label="إعادة محاولة المهمة '.$retry.'"', false)
+            ->assertSee('<code dir="ltr">'.$retry.'</code>', false)
+            ->assertSee('<code dir="ltr">step_failed</code>', false)
+            ->assertDontSee('aria-label="إعادة محاولة المهمة '.$failed.'"', false)
+            ->assertDontSee('NEVER-PUBLISH-PRIVATE-DRAFT-BODY');
+
+        $this->assertSame(1, substr_count($english->getContent(), 'aria-label="Retry job '));
+        $this->assertSame(1, substr_count($arabic->getContent(), 'aria-label="إعادة محاولة المهمة '));
+
+        // Display-only localization never changes canonical job status or
+        // makes terminal work retryable.
+        $this->assertSame('retry', DB::table('ai_jobs')->where('id', $retry)->value('status'));
+        $this->assertSame('failed', DB::table('ai_jobs')->where('id', $failed)->value('status'));
+        Http::assertNothingSent();
+    }
+
     public function test_quality_draft_titles_open_the_exact_authorized_editor_in_both_locales(): void
     {
         $this->actingAs($this->account('admin'), 'web');
