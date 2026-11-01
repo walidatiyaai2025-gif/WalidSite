@@ -404,7 +404,7 @@ final class MobileAiDiagnoseTest extends TestCase
 
     public function test_expired_queued_diagnosis_clears_ciphertext_without_provider_call(): void
     {
-        [, $model] = $this->configure();
+        [$provider, $model] = $this->configure();
         $user = $this->user();
         $request = AiDiagnosisRequest::create([
             'user_id' => $user->id,
@@ -412,11 +412,15 @@ final class MobileAiDiagnoseTest extends TestCase
             'request_blob' => Crypt::encryptString('expired-private-input'),
             'expires_at' => now()->subMinute(),
         ]);
+        $request->forceFill(['job_id' => app(DurableAiQueue::class)->enqueue(
+            $provider, 'mobile-diagnosis', 'mobile-diagnosis:'.$request->id,
+            ['classify'], 0, 1
+        )])->save();
         Http::fake();
 
         try {
             app(MobileDiagnosisDispatcher::class)->execute((object) [
-                'id' => (string) Str::uuid(),
+                'id' => $request->job_id,
             ], 'classify', 'test-worker');
             $this->fail('Expired diagnosis must not execute.');
         } catch (\DomainException $exception) {
