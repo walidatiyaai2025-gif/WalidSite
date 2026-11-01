@@ -102,10 +102,15 @@ class ArticleRevision extends Model
             }
         }
 
-        $query = urldecode((string) ($parts['query'] ?? ''));
+        // Signed documentation URLs and OAuth fragments can contain
+        // credentials even when an editor has marked the source reviewed.
+        // Keep ordinary public docs query strings, but never publish common
+        // API keys, capability tokens or cloud signing parameters.
+        $parameters = urldecode((string) ($parts['query'] ?? ''))
+            .'&'.urldecode((string) ($parts['fragment'] ?? ''));
         return preg_match(
-            '/(?:^|&)(?:access[_-]?token|api[_-]?key|auth(?:orization)?|password|secret|signature|session)=/i',
-            $query
+            '/(?:^|[?&;])(?:access[_-]?token|token|api[_-]?key|key|auth(?:orization)?|password|secret|signature|sig|session|jwt|client[_-]?secret|private[_-]?key|code|ticket|awsaccesskeyid|x[-_]amz[-_][a-z0-9_-]+|x[-_]goog[-_][a-z0-9_-]+)=/i',
+            $parameters
         ) !== 1;
     }
 }
