@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'signed_runbook_sync.dart';
 
 /// The bundled pack is an offline-first *safe fallback*, not a successful sync.
 /// T013 does not assert that the live runbook API or signature checks exist.
@@ -12,6 +13,7 @@ class OfflineRunbookPack {
     required this.lastSynced,
     required this.verifiedAt,
     required this.items,
+    this.signedVerified = false,
   });
 
   final String version;
@@ -19,6 +21,10 @@ class OfflineRunbookPack {
   final DateTime? lastSynced;
   final DateTime? verifiedAt;
   final List<OfflineRunbook> items;
+
+  // True only after pinned-key signature verification by SignedRunbookSource.
+  // Not parsed from downloaded JSON or inferred from publisher timestamps.
+  final bool signedVerified;
 
   bool get isStale {
     final verified = verifiedAt;
@@ -138,21 +144,54 @@ class OfflineRunbook {
 }
 
 class OfflineRunbookLibrary extends StatefulWidget {
-  const OfflineRunbookLibrary({required this.arabic, this.bundledPack, super.key});
+  const OfflineRunbookLibrary({required this.arabic, this.bundledPack, this.repository, super.key});
   final bool arabic;
 
   // Tests can supply deterministic offline content without depending on an
   // AssetBundle read during a Flutter FakeAsync widget frame.
   final Future<OfflineRunbookPack>? bundledPack;
+  final OfflineRunbookRepository? repository;
 
   @override
   State<OfflineRunbookLibrary> createState() => _OfflineRunbookLibraryState();
 }
 
 class _OfflineRunbookLibraryState extends State<OfflineRunbookLibrary> {
-  late final Future<OfflineRunbookPack> _pack =
-      widget.bundledPack ?? OfflineRunbookPack.loadBundled();
+  late final OfflineRunbookRepository _repository;
+  late Future<OfflineRunbookPack> _pack;
   String _query = '';
+  String? _syncError;
+  bool _syncing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _repository = widget.repository ?? OfflineRunbookRepository();
+    // The app always opens offline: first a reverified signed local
+    // snapshot if configured, then the safe bundled educational pack.
+    _pack = widget.bundledPack ?? _repository.load();
+  }
+
+  Future<void> _sync() async {
+    if (_syncing || !_repository.source.configured) return;
+    setState(() {
+      _syncing = true;
+      _syncError = null;
+    });
+    try {
+      final next = await _repository.sync();
+      if (!mounted) return;
+      setState(() => _pack = Future.value(next));
+    } catch (_) {
+      // Never surface raw provider responses, URLs, tokens or HTTP details.
+      if (!mounted) return;
+      setState(() => _syncError = widget.arabic
+          ? 'تعذّر التحقق من التحديث. المحتوى المحلي السابق ما زال متاحًا.'
+          : 'Update could not be verified. Previous offline content remains available.');
+    } finally {
+      if (mounted) setState(() => _syncing = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -186,6 +225,24 @@ class _OfflineRunbookLibraryState extends State<OfflineRunbookLibrary> {
             padding: const EdgeInsets.all(20),
             children: [
               _PackStatus(pack: pack, arabic: arabic),
+              const SizedBox(height: 12),
+              if (_repository.source.configured)
+                FilledButton.icon(
+                  key: const Key('runbook-sync'),
+                  onPressed: _syncing ? null : _sync,
+                  icon: const Icon(Icons.sync_outlined),
+                  label: Text(arabic ? 'التحقق من تحديث الأدلة' : 'Verify runbook update'),
+                )
+              else
+                Text(
+                  arabic ? 'التحديثات الموقعة غير مهيأة؛ يمكنك القراءة بلا اتصال.'
+                      : 'Signed updates not configured. Offline reading is available.',
+                  key: const Key('runbook-sync-unconfigured'),
+                ),
+              if (_syncing) const LinearProgressIndicator(key: Key('runbook-sync-progress')),
+              if (_syncError != null)
+                Text(_syncError!, key: const Key('runbook-sync-error'),
+                    style: const TextStyle(color: Colors.red)),
               const SizedBox(height: 16),
               TextField(
                 key: const Key('runbook-search'),
@@ -204,7 +261,11 @@ class _OfflineRunbookLibraryState extends State<OfflineRunbookLibrary> {
                   key: Key('runbook-${item.id}'),
                   leading: const Icon(Icons.menu_book_outlined),
                   title: Text(item.title(arabic)),
-                  subtitle: Text(arabic ? 'حزمة محلية — لا تحتاج إنترنت' : 'Bundled — available without internet'),
+                  subtitle: Text(pack.signedVerified
+                      ? (arabic ? 'نسخة موقّعة تم التحقق منها — متاحة دون إنترنت'
+                          : 'Verified signed snapshot — saved offline')
+                      : (arabic ? 'حزمة تعليمية مرفقة — متاحة دون إنترنت'
+                          : 'Bundled educational copy — available offline')),
                   onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
                     builder: (_) => OfflineRunbookDetail(arabic: arabic, item: item, pack: pack),
                   )),
@@ -252,14 +313,24 @@ class _PackStatus extends StatelessWidget {
   }
 }
 
-class OfflineRunbookDetail extends StatelessWidget {
+class OfflineRunbookDetail extends StatefulWidget {
   const OfflineRunbookDetail({required this.item, required this.pack, required this.arabic, super.key});
   final OfflineRunbook item;
   final OfflineRunbookPack pack;
   final bool arabic;
 
   @override
+  State<OfflineRunbookDetail> createState() => _OfflineRunbookDetailState();
+}
+
+class _OfflineRunbookDetailState extends State<OfflineRunbookDetail> {
+  final Set<int> _completed = <int>{};
+
+  @override
   Widget build(BuildContext context) {
+    final item = widget.item;
+    final pack = widget.pack;
+    final arabic = widget.arabic;
     final steps = item.steps(arabic);
     return Scaffold(
       appBar: AppBar(title: Text(item.title(arabic))),
@@ -302,12 +373,19 @@ class OfflineRunbookDetail extends StatelessWidget {
           for (var i = 0; i < steps.length; i++)
             Padding(
               padding: const EdgeInsets.only(bottom: 12),
-              child: Semantics(
-                label: arabic ? 'خطوة ${i + 1}' : 'Step ${i + 1}',
-                child: ListTile(
-                  leading: CircleAvatar(child: Text('${i + 1}')),
-                  title: SelectableText(steps[i]),
-                ),
+              child: CheckboxListTile(
+                key: Key('runbook-step-${i + 1}-complete'),
+                value: _completed.contains(i),
+                controlAffinity: ListTileControlAffinity.leading,
+                title: SelectableText(steps[i]),
+                subtitle: Text(arabic ? 'خطوة ${i + 1}' : 'Step ${i + 1}'),
+                onChanged: (value) => setState(() {
+                  if (value == true) {
+                    _completed.add(i);
+                  } else {
+                    _completed.remove(i);
+                  }
+                }),
               ),
             ),
         ],

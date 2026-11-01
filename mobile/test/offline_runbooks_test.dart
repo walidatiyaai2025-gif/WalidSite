@@ -175,6 +175,46 @@ void main() {
     expect(find.text('لا توجد أدلة مطابقة.'), findsOneWidget);
   });
 
+  testWidgets('offline runbook steps can be marked and unmarked with visible state', (tester) async {
+    const item = OfflineRunbook(
+      id: 'safe-progress',
+      titleEn: 'Safe progress checklist',
+      titleAr: 'قائمة التقدم الآمنة',
+      stepsEn: ['Verify backup', 'Check recovery'],
+      stepsAr: ['تحقق من النسخة', 'افحص التعافي'],
+    );
+    const pack = OfflineRunbookPack(
+      version: '0.1.0',
+      source: 'Bundled educational draft',
+      lastSynced: null,
+      verifiedAt: null,
+      items: [item],
+    );
+    await tester.pumpWidget(const MaterialApp(
+      home: OfflineRunbookDetail(arabic: true, item: item, pack: pack),
+    ));
+    final first = find.byKey(const Key('runbook-step-1-complete'));
+    final second = find.byKey(const Key('runbook-step-2-complete'));
+    expect(tester.widget<CheckboxListTile>(first).value, false);
+    expect(tester.widget<CheckboxListTile>(second).value, false);
+
+    // SelectableText consumes a tile-center tap, but the actual checkbox
+    // is a separate accessible control. Exercise the real user target.
+    final firstCheckbox = find.descendant(
+      of: first,
+      matching: find.byType(Checkbox),
+    );
+    await tester.tap(firstCheckbox);
+    await tester.pump();
+    expect(tester.widget<CheckboxListTile>(first).value, true);
+    expect(tester.widget<CheckboxListTile>(second).value, false);
+
+    await tester.tap(firstCheckbox);
+    await tester.pump();
+    expect(tester.widget<CheckboxListTile>(first).value, false);
+    expect(find.text('تحقق من النسخة'), findsOneWidget);
+  });
+
   testWidgets('Arabic runbooks use local RTL strings', (tester) async {
     // The English end-to-end test exercises the real bundled asset. For
     // locale-specific widget coverage, inject a deterministic immutable
