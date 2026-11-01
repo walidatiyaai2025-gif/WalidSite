@@ -10,7 +10,14 @@ use Illuminate\Support\Facades\Route;
  * third-party raw GitHub availability affecting the first viewport.
  */
 Route::get('/media/owner-portrait.jpg', static function () {
-    $portrait = base_path('../assets/portraits/portrait-light-derived.jpg');
+    // In the source tree the approved photo lives next to backend/.
+    // The cPanel installation ZIP intentionally keeps its copy under
+    // public_html/assets/portraits; Laravel's public_path resolves that root.
+    $packagedPortrait = public_path('assets/portraits/portrait-light-derived.jpg');
+    $sourcePortrait = base_path('../assets/portraits/portrait-light-derived.jpg');
+    $portrait = is_file($packagedPortrait) && is_readable($packagedPortrait)
+        ? $packagedPortrait
+        : $sourcePortrait;
     abort_unless(is_file($portrait) && is_readable($portrait), 404);
 
     return response()->file($portrait, [
