@@ -47,7 +47,7 @@ class EditorialPublicationSafetyTest extends TestCase
         ];
 
         foreach ($changes as $field => $value) {
-            $article = $this->reviewedArticle('reviewed-'.$field);
+            $article = $this->reviewedArticle('reviewed-'.str_replace('_', '-', $field));
             $article->publishVerified();
             $originalSlug = $article->slug;
 
