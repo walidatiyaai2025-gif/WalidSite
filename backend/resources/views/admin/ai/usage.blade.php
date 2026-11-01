@@ -16,6 +16,8 @@ aside{background:var(--nav);color:white;padding:24px}aside a{color:white;display
 main{padding:clamp(18px,4vw,48px);min-width:0}.panel{background:white;border:1px solid var(--border);border-radius:16px;padding:20px;margin-block:20px}
 table{width:100%;border-collapse:collapse}th,td{padding:12px;border-bottom:1px solid var(--border);text-align:start;vertical-align:top}
 th{color:var(--nav)}.scroll{overflow-x:auto}.muted{color:#55718B}
+.filter-controls{display:flex;align-items:center;flex-wrap:wrap;gap:12px;margin:18px 0}.filter-controls input{min-height:44px;padding:8px;border:1px solid #97B4C8;border-radius:8px;font:inherit;color:var(--ink)}
+.filter-controls button{background:var(--link);border-color:var(--link)}
 button{min-height:44px;border-radius:8px;border:1px solid white;color:white;background:transparent;padding:8px 14px;font:inherit}
 @media(max-width:700px){.layout{grid-template-columns:1fr}aside{padding:16px}}
 </style>
@@ -33,12 +35,20 @@ button{min-height:44px;border-radius:8px;border:1px solid white;color:white;back
 <form method="post" action="{{ route('admin.logout') }}">@csrf
 <button type="submit">{{ $locale === 'ar' ? 'خروج' : 'Sign out' }}</button></form>
 </aside>
-<main id="content">
+<main id="content" tabindex="-1">
 <h1>{{ $locale === 'ar' ? 'استخدام مزودي AI' : 'AI provider usage' }}</h1>
-<a href="{{ route('admin.usage.index', ['lang' => $locale === 'ar' ? 'en' : 'ar']) }}">{{ $locale === 'ar' ? 'English' : 'العربية' }}</a>
+<a href="{{ route('admin.usage.index', ['lang' => $locale === 'ar' ? 'en' : 'ar', 'day' => $day]) }}">{{ $locale === 'ar' ? 'English' : 'العربية' }}</a>
 <p>{{ $locale === 'ar'
-? 'إيصالات الاستهلاك المخزنة خلال اليوم بتوقيت UTC فقط. كل عملة معروضة بشكل منفصل، دون تحويل عملات أو تقديرات.'
-: 'Only persisted usage receipts for today (UTC). Each billed currency is shown separately, without FX conversion or estimated costs.' }}</p>
+? ($day === $todayDay ? 'إيصالات الاستهلاك المخزنة خلال اليوم بتوقيت UTC فقط. كل عملة معروضة بشكل منفصل، دون تحويل عملات أو تقديرات.' : 'إيصالات الاستهلاك المسجلة للتاريخ المحدد بتوقيت UTC. كل عملة منفصلة، دون تحويل عملات أو تقديرات.')
+: ($day === $todayDay ? 'Only persisted usage receipts for today (UTC). Each billed currency is shown separately, without FX conversion or estimated costs.' : 'Only persisted usage receipts for the selected UTC calendar day. Each billed currency is separate, without FX conversion or estimates.') }}</p>
+<form class="filter-controls" method="get" action="{{ route('admin.usage.index') }}">
+<input type="hidden" name="lang" value="{{ $locale }}">
+<label for="usage-day">{{ $locale === 'ar' ? 'تاريخ الإيصالات (UTC)' : 'Receipt day (UTC)' }}</label>
+<input type="date" id="usage-day" name="day" value="{{ $day }}" min="{{ $oldestDay }}" max="{{ $todayDay }}" required>
+<button type="submit">{{ $locale === 'ar' ? 'عرض الإيصالات' : 'Show receipts' }}</button>
+<a href="{{ route('admin.usage.index', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'اليوم (UTC)' : 'Today (UTC)' }}</a>
+</form>
+<p class="muted">{{ $locale === 'ar' ? 'تاريخ التدقيق المحدد:' : 'Selected audit day:' }} <time datetime="{{ $day }}">{{ $day }}</time> (UTC)</p>
 <p class="muted">{{ $locale === 'ar'
 ? 'الميزانيات اليومية المعروضة إعدادات محفوظة، وليست إثباتًا لتطبيق حد الإنفاق. قد تختلف عملة الإيصال عن عملة ميزانية المزود.'
 : 'Daily budgets shown are saved settings, not proof of runtime enforcement. Receipt currency may differ from the provider budget currency.' }}</p>
@@ -52,8 +62,8 @@ button{min-height:44px;border-radius:8px;border:1px solid white;color:white;back
 <th scope="col">{{ $locale === 'ar' ? 'المزود' : 'Provider' }}</th>
 <th scope="col">{{ $locale === 'ar' ? 'الميزانية اليومية المحفوظة' : 'Configured daily budget' }}</th>
 <th scope="col">{{ $locale === 'ar' ? 'عملة الإيصالات' : 'Billed currency' }}</th>
-<th scope="col">{{ $locale === 'ar' ? 'عدد الإيصالات اليوم' : 'Today’s receipts' }}</th>
-<th scope="col">{{ $locale === 'ar' ? 'تكلفة اليوم (وحدات صغرى)' : 'Today’s cost (minor units)' }}</th>
+<th scope="col">{{ $locale === 'ar' ? ($day === $todayDay ? 'عدد الإيصالات اليوم' : 'إيصالات اليوم المحدد') : ($day === $todayDay ? 'Today’s receipts' : 'Selected day receipts') }}</th>
+<th scope="col">{{ $locale === 'ar' ? ($day === $todayDay ? 'تكلفة اليوم (وحدات صغرى)' : 'تكلفة اليوم المحدد (وحدات صغرى)') : ($day === $todayDay ? 'Today’s cost (minor units)' : 'Selected day cost (minor units)') }}</th>
 </tr></thead>
 <tbody>
 @foreach($rows as $row)
