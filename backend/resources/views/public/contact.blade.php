@@ -1,5 +1,8 @@
 @php($locale = request()->query('lang') === 'ar' ? 'ar' : 'en')
 @extends('layouts.site')
+{{-- Direct view-render tests and callers without article context remain valid. --}}
+@php($reportArticle = $reportArticle ?? null)
+@php($suggestedSubject = $suggestedSubject ?? '')
 @section('title', $locale === 'ar' ? 'التواصل — وليد عطية' : 'Contact — Waleed Atiya')
 @push('styles')
 <style>
@@ -16,6 +19,12 @@
 <section class="site-wrap contact" aria-labelledby="contact-heading">
 <h1 id="contact-heading">{{ $locale === 'ar' ? 'التواصل' : 'Contact' }}</h1>
 <p>{{ $locale === 'ar' ? 'تُستخدم بيانات الرسالة فقط للرد على طلب التواصل، ولا تنشر على الموقع.' : 'Messages are used only to reply to the inquiry; they are not published.' }}</p>
+@if($reportArticle)
+<p class="contact-article-context">
+    {{ $locale === 'ar' ? 'الإبلاغ عن مشكلة في المقال المنشور:' : 'Reporting an issue in the published article:' }}
+    <a href="{{ route('public.article', ['slug' => $reportArticle->slug, 'lang' => $locale]) }}">{{ $locale === 'ar' ? $reportArticle->title_ar : $reportArticle->title_en }}</a>
+</p>
+@endif
 @if(session('contact_delivered'))
 <div class="contact-notice" role="status">{{ $locale === 'ar' ? 'تم تسليم الرسالة لخادم البريد المهيأ.' : 'The message was handed to the configured mail transport.' }}</div>
 <p><a class="contact-again" href="{{ route('public.contact', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'إرسال رسالة أخرى' : 'Send another message' }}</a></p>
@@ -48,7 +57,7 @@ default => $locale === 'ar' ? 'الموافقة على الخصوصية' : 'Priv
 'name' => $locale === 'ar' ? 'الاسم' : 'Name',
 'email' => $locale === 'ar' ? 'البريد' : 'Email',
 default => $locale === 'ar' ? 'الموضوع' : 'Subject' } }}</label>
-<input id="contact-{{ $field }}" type="{{ $field === 'email' ? 'email' : 'text' }}" name="{{ $field }}" value="{{ old($field) }}" required maxlength="{{ $field === 'email' ? 254 : 140 }}" @error($field) aria-invalid="true" aria-describedby="contact-{{ $field }}-error" @enderror>
+<input id="contact-{{ $field }}" type="{{ $field === 'email' ? 'email' : 'text' }}" name="{{ $field }}" value="{{ old($field, $field === 'subject' ? $suggestedSubject : '') }}" required maxlength="{{ $field === 'email' ? 254 : 140 }}" @error($field) aria-invalid="true" aria-describedby="contact-{{ $field }}-error" @enderror>
 @error($field)<p id="contact-{{ $field }}-error" class="contact-error" role="alert">{{ $message }}</p>@enderror
 @endforeach
 <label for="contact-message">{{ $locale === 'ar' ? 'الرسالة' : 'Message' }}</label>
