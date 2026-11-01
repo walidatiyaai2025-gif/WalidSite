@@ -5,7 +5,7 @@ import unittest
 import zipfile
 from pathlib import Path
 
-from qa.build_cpanel_package import build
+from qa.build_cpanel_package import build, verify_archive
 
 
 class TestCpanelPackage(unittest.TestCase):
@@ -76,6 +76,49 @@ class TestCpanelPackage(unittest.TestCase):
         (self.root / "backend/composer.lock").unlink()
         with self.assertRaisesRegex(ValueError, "composer.lock"):
             build(self.root, self.output, "b" * 40)
+
+    def test_checksum_sidecar_and_verified_manifest_match_every_payload(self):
+        result = build(self.root, self.output, "e" * 40)
+        checksum_file = self.output.with_name(self.output.name + ".sha256")
+        self.assertEqual(
+            checksum_file.read_text(encoding="ascii"),
+            f"{result['sha256']}  {self.output.name}\\n",
+        )
+        proof = verify_archive(self.output, "e" * 40)
+        self.assertEqual(proof["source_sha"], "e" * 40)
+        self.assertEqual(proof["files"]["application/vendor/autoload.php"]["bytes"], 5)
+        with self.assertRaisesRegex(ValueError, "provenance"):
+            verify_archive(self.output, "f" * 40)
+
+    def test_tampered_zip_payload_is_detected_even_with_valid_crc(self):
+        build(self.root, self.output, "e" * 40)
+        with zipfile.ZipFile(self.output) as zip:
+            files = [(name, zip.read(name)) for name in zip.namelist()]
+        with zipfile.ZipFile(self.output, "w") as zip:
+            for name, data in files:
+                zip.writestr(name, b"malicious" if name == "application/app/Test.php" else data)
+        with self.assertRaisesRegex(ValueError, "content checksum mismatch"):
+            verify_archive(self.output, "e" * 40)
+
+    def test_undeclared_public_file_and_unsafe_paths_fail_verification(self):
+        build(self.root, self.output, "e" * 40)
+        with zipfile.ZipFile(self.output, "a") as zip:
+            zip.writestr("public_html/.env", "injected secret")
+        with self.assertRaisesRegex(ValueError, "Excluded private/development file"):
+            verify_archive(self.output, "e" * 40)
+
+        build(self.root, self.output, "e" * 40)
+        with zipfile.ZipFile(self.output, "a") as zip:
+            zip.writestr("../outside.php", "<?php")
+        with self.assertRaisesRegex(ValueError, "Unsafe ZIP entry"):
+            verify_archive(self.output, "e" * 40)
+
+    def test_duplicate_entries_never_pass_integrity_validation(self):
+        build(self.root, self.output, "e" * 40)
+        with zipfile.ZipFile(self.output, "a") as zip:
+            zip.writestr("application/app/Test.php", "<?php malicious")
+        with self.assertRaisesRegex(ValueError, "Duplicate ZIP entry"):
+            verify_archive(self.output, "e" * 40)
 
     def test_composer_cli_symlinks_are_not_exposed_in_zip(self):
         executable = self.root / "backend/vendor/bin/psysh"
