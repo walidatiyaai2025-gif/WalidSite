@@ -60,7 +60,7 @@ final class ProviderEndpoint
         if (filter_var($host, FILTER_VALIDATE_IP) === false && $host !== 'localhost') {
             $dnsHost = rtrim($host, '.');
             if (strlen($dnsHost) > 253
-                || preg_match('/\\A(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}\\z/iD', $dnsHost) !== 1) {
+                || preg_match('/\A(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}\z/iD', $dnsHost) !== 1) {
                 throw new InvalidArgumentException('Unsafe provider URL.');
             }
 
