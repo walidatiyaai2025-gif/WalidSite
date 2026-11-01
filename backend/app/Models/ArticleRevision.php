@@ -29,6 +29,22 @@ class ArticleRevision extends Model
         return $this->belongsTo(Article::class);
     }
 
+    protected static function booted(): void
+    {
+        // Editorial sign-off belongs to the exact reviewed body and sources.
+        // Updating either in place must never inherit earlier approval,
+        // including when a caller submits "validated" in the same update.
+        static::updating(static function (self $revision): void {
+            if ($revision->isDirty(['body_md', 'citations_json'])) {
+                $revision->status = 'draft';
+                $revision->validation_json = [
+                    'citations_passed' => false,
+                    'technical_passed' => false,
+                ];
+            }
+        });
+    }
+
     public function hasVerifiedEvidence(): bool
     {
         $citations = $this->citations_json;
