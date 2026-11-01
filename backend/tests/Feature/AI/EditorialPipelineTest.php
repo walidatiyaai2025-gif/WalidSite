@@ -11,6 +11,7 @@ use App\Models\Role;
 use App\Models\User;
 use DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
@@ -271,18 +272,47 @@ class EditorialPipelineTest extends TestCase
         $provider = $this->provider('ollama-compatible');
         $dispatcher = app(\App\AI\EditorialJobDispatcher::class);
         $jobId = $dispatcher->enqueue($source, $provider, 'local-model');
-        $dispatcher->registerHandlers(app(\App\AI\AiStepHandlerRegistry::class));
-
-        $result = app(\App\AI\BoundedAiWorker::class)->tick(
-            'editorial-worker', app(\App\AI\AiStepHandlerRegistry::class)->handlers()
-        );
-        $this->assertSame(['state' => 'completed', 'job_id' => $jobId], $result);
+        // Normal Laravel boot must register the allowlist without manual
+        // wiring in an admin request, unit test, or cPanel scheduler.
+        $registry = app(\App\AI\AiStepHandlerRegistry::class);
+        $this->assertSame(['editorial-draft', 'editorial-art'],
+            array_keys($registry->handlers()));
+        $this->assertSame($registry, app(\App\AI\AiStepHandlerRegistry::class));
+        $this->assertSame(0, Artisan::call('ai:tick'));
+        $this->assertStringContainsString('completed', Artisan::output());
         $this->assertSame('completed', DB::table('ai_jobs')->where('id', $jobId)->value('status'));
         $this->assertSame(2, $article->revisions()->count());
         $this->assertFalse($article->fresh()->isReadyToPublish());
         $this->assertSame('draft', $article->revisions()->orderByDesc('revision_no')->first()->status);
         $this->assertSame(1, DB::table('ai_job_steps')->where('job_id', $jobId)
             ->where('status', 'completed')->count());
+    }
+
+    public function test_fresh_boot_registry_runs_only_two_explicit_editorial_job_kinds(): void
+    {
+        $registry = app(\App\AI\AiStepHandlerRegistry::class);
+        $this->assertSame(['editorial-draft', 'editorial-art'],
+            array_keys($registry->handlers()));
+        $this->assertSame($registry, app(\App\AI\AiStepHandlerRegistry::class));
+        $this->assertTrue($registry->hasHandlers());
+    }
+
+    public function test_real_artisan_tick_does_not_consume_unknown_job_kinds(): void
+    {
+        Http::fake();
+        $provider = $this->provider('ollama-compatible');
+        $queue = app(DurableAiQueue::class);
+        $id = $queue->enqueue($provider, 'user-supplied-kind',
+            'untrusted-kind:'.Str::uuid(), ['generate']);
+
+        $this->assertSame(0, Artisan::call('ai:tick'));
+        $this->assertStringContainsString('idle', Artisan::output());
+        $this->assertSame('queued',
+            DB::table('ai_jobs')->where('id', $id)->value('status'));
+        $this->assertSame(0, (int) DB::table('ai_jobs')
+            ->where('id', $id)->value('attempt_count'));
+        $this->assertDatabaseCount('job_leases', 0);
+        Http::assertNothingSent();
     }
 
     public function test_registered_artwork_job_fails_closed_without_compatible_generator(): void
