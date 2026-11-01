@@ -20,6 +20,10 @@ return Application::configure(basePath: dirname(__DIR__))
         },
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // Reject insecure admin traffic before the web middleware starts
+        // a session or processes CSRF and credentials. All admin routes,
+        // including those registered in auxiliary route files, are covered.
+        $middleware->prepend(\App\Http\Middleware\RequireSecureAdminTransport::class);
         // Session and CSRF use Laravel's standard 'web' middleware group.
         $middleware->web(append: [\App\Http\Middleware\RequireInstallation::class]);
     })
