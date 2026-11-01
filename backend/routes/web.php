@@ -215,7 +215,9 @@ Route::middleware('auth:web')->group(function (): void {
 
         return redirect()->route('admin.providers.index', [
             'lang' => $request->query('lang') === 'ar' ? 'ar' : 'en',
-        ])->with('status', 'Provider archived; credential revoked.');
+        ])->with('status', $request->query('lang') === 'ar'
+            ? 'تمت أرشفة المزود وإبطال مفتاحه.'
+            : 'Provider archived; credential revoked.');
     })->middleware('throttle:5,1')->name('admin.providers.delete');
 
     // T020: editorial decisions remain server-authorized and fail closed.
