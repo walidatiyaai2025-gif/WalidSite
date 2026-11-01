@@ -453,17 +453,15 @@ final class MobileAiDiagnoseTest extends TestCase
         )])->save();
         Http::fake();
 
-        // The initial validity check passes; time advances while catalog data
-        // is read, so the final outbound-boundary check must reject the input.
-        $runbooks = $this->mock(\App\Http\Controllers\Api\PublicRunbookController::class);
-        $runbooks->shouldReceive('index')->once()->andReturnUsing(function () {
-            $this->travel(5)->seconds();
-            return response()->json(['data' => [[
-                'id' => (string) Str::uuid(),
-                'title' => 'Reviewed recovery',
-                'markdown' => '# Reviewed recovery',
-            ]]]);
+        // Advance the clock on the real catalog's first database read, rather
+        // than mocking the final PublicRunbookController class.
+        DB::listen(function ($query) use (&$advanced) {
+            if (! $advanced && str_contains(strtolower($query->sql), 'runbooks')) {
+                $advanced = true;
+                $this->travel(5)->seconds();
+            }
         });
+        $advanced = false;
 
         try {
             app(MobileDiagnosisDispatcher::class)->execute((object) [
