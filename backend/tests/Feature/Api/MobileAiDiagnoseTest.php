@@ -373,7 +373,6 @@ final class MobileAiDiagnoseTest extends TestCase
         $request = AiDiagnosisRequest::create([
             'user_id' => $user->id,
             'model_id' => $model->id,
-            'job_id' => (string) Str::uuid(),
             'request_blob' => Crypt::encryptString(json_encode([
                 'question' => 'Sensitive diagnosis question',
                 'technology' => 'SQL Server',
@@ -381,6 +380,10 @@ final class MobileAiDiagnoseTest extends TestCase
             ], JSON_THROW_ON_ERROR)),
             'expires_at' => now()->addHour(),
         ]);
+        $request->forceFill(['job_id' => app(DurableAiQueue::class)->enqueue(
+            $provider, 'mobile-diagnosis', 'mobile-diagnosis:'.$request->id,
+            ['classify'], 0, 1
+        )])->save();
         $provider->forceFill(['enabled' => false])->save();
         Http::fake();
 
