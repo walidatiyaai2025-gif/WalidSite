@@ -28,16 +28,16 @@ final class EditorialScheduleRunner
         }
 
         $policy = DB::table('editorial_policies')->where('id', 1)->first();
-        if (! $policy || ! $policy->enabled) {
-            return $this->result('disabled');
-        }
-        $max = min($limit, max(1, min(20, (int) $policy->max_per_tick)));
-        $result = Cache::lock('editorial:due-runner:v1', 120)->get(function () use ($max, $policy): array {
-            $ids = DB::table('editorial_schedules')
+        $enabled = $policy && (bool) $policy->enabled;
+        $max = min($limit, max(1, min(20, (int) ($policy?->max_per_tick ?? 10))));
+        $result = Cache::lock('editorial:due-runner:v1', 120)->get(function () use ($max, $policy, $enabled): array {
+            // Turning OFF new publication must NEVER cancel mandatory stale
+            // content expiry. Only pending draft publication is feature gated.
+            $ids = $enabled ? DB::table('editorial_schedules')
                 ->where('status', 'pending')->where('due_at', '<=', now())
                 ->orderBy('due_at')->orderBy('id')
-                ->limit($max)->pluck('id')->all();
-            $result = $this->result('ok');
+                ->limit($max)->pluck('id')->all() : [];
+            $result = $this->result($enabled ? 'ok' : 'disabled');
             foreach ($ids as $id) {
                 $outcome = $this->publishOne($id, (int) $policy->refresh_days);
                 if ($outcome !== null) {
