@@ -214,6 +214,11 @@ final class DurableAiQueue
                 }
                 return false;
             }
+            $spent = (int) DB::table('ai_usage')->where('provider_id', $provider->id)
+                ->where('created_at', '>=', now()->startOfDay())->sum('cost_minor');
+            if ($spent + $costMinor > (int) $provider->daily_budget_minor) {
+                throw new DomainException('Daily provider spending cap reached.');
+            }
             // An admission reservation is the maximum aggregate charge for
             // this job, not an allowance per receipt or per retry. Without
             // this check, multiple smaller receipts can overshoot the job
@@ -228,11 +233,6 @@ final class DurableAiQueue
                 throw new DomainException('AI job usage exceeds reserved cost.');
             }
 
-            $spent = (int) DB::table('ai_usage')->where('provider_id', $provider->id)
-                ->where('created_at', '>=', now()->startOfDay())->sum('cost_minor');
-            if ($spent + $costMinor > (int) $provider->daily_budget_minor) {
-                throw new DomainException('Daily provider spending cap reached.');
-            }
             DB::table('ai_usage')->insert([
                 'id' => (string) Str::uuid(), 'usage_key' => $usageKey,
                 'job_id' => $jobId, 'provider_id' => $provider->id,
