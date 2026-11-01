@@ -22,26 +22,48 @@ class PublicArticleController extends Controller
 
         $articles = Article::query()->publiclyVisible();
         if ($search !== '') {
-            $articles->where(function ($q) use ($search): void {
-                $q->where('title_en', 'like', '%'.$search.'%')
-                    ->orWhere('title_ar', 'like', '%'.$search.'%');
+            // "%" and "_" are SQL LIKE wildcards, not user search operators.
+            // Escape them consistently with the public website search.
+            $term = '%'.addcslashes($search, '%_\\').'%';
+            $articles->where(function ($q) use ($term): void {
+                $q->where('title_en', 'like', $term)
+                    ->orWhere('title_ar', 'like', $term);
             });
         }
 
-        // Do not return data until the pinned revision and its citations pass
-        // a live evidence check, even if a persisted status was changed later.
-        $page = $articles->orderByDesc('published_at')->orderBy('id')->simplePaginate(12);
+        $perPage = 12;
+        $currentPage = (int) ($query['page'] ?? 1);
+        $offset = ($currentPage - 1) * $perPage;
+        $eligibleSeen = 0;
         $data = [];
-        foreach ($page->items() as $article) {
+        $hasMorePages = false;
+
+        // The SQL publication scope is a fast first pass, not proof of safe
+        // citations/media: publicRevision() performs the definitive live
+        // rights/source verification. Apply that check BEFORE page offsets
+        // and before computing has_more_pages to avoid sparse pages and
+        // exposing the existence of hidden/invalid publications.
+        // lazy() loads only 100 candidates at a time; stop as soon as the
+        // next eligible article proves there is another public page.
+        foreach ($articles->orderByDesc('published_at')->orderBy('id')->lazy(100) as $article) {
             $revision = $article->publicRevision();
-            if ($revision instanceof ArticleRevision) {
+            if (! $revision instanceof ArticleRevision) {
+                continue;
+            }
+
+            if ($eligibleSeen >= $offset + $perPage) {
+                $hasMorePages = true;
+                break;
+            }
+            if ($eligibleSeen >= $offset) {
                 $data[] = $this->serialize($article, $revision, $locale);
             }
+            $eligibleSeen++;
         }
 
         return response()->json(['data' => $data, 'meta' => [
-            'current_page' => $page->currentPage(),
-            'has_more_pages' => $page->hasMorePages(),
+            'current_page' => $currentPage,
+            'has_more_pages' => $hasMorePages,
         ]]);
     }
 
