@@ -24,6 +24,9 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->web(append: [\App\Http\Middleware\RequireInstallation::class]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        // Laravel flashes invalid form fields into the session by default.
+        // Credentials for the cPanel first-run wizard must never be retained.
+        $exceptions->dontFlash(['db_password', 'token']);
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*') || $request->expectsJson(),
         );
