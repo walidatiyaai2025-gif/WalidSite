@@ -154,8 +154,17 @@ class _OfflineRunbookLibraryState extends State<OfflineRunbookLibrary> {
             return const Center(child: CircularProgressIndicator());
           }
           final pack = snapshot.data!;
-          final results = pack.items.where((item) =>
-              item.title(arabic).toLowerCase().contains(_query.toLowerCase())).toList();
+          // Match the locally bundled guidance, not just its heading.
+          // Search only the currently selected language so hidden alternate
+          // translations do not appear as misleading matches.
+          final needle = _query.toLowerCase();
+          final results = pack.items.where((item) {
+            if (needle.isEmpty) return true;
+            return item.title(arabic).toLowerCase().contains(needle) ||
+                item.steps(arabic).any(
+                  (step) => step.toLowerCase().contains(needle),
+                );
+          }).toList();
           return ListView(
             padding: const EdgeInsets.all(20),
             children: [
