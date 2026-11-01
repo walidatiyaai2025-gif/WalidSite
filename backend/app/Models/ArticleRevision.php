@@ -105,7 +105,14 @@ class ArticleRevision extends Model
             return false;
         }
 
-        foreach (['localhost', '.localhost', '.local', '.internal', '.test', '.invalid', '.onion'] as $suffix) {
+        // A citation is displayed verbatim as externally verified evidence.
+        // Internal resolver zones can look like valid HTTPS FQDNs while
+        // resolving to Kubernetes, home/LAN or private service endpoints.
+        // This is a link policy, not a DNS lookup or an SSRF fetcher.
+        foreach ([
+            'localhost', '.localhost', '.local', '.localdomain', '.internal',
+            '.svc', '.lan', '.home', '.home.arpa', '.test', '.invalid', '.onion',
+        ] as $suffix) {
             if ($host === $suffix || str_ends_with($host, $suffix)) {
                 return false;
             }
