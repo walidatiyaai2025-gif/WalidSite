@@ -52,13 +52,18 @@ final class MobileBootstrapController extends Controller
                     'articles' => route('api.mobile.articles', [], false),
                     'runbooks' => route('api.mobile.runbooks', [], false),
                     'learning_paths' => route('api.mobile.learn', [], false),
+                    // This is an authenticated endpoint, NOT a guest feed.
+                    'saved_resources' => route('api.mobile.saved', [], false),
                 ],
                 'availability' => [
                     'guest_reading' => true,
                     'guest_runbooks' => true,
                     'guest_learning_paths' => true,
                     'authenticated_ai_diagnosis' => false,
-                    'server_saved_resources' => false,
+                    // The token-scoped saved CRUD is implemented; advertise
+                    // its availability without exposing saved user data.
+                    'server_saved_resources' => true,
+                    'saved_resources_requires_auth' => true,
                 ],
                 // There is no public privacy-policy endpoint yet; never
                 // generate an official-looking URL for a non-existent page.
