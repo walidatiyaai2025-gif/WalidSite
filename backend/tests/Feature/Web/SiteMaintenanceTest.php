@@ -132,4 +132,80 @@ class SiteMaintenanceTest extends TestCase
         $this->actingAs($owner)->get('/admin/updates')->assertOk();
         $this->post('/admin/updates/apply')->assertForbidden();
     }
+
+
+    public function test_production_setup_rejects_plain_http_for_every_installer_step(): void
+    {
+        $previousEnvironment = $this->app['env'];
+        $this->app->instance('env', 'production');
+        $token = str_repeat('h', 40);
+        config([
+            'site.setup_enabled' => true,
+            'site.setup_token' => $token,
+            'site.setup_database_ready' => true,
+        ]);
+
+        try {
+            $this->withServerVariables(['HTTPS' => 'off']);
+            $this->get('/setup')->assertForbidden();
+            $this->get('/setup?lang=ar')->assertForbidden();
+            $this->post('/setup/unlock', ['token' => $token])->assertForbidden();
+            $this->post('/setup/configure', [
+                'db_host' => 'localhost',
+                'db_port' => 3306,
+                'db_database' => 'private_data',
+                'db_username' => 'private_writer',
+                'db_password' => 'do-not-log-this-secret',
+            ])->assertForbidden();
+            $this->post('/setup/database')->assertForbidden();
+            $this->post('/setup/finish', [
+                'password' => 'Never-Accept-Over-Plain-HTTP!',
+                'password_confirmation' => 'Never-Accept-Over-Plain-HTTP!',
+            ])->assertForbidden();
+
+            $this->assertNotTrue(session('site_setup_authorized'));
+            $this->assertNotTrue(session('site_setup_migrated'));
+        } finally {
+            $this->app->instance('env', $previousEnvironment);
+        }
+    }
+
+    public function test_production_https_setup_works_and_cannot_downgrade_after_unlock(): void
+    {
+        $previousEnvironment = $this->app['env'];
+        $this->app->instance('env', 'production');
+        $token = str_repeat('s', 40);
+        config([
+            'site.setup_enabled' => true,
+            'site.setup_token' => $token,
+            'site.setup_database_ready' => false,
+        ]);
+
+        try {
+            $this->withServerVariables(['HTTPS' => 'on']);
+            $this->get('/setup')->assertOk()->assertSee('Server setup token');
+            $this->post('/setup/unlock', ['token' => $token])->assertRedirect('/setup');
+            $this->get('/setup')->assertOk()->assertSee('name="db_password"', false);
+
+            // Authentication via HTTPS never authorizes a later HTTP request.
+            $this->withServerVariables(['HTTPS' => 'off']);
+            $this->get('/setup')->assertForbidden();
+            $this->post('/setup/unlock', ['token' => $token])->assertForbidden();
+            $this->post('/setup/database')->assertForbidden();
+            $this->post('/setup/finish', [
+                'password' => 'Strong-Test-Owner-Password-123!',
+                'password_confirmation' => 'Strong-Test-Owner-Password-123!',
+            ])->assertForbidden();
+
+            $this->withServerVariables(['HTTPS' => 'on']);
+            $this->get('/setup')->assertOk()->assertSee('name="db_password"', false);
+
+            // A disabled installer must remain indistinguishable (404).
+            config(['site.setup_enabled' => false]);
+            $this->withServerVariables(['HTTPS' => 'off']);
+            $this->get('/setup')->assertNotFound();
+        } finally {
+            $this->app->instance('env', $previousEnvironment);
+        }
+    }
 }
