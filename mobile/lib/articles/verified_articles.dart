@@ -271,8 +271,18 @@ class _VerifiedArticleLibraryState extends State<VerifiedArticleLibrary> {
           hasMorePages: false,
         ),
       );
-    } else {
+    } else if (VerifiedArticleReader.configuredOrigin() != null) {
       _firstPage = const VerifiedArticleReader().loadPage(widget.arabic, 1);
+    } else {
+      // The unavailable view is authoritative when no origin was provided.
+      // Never start a failing Future during initState for an unconfigured app.
+      _firstPage = Future<VerifiedArticlePage>.value(
+        const VerifiedArticlePage(
+          articles: <VerifiedArticle>[],
+          currentPage: 1,
+          hasMorePages: false,
+        ),
+      );
     }
   }
 
