@@ -53,6 +53,24 @@ final class ProviderEndpoint
             throw new InvalidArgumentException('Unsafe provider URL.');
         }
 
+        // HTTPS is not proof that a DNS name belongs to a public provider.
+        // Reserved/internal resolver suffixes can address cluster, home LAN
+        // or metadata services even when the address is not an IP literal.
+        // Keep intentional loopback Ollama as an explicit special case.
+        if (filter_var($host, FILTER_VALIDATE_IP) === false && $host !== 'localhost') {
+            $dnsHost = rtrim($host, '.');
+            if (strlen($dnsHost) > 253
+                || preg_match('/\A(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}\z/iD', $dnsHost) !== 1) {
+                throw new InvalidArgumentException('Unsafe provider URL.');
+            }
+
+            foreach (['localhost', 'local', 'localdomain', 'internal', 'svc', 'lan', 'home', 'arpa', 'invalid', 'onion'] as $suffix) {
+                if ($dnsHost === $suffix || str_ends_with($dnsHost, '.'.$suffix)) {
+                    throw new InvalidArgumentException('Internal provider DNS destinations are not allowed.');
+                }
+            }
+        }
+
         if ($scheme === 'http' && ! in_array($host, ['localhost', '127.0.0.1', '::1'], true)) {
             throw new InvalidArgumentException('Remote provider endpoints require HTTPS.');
         }
