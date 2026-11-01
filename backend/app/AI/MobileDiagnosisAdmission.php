@@ -104,23 +104,38 @@ final class MobileDiagnosisAdmission
                 continue;
             }
             $spent = (int) $todayReceipts->sum('cost_minor');
-            $outstanding = 0;
-            $foreignRunningReceipt = false;
-            $runningJobs = DB::table('ai_jobs')->where('provider_id', $provider->id)
-                ->where('status', 'running')->get(['id', 'reserved_budget_minor']);
-            foreach ($runningJobs as $job) {
-                // A job's lifetime reservation crosses UTC days. An earlier
-                // foreign-currency receipt must not reduce that reservation.
-                $jobReceipts = DB::table('ai_usage')->where('job_id', $job->id);
-                if ((clone $jobReceipts)->where('cost_currency', '!=', $provider->currency)->exists()) {
-                    $foreignRunningReceipt = true;
-                    break;
-                }
-                $recorded = (int) $jobReceipts->sum('cost_minor');
-                $outstanding += max(0, (int) $job->reserved_budget_minor - $recorded);
+            // A queued or retrying job already holds a real budget commitment.
+            // Counting only running jobs admits more paid requests than the
+            // provider can afford and strands the accepted queue indefinitely.
+            // Terminal jobs release unspent reservations; recorded UTC-day
+            // usage remains charged above. Prior-day receipts for a still
+            // pending job reduce its *lifetime* outstanding liability only.
+            $pendingStatuses = ['queued', 'retry', 'running'];
+            $foreignPendingReceipt = DB::table('ai_usage as receipt')
+                ->join('ai_jobs as pending', 'pending.id', '=', 'receipt.job_id')
+                ->where('pending.provider_id', $provider->id)
+                ->whereIn('pending.status', $pendingStatuses)
+                ->where('receipt.cost_currency', '!=', $provider->currency)
+                ->exists();
+            if ($foreignPendingReceipt) {
+                continue;
             }
-            if ($foreignRunningReceipt ||
-                $spent + $outstanding + $reserve > $provider->daily_budget_minor) {
+
+            // One grouped SQL aggregate instead of an unbounded per-job
+            // query loop; CASE works in MariaDB and SQLite test databases.
+            $recordedByJob = DB::table('ai_usage')
+                ->select('job_id')
+                ->selectRaw('SUM(cost_minor) AS recorded_minor')
+                ->groupBy('job_id');
+            $outstanding = (int) DB::table('ai_jobs as pending')
+                ->leftJoinSub($recordedByJob, 'ledger', static function ($join): void {
+                    $join->on('ledger.job_id', '=', 'pending.id');
+                })
+                ->where('pending.provider_id', $provider->id)
+                ->whereIn('pending.status', $pendingStatuses)
+                ->selectRaw('COALESCE(SUM(CASE WHEN pending.reserved_budget_minor > COALESCE(ledger.recorded_minor, 0) THEN pending.reserved_budget_minor - COALESCE(ledger.recorded_minor, 0) ELSE 0 END), 0) AS outstanding_minor')
+                ->value('outstanding_minor');
+            if ($spent + $outstanding + $reserve > $provider->daily_budget_minor) {
                 continue;
             }
 
