@@ -167,4 +167,61 @@ class ProfessionalPagesTest extends TestCase
         $this->get('/about')->assertOk()->assertSee('Confidential Non Owner Organization');
     }
 
+
+    public function test_expertise_headings_translate_known_categories_without_changing_proof_gates(): void
+    {
+        $profile = $this->profile('published');
+        $categories = [
+            'Database & Reliability' => ['قواعد البيانات والموثوقية', 'قواعد بيانات معتمدة'],
+            'Software & Integration' => ['البرمجيات والتكامل', 'تكامل برمجي معتمد'],
+            'Infrastructure & Security' => ['البنية التحتية والأمن', 'أمن البنية معتمد'],
+            'Project Delivery' => ['إدارة وتسليم المشاريع', 'تسليم مشاريع معتمد'],
+        ];
+
+        foreach ($categories as $category => [$arabicHeading, $arabicSkill]) {
+            $skill = Skill::create([
+                'slug' => 'category-test-'.count(explode(' ', $category)).'-'.substr(md5($category), 0, 8),
+                'name_en' => 'Verified '.$category,
+                'name_ar' => $arabicSkill,
+                'category' => $category,
+                'evidence_status' => 'verified',
+            ]);
+            DB::table('profile_skill')->insert([
+                'profile_id' => $profile->id,
+                'skill_id' => $skill->id,
+            ]);
+        }
+
+        $unverified = Skill::create([
+            'slug' => 'private-category-test',
+            'name_en' => 'Private unverified expertise',
+            'name_ar' => 'مهارة سرية غير موثقة',
+            'category' => 'Private category',
+            'evidence_status' => 'unverified',
+        ]);
+        DB::table('profile_skill')->insert([
+            'profile_id' => $profile->id,
+            'skill_id' => $unverified->id,
+        ]);
+
+        $arabic = $this->get('/expertise?lang=ar')->assertOk()
+            ->assertDontSee('مهارة سرية غير موثقة')
+            ->assertDontSee('<h3>Private category</h3>', false);
+        $english = $this->get('/expertise?lang=en')->assertOk()
+            ->assertDontSee('Private unverified expertise');
+
+        foreach ($categories as $category => [$arabicHeading, $arabicSkill]) {
+            $arabic->assertSee('<h3>'.$arabicHeading.'</h3>', false)
+                ->assertSee($arabicSkill)
+                ->assertDontSee('<h3>'.e($category).'</h3>', false);
+            $english->assertSee('<h3>'.e($category).'</h3>', false)
+                ->assertSee('Verified '.$category);
+        }
+
+        // Persisted category values still control the recruiter track filter.
+        $this->get('/hire?lang=ar&track=database')->assertOk()
+            ->assertSee('قواعد بيانات معتمدة')
+            ->assertDontSee('تكامل برمجي معتمد')
+            ->assertDontSee('مهارة سرية غير موثقة');
+    }
 }
