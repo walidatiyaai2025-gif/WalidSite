@@ -41,5 +41,16 @@ The phrases **"كمل وليد سايت"**, **"شغّل الوركرز"**, **"خ
 4. Run multiple workers in parallel **only** when actual independently executing tools are available; otherwise run lanes sequentially. Do not claim background workers are running without a real external agent/automation runtime.
 5. Never ask the owner to supervise ordinary development. Do not treat a planning-only answer as completion while a safe, implementable task exists. Report real commits/PRs, verification and external blockers succinctly.
 
+## Owner correction — deliver functional bundles, not micro-PRs (ADR-011, 2026-11-01)
+
+**Effective for all new execution.** The owner has rejected overly fragmented one-button/one-translation PRs. Read [ADR-011](docs/FEATURE_BUNDLE_DELIVERY.md) before claiming work. The unit of success is an **end-to-end user journey and acceptance checklist**, not a merged PR count. Preserve the original T001–T027 IDs, live issue dependencies, exclusive LEAD/W1/W2/W3/W4 file ownership, security/content restrictions and exact-head required CI.
+
+- Plan the entire dependency-ready task's remaining functional, API, bilingual, error/offline/security, accessibility and visual acceptance in its existing Issue **before** editing. Use a single active task/lane branch and extend its cohesive PR for related work. Avoid a PR for each copy change, test or button while the user journey is still incomplete.
+- Complete related screens, navigation, real endpoints, negative states and tests together. Integrate dependent cross-lane changes sequentially under LEAD, not by letting workers edit identical files. A real security hotfix, blocking regression or independently complete small unit is a justified focused exception, not the normal cadence.
+- Test scoped changes while developing; run mandatory repository CI against the last PR head, repair failures on that same PR, merge only after success, and verify main. Do not create extra workflows or waive visual-fidelity evidence.
+- **Close an engineering Issue only after its full programmatically verifiable acceptance passes**. A partial PR is a contribution, not an extra completed task. Stage/owner/signing obligations remain T025–T027. Report completed functional journeys and actual open acceptance gaps first, then PR and SHA evidence.
+
+This is a live operational supplement, not an amendment to the checksum-protected `worker-contracts/AGENTS.md` or v6 bundle. When historical rules say **"small PRs"**, interpret that as *bounded reviewable blast radius*, **not** micro-PRs for isolated details.
+
 ## Owner progress percentage (mandatory, every status question)
 When the owner asks how complete WalidSite is ("نسبة اكتمال المشروع", "المشروع وصل كام؟", etc.), **answer first with a numeric %** calculated from the latest live GitHub Issues/merged PRs, then report N completed of 27 v6 tasks and remaining tasks. Follow [the canonical calculation and evidence policy](docs/PROGRESS_PERCENTAGE.md). Do not mistake green CI, open PRs, or merged-but-unclosed task Issues for completed tasks; never claim a stale or fabricated percentage. This is baseline task completion, not staging/release readiness.
