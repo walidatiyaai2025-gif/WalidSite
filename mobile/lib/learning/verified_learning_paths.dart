@@ -235,21 +235,19 @@ class _VerifiedLearningLibraryState extends State<VerifiedLearningLibrary> {
 
   Future<void> _loadMore() async {
     if (_loadingMore || _nextPage > 10000) return;
-    // The first page's continuation is immutable until page two succeeds.
-    // Later pages use the last successful response's continuation flag.
-    if (_nextPage == 2) {
-      final first = await _firstPage;
-      if (!first.hasMorePages || !mounted) return;
-    } else if (!_more) {
-      return;
-    }
+    // Claim the single-flight slot before any await, including _firstPage.
     final token = _generation;
     final page = _nextPage;
+    if (page > 2 && !_more) return;
     setState(() {
       _loadingMore = true;
       _moreError = null;
     });
     try {
+      if (page == 2) {
+        final firstPage = await _firstPage;
+        if (!mounted || token != _generation || !firstPage.hasMorePages) return;
+      }
       final response = await _fetch(page);
       if (!mounted || token != _generation) return;
       if (response.currentPage != page ||
