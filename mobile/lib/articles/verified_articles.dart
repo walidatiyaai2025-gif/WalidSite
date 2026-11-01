@@ -166,6 +166,7 @@ class VerifiedArticleLibrary extends StatefulWidget {
 
 class _VerifiedArticleLibraryState extends State<VerifiedArticleLibrary> {
   late Future<List<VerifiedArticle>> _articles;
+  String _query = '';
 
   @override
   void initState() {
@@ -230,29 +231,78 @@ class _VerifiedArticleLibraryState extends State<VerifiedArticleLibrary> {
                       ? 'لا توجد مقالات منشورة وموثقة حاليًا.'
                       : 'No source-verified articles have been published yet.'));
                 }
-                return ListView.builder(
-                  itemCount: articles.length,
-                  padding: const EdgeInsets.all(16),
-                  itemBuilder: (context, index) {
-                    final article = articles[index];
-                    return Card(
-                      child: ListTile(
-                        key: Key('article-' + article.slug),
-                        title: Text(article.title),
-                        subtitle: Text(ar
-                            ? 'موثق بمراجع منشورة — لا يُثبت الاختبار العملي'
-                            : 'Published citations — not a claim of hands-on testing'),
-                        trailing: Icon(ar ? Icons.chevron_left : Icons.chevron_right),
-                        onTap: () => Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) => VerifiedArticleDetail(
-                              article: article, arabic: ar,
-                            ),
-                          ),
+                // Filter the already validated response on-device. Typing must
+                // never send visitor search terms back to the article API.
+                final query = _query.trim().toLowerCase();
+                final matches = query.isEmpty
+                    ? articles
+                    : articles
+                        .where((article) =>
+                            article.title.toLowerCase().contains(query) ||
+                            article.body.toLowerCase().contains(query))
+                        .toList(growable: false);
+
+                return Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                      child: TextField(
+                        key: const Key('article-search-input'),
+                        maxLength: 120,
+                        textInputAction: TextInputAction.search,
+                        decoration: InputDecoration(
+                          labelText: ar
+                              ? 'البحث في المقالات الموثقة'
+                              : 'Search verified articles',
+                          prefixIcon: const Icon(Icons.search),
+                          border: const OutlineInputBorder(),
                         ),
+                        onChanged: (value) => setState(() => _query = value),
                       ),
-                    );
-                  },
+                    ),
+                    Expanded(
+                      child: matches.isEmpty
+                          ? Center(
+                              child: Padding(
+                                padding: const EdgeInsets.all(24),
+                                child: Text(
+                                  ar
+                                      ? 'لا توجد مقالات موثقة تطابق البحث.'
+                                      : 'No verified articles match your search.',
+                                  key: const Key('article-search-empty'),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ),
+                            )
+                          : ListView.builder(
+                              itemCount: matches.length,
+                              padding: const EdgeInsets.all(16),
+                              itemBuilder: (context, index) {
+                                final article = matches[index];
+                                return Card(
+                                  child: ListTile(
+                                    key: Key('article-' + article.slug),
+                                    title: Text(article.title),
+                                    subtitle: Text(ar
+                                        ? 'موثق بمراجع منشورة — لا يُثبت الاختبار العملي'
+                                        : 'Published citations — not a claim of hands-on testing'),
+                                    trailing: Icon(ar
+                                        ? Icons.chevron_left
+                                        : Icons.chevron_right),
+                                    onTap: () => Navigator.of(context).push(
+                                      MaterialPageRoute<void>(
+                                        builder: (_) => VerifiedArticleDetail(
+                                          article: article,
+                                          arabic: ar,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                    ),
+                  ],
                 );
               },
             ),
