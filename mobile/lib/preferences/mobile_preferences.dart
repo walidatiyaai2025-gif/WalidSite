@@ -220,9 +220,12 @@ class _MobilePreferencesScreenState extends State<MobilePreferencesScreen> {
     textDirection: _arabic ? TextDirection.rtl : TextDirection.ltr,
     child: Scaffold(
       appBar: AppBar(title: Text(label('Preferences', 'التفضيلات'))),
-      body: ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
+      body: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
           Text(label('Profile', 'الحساب'), style: const TextStyle(
               color: WaleedPalette.accent, fontWeight: FontWeight.w800)),
           const SizedBox(height: 12),
@@ -303,7 +306,9 @@ class _MobilePreferencesScreenState extends State<MobilePreferencesScreen> {
                   'حذف الدليل المحمّل لا يحذف بيانات الخادم.')),
           const SizedBox(height: 16),
 
-        ],
+            ],
+          ),
+        ),
       ),
     ),
   );
