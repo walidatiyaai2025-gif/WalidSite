@@ -116,7 +116,11 @@ final class MobileHomeFeedTest extends TestCase
             $this->project(sprintf('project-%02d', $i));
         }
         for ($i = 1; $i <= 16; $i++) {
-            $this->article(sprintf('article-%02d', $i));
+            $article = $this->article(sprintf('article-%02d', $i));
+            // The API sorts by publication timestamp before UUID. Distinct
+            // timestamps make this test's expected article-01 ordering
+            // deterministic across SQLite, MariaDB and CI runs.
+            $article->forceFill(['published_at' => now()->subMinutes($i)])->save();
         }
         for ($i = 1; $i <= 17; $i++) {
             $this->runbook(sprintf('runbook-%02d', $i));
