@@ -244,6 +244,18 @@ class NoTerminalInstallerTest extends TestCase
             ->assertSee('name="token"', false);
     }
 
+    public function test_site_url_rejects_internal_addresses_in_production(): void
+    {
+        $old = $this->app['env'];
+        $this->app->instance('env', 'production');
+        try {
+            $this->assertNull(app(DatabaseConfiguration::class)->canonicalSiteUrl('https://127.0.0.1'));
+            $this->assertSame('https://walidatiya.com', app(DatabaseConfiguration::class)->canonicalSiteUrl('https://walidatiya.com'));
+        } finally {
+            $this->app->instance('env', $old);
+        }
+    }
+
     public function test_invalid_database_form_never_overwrites_private_configuration(): void
     {
         $path = storage_path('app/no-terminal-denied-test');
