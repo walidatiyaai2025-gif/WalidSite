@@ -271,7 +271,18 @@ Route::get('/projects/{slug}', function (Request $request, string $slug) {
     return view('public.case-study', compact('project'));
 })->where('slug', '[a-zA-Z0-9-]+')->name('public.project');
 
-Route::get('/resume', function () {
+Route::get('/resume', function (Request $request) {
+    // Resume tracks describe verified skills only, not fabricated role-specific
+    // employers or positions. Print/PDF always uses the same approved data.
+    $tracks = [
+        'database' => ['Database & Reliability'],
+        'software' => ['Software & Integration', 'Infrastructure & Security'],
+        'delivery' => ['Project Delivery'],
+    ];
+    $requestedTrack = $request->query('track', 'all');
+    $track = is_string($requestedTrack) && isset($tracks[$requestedTrack])
+        ? $requestedTrack : 'all';
+
     $profile = \App\Models\Profile::query()->published()
         ->whereHas('user', fn ($user) => $user->where('status', 'active')
             ->whereHas('roles', fn ($roles) => $roles->where('name', 'owner')))
@@ -286,7 +297,18 @@ Route::get('/resume', function () {
             ->where('profile_id', $profile->id)->orderBy('title')->get()
         : collect();
 
-    return view('public.resume', compact('profile', 'positions', 'certifications'));
+    $skills = collect();
+    if ($profile) {
+        $skillsQuery = \App\Models\Skill::query()->withVerifiedEvidence()
+            ->whereIn('id', \Illuminate\Support\Facades\DB::table('profile_skill')
+                ->where('profile_id', $profile->id)->select('skill_id'));
+        if ($track !== 'all') {
+            $skillsQuery->whereIn('category', $tracks[$track]);
+        }
+        $skills = $skillsQuery->orderBy('category')->orderBy('name_en')->get();
+    }
+
+    return view('public.resume', compact('profile', 'positions', 'certifications', 'skills', 'track'));
 })->name('public.resume');
 
 /*
