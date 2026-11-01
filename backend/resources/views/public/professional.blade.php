@@ -70,6 +70,9 @@
 
 @section('content')
 <div class="site-wrap professional-page">
+    @if($page === 'about')
+        @include('public.about-screen')
+    @else
     <header class="professional-heading">
         <span class="professional-kicker">{{ $locale === 'ar' ? 'المعلومات العامة المثبتة فقط' : 'Evidence-gated public profile' }}</span>
         <h1>{{ $titles[$page][$locale] }}</h1>
@@ -80,40 +83,7 @@
 
     <div class="professional-columns">
         <section class="professional-panel" aria-labelledby="professional-section">
-            @if ($page === 'about')
-                <h2 id="professional-section">{{ $locale === 'ar' ? 'الخبرة المهنية' : 'Career experience' }}</h2>
-                @forelse ($positions as $position)
-                    <article class="professional-item">
-                        <h3>{{ $locale === 'ar' ? $position->role_ar : $position->role_en }}</h3>
-                        <p>{{ $position->org_name }}</p>
-                        <small>{{ $position->started_on->format('Y') }} — {{ $position->ended_on ? $position->ended_on->format('Y') : ($locale === 'ar' ? 'حتى الآن' : 'Present') }}</small>
-                    </article>
-                @empty
-                    <div class="professional-empty" role="status">{{ $locale === 'ar' ? 'لا توجد خبرات منشورة ومتحقق منها بعد.' : 'No career entries have completed publication and evidence review yet.' }}</div>
-                @endforelse
-
-                <h2 style="margin-top:28px">{{ $locale === 'ar' ? 'الشهادات المتحقَّق منها' : 'Verified certifications' }}</h2>
-                @forelse ($certifications as $certification)
-                    <article class="professional-item"><h3>{{ $certification->title }}</h3>
-                        @if ($certification->issuer)<p>{{ $certification->issuer }}</p>@endif
-                    </article>
-                @empty
-                    <div class="professional-empty" role="status">{{ $locale === 'ar' ? 'الشهادات قيد مراجعة الأدلة، ولن تُعرض قبل التحقق.' : 'Credentials remain hidden until supporting evidence is verified.' }}</div>
-                @endforelse
-
-                @if (count($approvedClaims) > 0)
-                    <h2 style="margin-top:28px">{{ $locale === 'ar' ? 'الادعاءات المهنية المدعومة بالأدلة' : 'Evidence-backed professional statements' }}</h2>
-                    <ul class="professional-evidence">
-                        @foreach ($approvedClaims as $claim)
-                            <li>
-                                <span>{{ $claim['text'] }}</span>
-                                <a href="{{ $claim['evidence_url'] }}" target="_blank" rel="noopener noreferrer"
-                                   aria-label="{{ $locale === 'ar' ? 'افتح دليل: ' : 'Open evidence for: ' }}{{ $claim['text'] }}">{{ $locale === 'ar' ? 'عرض الدليل' : 'View evidence' }}</a>
-                            </li>
-                        @endforeach
-                    </ul>
-                @endif
-            @elseif ($page === 'expertise')
+            @if ($page === 'expertise')
                 {{-- Canonical skill category values are persisted in English and drive
                      recruiter filters. Only the verified public heading is localized. --}}
                 @php($categoryLabelsAr = [
@@ -225,5 +195,6 @@
             </div>
         </aside>
     </div>
+    @endif
 </div>
 @endsection
