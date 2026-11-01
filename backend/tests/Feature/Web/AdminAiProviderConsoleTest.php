@@ -66,6 +66,32 @@ class AdminAiProviderConsoleTest extends TestCase
             ->assertSee('مزودو الذكاء الاصطناعي');
     }
 
+    public function test_admin_provider_status_is_localized_and_skip_target_is_keyboard_focusable(): void
+    {
+        $this->actingAs($this->account(), 'web');
+        $this->post('/admin/ai/providers', $this->providerForm())
+            ->assertRedirect('/admin/ai/providers');
+
+        $provider = AiProvider::firstOrFail();
+
+        $this->get('/admin/ai/providers?lang=en')->assertOk()
+            ->assertSee('href="#content"', false)
+            ->assertSee('id="content" class="body" tabindex="-1"', false)
+            ->assertSee(' · Disabled · ', false);
+
+        $this->get('/admin/ai/providers?lang=ar')->assertOk()
+            ->assertSee('dir="rtl"', false)
+            ->assertSee('id="content" class="body" tabindex="-1"', false)
+            ->assertSee(' · معطّل · ', false)
+            ->assertDontSee(' · Disabled · ', false);
+
+        $this->patch('/admin/ai/providers/'.$provider->id, ['enabled' => '1'])
+            ->assertRedirect('/admin/ai/providers');
+        $this->get('/admin/ai/providers?lang=ar')->assertOk()
+            ->assertSee(' · مفعّل · ', false)
+            ->assertDontSee(' · Enabled · ', false);
+    }
+
     public function test_provider_console_links_to_real_usage_audit_in_both_locales(): void
     {
         $this->get('/admin/ai/usage')->assertRedirect('/admin/login');
