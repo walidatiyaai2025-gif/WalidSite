@@ -45,6 +45,36 @@ Route::middleware('auth:web')->group(function (): void {
         ]);
     })->name('admin.providers.index');
 
+    // T016: bounded, read-only provider billing audit. Saved daily budgets
+    // are displayed as settings, not claimed as enforced spend limits.
+    // Keep receipts partitioned by their *actual* currency and provider.
+    Route::get('/admin/ai/usage', function (Request $request) {
+        abort_unless($request->user()?->canAccessAdmin(), 403);
+        $request->validate([
+            'lang' => ['sometimes', 'in:ar,en'],
+            'page' => ['sometimes', 'integer', 'min:1', 'max:10000'],
+        ]);
+        $today = now('UTC')->startOfDay();
+        $tomorrow = $today->copy()->addDay();
+        $rows = \Illuminate\Support\Facades\DB::table('ai_providers as provider')
+            ->leftJoin('ai_usage as usage', function ($join) use ($today, $tomorrow) {
+                $join->on('usage.provider_id', '=', 'provider.id')
+                    ->where('usage.created_at', '>=', $today)
+                    ->where('usage.created_at', '<', $tomorrow);
+            })
+            ->whereNull('provider.deleted_at')
+            ->select('provider.id', 'provider.display_name', 'provider.daily_budget_minor',
+                'provider.currency', 'usage.cost_currency')
+            ->selectRaw('COUNT(usage.id) AS receipt_count, COALESCE(SUM(usage.cost_minor), 0) AS spend_minor')
+            ->groupBy('provider.id', 'provider.display_name', 'provider.daily_budget_minor',
+                'provider.currency', 'usage.cost_currency')
+            ->orderBy('provider.display_name')->orderBy('provider.id')
+            ->orderBy('usage.cost_currency')
+            ->paginate(20)->withQueryString();
+
+        return view('admin.ai.usage', compact('rows'));
+    })->name('admin.usage.index');
+
     // Laravel web middleware enforces CSRF. API controller remains the only
     // writer, validator, secret encryption and audit implementation.
     Route::post('/admin/ai/providers', function (Request $request) {
