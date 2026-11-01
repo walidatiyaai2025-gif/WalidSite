@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\IdentityController;
 use App\Http\Controllers\Api\AiProviderController;
+use App\Http\Controllers\Api\AdminDashboardController;
 use App\Http\Controllers\Api\PublicPortfolioController;
 use App\Http\Controllers\Api\PublicHomeController;
 use App\Http\Controllers\Api\MobileHomeController;
@@ -37,6 +38,9 @@ Route::middleware([RequireSecureApiTransport::class, 'auth:sanctum'])->group(fun
         ->name('api.mobile.saved.destroy')->middleware('throttle:30,1');
     Route::post('/auth/logout', [IdentityController::class, 'logout']);
     Route::get('/admin/identity-check', [IdentityController::class, 'adminCheck']);
+    // ADMIN-01: aggregated persisted metrics, never fabricated health or spend.
+    Route::get('/admin/dashboard', [AdminDashboardController::class, 'index'])
+        ->name('api.admin.dashboard')->middleware('throttle:60,1');
 
     // Explicit administrator-scoped token + role required in the controller.
     Route::get('/admin/ai/providers', [AiProviderController::class, 'index']);
