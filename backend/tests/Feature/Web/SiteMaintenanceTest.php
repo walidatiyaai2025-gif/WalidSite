@@ -119,6 +119,51 @@ class SiteMaintenanceTest extends TestCase
         $this->post('/admin/updates/apply')->assertRedirect();
     }
 
+
+    public function test_production_setup_denies_all_plain_http_steps_and_accepts_https_unlock(): void
+    {
+        $priorEnvironment = $this->app['env'];
+        $token = str_repeat('h', 40);
+        config([
+            'site.setup_enabled' => true,
+            'site.setup_token' => $token,
+            'site.setup_database_ready' => true,
+            'site.install_lock_path' => storage_path('app/setup-https-test-uncreated.lock'),
+        ]);
+
+        // The production web stack enforces CSRF before route middleware.
+        // Supply a real session token so transport denials are exercised
+        // rather than receiving an unrelated 419 CSRF rejection.
+        $csrf = str_repeat('c', 40);
+        $this->withSession(['_token' => $csrf]);
+        $this->app->instance('env', 'production');
+
+        try {
+            $this->get('http://localhost/setup')->assertForbidden();
+            $this->post('http://localhost/setup/unlock', ['token' => $token, '_token' => $csrf])
+                ->assertForbidden();
+            $this->post('http://localhost/setup/configure', [
+                'db_password' => 'would-be-exposed', '_token' => $csrf,
+            ])->assertForbidden();
+            $this->post('http://localhost/setup/database', ['_token' => $csrf])->assertForbidden();
+            $this->post('http://localhost/setup/finish', [
+                'password' => 'Example-Owner-Password-1234',
+                'password_confirmation' => 'Example-Owner-Password-1234',
+                '_token' => $csrf,
+            ])->assertForbidden();
+
+            // Correctly secured requests still reach the normal wizard.
+            $this->get('https://localhost/setup')->assertOk()
+                ->assertSee('Server setup token');
+            $this->post('https://localhost/setup/unlock', ['token' => $token, '_token' => $csrf])
+                ->assertRedirect('/setup');
+            $this->get('https://localhost/setup')->assertOk();
+
+        } finally {
+            $this->app->instance('env', $priorEnvironment);
+        }
+    }
+
     public function test_manual_updates_can_be_disabled_without_hiding_status(): void
     {
         config(['site.updates_enabled' => false]);
