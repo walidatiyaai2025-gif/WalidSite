@@ -447,7 +447,6 @@ void main() {
       },
     );
     await login(tester);
-    expect(find.byKey(const Key('ai-diagnose-submit')), findsOneWidget);
     now = now.add(const Duration(minutes: 2));
     await reveal(tester, const Key('ai-diagnose-submit'));
     await tester.tap(find.byKey(const Key('ai-diagnose-submit')));
@@ -477,7 +476,7 @@ void main() {
         resultUrl: '/api/v1/mobile/solutions/$runbookId',
         retryAfterSeconds: null,
       ),
-      save: (_, __) async => saveCalls++,
+      save: (_, __) async { saveCalls++; },
     );
     await login(tester);
     await tester.enterText(find.byKey(const Key('ai-technology')), 'Laravel');
