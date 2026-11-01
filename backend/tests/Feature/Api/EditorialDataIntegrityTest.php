@@ -246,6 +246,51 @@ class EditorialDataIntegrityTest extends TestCase
         $this->getJson('/api/v1/public/articles')->assertOk()->assertJsonCount(0, 'data');
     }
 
+
+    public function test_nested_encoded_redirect_fragment_cannot_leak_oauth_credentials(): void
+    {
+        \Illuminate\Support\Facades\Http::fake();
+        $unsafe = 'https://docs.example.org/guide?next='.rawurlencode(rawurlencode(
+            'https://docs.example.org/consent#access_token=synthetic-value'
+        ));
+
+        $draft = Article::create([
+            'slug' => 'nested-redirect-fragment',
+            'title_en' => 'Reviewed citation', 'title_ar' => 'مرجع',
+            'canonical_lang' => 'en',
+        ]);
+        $invalid = $draft->revisions()->create([
+            'revision_no' => 1, 'body_md' => '# Candidate text',
+            'citations_json' => [['source_url' => $unsafe, 'verified' => true]],
+            'validation_json' => ['citations_passed' => true, 'technical_passed' => true],
+            'status' => 'validated',
+        ]);
+        $this->assertFalse($invalid->hasVerifiedEvidence());
+        $this->assertFalse($draft->isReadyToPublish());
+        $this->getJson('/api/v1/public/articles/'.$draft->slug)->assertNotFound()
+            ->assertDontSee('synthetic-value');
+
+        // A previously approved snapshot must be revalidated on each read:
+        // a legacy bulk import can bypass Eloquent's approval invalidation.
+        $article = $this->article();
+        $revision = $this->revision($article);
+        $article->publishVerified();
+        $this->getJson('/api/v1/public/articles/'.$article->slug)->assertOk();
+
+        \Illuminate\Support\Facades\DB::table('article_revisions')
+            ->where('id', $revision->id)
+            ->update(['citations_json' => json_encode([
+                ['source_url' => $unsafe, 'verified' => true],
+            ], JSON_THROW_ON_ERROR)]);
+
+        $this->assertNull($article->fresh()->publicRevision());
+        $this->getJson('/api/v1/public/articles/'.$article->slug)->assertNotFound()
+            ->assertDontSee('synthetic-value');
+        $this->getJson('/api/v1/public/articles')->assertOk()
+            ->assertJsonCount(0, 'data')->assertDontSee('synthetic-value');
+        \Illuminate\Support\Facades\Http::assertNothingSent();
+    }
+
     public function test_revoked_source_safety_hides_previously_published_snapshot(): void
     {
         $article = $this->article();
