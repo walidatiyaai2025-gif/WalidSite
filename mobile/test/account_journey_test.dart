@@ -236,6 +236,7 @@ void main() {
     ));
     await login(tester);
     await tester.tap(find.byKey(const Key('account-profile-tab')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('account-signout')));
     await tester.pumpAndSettle();
     expect(find.text('Local session cleared; server sign-out unconfirmed.'),
