@@ -139,4 +139,100 @@ class VerifiedBlogPagesTest extends TestCase
             ->assertDontSee($article->title_en);
     }
 
+    /** Construct a genuinely published article, then optionally revoke its proof. */
+    private function publishForPagination(string $slug, bool $revoke = false): Article
+    {
+        $article = Article::create([
+            'slug' => $slug,
+            'title_en' => 'Verified guide '.$slug,
+            'title_ar' => 'دليل موثق '.$slug,
+            'canonical_lang' => 'en',
+        ]);
+        $revision = $article->revisions()->create([
+            'revision_no' => 1,
+            'body_md' => 'Verified technical guidance with sources.',
+            'status' => 'validated',
+            'citations_json' => [[
+                'source_url' => 'https://docs.example.org/verified-guide',
+                'verified' => true,
+            ]],
+            'validation_json' => [
+                'citations_passed' => true,
+                'technical_passed' => true,
+            ],
+        ]);
+        $article->publishVerified();
+        if ($revoke) {
+            // Persist a withdrawal without changing the cheap SQL scope:
+            // only publicRevision() recognizes this previously valid row.
+            \Illuminate\Support\Facades\DB::table('article_revisions')
+                ->where('id', $revision->id)
+                ->update(['validation_json' => json_encode([
+                    'citations_passed' => false, 'technical_passed' => true,
+                ], JSON_THROW_ON_ERROR)]);
+        }
+        return $article;
+    }
+
+    public function test_blog_pagination_counts_only_live_verified_articles_and_preserves_filters(): void
+    {
+        $category = Category::create([
+            'slug' => 'database-guides',
+            'name_en' => 'Database guides',
+            'name_ar' => 'أدلة قواعد البيانات',
+        ]);
+        for ($i = 1; $i <= 11; $i++) {
+            $revoked = $this->publishForPagination('revoked-blog-'.$i, true);
+            $revoked->categories()->attach($category->id);
+            $revoked->forceFill(['published_at' => now()->subMinute()])->save();
+        }
+        for ($i = 1; $i <= 10; $i++) {
+            $safe = $this->publishForPagination('verified-blog-'.$i);
+            $safe->categories()->attach($category->id);
+            $safe->forceFill(['published_at' => now()->subDays(3)->subMinutes($i)])->save();
+        }
+
+        $base = '/blog?category=database-guides&q=Verified&lang=en';
+        $first = $this->get($base.'&page=1')->assertOk()
+            ->assertSee('Page 1 / 2')
+            ->assertSee('verified-blog-1')
+            ->assertSee('verified-blog-9')
+            ->assertDontSee('verified-blog-10')
+            ->assertDontSee('revoked-blog-')
+            ->assertSee('page=2')
+            ->assertSee('database-guides')
+            ->assertSee('q=Verified');
+        $this->get('/blog?category=database-guides&q=Verified&lang=ar&page=2')
+            ->assertOk()
+            ->assertSee('dir="rtl"', false)
+            ->assertSee('الصفحة 2 / 2')
+            ->assertSee('verified-blog-10')
+            ->assertDontSee('verified-blog-1"')
+            ->assertDontSee('revoked-blog-')
+            ->assertDontSee('page=3');
+        $this->get($base.'&page=3')->assertOk()
+            ->assertSee('No source-verified published articles')
+            ->assertDontSee('revoked-blog-')
+            ->assertDontSee('verified-blog-10');
+    }
+
+    public function test_blog_revocation_removes_navigation_counts_on_next_request(): void
+    {
+        for ($i = 1; $i <= 10; $i++) {
+            $this->publishForPagination('revoke-after-list-'.$i);
+        }
+        $this->get('/blog')->assertOk()->assertSee('Page 1 / 2');
+        for ($i = 1; $i <= 10; $i++) {
+            \Illuminate\Support\Facades\DB::table('article_revisions')
+                ->where('article_id', Article::where('slug', 'revoke-after-list-'.$i)->value('id'))
+                ->update(['validation_json' => json_encode([
+                    'citations_passed' => false, 'technical_passed' => true,
+                ], JSON_THROW_ON_ERROR)]);
+        }
+        $this->get('/blog')->assertOk()
+            ->assertSee('No source-verified published articles')
+            ->assertDontSee('Page 1 / 2')
+            ->assertDontSee('revoke-after-list-');
+    }
+
 }

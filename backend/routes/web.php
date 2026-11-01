@@ -657,14 +657,29 @@ Route::get('/blog', function (Request $request) {
     $categories = \App\Models\Category::query()
         ->whereHas('articles', fn ($article) => $article->publiclyVisible())
         ->orderBy('slug')->get();
-    $paginated = $query->orderByDesc('published_at')->orderBy('id')->paginate(9)->withQueryString();
-    $entries = $paginated->getCollection()
-        ->map(fn (\App\Models\Article $article) => [
-            'article' => $article,
-            'revision' => $article->publicRevision(),
-        ])
-        ->filter(fn (array $entry) => $entry['revision'] !== null)
-        ->values();
+    // A SQL-published article can lose citation or media rights after
+    // publication. Apply the authoritative pinned revision check BEFORE
+    // counting/page slicing; otherwise withdrawn rows create sparse pages
+    // and reveal bogus totals. Cursor-like lazy chunks bound query memory.
+    $perPage = 9;
+    $page = (int) ($input['page'] ?? 1);
+    $offset = ($page - 1) * $perPage;
+    $total = 0;
+    $entries = collect();
+    foreach ($query->orderByDesc('published_at')->orderBy('id')->lazy(100) as $article) {
+        $revision = $article->publicRevision();
+        if ($revision === null) {
+            continue;
+        }
+        if ($total >= $offset && $entries->count() < $perPage) {
+            $entries->push(['article' => $article, 'revision' => $revision]);
+        }
+        $total++;
+    }
+    $paginated = new \Illuminate\Pagination\LengthAwarePaginator(
+        $entries, $total, $perPage, $page,
+        ['path' => $request->url(), 'query' => $request->query()]
+    );
 
     return view('public.blog', compact('entries', 'paginated', 'categories', 'search', 'category'));
 })->name('public.blog')->middleware('throttle:60,1');
