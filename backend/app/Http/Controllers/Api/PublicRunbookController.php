@@ -113,14 +113,29 @@ final class PublicRunbookController extends Controller
         ]);
     }
 
+    /**
+     * Reuse exactly the public read gate for the authenticated user's saved
+     * library; a once-approved entry is no longer public after revocation.
+     * Returns no private version history, storage key or unreviewed title.
+     */
+    public function verifiedData(string $id): ?array
+    {
+        if (! Str::isUuid($id)) {
+            return null;
+        }
+
+        $row = $this->candidates()->where('r.id', $id)->first();
+        return $row !== null && $this->independentlyVerified($row)
+            ? $this->serialize($row) : null;
+    }
+
     public function show(string $id): JsonResponse
     {
         // UUID validation is also enforced by the route. No sequential IDs,
         // slugs or user-supplied SQL parameters are allowed for detail reads.
-        abort_unless(Str::isUuid($id), 404);
-        $row = $this->candidates()->where('r.id', $id)->first();
-        abort_unless($row !== null && $this->independentlyVerified($row), 404);
+        $data = $this->verifiedData($id);
+        abort_unless($data !== null, 404);
 
-        return response()->json(['data' => $this->serialize($row)]);
+        return response()->json(['data' => $data]);
     }
 }
