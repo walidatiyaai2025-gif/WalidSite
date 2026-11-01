@@ -28,6 +28,13 @@ void main() {
     ));
   }
 
+  Future<void> reveal(WidgetTester tester, Key key) async {
+    final finder = find.byKey(key);
+    await tester.scrollUntilVisible(finder, 220);
+    await tester.ensureVisible(finder);
+    await tester.pumpAndSettle();
+  }
+
   Future<void> login(
     WidgetTester tester, {
     String email = 'reader@example.test',
@@ -101,6 +108,7 @@ void main() {
     expect(loginCalls, 1);
     expect(receivedEmail, 'reader@example.test');
     expect(receivedPassword, 'correct horse battery staple');
+    await reveal(tester, const Key('ai-diagnose-submit'));
     expect(find.byKey(const Key('ai-diagnose-submit')), findsOneWidget);
     expect(find.text('correct horse battery staple'), findsNothing);
     expect(find.text(token), findsNothing);
@@ -158,6 +166,7 @@ void main() {
       'RESTORE DATABASE sample WITH RECOVERY;',
     );
 
+    await reveal(tester, const Key('ai-diagnose-submit'));
     await tester.tap(find.byKey(const Key('ai-diagnose-submit')));
     await tester.pump();
     expect(diagnoseCalls, 0);
@@ -166,6 +175,7 @@ void main() {
       findsOneWidget,
     );
 
+    await reveal(tester, const Key('ai-consent'));
     await tester.tap(find.byKey(const Key('ai-consent')));
     await tester.pump();
     await tester.tap(find.byKey(const Key('ai-diagnose-submit')));
@@ -176,10 +186,13 @@ void main() {
     expect(receivedQuestion, 'Why did recovery stop after restart?');
     expect(receivedTechnology, 'SQL Server');
     expect(receivedCode, 'RESTORE DATABASE sample WITH RECOVERY;');
+    await reveal(tester, const Key('ai-open-solution'));
     expect(find.byKey(const Key('ai-open-solution')), findsOneWidget);
     expect(find.byKey(const Key('ai-save-answer')), findsOneWidget);
+    await reveal(tester, const Key('ai-report-error-disabled'));
     expect(find.byKey(const Key('ai-report-error-disabled')), findsOneWidget);
 
+    await reveal(tester, const Key('ai-open-solution'));
     await tester.tap(find.byKey(const Key('ai-open-solution')));
     await tester.pumpAndSettle();
 
@@ -218,10 +231,13 @@ void main() {
       find.byKey(const Key('ai-question')),
       'Why is this queue retrying?',
     );
+    await reveal(tester, const Key('ai-consent'));
     await tester.tap(find.byKey(const Key('ai-consent')));
+    await reveal(tester, const Key('ai-diagnose-submit'));
     await tester.tap(find.byKey(const Key('ai-diagnose-submit')));
     await tester.pumpAndSettle();
 
+    await reveal(tester, const Key('ai-save-answer'));
     await tester.tap(find.byKey(const Key('ai-save-answer')));
     await tester.pumpAndSettle();
     expect(saveCalls, 1);
@@ -256,8 +272,10 @@ void main() {
       find.byKey(const Key('ai-question')),
       'Why does this request fail?',
     );
+    await reveal(tester, const Key('ai-consent'));
     await tester.tap(find.byKey(const Key('ai-consent')));
 
+    await reveal(tester, const Key('ai-diagnose-submit'));
     await tester.tap(find.byKey(const Key('ai-diagnose-submit')));
     await tester.pumpAndSettle();
     expect(find.text('Usage limit reached. Try again later.'), findsOneWidget);
@@ -300,8 +318,10 @@ void main() {
       find.byKey(const Key('ai-question')),
       'Why is the request delayed?',
     );
+    await reveal(tester, const Key('ai-consent'));
     await tester.tap(find.byKey(const Key('ai-consent')));
 
+    await reveal(tester, const Key('ai-diagnose-submit'));
     await tester.tap(find.byKey(const Key('ai-diagnose-submit')));
     await tester.pumpAndSettle();
     expect(find.textContaining('Retry after about 30 seconds'), findsOneWidget);
@@ -345,11 +365,15 @@ void main() {
       find.byKey(const Key('ai-question')),
       'لماذا فشل الاسترجاع بعد إعادة التشغيل؟',
     );
+    await reveal(tester, const Key('ai-consent'));
     await tester.tap(find.byKey(const Key('ai-consent')));
+    await reveal(tester, const Key('ai-diagnose-submit'));
     await tester.tap(find.byKey(const Key('ai-diagnose-submit')));
     await tester.pumpAndSettle();
 
+    await reveal(tester, const Key('ai-open-solution'));
     expect(find.text('افتح الحل المراجع'), findsOneWidget);
+    await reveal(tester, const Key('ai-report-error-disabled'));
     expect(find.text('الإبلاغ غير متاح حاليًا'), findsOneWidget);
   });
 }
