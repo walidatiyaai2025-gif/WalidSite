@@ -59,7 +59,7 @@ class PublicHomeLandingTest extends TestCase
             ->assertSee('Software, Database &amp; AI Engineering', false)
             ->assertSee('class="landing-portrait"', false)
             ->assertSee('class="device-row"', false)
-            ->assertSee('class="capability-strip"', false)
+            ->assertSee('class="site-wrap capability-strip"', false)
             ->assertSee('Verified projects &amp; case studies', false)
             ->assertSee('Latest source-checked articles')
             ->assertSee('No evidence-verified public case studies')
