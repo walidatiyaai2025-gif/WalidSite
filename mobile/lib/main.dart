@@ -5,6 +5,7 @@ import 'runbooks/offline_runbooks.dart';
 import 'runbooks/verified_online_runbooks.dart';
 import 'articles/verified_articles.dart';
 import 'learning/verified_learning_paths.dart';
+import 'github/verified_github_portfolio.dart';
 import 'solutions/offline_solution_finder.dart';
 
 void main() => runApp(const WaleedTechApp());
@@ -203,6 +204,23 @@ class CompanionHome extends StatelessWidget {
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute<void>(
                     builder: (_) => VerifiedLearningLibrary(arabic: arabic),
+                  ),
+                ),
+              ),
+            ),
+            Card(
+              child: ListTile(
+                key: const Key('verified-github-entry'),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                leading: const Icon(Icons.code_outlined, size: 30),
+                title: Text(arabic ? 'مشاريعي على GitHub' : 'My GitHub'),
+                subtitle: Text(arabic
+                    ? 'استعرض المستودعات العامة التي تم التحقق منها فقط'
+                    : 'Browse independently verified public repositories'),
+                trailing: Icon(arabic ? Icons.chevron_left : Icons.chevron_right),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => VerifiedGithubPortfolioScreen(arabic: arabic),
                   ),
                 ),
               ),
