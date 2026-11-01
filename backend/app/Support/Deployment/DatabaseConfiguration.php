@@ -95,7 +95,8 @@ class DatabaseConfiguration
             }
             // Preserve quoted DB passwords including spaces, quotes and symbols.
             $escaped = str_replace(['\\', '"', '$'], ['\\\\', '\\"', '\\$'], $value);
-            $line = $name.'="'.$escaped.'"';
+            $line = in_array($name, ['APP_DEBUG', 'SITE_SETUP_ENABLED', 'SITE_SETUP_DATABASE_READY', 'SITE_UPDATES_ENABLED', 'SITE_AUTO_MIGRATE'], true)
+                ? $name.'='.$value : $name.'="'.$escaped.'"';
             $pattern = '/^'.preg_quote($name, '/').'\s*=.*$/m';
             if (preg_match($pattern, $text)) {
                 $text = preg_replace_callback($pattern, static fn (): string => $line, $text, 1);
