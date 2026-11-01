@@ -364,4 +364,99 @@ class NoTerminalInstallerTest extends TestCase
         }
     }
 
+
+    public function test_setup_saving_replaces_all_duplicate_managed_keys_and_preserves_unrelated_settings(): void
+    {
+        $path = storage_path('app/installer-env-duplicates-'.bin2hex(random_bytes(6)));
+        $previousKey = config('app.key');
+        $previousToken = config('site.setup_token');
+        $password = 'New pass "quoted" $cost \\ root';
+        config([
+            'app.key' => 'base64:'.base64_encode(str_repeat('k', 32)),
+            'site.setup_token' => str_repeat('s', 40),
+            'site.environment_path' => $path,
+        ]);
+        file_put_contents($path, "# Custom configuration must remain\r\n"
+            ."APP_URL=\"https://stale-first.example.org\"\r\n"
+            ."export APP_URL=\"https://stale-second.example.org\"\r\n"
+            ."DB_PASSWORD=\"stale-first\"\r\n"
+            ."OTHER_DB_PASSWORD=\"unmanaged-value\"\r\n"
+            ." export DB_PASSWORD = \"stale-second\"\r\n"
+            ."DB_PASSWORD=\"stale-third\"\r\n"
+            ."SITE_SETUP_TOKEN=\"stale-setup-token\"\r\n"
+            ."export SITE_SETUP_TOKEN=\"old-setup-token\"\r\n"
+            ."CUSTOM_SETTING=\"retained\"\r\n");
+
+        try {
+            app(DatabaseConfiguration::class)->save([
+                'db_host' => 'localhost',
+                'db_port' => 3306,
+                'db_database' => 'verified_site',
+                'db_username' => 'verified_writer',
+                'db_password' => $password,
+            ], 'https://walidsite.example.org');
+
+            $contents = (string) file_get_contents($path);
+            foreach (['APP_URL', 'DB_PASSWORD', 'SITE_SETUP_TOKEN', 'APP_KEY',
+                'SITE_SETUP_ENABLED', 'SITE_SETUP_DATABASE_READY'] as $name) {
+                $this->assertSame(1, preg_match_all(
+                    '/^[ \t]*(?:export[ \t]+)?'.preg_quote($name, '/').'[ \t]*=/m',
+                    $contents
+                ), 'Managed key must appear only once: '.$name);
+            }
+            $this->assertStringContainsString('APP_URL="https://walidsite.example.org"', $contents);
+            $this->assertStringContainsString('DB_PASSWORD="New pass \\"quoted\\" \\$cost \\\\ root"', $contents);
+            $this->assertStringContainsString('SITE_SETUP_TOKEN="'.str_repeat('s', 40).'"', $contents);
+            $this->assertStringContainsString("OTHER_DB_PASSWORD=\"unmanaged-value\"\r\n", $contents);
+            $this->assertStringContainsString("CUSTOM_SETTING=\"retained\"\r\n", $contents);
+            $this->assertStringContainsString("# Custom configuration must remain\r\n", $contents);
+            foreach (['stale-first', 'stale-second', 'stale-third',
+                'stale-setup-token', 'old-setup-token'] as $stale) {
+                $this->assertStringNotContainsString($stale, $contents);
+            }
+        } finally {
+            config(['app.key' => $previousKey, 'site.setup_token' => $previousToken]);
+            @unlink($path);
+        }
+    }
+
+    public function test_finishing_setup_removes_every_historical_token_and_disables_all_duplicate_switches(): void
+    {
+        $path = storage_path('app/installer-env-lockout-'.bin2hex(random_bytes(6)));
+        $bootstrap = storage_path('app/installer-bootstrap-lockout-'.bin2hex(random_bytes(6)));
+        config([
+            'site.environment_path' => $path,
+            'site.bootstrap_path' => $bootstrap,
+        ]);
+        file_put_contents($path, "# Preserve unrelated site configuration\n"
+            ."SITE_SETUP_TOKEN=\"historical-secret-one\"\n"
+            ."SITE_SETUP_ENABLED=true\n"
+            ."export SITE_SETUP_TOKEN=\"historical-secret-two\"\n"
+            ."export SITE_SETUP_ENABLED=true\n"
+            ."SITE_SETUP_DATABASE_READY=true\n"
+            ." SITE_SETUP_DATABASE_READY = true\n"
+            ."CUSTOM_SETTING=\"preserved\"\n");
+        file_put_contents($bootstrap, '{}');
+
+        try {
+            app(DatabaseConfiguration::class)->disableSetup();
+            $contents = (string) file_get_contents($path);
+            foreach (['SITE_SETUP_ENABLED', 'SITE_SETUP_TOKEN',
+                'SITE_SETUP_DATABASE_READY'] as $name) {
+                $this->assertSame(1, preg_match_all(
+                    '/^[ \t]*(?:export[ \t]+)?'.preg_quote($name, '/').'[ \t]*=/m',
+                    $contents
+                ));
+            }
+            $this->assertStringContainsString('SITE_SETUP_ENABLED=false', $contents);
+            $this->assertStringContainsString('SITE_SETUP_TOKEN=""', $contents);
+            $this->assertStringContainsString('SITE_SETUP_DATABASE_READY=false', $contents);
+            $this->assertStringContainsString('CUSTOM_SETTING="preserved"', $contents);
+            $this->assertStringNotContainsString('historical-secret', $contents);
+            $this->assertFileDoesNotExist($bootstrap);
+        } finally {
+            @unlink($path);
+            @unlink($bootstrap);
+        }
+    }
 }
