@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\IdentityController;
 use App\Http\Controllers\Api\AiProviderController;
 use App\Http\Controllers\Api\AdminDashboardController;
 use App\Http\Controllers\Api\AdminAiRouteController;
+use App\Http\Controllers\Api\AdminAiTaskRouteController;
 use App\Http\Controllers\Api\AdminArticleController;
 use App\Http\Controllers\Api\PublicPortfolioController;
 use App\Http\Controllers\Api\PublicAiExpertiseController;
@@ -60,6 +61,24 @@ Route::middleware([RequireSecureApiTransport::class, 'auth:sanctum'])->group(fun
         ->name('api.admin.ai.routes')->middleware('throttle:60,1');
     Route::put('/admin/ai/routes/{provider}', [AdminAiRouteController::class, 'update'])
         ->whereUuid('provider')->name('api.admin.ai.routes.update')
+        ->middleware('throttle:20,1');
+
+    // ADMIN-04/05: token-only counterpart to web model registration and
+    // actual diagnosis primary/fallback route policies. No live AI calls.
+    Route::get('/admin/ai/models', [AdminAiTaskRouteController::class, 'models'])
+        ->name('api.admin.ai.models')->middleware('throttle:60,1');
+    Route::post('/admin/ai/models', [AdminAiTaskRouteController::class, 'createModel'])
+        ->name('api.admin.ai.models.create')->middleware('throttle:20,1');
+    Route::patch('/admin/ai/models/{model}', [AdminAiTaskRouteController::class, 'updateModel'])
+        ->whereUuid('model')->name('api.admin.ai.models.update')
+        ->middleware('throttle:20,1');
+    Route::get('/admin/ai/task-routes/mobile-ai-diagnose',
+        [AdminAiTaskRouteController::class, 'diagnosisRoute'])
+        ->name('api.admin.ai.task-routes.diagnosis')
+        ->middleware('throttle:60,1');
+    Route::put('/admin/ai/task-routes/mobile-ai-diagnose',
+        [AdminAiTaskRouteController::class, 'saveDiagnosisRoute'])
+        ->name('api.admin.ai.task-routes.diagnosis.save')
         ->middleware('throttle:20,1');
 
     // ADMIN-02: edit queue metadata only, never expose raw drafts or citations.
