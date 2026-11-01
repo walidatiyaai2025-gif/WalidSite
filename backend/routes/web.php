@@ -94,26 +94,42 @@ Route::get('/sitemap.xml', function (Request $request) {
         $add($name);
     }
 
-    \App\Models\Article::query()->publiclyVisible()
-        ->orderByDesc('published_at')->orderBy('id')->limit(200)->get()
-        ->each(static function (\App\Models\Article $article) use ($add): void {
-            if (preg_match('/\A[a-zA-Z0-9-]+\z/D', $article->slug) === 1
-                && $article->publicRevision() !== null) {
-                $add('public.article', ['slug' => $article->slug]);
-            }
-        });
+    // Cap *verified destinations*, not the first 200 nominally published DB
+    // rows. Revoked citations or unsafe proof links must never displace a
+    // later, genuinely public article or case study in search discovery.
+    $articleCount = 0;
+    foreach (\App\Models\Article::query()->publiclyVisible()
+        ->orderByDesc('published_at')->orderBy('id')->lazy(100) as $article) {
+        if (preg_match('/\A[a-zA-Z0-9-]+\z/D', $article->slug) !== 1
+            || $article->publicRevision() === null) {
+            continue;
+        }
+        $add('public.article', ['slug' => $article->slug]);
+        if (++$articleCount === 200) {
+            break;
+        }
+    }
 
     $api = app(\App\Http\Controllers\Api\PublicPortfolioController::class);
-    \App\Models\Project::query()->publiclyVerified()
-        ->orderByDesc('published_at')->orderBy('id')->limit(200)->get()
-        ->each(static function (\App\Models\Project $project) use ($api, $request, $add): void {
-            // DB flags alone do not make a public, safe, independently usable
-            // evidence URL. The canonical API serializer enforces that policy.
-            if (preg_match('/\A[a-zA-Z0-9-]+\z/D', $project->slug) === 1
-                && ! empty($api->publicProjectData($project, $request)['evidence_urls'])) {
-                $add('public.project', ['slug' => $project->slug]);
-            }
-        });
+    $projectCount = 0;
+    foreach (\App\Models\Project::query()->publiclyVerified()
+        // Use the same 50-evidence per-project policy as the public API.
+        // Chunked eager loading avoids one DB query per sitemap candidate.
+        ->with(['evidence' => static fn ($evidence) => $evidence
+            ->where('visibility', 'public')
+            ->whereNotNull('verified_at')
+            ->where('verified_at', '<=', now())
+            ->orderBy('id')->limit(50)])
+        ->orderByDesc('published_at')->orderBy('id')->lazy(100) as $project) {
+        if (preg_match('/\A[a-zA-Z0-9-]+\z/D', $project->slug) !== 1
+            || empty($api->publicProjectData($project, $request)['evidence_urls'])) {
+            continue;
+        }
+        $add('public.project', ['slug' => $project->slug]);
+        if (++$projectCount === 200) {
+            break;
+        }
+    }
 
     return response()->view('public.sitemap', compact('entries'))
         ->header('Content-Type', 'application/xml; charset=UTF-8')
