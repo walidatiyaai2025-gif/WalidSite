@@ -409,7 +409,7 @@ class VerifiedLearningDetails extends StatelessWidget {
             style: Theme.of(context).textTheme.titleLarge,
           ),
           const SizedBox(height: 12),
-          for (final lesson in track.lessons)
+          for (var index = 0; index < track.lessons.length; index++)
             Padding(
               padding: const EdgeInsets.only(bottom: 12),
               child: Card(child: Padding(
@@ -417,18 +417,130 @@ class VerifiedLearningDetails extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(lesson.title,
+                    Text(track.lessons[index].title,
                         style: Theme.of(context).textTheme.titleMedium),
-                    if (lesson.description.isNotEmpty) ...[
+                    if (track.lessons[index].description.isNotEmpty) ...[
                       const SizedBox(height: 8),
-                      Text(lesson.description),
+                      Text(track.lessons[index].description),
                     ],
+                    const SizedBox(height: 8),
+                    TextButton.icon(
+                      key: Key('learning-open-lesson-$index'),
+                      icon: const Icon(Icons.menu_book_outlined),
+                      label: Text(arabic ? 'قراءة الدرس' : 'Read lesson'),
+                      onPressed: () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => VerifiedLearningLessonReader(
+                            arabic: arabic,
+                            track: track,
+                            initialIndex: index,
+                          ),
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               )),
             ),
         ],
       )),
+    );
+  }
+}
+
+
+/// Reads an already-vetted lesson without sending progress or completion data.
+class VerifiedLearningLessonReader extends StatefulWidget {
+  const VerifiedLearningLessonReader({
+    required this.arabic,
+    required this.track,
+    required this.initialIndex,
+    super.key,
+  });
+
+  final bool arabic;
+  final VerifiedLearningTrack track;
+  final int initialIndex;
+
+  @override
+  State<VerifiedLearningLessonReader> createState() =>
+      _VerifiedLearningLessonReaderState();
+}
+
+class _VerifiedLearningLessonReaderState
+    extends State<VerifiedLearningLessonReader> {
+  late int _index;
+
+  @override
+  void initState() {
+    super.initState();
+    _index = widget.initialIndex.clamp(0, widget.track.lessons.length - 1).toInt();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ar = widget.arabic;
+    final lessons = widget.track.lessons;
+    final lesson = lessons[_index];
+    return Directionality(
+      textDirection: ar ? TextDirection.rtl : TextDirection.ltr,
+      child: Scaffold(
+        appBar: AppBar(title: Text(widget.track.title)),
+        body: SafeArea(
+          child: ListView(
+            padding: const EdgeInsets.all(20),
+            children: [
+              Text(
+                ar ? 'الدرس ${_index + 1} من ${lessons.length}'
+                   : 'Lesson ${_index + 1} of ${lessons.length}',
+                key: const Key('learning-lesson-position'),
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                lesson.title,
+                key: const Key('learning-lesson-title'),
+                style: Theme.of(context).textTheme.headlineSmall,
+              ),
+              const SizedBox(height: 16),
+              SelectableText(
+                lesson.description,
+                key: const Key('learning-lesson-content'),
+              ),
+              const SizedBox(height: 20),
+              Text(
+                ar ? 'موضع القراءة الحالي لا يُحفظ في حسابك.'
+                   : 'This reading position is not saved to your account.',
+                key: const Key('learning-progress-disclaimer'),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      key: const Key('learning-previous-lesson'),
+                      onPressed: _index == 0
+                          ? null
+                          : () => setState(() => _index--),
+                      child: Text(ar ? 'الدرس السابق' : 'Previous lesson'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FilledButton(
+                      key: const Key('learning-next-lesson'),
+                      onPressed: _index == lessons.length - 1
+                          ? null
+                          : () => setState(() => _index++),
+                      child: Text(ar ? 'الدرس التالي' : 'Next lesson'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
