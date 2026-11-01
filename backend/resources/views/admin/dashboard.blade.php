@@ -29,6 +29,9 @@ button{background:transparent;color:#fff;border:1px solid #fff;border-radius:8px
 <a href="{{ route('admin.providers.index', ['lang'=>$locale]) }}">{{ $locale === 'ar' ? 'مزودو AI' : 'AI providers' }}</a>
 <a href="{{ route('admin.content.index', ['lang'=>$locale]) }}">{{ $locale === 'ar' ? 'مراجعة المحتوى' : 'Editorial review' }}</a>
 <a href="{{ route('admin.media.index', ['lang'=>$locale]) }}">{{ $locale === 'ar' ? 'حقوق الصور' : 'Media rights' }}</a>
+@if(auth()->user()?->hasRole('owner'))
+<a href="{{ route('admin.updates.index', ['lang'=>$locale]) }}">{{ $locale === 'ar' ? 'التحديثات والباتشات' : 'Updates & patches' }}</a>
+@endif
 <a href="{{ route('home', ['lang'=>$locale]) }}">{{ $locale === 'ar' ? 'الموقع العام' : 'Public website' }}</a>
 </nav><form method="post" action="{{ route('admin.logout') }}">@csrf
 <button type="submit">{{ $locale === 'ar' ? 'خروج' : 'Sign out' }}</button></form></aside>
