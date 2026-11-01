@@ -149,6 +149,46 @@ class ArticleRevisionInvalidationTest extends TestCase
             ->assertOk()->assertJsonPath('data.body_markdown', '# Reviewed content');
     }
 
+    public function test_unsaved_article_identity_changes_cannot_reuse_a_prior_review(): void
+    {
+        foreach ([
+            'title_en' => 'Unreviewed English title',
+            'title_ar' => 'عنوان غير مراجع',
+            'slug' => 'unreviewed-slug',
+            'canonical_lang' => 'ar',
+        ] as $field => $replacement) {
+            [$article] = $this->reviewedArticle();
+            $article->{$field} = $replacement;
+
+            $this->assertFalse($article->isReadyToPublish(), $field.' was accepted without review');
+
+            try {
+                $article->publishVerified();
+                $this->fail('Publication appeared to succeed with dirty '.$field);
+            } catch (DomainException $exception) {
+                $this->assertSame(
+                    'Article evidence, editorial validation, or media rights are incomplete.',
+                    $exception->getMessage(),
+                );
+            }
+
+            // The rejected in-memory change has not altered the approved
+            // database row or the originally pinned public revision.
+            $this->assertSame('published', $article->fresh()->status);
+            $this->getJson('/api/v1/public/articles/reviewed-database-guide')
+                ->assertOk()
+                ->assertJsonPath('data.title', 'Database guide');
+
+            $article->save();
+            $this->assertSame('draft', $article->fresh()->status);
+            $this->getJson('/api/v1/public/articles')->assertOk()
+                ->assertJsonCount(0, 'data');
+
+            // Isolate each field against a clean canonical fixture.
+            $article->delete();
+        }
+    }
+
     public function test_unmodified_validated_revision_keeps_published_snapshot(): void
     {
         [$article, $revision] = $this->reviewedArticle();
