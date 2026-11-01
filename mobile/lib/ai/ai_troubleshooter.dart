@@ -285,6 +285,7 @@ class AiTroubleshooterScreen extends StatefulWidget {
     this.diagnoseAction,
     this.saveAction,
     this.detailLoader,
+    this.nowUtc,
     super.key,
   });
 
@@ -293,6 +294,8 @@ class AiTroubleshooterScreen extends StatefulWidget {
   final MobileDiagnoseAction? diagnoseAction;
   final MobileSaveAction? saveAction;
   final Future<ReviewedRunbook> Function(String id)? detailLoader;
+  /// Injectable clock for deterministic session-expiry regression tests.
+  final DateTime Function()? nowUtc;
 
   @override
   State<AiTroubleshooterScreen> createState() =>
@@ -307,6 +310,7 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
   final _code = TextEditingController();
 
   String? _token;
+  DateTime? _expiresAt;
   bool _consent = false;
   bool _busyLogin = false;
   bool _busyDiagnosis = false;
@@ -323,6 +327,26 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
     _question.dispose();
     _code.dispose();
     super.dispose();
+  }
+
+  DateTime get _nowUtc => (widget.nowUtc?.call() ?? DateTime.now()).toUtc();
+
+  String get _expiredSessionMessage => widget.arabic
+      ? 'انتهت صلاحية الجلسة. سجّل الدخول مرة أخرى.'
+      : 'Session expired. Sign in again.';
+
+  bool _requireActiveSession() {
+    if (_token == null) return false;
+    if (_expiresAt == null || _expiresAt!.isAfter(_nowUtc)) return true;
+    setState(() {
+      _token = null;
+      _expiresAt = null;
+      _job = null;
+      _saved = false;
+      _consent = false;
+      _message = _expiredSessionMessage;
+    });
+    return false;
   }
 
   bool get _apiConfigured =>
@@ -395,8 +419,16 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
     try {
       final session = await _login(email, password);
       if (!mounted) return;
+      if (session.expiresAt != null && !session.expiresAt!.isAfter(_nowUtc)) {
+        setState(() {
+          _password.clear();
+          _message = _expiredSessionMessage;
+        });
+        return;
+      }
       setState(() {
         _token = session.token;
+        _expiresAt = session.expiresAt;
         _password.clear();
         _message = widget.arabic
             ? 'تم تسجيل الدخول لهذه الجلسة فقط.'
@@ -414,7 +446,7 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
   }
 
   Future<void> _submit() async {
-    if (_busyDiagnosis || _token == null) return;
+    if (_busyDiagnosis || !_requireActiveSession()) return;
     final question = _question.text.trim();
     final technology = _technology.text.trim();
     if (!_consent) {
@@ -462,6 +494,8 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
       if (error is MobileAiHttpException &&
           (error.statusCode == 401 || error.statusCode == 403)) {
         _token = null;
+        _expiresAt = null;
+        _job = null;
       }
       setState(() => _message = _genericError(error));
     } finally {
@@ -471,7 +505,7 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
 
   Future<void> _saveResult() async {
     final id = _job?.reviewedRunbookId();
-    if (_busySave || id == null || _token == null) return;
+    if (_busySave || id == null || !_requireActiveSession()) return;
     setState(() {
       _busySave = true;
       _message = null;
@@ -487,6 +521,12 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
       });
     } catch (error) {
       if (!mounted) return;
+      if (error is MobileAiHttpException &&
+          (error.statusCode == 401 || error.statusCode == 403)) {
+        _token = null;
+        _expiresAt = null;
+        _job = null;
+      }
       setState(() => _message = _genericError(error));
     } finally {
       if (mounted) setState(() => _busySave = false);
@@ -495,7 +535,7 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
 
   void _openSolution() {
     final id = _job?.reviewedRunbookId();
-    if (id == null) return;
+    if (id == null || !_requireActiveSession()) return;
     Navigator.of(context).push(MaterialPageRoute<void>(
       builder: (_) => ReviewedRunbookDetail(
         id: id,
