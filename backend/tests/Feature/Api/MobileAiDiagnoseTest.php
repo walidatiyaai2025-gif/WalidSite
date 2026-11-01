@@ -479,4 +479,50 @@ final class MobileAiDiagnoseTest extends TestCase
         $this->assertNull($request->fresh()->request_blob);
         $this->assertNull($request->fresh()->selected_runbook_id);
     }
+
+    public function test_diagnosis_expiring_while_provider_responds_never_publishes_solution(): void
+    {
+        [$provider, $model] = $this->configure();
+        $user = $this->user();
+        $runbook = $this->reviewedRunbook();
+        $request = AiDiagnosisRequest::create([
+            'user_id' => $user->id,
+            'model_id' => $model->id,
+            'request_blob' => Crypt::encryptString(json_encode([
+                'question' => 'Private diagnosis',
+                'technology' => 'SQL Server',
+                'code_snippet' => 'sensitive code',
+            ], JSON_THROW_ON_ERROR)),
+            'expires_at' => now()->addSeconds(2),
+        ]);
+        $request->forceFill(['job_id' => app(DurableAiQueue::class)->enqueue(
+            $provider, 'mobile-diagnosis', 'mobile-diagnosis:'.$request->id,
+            ['classify'], 0, 1
+        )])->save();
+
+        Http::fake([
+            'http://127.0.0.1:11434/api/generate' => function () use ($runbook) {
+                $this->travel(5)->seconds();
+                return Http::response([
+                    'response' => json_encode(['runbook_id' => $runbook], JSON_THROW_ON_ERROR),
+                ]);
+            },
+        ]);
+
+        try {
+            app(MobileDiagnosisDispatcher::class)->execute((object) [
+                'id' => $request->job_id,
+                'provider_id' => $provider->id,
+            ], 'classify', 'test-worker');
+            $this->fail('Expired response must not be accepted.');
+        } catch (\RuntimeException $exception) {
+            $this->assertSame('Mobile diagnosis failed safely.', $exception->getMessage());
+        } finally {
+            $this->travelBack();
+        }
+
+        Http::assertSentCount(1);
+        $this->assertNull($request->fresh()->request_blob);
+        $this->assertNull($request->fresh()->selected_runbook_id);
+    }
 }
