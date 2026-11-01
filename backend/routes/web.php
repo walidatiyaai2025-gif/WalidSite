@@ -28,6 +28,22 @@ Route::get('/', function (Request $request) {
 })->name('home');
 
 /*
+ * T007: deliver the actual approved portrait from the repository, not a
+ * third-party raw-content host. The path is fixed and cannot be user-selected.
+ * Missing media fails closed instead of swapping in an invented portrait.
+ */
+Route::get('/media/portrait-light.jpg', static function () {
+    $approvedPortrait = dirname(base_path()).'/assets/portraits/portrait-light-derived.jpg';
+    abort_unless(is_file($approvedPortrait), 404);
+
+    return response()->file($approvedPortrait, [
+        'Content-Type' => 'image/jpeg',
+        'Cache-Control' => 'public, max-age=3600',
+        'X-Content-Type-Options' => 'nosniff',
+    ]);
+})->name('public.portrait');
+
+/*
  * T012 public SEO sitemap: derive destinations from the SAME publication and
  * proof checks as public pages, never from unapproved DB rows or draft revisions.
  * Bounded reads prevent a crawler from triggering unbounded database work.
