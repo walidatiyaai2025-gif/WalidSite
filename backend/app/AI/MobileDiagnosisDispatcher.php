@@ -35,7 +35,11 @@ final class MobileDiagnosisDispatcher
         }
 
         $request = AiDiagnosisRequest::query()->where('job_id', $job->id)->first();
-        if ($request === null || $request->expires_at->isPast() || $request->request_blob === null) {
+        if ($request === null || $request->request_blob === null) {
+            throw new DomainException('Mobile diagnosis request is unavailable.');
+        }
+        if ($request->expires_at->isPast()) {
+            $request->forceFill(['request_blob' => null])->save();
             throw new DomainException('Mobile diagnosis request is unavailable.');
         }
 
