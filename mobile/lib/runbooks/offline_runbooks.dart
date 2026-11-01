@@ -40,6 +40,12 @@ class OfflineRunbookPack {
   }
 
   static OfflineRunbookPack parse(String jsonText) {
+    // The offline fallback is bundled with the app, not a streaming trust
+    // boundary. Bound input before JSON decoding so a corrupt pack cannot
+    // exhaust memory or lock the reader on a low-end device.
+    if (jsonText.length > 512 * 1024) {
+      throw const FormatException('Offline runbook package is too large');
+    }
     final decoded = jsonDecode(jsonText);
     if (decoded is! Map<String, dynamic> ||
         decoded['schema'] != 'walidsite.offline-runbook-pack.v1' ||
@@ -48,8 +54,15 @@ class OfflineRunbookPack {
       throw const FormatException('Unsupported offline runbook package');
     }
 
+    final version = decoded['version'] as String;
+    final rawItems = decoded['items'] as List<dynamic>;
+    if (version.trim().isEmpty || version.length > 64 ||
+        rawItems.length > 200) {
+      throw const FormatException('Invalid runbook package limits');
+    }
+
     final source = decoded['source'];
-    if (source is! String || source.trim().isEmpty) {
+    if (source is! String || source.trim().isEmpty || source.length > 256) {
       throw const FormatException('Runbook source is missing');
     }
 
@@ -65,7 +78,7 @@ class OfflineRunbookPack {
 
     final items = <OfflineRunbook>[];
     final seen = <String>{};
-    for (final entry in decoded['items'] as List<dynamic>) {
+    for (final entry in rawItems) {
       if (entry is! Map<String, dynamic>) {
         throw const FormatException('Invalid runbook entry');
       }
@@ -77,10 +90,14 @@ class OfflineRunbookPack {
       if (id is! String || !RegExp(r'^[a-z0-9-]{1,60}$').hasMatch(id) ||
           !seen.add(id) || titleEn is! String || titleAr is! String ||
           titleEn.trim().isEmpty || titleAr.trim().isEmpty ||
+          titleEn.length > 250 || titleAr.length > 250 ||
           stepsEn is! List || stepsAr is! List ||
-          stepsEn.isEmpty || stepsEn.length != stepsAr.length ||
-          !stepsEn.every((value) => value is String && value.trim().isNotEmpty) ||
-          !stepsAr.every((value) => value is String && value.trim().isNotEmpty)) {
+          stepsEn.isEmpty || stepsEn.length > 50 ||
+          stepsEn.length != stepsAr.length ||
+          !stepsEn.every((value) =>
+              value is String && value.trim().isNotEmpty && value.length <= 4000) ||
+          !stepsAr.every((value) =>
+              value is String && value.trim().isNotEmpty && value.length <= 4000)) {
         throw const FormatException('Runbook entry failed validation');
       }
       items.add(OfflineRunbook(
