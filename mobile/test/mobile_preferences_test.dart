@@ -104,7 +104,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('التفضيلات'), findsOneWidget);
     expect(find.textContaining('الخادم'), findsWidgets);
-    await tester.pageBack();
+    // The back tooltip is localized in RTL; pop the current route directly
+    // to verify that the parent app retains the newly selected language.
+    tester.state<NavigatorState>(find.byType(Navigator)).pop();
     await tester.pumpAndSettle();
     expect(find.text('رفيق وليد التقني'), findsOneWidget);
     expect(Directionality.of(tester.element(find.text('رفيق وليد التقني'))),
