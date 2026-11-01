@@ -169,6 +169,83 @@ class EditorialDataIntegrityTest extends TestCase
             ->assertJsonPath('data.citations.0', 'https://docs.example.org/guide?lang=en&version=3#installation');
     }
 
+    public function test_multi_encoded_credential_parameters_never_qualify_as_public_citations(): void
+    {
+        $unsafe = [
+            'https://docs.example.org/guide?%2574oken=synthetic-secret',
+            'https://docs.example.org/guide?next=https%253A%252F%252Fdocs.example.org%252Fcallback%253Fclient_secret%253Dsynthetic-secret',
+            'https://docs.example.org/guide#chapter%253Frefresh_token%253Dsynthetic-secret',
+            'https://docs.example.org/guide?X%252DAmz%252DSignature=synthetic-secret',
+            'https://docs.example.org/guide?%25252574oken=synthetic-secret',
+            'https://docs.example.org/guide?sessionid=synthetic-secret',
+            'https://docs.example.org/guide?bearer=synthetic-secret',
+        ];
+
+        foreach ($unsafe as $index => $url) {
+            $article = Article::create([
+                'slug' => 'multi-encoded-source-'.$index,
+                'title_en' => 'Unsafe public reference',
+                'title_ar' => 'مرجع غير آمن',
+                'canonical_lang' => 'en',
+            ]);
+            $revision = $article->revisions()->create([
+                'revision_no' => 1,
+                'body_md' => '# A claimed reviewed source',
+                'citations_json' => [['source_url' => $url, 'verified' => true]],
+                'validation_json' => ['citations_passed' => true, 'technical_passed' => true],
+                'status' => 'validated',
+            ]);
+
+            $this->assertFalse($revision->hasVerifiedEvidence(), 'Unsafe encoded source was accepted.');
+            $this->assertFalse($article->isReadyToPublish());
+            $response = $this->getJson('/api/v1/public/articles/'.$article->slug)
+                ->assertNotFound();
+            $this->assertStringNotContainsString('synthetic-secret', $response->getContent());
+        }
+
+        $this->getJson('/api/v1/public/articles')->assertOk()->assertJsonCount(0, 'data')
+            ->assertDontSee('synthetic-secret');
+    }
+
+    public function test_harmless_nested_documentation_parameters_remain_public(): void
+    {
+        $article = $this->article();
+        $source = 'https://docs.example.org/guide?lang=en&version=4%2520beta#chapter%25201';
+        $revision = $article->revisions()->create([
+            'revision_no' => 1,
+            'body_md' => '# A referenced public document',
+            'citations_json' => [['source_url' => $source, 'verified' => true]],
+            'validation_json' => ['citations_passed' => true, 'technical_passed' => true],
+            'status' => 'validated',
+        ]);
+
+        $this->assertTrue($revision->hasVerifiedEvidence());
+        $article->publishVerified();
+        $this->getJson('/api/v1/public/articles/'.$article->slug)
+            ->assertOk()->assertJsonPath('data.citations.0', $source);
+    }
+
+    public function test_live_public_read_hides_pinned_revision_if_encoded_source_was_substituted(): void
+    {
+        $article = $this->article();
+        $revision = $this->revision($article);
+        $article->publishVerified();
+        $this->getJson('/api/v1/public/articles/'.$article->slug)->assertOk();
+
+        // Simulate a legacy record or bypassed model event. Runtime validation
+        // must remain authoritative even if the persisted status is validated.
+        \Illuminate\Support\Facades\DB::table('article_revisions')
+            ->where('id', $revision->id)
+            ->update(['citations_json' => json_encode([
+                ['source_url' => 'https://docs.example.org/guide?%2574oken=synthetic-secret',
+                 'verified' => true],
+            ], JSON_THROW_ON_ERROR)]);
+
+        $this->assertNull($article->fresh()->publicRevision());
+        $this->getJson('/api/v1/public/articles/'.$article->slug)->assertNotFound();
+        $this->getJson('/api/v1/public/articles')->assertOk()->assertJsonCount(0, 'data');
+    }
+
     public function test_revoked_source_safety_hides_previously_published_snapshot(): void
     {
         $article = $this->article();
