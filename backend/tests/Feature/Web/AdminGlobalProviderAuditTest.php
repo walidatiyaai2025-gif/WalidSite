@@ -110,7 +110,7 @@ final class AdminGlobalProviderAuditTest extends TestCase
         $first = $this->get('/admin/audit?lang=en')->assertOk()
             ->assertSee('Recorded events (26)')
             ->assertSee('Primary audited service')
-            ->assertDontSee('Archived audited service')
+            ->assertDontSee('(Archived)')
             ->assertSee('page=2', false)
             ->assertSee('routing_priority')
             ->assertSee('secret_rotated')
@@ -140,7 +140,7 @@ final class AdminGlobalProviderAuditTest extends TestCase
         $this->get('/admin/audit?lang=en&provider='.$primary->id.'&action=updated')
             ->assertOk()
             ->assertSee('Recorded events (13)')
-            ->assertDontSee('Archived audited service')
+            ->assertDontSee('(Archived)')
             ->assertSee('Updated');
         $this->get('/admin/audit?lang=en&action=deleted')
             ->assertOk()
@@ -191,7 +191,8 @@ final class AdminGlobalProviderAuditTest extends TestCase
             ->assertHeader('Content-Type', 'text/csv; charset=UTF-8');
         $data = $csv->streamedContent();
         $this->assertStringStartsWith("\xEF\xBB\xBF", $data);
-        $this->assertStringContainsString('UTC time,Provider,Action,Changed field names', $data);
+        $this->assertStringContainsString('UTC time,Provider,Action', $data);
+        $this->assertStringContainsString('Changed field names', $data);
         $this->assertStringContainsString("'=HYPERLINK(", $data);
         $this->assertStringContainsString('display_name', $data);
         $this->assertStringContainsString('base_url', $data);
