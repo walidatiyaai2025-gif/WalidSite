@@ -14,7 +14,10 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        // T011: one explicit registry per application process. T014 may
+        // register reviewed job handlers during provider boot; no arbitrary
+        // handler class names are ever resolved from database payloads.
+        $this->app->singleton(\App\AI\AiStepHandlerRegistry::class);
     }
 
     /**
