@@ -98,7 +98,9 @@ final class MobileDiagnosisCurrencyPolicyTest extends TestCase
         $this->assertSame($kwd->id, $selected['provider']->id);
         $this->assertSame(10, $selected['reserve_minor']);
 
-        AiRoute::query()->update(['budget_json' => ['reservation_minor' => 10, 'currency' => 'EUR']]);
+        AiRoute::query()->firstOrFail()->forceFill([
+            'budget_json' => ['reservation_minor' => 10, 'currency' => 'EUR'],
+        ])->save();
         $this->assertNull(app(MobileDiagnosisAdmission::class)->select());
         $this->assertFalse(app(MobileDiagnosisAdmission::class)->available());
         Http::assertNothingSent();
