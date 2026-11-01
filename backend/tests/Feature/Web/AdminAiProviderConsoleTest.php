@@ -237,6 +237,24 @@ class AdminAiProviderConsoleTest extends TestCase
             ->assertDontSee('Provider 01');
     }
 
+    public function test_provider_listing_rejects_invalid_locale_and_page_without_exposing_data(): void
+    {
+        $this->actingAs($this->account(), 'web');
+
+        foreach ([
+            'lang=fr', 'lang[]=ar', 'page=0', 'page=10001',
+            'page[]=2', 'page=abc',
+        ] as $query) {
+            $this->get('/admin/ai/providers?'.$query)->assertRedirect()
+                ->assertSessionHasErrors();
+        }
+
+        $this->get('/admin/ai/providers?lang=ar&page=1')->assertOk()
+            ->assertSee('dir="rtl"', false);
+        $this->get('/admin/ai/providers?lang=en&page=1')->assertOk()
+            ->assertSee('dir="ltr"', false);
+    }
+
     public function test_provider_archive_requires_admin_session_and_exact_name_confirmation(): void
     {
         Http::fake();

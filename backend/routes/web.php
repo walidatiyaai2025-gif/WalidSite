@@ -172,6 +172,10 @@ Route::middleware('auth:web')->group(function (): void {
 
     Route::get('/admin/ai/providers', function (Request $request) {
         abort_unless($request->user()?->canAccessAdmin(), 403);
+        $request->validate([
+            'lang' => ['sometimes', 'in:ar,en'],
+            'page' => ['sometimes', 'integer', 'min:1', 'max:10000'],
+        ]);
         return view('admin.ai.providers', [
             'providers' => \App\Models\AiProvider::query()->orderBy('display_name')->paginate(20)
                 ->appends(['lang' => $request->query('lang') === 'ar' ? 'ar' : 'en']),
