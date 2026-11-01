@@ -2,10 +2,13 @@
 
 namespace Tests\Feature\Web;
 
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 class PublicLayoutTest extends TestCase
 {
+    use RefreshDatabase;
+
     public function test_english_landing_has_accessible_light_site_shell(): void
     {
         $this->get('/')
@@ -14,7 +17,9 @@ class PublicLayoutTest extends TestCase
             ->assertSee('dir="ltr"', false)
             ->assertSee('href="#main-content"', false)
             ->assertSee('Waleed Atiya')
-            ->assertSee('Platform foundation in development')
+            ->assertSee('Software, Database &amp; AI Engineering', false)
+            ->assertSee('Engineering projects &amp; case studies', false)
+            ->assertSee('href="'.route('public.projects', ['lang' => 'en']).'"', false)
             ->assertSee('href="'.route('home', ['lang' => 'ar']).'"', false);
     }
 
@@ -24,7 +29,8 @@ class PublicLayoutTest extends TestCase
             ->assertOk()
             ->assertSee('lang="ar"', false)
             ->assertSee('dir="rtl"', false)
-            ->assertSee('المنصة قيد التطوير والتحقق')
+            ->assertSee('هندسة البرمجيات وقواعد البيانات وحلول الذكاء الاصطناعي')
+            ->assertSee('استكشف المشاريع')
             ->assertSee('href="'.route('home', ['lang' => 'en']).'"', false);
     }
 
@@ -33,7 +39,7 @@ class PublicLayoutTest extends TestCase
         $this->get('/?lang=xx')
             ->assertOk()
             ->assertSee('lang="en"', false)
-            ->assertSee('Platform foundation in development');
+            ->assertSee('Explore projects');
     }
 
     public function test_portrait_references_only_vetted_owner_photo(): void
