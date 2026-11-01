@@ -35,7 +35,8 @@ button:disabled{opacity:.6}.actions{display:flex;gap:12px;align-items:center;fle
 <form method="post" action="{{ route('admin.logout') }}">@csrf<button type="submit">{{ $locale === 'ar' ? 'خروج' : 'Sign out' }}</button></form>
 </div></div>
 <p>{{ $locale === 'ar' ? 'الحالات المعروضة محفوظة فعليًا. لا نعرض مفاتيح التخزين أو روابط الصور الخاصة، ولا نفترض أن الملكية أو الترخيص مثبت دون مراجعة.' : 'These are stored media records. Private storage paths and originals are never rendered; origin and licensing are not assumed to be verified.' }}</p>
-<p class="muted">{{ $locale === 'ar' ? 'إنشاء الصور واعتماد الحقوق قيد التطوير. المتاح حاليًا إلغاء إتاحة صورة ثبت وجود مشكلة في حقوقها؛ وهذا يمنع استخدامها علنًا فورًا.' : 'Generation and granting rights are not enabled here yet. Administrators can revoke media immediately, which removes its public eligibility.' }}</p>
+<p class="muted">{{ $locale === 'ar' ? 'يمكن اعتماد صور الذكاء الاصطناعي فقط بعد التحقق من أدلة المصدر والحقوق. يمكن إلغاء الحقوق العامة فورًا.' : 'AI artwork can be approved only after provenance and rights verification. Public rights can be revoked immediately.' }}</p>
+@if($errors->any())<p class="panel" role="alert">{{ $locale === 'ar' ? 'تعذر التحقق من الموافقة. راجع التأكيد والإقرارات والأدلة الخاصة.' : 'Approval could not be verified. Check confirmation, attestations and private evidence.' }}</p>@endif
 @if(session('status'))<p class="panel" role="status">{{ session('status') }}</p>@endif
 <section class="panel" aria-labelledby="media-title">
 <h2 id="media-title">{{ $locale === 'ar' ? 'الأصول المسجلة' : 'Registered assets' }} ({{ $assets->total() }})</h2>
@@ -49,6 +50,16 @@ button:disabled{opacity:.6}.actions{display:flex;gap:12px;align-items:center;fle
 <p><strong>{{ $locale === 'ar' ? 'حالة الحقوق' : 'Rights status' }}:</strong> {{ $asset->rights_status }}</p>
 <p><strong>{{ $locale === 'ar' ? 'مسموح بالنشر' : 'Publicly usable' }}:</strong>
 {{ $asset->isPubliclyUsable() ? ($locale === 'ar' ? 'نعم' : 'Yes') : ($locale === 'ar' ? 'لا' : 'No') }}</p>
+@if($asset->origin === 'ai-generated' && $asset->rights_status === 'unverified' && ! $asset->publishable)
+<form method="post" action="{{ route('admin.media.approve', ['asset'=>$asset->id,'lang'=>$locale]) }}">
+@csrf
+<label for="confirm-{{ $asset->id }}">{{ $locale === 'ar' ? 'أدخل مفتاح الأصل كما هو للتأكيد' : 'Enter the exact asset key to confirm' }}</label>
+<input id="confirm-{{ $asset->id }}" name="confirm_asset_key" required maxlength="255" autocomplete="off" style="display:block;width:100%;min-height:44px;margin:8px 0 14px;border:1px solid var(--edge);border-radius:8px;padding:8px">
+<label style="display:block;margin:8px 0"><input type="checkbox" name="licensed_for_publication" value="1" required> {{ $locale === 'ar' ? 'أقر أن الصورة مرخصة للنشر' : 'I attest this artwork is licensed for publication' }}</label>
+<label style="display:block;margin:8px 0"><input type="checkbox" name="no_owner_impersonation" value="1" required> {{ $locale === 'ar' ? 'أقر أن الصورة لا تنتحل هوية المالك' : 'I attest this artwork does not impersonate the owner' }}</label>
+<button type="submit">{{ $locale === 'ar' ? 'التحقق واعتماد الحقوق' : 'Verify and approve artwork rights' }}</button>
+</form>
+@endif
 @if($asset->rights_status !== 'revoked' || $asset->publishable)
 <form method="post" action="{{ route('admin.media.revoke', ['asset'=>$asset->id,'lang'=>$locale]) }}">@csrf
 <button type="submit">{{ $locale === 'ar' ? 'إلغاء حقوق النشر العام' : 'Revoke public media rights' }}</button>
