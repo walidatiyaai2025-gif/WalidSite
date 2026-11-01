@@ -128,4 +128,41 @@ class RelatedArticlesTest extends TestCase
 
         $this->assertSame(3, substr_count($response->getContent(), 'class="article-related-link"'));
     }
+
+    public function test_related_articles_scan_past_more_than_twenty_four_revoked_neighbours(): void
+    {
+        $category = $this->category('verified-relations');
+        $source = $this->article('source-late-neighbours');
+        $source->categories()->attach($category->id);
+
+        $safe = $this->article('related-after-revocations');
+        $safe->categories()->attach($category->id);
+        $safe->forceFill(['published_at' => now()->subDays(3)])->save();
+
+        for ($i = 1; $i <= 27; $i++) {
+            $bad = $this->article('related-revoked-'.$i);
+            $bad->categories()->attach($category->id);
+            $bad->revisions()->firstOrFail()->update([
+                'validation_json' => [
+                    'citations_passed' => false,
+                    'technical_passed' => true,
+                ],
+            ]);
+            $bad->forceFill(['published_at' => now()->subMinute()])->save();
+        }
+
+        $english = $this->get('/blog/source-late-neighbours?lang=en')->assertOk()
+            ->assertSee('Article related-after-revocations')
+            ->assertSee(e(route('public.article', [
+                'slug' => $safe->slug, 'lang' => 'en',
+            ])), false)
+            ->assertDontSee('Article related-revoked-');
+        $this->assertSame(1, substr_count($english->getContent(), 'class="article-related-link"'));
+
+        $arabic = $this->get('/blog/source-late-neighbours?lang=ar')->assertOk()
+            ->assertSee('مقال related-after-revocations')
+            ->assertDontSee('مقال related-revoked-');
+        $this->assertSame(1, substr_count($arabic->getContent(), 'class="article-related-link"'));
+    }
+
 }
