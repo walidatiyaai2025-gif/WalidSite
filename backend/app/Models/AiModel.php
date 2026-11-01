@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 final class AiModel extends Model
 {
@@ -27,6 +28,12 @@ final class AiModel extends Model
             'enabled' => 'boolean',
             'cost_policy_json' => 'array',
         ];
+    }
+
+    /** @return HasMany<AiRoute, $this> */
+    public function primaryRoutes(): HasMany
+    {
+        return $this->hasMany(AiRoute::class, 'primary_model_id');
     }
 
     public function provider(): BelongsTo
