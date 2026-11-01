@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\IdentityController;
 use App\Http\Controllers\Api\AiProviderController;
 use App\Http\Controllers\Api\PublicPortfolioController;
 use App\Http\Controllers\Api\PublicHomeController;
+use App\Http\Controllers\Api\PublicLabController;
 use App\Http\Controllers\Api\PublicArticleController;
 use App\Http\Controllers\Api\PublicRunbookController;
 use App\Http\Controllers\Api\PublicSearchController;
@@ -48,6 +49,10 @@ Route::get('/public/resume', [PublicResumeController::class, 'index'])
     ->name('api.public.resume')->middleware('throttle:60,1');
 Route::get('/public/search', [PublicSearchController::class, 'index'])
     ->name('api.public.search')->middleware('throttle:60,1');
+
+// WEB-09: lab resources are existing evidence-checked publications only.
+Route::get('/public/tools', [PublicLabController::class, 'index'])
+    ->name('api.public.tools')->middleware('throttle:60,1');
 
 // MOBILE-04/MOBILE-05: anonymous read-only, reviewed version-pinned guides.
 // A missing/unreviewed guide is an honest 404; never return the bundled draft.
