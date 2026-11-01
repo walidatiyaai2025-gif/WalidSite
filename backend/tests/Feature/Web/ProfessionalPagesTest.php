@@ -42,6 +42,50 @@ class ProfessionalPagesTest extends TestCase
         $this->get('/about?lang=ar')->assertSee('href="'.route('public.about', ['lang' => 'en']).'"', false);
     }
 
+    public function test_professional_pages_have_page_specific_bilingual_seo_and_safe_track_links(): void
+    {
+        $descriptions = [
+            'about' => [
+                'en' => 'Explore Waleed Atiya public career history and credentials available after evidence review.',
+                'ar' => 'اطّلع على الخبرات المهنية والشهادات المنشورة لوليد عطية بعد مراجعة الأدلة.',
+            ],
+            'expertise' => [
+                'en' => 'Explore Waleed Atiya engineering skills approved for public display after evidence verification.',
+                'ar' => 'استكشف مهارات وليد عطية الهندسية المعتمدة للنشر بعد التحقق من أدلتها.',
+            ],
+            'hire' => [
+                'en' => 'Filter evidence-reviewed engineering specialties and open the verified public resume by career track.',
+                'ar' => 'صفِّ مجالات الخبرة الهندسية المتحقق منها وافتح السيرة العامة حسب المسار المهني.',
+            ],
+        ];
+
+        foreach ($descriptions as $page => $locales) {
+            foreach ($locales as $locale => $description) {
+                $route = 'public.'.$page;
+                $this->get('/'.$page.'?lang='.$locale)
+                    ->assertOk()
+                    ->assertSee('name="description" content="'.$description.'"', false)
+                    ->assertSee('rel="canonical" href="'.route($route, ['lang' => $locale]).'"', false)
+                    ->assertSee('rel="alternate" hreflang="en" href="'.route($route, ['lang' => 'en']).'"', false)
+                    ->assertSee('rel="alternate" hreflang="ar" href="'.route($route, ['lang' => 'ar']).'"', false);
+            }
+        }
+
+        foreach (['database', 'software', 'delivery'] as $track) {
+            $this->get('/hire?lang=ar&track='.$track)
+                ->assertOk()
+                ->assertSee('rel="canonical" href="'.route('public.hire', ['lang' => 'ar', 'track' => $track]).'"', false)
+                ->assertSee('rel="alternate" hreflang="en" href="'.route('public.hire', ['lang' => 'en', 'track' => $track]).'"', false);
+        }
+
+        foreach (['/hire?lang=ar&track[]=database', '/hire?lang=ar&track=invalid'] as $path) {
+            $this->get($path)
+                ->assertOk()
+                ->assertSee('rel="canonical" href="'.route('public.hire', ['lang' => 'ar']).'"', false)
+                ->assertDontSee('rel="canonical" href="'.route('public.hire', ['lang' => 'ar', 'track' => 'database']).'"', false);
+        }
+    }
+
     public function test_private_cv_never_leaks_until_published_and_individual_evidence_approved(): void
     {
         $profile = $this->profile();

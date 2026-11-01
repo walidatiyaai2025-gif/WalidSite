@@ -107,6 +107,28 @@ class PublicLayoutTest extends TestCase
         }
     }
 
+    public function test_home_uses_truthful_bilingual_description_and_search_alternates(): void
+    {
+        $descriptions = [
+            'en' => 'Explore Waleed Atiya engineering expertise, projects and articles after evidence and publication review.',
+            'ar' => 'استكشف خبرات وليد عطية التقنية والمشاريع والمقالات التي اجتازت مراجعة النشر والأدلة.',
+        ];
+
+        foreach ($descriptions as $locale => $description) {
+            $this->get('/?lang='.$locale)
+                ->assertOk()
+                ->assertSee('name="description" content="'.$description.'"', false)
+                ->assertSee('rel="canonical" href="'.route('home', ['lang' => $locale]).'"', false)
+                ->assertSee('rel="alternate" hreflang="en" href="'.route('home', ['lang' => 'en']).'"', false)
+                ->assertSee('rel="alternate" hreflang="ar" href="'.route('home', ['lang' => 'ar']).'"', false)
+                ->assertSee('rel="alternate" hreflang="x-default" href="'.route('home', ['lang' => 'en']).'"', false);
+        }
+
+        $this->get('/?lang=unexpected')
+            ->assertOk()
+            ->assertSee('rel="canonical" href="'.route('home', ['lang' => 'en']).'"', false);
+    }
+
     public function test_google_fonts_are_available_on_public_and_sign_in_pages(): void
     {
         foreach (['/', '/?lang=ar', '/admin/login'] as $path) {
