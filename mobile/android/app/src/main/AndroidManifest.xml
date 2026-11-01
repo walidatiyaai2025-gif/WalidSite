@@ -1,5 +1,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Required by production HTTPS article retrieval, not just Flutter debug tools. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <application
+        android:usesCleartextTraffic="false"
         android:label="Waleed Tech Companion"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
