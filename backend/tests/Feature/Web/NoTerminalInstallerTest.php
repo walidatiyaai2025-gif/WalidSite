@@ -250,6 +250,11 @@ class NoTerminalInstallerTest extends TestCase
         $this->app->instance('env', 'production');
         try {
             $this->assertNull(app(DatabaseConfiguration::class)->canonicalSiteUrl('https://127.0.0.1'));
+            $this->assertNull(app(DatabaseConfiguration::class)->canonicalSiteUrl('https://192.168.1.1'));
+            $this->assertNull(app(DatabaseConfiguration::class)->canonicalSiteUrl('https://169.254.0.2'));
+            $this->assertNull(app(DatabaseConfiguration::class)->canonicalSiteUrl('https://[::1]'));
+            $this->assertNull(app(DatabaseConfiguration::class)->canonicalSiteUrl('https://[fc00::1]'));
+            $this->assertSame('https://8.8.8.8', app(DatabaseConfiguration::class)->canonicalSiteUrl('https://8.8.8.8'));
             $this->assertSame('https://walidatiya.com', app(DatabaseConfiguration::class)->canonicalSiteUrl('https://walidatiya.com'));
         } finally {
             $this->app->instance('env', $old);
