@@ -25,11 +25,12 @@ class Article extends Model
 
     /**
      * A reviewed body is not approval for a different public title, canonical
-     * language, slug or hero. All of these fields are part of the reviewed
-     * editorial claim, even if the Markdown and citations remain unchanged.
+     * language or slug. Hero asset rights are checked independently on every
+     * public read; attaching a new rights-cleared image does not change text
+     * citation approval (and preserves the existing editorial workflow).
      */
     private const REVIEWED_PUBLIC_FIELDS = [
-        'slug', 'title_en', 'title_ar', 'canonical_lang', 'hero_asset_id',
+        'slug', 'title_en', 'title_ar', 'canonical_lang',
     ];
 
     protected static function booted(): void
