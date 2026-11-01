@@ -173,9 +173,19 @@ class VerifiedArticleReader {
     const privateSuffixes = [
       'localhost', 'local', 'internal', 'test', 'invalid', 'onion',
     ];
+    // Require a complete public FQDN; reject internal-only suffixes.
+    final publicHostPattern = RegExp(
+      r'^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}',
+    );
     if (InternetAddress.tryParse(host) != null ||
-        !RegExp(
-          r'^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}
+        publicHostPattern.stringMatch(host) != host ||
+        privateSuffixes.any(
+          (suffix) => host == suffix || host.endsWith('.' + suffix),
+        )) {
+      return null;
+    }
+    return uri;
+  }
 
   Future<List<VerifiedArticle>> load(bool arabic) async =>
       (await loadPage(arabic, 1)).articles;
