@@ -99,6 +99,50 @@ class VerifiedArticle {
   }
 }
 
+
+/**
+ * A single server-verified public page. Pagination is untrusted input too:
+ * never allow malformed metadata to claim more safe publications exist.
+ */
+class VerifiedArticlePage {
+  const VerifiedArticlePage({
+    required this.articles,
+    required this.currentPage,
+    required this.hasMorePages,
+  });
+
+  final List<VerifiedArticle> articles;
+  final int currentPage;
+  final bool hasMorePages;
+
+  static VerifiedArticlePage parse(String json, int requestedPage) {
+    if (requestedPage < 1 || requestedPage > 10000) {
+      throw const FormatException('Invalid article page');
+    }
+    final decoded = jsonDecode(json);
+    if (decoded is! Map<String, dynamic> ||
+        decoded['meta'] is! Map<String, dynamic>) {
+      throw const FormatException('Invalid pagination metadata');
+    }
+    final meta = decoded['meta'] as Map<String, dynamic>;
+    final hasMore = meta['has_more_pages'];
+    if (meta['current_page'] != requestedPage || hasMore is! bool) {
+      throw const FormatException('Mismatched article page');
+    }
+    // Apply all existing evidence, URL, size and publication checks to every
+    // page, not just the first response.
+    final articles = VerifiedArticle.parseList(json);
+    if (hasMore && (articles.isEmpty || requestedPage == 10000)) {
+      throw const FormatException('Invalid article page continuation');
+    }
+    return VerifiedArticlePage(
+      articles: articles,
+      currentPage: requestedPage,
+      hasMorePages: hasMore,
+    );
+  }
+}
+
 class VerifiedArticleReader {
   const VerifiedArticleReader();
 
@@ -120,14 +164,20 @@ class VerifiedArticleReader {
     return uri;
   }
 
-  Future<List<VerifiedArticle>> load(bool arabic) async {
+  Future<List<VerifiedArticle>> load(bool arabic) async =>
+      (await loadPage(arabic, 1)).articles;
+
+  Future<VerifiedArticlePage> loadPage(bool arabic, int page) async {
+    if (page < 1 || page > 10000) {
+      throw const FormatException('Invalid article page');
+    }
     final origin = configuredOrigin();
     if (origin == null) {
       throw const FormatException('Article API not configured');
     }
     final url = origin.replace(
       path: '/api/v1/public/articles',
-      queryParameters: {'lang': arabic ? 'ar' : 'en'},
+      queryParameters: {'lang': arabic ? 'ar' : 'en', 'page': '$page'},
     );
 
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
@@ -147,7 +197,7 @@ class VerifiedArticleReader {
         }
         buffer.add(chunk);
       }
-      return VerifiedArticle.parseList(utf8.decode(buffer.takeBytes()));
+      return VerifiedArticlePage.parse(utf8.decode(buffer.takeBytes()), page);
     } finally {
       client.close(force: true);
     }
