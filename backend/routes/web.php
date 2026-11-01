@@ -663,6 +663,7 @@ Route::middleware('auth:web')->group(function (): void {
         abort_unless($request->user()?->canAccessAdmin(), 403);
         $request->validate([
             'lang' => ['sometimes', 'in:ar,en'],
+            'drafts_page' => ['sometimes', 'integer', 'min:1', 'max:10000'],
             'jobs_page' => ['sometimes', 'integer', 'min:1', 'max:10000'],
         ]);
 
@@ -670,8 +671,15 @@ Route::middleware('auth:web')->group(function (): void {
             ->with(['article.heroAsset'])
             ->whereHas('article', fn ($article) => $article->where('status', 'draft'))
             ->whereRaw('article_revisions.revision_no = (SELECT MAX(latest.revision_no) FROM article_revisions AS latest WHERE latest.article_id = article_revisions.article_id)')
-            ->orderByDesc('updated_at')->orderBy('id')->limit(50)->get()
-            ->map(function ($revision): array {
+            // Only current revisions of draft articles are eligible; paging
+            // keeps older publication blockers accessible without unbounded reads.
+            ->orderByDesc('updated_at')->orderBy('id')
+            ->paginate(25, ['*'], 'drafts_page')
+            ->appends(array_filter([
+                'lang' => $request->query('lang') === 'ar' ? 'ar' : 'en',
+                'jobs_page' => $request->query('jobs_page'),
+            ], static fn ($value) => $value !== null))
+            ->through(function ($revision): array {
                 $article = $revision->article;
                 $validation = is_array($revision->validation_json)
                     ? $revision->validation_json : [];
@@ -706,7 +714,10 @@ Route::middleware('auth:web')->group(function (): void {
             // A stable tie-break prevents duplicate/missing rows across pages.
             ->orderByDesc('job.updated_at')->orderBy('job.id')
             ->paginate(25, ['*'], 'jobs_page')
-            ->appends(['lang' => $request->query('lang') === 'ar' ? 'ar' : 'en']);
+            ->appends(array_filter([
+                'lang' => $request->query('lang') === 'ar' ? 'ar' : 'en',
+                'drafts_page' => $request->query('drafts_page'),
+            ], static fn ($value) => $value !== null));
 
         return view('admin.quality', compact('qualityRows', 'failedJobs'));
     })->name('admin.quality.index');

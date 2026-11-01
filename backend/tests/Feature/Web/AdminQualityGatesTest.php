@@ -223,6 +223,96 @@ final class AdminQualityGatesTest extends TestCase
         }
     }
 
+    public function test_all_current_draft_quality_gates_are_paginated_independently_of_ai_jobs(): void
+    {
+        $this->actingAs($this->account('admin'), 'web');
+        $titles = [];
+
+        for ($index = 0; $index < 54; $index++) {
+            $number = str_pad((string) $index, 2, '0', STR_PAD_LEFT);
+            $title = 'Quality draft '.$number;
+            $article = Article::create([
+                'slug' => 'quality-page-'.$number,
+                'title_en' => $title,
+                'title_ar' => 'مسودة جودة '.$number,
+                'canonical_lang' => 'en',
+            ]);
+            $revision = $article->revisions()->create([
+                'revision_no' => 1,
+                'status' => 'draft',
+                'body_md' => 'PRIVATE-QUALITY-DRAFT-BODY-'.$number,
+                'citations_json' => [],
+                'validation_json' => [
+                    'citations_passed' => false,
+                    'technical_passed' => false,
+                ],
+            ]);
+            $revision->forceFill(['updated_at' => now()->subMinutes($index)])->save();
+            $titles[] = $title;
+
+            if ($index === 0) {
+                // Superseded versions do not count as separate quality rows.
+                $article->revisions()->create([
+                    'revision_no' => 2,
+                    'status' => 'draft',
+                    'body_md' => 'PRIVATE-CURRENT-REVISION',
+                    'citations_json' => [],
+                    'validation_json' => [
+                        'citations_passed' => false,
+                        'technical_passed' => false,
+                    ],
+                ]);
+            }
+        }
+
+        $provider = $this->provider();
+        $jobs = [];
+        for ($index = 0; $index < 26; $index++) {
+            $jobs[] = $this->job($provider, 'retry');
+        }
+
+        $first = $this->get('/admin/quality?lang=en')->assertOk()
+            ->assertSee('Current draft publish blockers (54)')
+            ->assertSee('Editorial draft pages')
+            ->assertSee('drafts_page=2', false)
+            ->assertSee($titles[0])->assertSee($titles[24])
+            ->assertDontSee($titles[25])->assertDontSee($titles[53])
+            ->assertDontSee('PRIVATE-QUALITY-DRAFT-BODY')
+            ->assertDontSee('PRIVATE-CURRENT-REVISION')
+            ->assertDontSee('private/result/path');
+        $this->assertSame(25, substr_count($first->getContent(), '/admin/content?article='));
+
+        $middle = $this->get('/admin/quality?lang=ar&drafts_page=2&jobs_page=2')->assertOk()
+            ->assertSee('dir="rtl"', false)
+            ->assertSee('صفحات مراجعة المسودات')
+            ->assertSee('مسودة جودة 25')
+            ->assertSee('مسودة جودة 49')
+            ->assertDontSee($titles[0])
+            ->assertDontSee('مسودة جودة 50')
+            ->assertSee('drafts_page=3', false)
+            ->assertSee('jobs_page=2', false);
+        $this->assertStringContainsString('lang=ar', $middle->getContent());
+        $this->assertSame(1, substr_count($middle->getContent(), 'step_failed'));
+
+        $last = $this->get('/admin/quality?lang=en&drafts_page=3&jobs_page=1')->assertOk()
+            ->assertSee($titles[50])->assertSee($titles[53])
+            ->assertDontSee($titles[0])
+            ->assertSee('jobs_page=2', false)
+            ->assertSee('drafts_page=3', false);
+        // Only four editorial rows are present on the final draft page.
+        $this->assertSame(4, substr_count($last->getContent(), '/admin/content?article='));
+        // Admin review stays behind authorization even with paging parameters.
+        $this->actingAs($this->account('reader'), 'web')
+            ->get('/admin/quality?drafts_page=2&jobs_page=2')->assertForbidden();
+
+        $this->actingAs($this->account('admin'), 'web');
+        foreach (['drafts_page[]=2', 'drafts_page=0', 'drafts_page=-1',
+                  'drafts_page=10001', 'drafts_page=nope'] as $invalid) {
+            $this->get('/admin/quality?'.$invalid)
+                ->assertRedirect()->assertSessionHasErrors('drafts_page');
+        }
+    }
+
     public function test_ai_failure_backlog_is_paginated_without_losing_old_recoverable_jobs(): void
     {
         $this->actingAs($this->account('owner'), 'web');

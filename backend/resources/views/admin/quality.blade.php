@@ -41,7 +41,7 @@ a{color:var(--link)}a:focus-visible,button:focus-visible{outline:3px solid #00A9
 <ul>@foreach($errors->all() as $message)<li>{{ $message }}</li>@endforeach</ul></div>@endif
 
 <section class="panel" aria-labelledby="editorial-title">
-<h2 id="editorial-title">{{ $locale === 'ar' ? 'عوائق النشر للمسودات الحالية' : 'Current draft publish blockers' }}</h2>
+<h2 id="editorial-title">{{ $locale === 'ar' ? 'عوائق النشر للمسودات الحالية' : 'Current draft publish blockers' }} ({{ $qualityRows->total() }})</h2>
 @if($qualityRows->isEmpty())
 <p role="status">{{ $locale === 'ar' ? 'لا توجد مسودات حالية لفحص بوابات النشر.' : 'No current drafts require publication-gate review.' }}</p>
 @else
@@ -70,6 +70,9 @@ a{color:var(--link)}a:focus-visible,button:focus-visible{outline:3px solid #00A9
 </tr>
 @endforeach
 </tbody></table></div>
+<nav aria-label="{{ $locale === 'ar' ? 'صفحات مراجعة المسودات' : 'Editorial draft pages' }}">
+{{ $qualityRows->links() }}
+</nav>
 @endif
 </section>
 
