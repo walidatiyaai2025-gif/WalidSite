@@ -173,7 +173,8 @@ Route::middleware('auth:web')->group(function (): void {
     Route::get('/admin/ai/providers', function (Request $request) {
         abort_unless($request->user()?->canAccessAdmin(), 403);
         return view('admin.ai.providers', [
-            'providers' => \App\Models\AiProvider::query()->orderBy('display_name')->paginate(20),
+            'providers' => \App\Models\AiProvider::query()->orderBy('display_name')->paginate(20)
+                ->appends(['lang' => $request->query('lang') === 'ar' ? 'ar' : 'en']),
         ]);
     })->name('admin.providers.index');
 
@@ -212,8 +213,10 @@ Route::middleware('auth:web')->group(function (): void {
     Route::post('/admin/ai/providers', function (Request $request) {
         abort_unless($request->user()?->canAccessAdmin(), 403);
         app(\App\Http\Controllers\Api\AiProviderController::class)->store($request);
-        return redirect()->route('admin.providers.index')
-            ->with('status', 'Provider saved.');
+        return redirect()->route('admin.providers.index',
+            $request->query('lang') === 'ar' ? ['lang' => 'ar'] : []
+        )->with('status', $request->query('lang') === 'ar'
+            ? 'تم حفظ مزود الذكاء الاصطناعي.' : 'Provider saved.');
     })->middleware('throttle:10,1')->name('admin.providers.create');
 
     Route::patch('/admin/ai/providers/{provider}', function (
@@ -227,8 +230,10 @@ Route::middleware('auth:web')->group(function (): void {
             $request->request->remove('secret');
         }
         app(\App\Http\Controllers\Api\AiProviderController::class)->update($request, $provider);
-        return redirect()->route('admin.providers.index')
-            ->with('status', 'Provider updated.');
+        return redirect()->route('admin.providers.index',
+            $request->query('lang') === 'ar' ? ['lang' => 'ar'] : []
+        )->with('status', $request->query('lang') === 'ar'
+            ? 'تم تحديث مزود الذكاء الاصطناعي.' : 'Provider updated.');
     })->middleware('throttle:20,1')->name('admin.providers.update');
 
     Route::post('/admin/ai/providers/{provider}/test', function (
@@ -237,8 +242,11 @@ Route::middleware('auth:web')->group(function (): void {
         abort_unless($request->user()?->canAccessAdmin(), 403);
         $result = app(\App\Http\Controllers\Api\AiProviderController::class)->test($request, $provider);
         $health = $result->getData(true)['data']['health_status'] ?? 'unverified';
-        return redirect()->route('admin.providers.index')
-            ->with('status', 'Connection check recorded: '.$health.'.');
+        return redirect()->route('admin.providers.index',
+            $request->query('lang') === 'ar' ? ['lang' => 'ar'] : []
+        )->with('status', $request->query('lang') === 'ar'
+            ? 'تم تسجيل نتيجة فحص الاتصال: '.$health.'.'
+            : 'Connection check recorded: '.$health.'.');
     })->middleware('throttle:5,1')->name('admin.providers.test');
 
     // T016: explicit destructive browser operation is CSRF-protected and

@@ -178,6 +178,65 @@ class AdminAiProviderConsoleTest extends TestCase
         $this->assertSame('unverified', $provider->fresh()->health_status);
     }
 
+    public function test_arabic_provider_workflow_preserves_locale_and_secures_credentials(): void
+    {
+        $this->actingAs($this->account(), 'web');
+
+        $this->get('/admin/ai/providers?lang=ar')->assertOk()
+            ->assertSee('action="'.route('admin.providers.create', ['lang' => 'ar']).'"', false);
+
+        $this->post('/admin/ai/providers?lang=ar', $this->providerForm())
+            ->assertRedirect(route('admin.providers.index', ['lang' => 'ar']))
+            ->assertSessionHas('status', 'تم حفظ مزود الذكاء الاصطناعي.');
+        $provider = AiProvider::firstOrFail();
+        $this->get('/admin/ai/providers?lang=ar')->assertOk()
+            ->assertSee('dir="rtl"', false)
+            ->assertSee('action="'.route('admin.providers.update', [
+                'provider' => $provider->id, 'lang' => 'ar',
+            ]).'"', false)
+            ->assertSee('action="'.route('admin.providers.test', [
+                'provider' => $provider->id, 'lang' => 'ar',
+            ]).'"', false)
+            ->assertDontSee('super-private-test-credential');
+
+        $this->patch('/admin/ai/providers/'.$provider->id.'?lang=ar', [
+            'daily_budget_minor' => 250, 'secret' => '',
+        ])->assertRedirect(route('admin.providers.index', ['lang' => 'ar']))
+            ->assertSessionHas('status', 'تم تحديث مزود الذكاء الاصطناعي.');
+        $this->assertSame(250, $provider->fresh()->daily_budget_minor);
+        $this->assertSame('super-private-test-credential', $provider->fresh()->secret_ciphertext);
+
+        Http::fake(['https://api.openai.com/v1/models' =>
+            Http::response(['data' => []], 200)]);
+        $this->post('/admin/ai/providers/'.$provider->id.'/test?lang=ar')
+            ->assertRedirect(route('admin.providers.index', ['lang' => 'ar']))
+            ->assertSessionHas('status', 'تم تسجيل نتيجة فحص الاتصال: healthy.');
+        $this->assertSame('healthy', $provider->fresh()->health_status);
+        Http::assertSentCount(1);
+    }
+
+    public function test_provider_pagination_keeps_arabic_without_echoing_arbitrary_query_parameters(): void
+    {
+        $this->actingAs($this->account(), 'web');
+        for ($number = 1; $number <= 22; $number++) {
+            AiProvider::create([
+                'display_name' => 'Provider '.str_pad((string) $number, 2, '0', STR_PAD_LEFT),
+                'provider_type' => 'ollama-compatible',
+                'base_url' => 'http://127.0.0.1:11434',
+                'enabled' => false, 'health_status' => 'unverified',
+                'daily_budget_minor' => 0, 'currency' => 'USD',
+            ]);
+        }
+        $this->get('/admin/ai/providers?lang=ar&ignored=do-not-echo')->assertOk()
+            ->assertSee('dir="rtl"', false)
+            ->assertSee('lang=ar&amp;page=2', false)
+            ->assertDontSee('do-not-echo');
+        $this->get('/admin/ai/providers?lang=ar&page=2')->assertOk()
+            ->assertSee('dir="rtl"', false)
+            ->assertSee('Provider 21')
+            ->assertDontSee('Provider 01');
+    }
+
     public function test_provider_archive_requires_admin_session_and_exact_name_confirmation(): void
     {
         Http::fake();
