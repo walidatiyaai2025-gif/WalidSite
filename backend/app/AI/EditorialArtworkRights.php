@@ -37,6 +37,16 @@ final class EditorialArtworkRights
             if (! $disk->exists($asset->storage_key) || ! $disk->exists($manifestPath)) {
                 throw new RuntimeException('Private artwork evidence missing.');
             }
+            // The generator writes at most 4 MiB of raster data and a tiny
+            // JSON manifest. Quarantined files can be replaced independently
+            // of the DB; inspect sizes BEFORE get() to bound cPanel memory
+            // during owner review. An oversized file is never publishable.
+            $imageBytes = $disk->size($asset->storage_key);
+            $manifestBytes = $disk->size($manifestPath);
+            if ($imageBytes < 1 || $imageBytes > 4 * 1024 * 1024
+                || $manifestBytes < 1 || $manifestBytes > 16 * 1024) {
+                throw new DomainException('Artwork provenance or content verification failed.');
+            }
             $manifest = json_decode($disk->get($manifestPath), true);
             if (! is_array($manifest) || ($manifest['asset_id'] ?? null) !== $asset->id
                 || ($manifest['sha256'] ?? null) !== $asset->sha256
