@@ -261,6 +261,34 @@ class NoTerminalInstallerTest extends TestCase
         }
     }
 
+    public function test_invalid_production_site_ip_does_not_probe_or_save_database(): void
+    {
+        $env = $this->app['env'];
+        $path = storage_path('app/invalid-private-site-test');
+        config(['site.setup_enabled' => true,
+            'site.setup_token' => str_repeat('p', 40),
+            'site.setup_database_ready' => false,
+            'site.environment_path' => $path]);
+        $this->app->instance('env', 'production');
+        $database = Mockery::mock(DatabaseConfiguration::class)->makePartial();
+        $database->shouldNotReceive('probe');
+        $this->app->instance(DatabaseConfiguration::class, $database);
+        try {
+            $this->post('https://localhost/setup/unlock',
+                ['token' => str_repeat('p', 40)])->assertRedirect('/setup');
+            $this->post('https://localhost/setup/configure', [
+                'site_url' => 'https://127.0.0.1',
+                'db_host' => 'localhost', 'db_port' => 3306,
+                'db_database' => 'site', 'db_username' => 'writer',
+                'db_password' => 'not-saved',
+            ])->assertSessionHasErrors('site_url');
+            $this->assertFileDoesNotExist($path);
+        } finally {
+            $this->app->instance('env', $env);
+            @unlink($path);
+        }
+    }
+
     public function test_invalid_database_form_never_overwrites_private_configuration(): void
     {
         $path = storage_path('app/no-terminal-denied-test');
