@@ -85,6 +85,13 @@ class Article extends Model
 
     public function isReadyToPublish(): bool
     {
+        // An in-memory title/slug/language edit has not received editorial
+        // review. Do not claim publishVerified() succeeded only to have the
+        // updating hook invalidate its own publication in the same save.
+        if ($this->exists && $this->isDirty(self::REVIEWED_PUBLIC_FIELDS)) {
+            return false;
+        }
+
         if (trim($this->title_en ?? '') === '' || trim($this->title_ar ?? '') === ''
             || ! in_array($this->canonical_lang, ['ar', 'en'], true)) {
             return false;
