@@ -27,7 +27,15 @@ class PublicArticleController extends Controller
             $term = '%'.addcslashes($search, '%_\\').'%';
             $articles->where(function ($q) use ($term): void {
                 $q->where('title_en', 'like', $term)
-                    ->orWhere('title_ar', 'like', $term);
+                    ->orWhere('title_ar', 'like', $term)
+                    // Match the exact revision pinned at publication, never
+                    // a newer draft or an unrelated validated revision.
+                    // The definitive publicRevision() rights/citation gate
+                    // still runs before result slots or next-page metadata.
+                    ->orWhereHas('revisions', fn ($revision) => $revision
+                        ->where('status', 'validated')
+                        ->whereColumn('article_revisions.revision_no', 'articles.published_revision_no')
+                        ->where('body_md', 'like', $term));
             });
         }
 
