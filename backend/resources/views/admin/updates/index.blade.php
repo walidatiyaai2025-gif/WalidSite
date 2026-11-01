@@ -22,7 +22,9 @@ ul{padding-inline-start:24px}code{overflow-wrap:anywhere}.error{color:#a01826}
 <p>{{ $locale === 'ar' ? 'الملفات البرمجية تُنشر عبر Git/CI الموثوق فقط. هذا القسم يفحص Migrations وينفذها دون رفع PHP من المتصفح.' : 'Code patches must be deployed via trusted Git/CI. This page detects and runs checked-in migrations; it cannot upload executable PHP.' }}</p>
 @if(session('status'))<p role="status">{{ session('status') }}</p>@endif
 @if($errors->any())<div role="alert" class="error">@foreach($errors->all() as $error)<p>{{ $error }}</p>@endforeach</div>@endif
-@if(!$status['ready'])
+@if($status['history_mismatch'] ?? false)
+<p role="alert" class="error">{{ $locale === 'ar' ? 'سجل ترحيلات قاعدة البيانات غير متوافق مع الإصدار المنشور. تم إيقاف التحديثات لحماية البيانات. استعد إصدار الكود المتوافق أو نسخة احتياطية معتمدة قبل المتابعة.' : 'Database migration history is incompatible with the deployed release. Updates are blocked to protect data. Restore the matching verified code release or approved backup before proceeding.' }}</p>
+@elseif(!$status['ready'])
 <p role="alert" class="error">{{ $locale === 'ar' ? 'قاعدة البيانات غير متاحة؛ لا يمكن التحقق من حالة التحديث.' : 'Database unavailable; update status cannot be verified.' }}</p>
 @else
 <h2>{{ $locale === 'ar' ? 'الترحيلات المنتظرة' : 'Pending migrations' }}: {{ count($status['pending']) }}</h2>
