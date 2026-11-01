@@ -227,6 +227,9 @@ class EditorialScheduleRunnerTest extends TestCase
         $article = $this->article('high');
         $admin = $this->actor('admin');
         $this->actingAs($admin, 'web')->post(
+            '/admin/content/'.$article->id.'/publish'
+        )->assertSessionHasErrors('publish');
+        $this->actingAs($admin, 'web')->post(
             '/admin/editorial/automation/'.$article->id.'/manual-review',
             ['reason' => 'source_reviewed', 'confirmed' => 1]
         )->assertForbidden();
