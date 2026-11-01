@@ -100,7 +100,6 @@ void main() {
       'https://user:password@docs.example.org/guide',
       'https://docs.example.org/guide?api_key=private',
       'https://docs.example.org/guide?X-Amz-Signature=private',
-      'https://docs.example.org/guide?lang=en',
       'https://docs.example.org/guide#private-token',
       'https://[::1]/guide',
     ]) {
@@ -122,6 +121,43 @@ void main() {
       ).single.citations.single,
       'https://docs.example.org/guide/recovery',
     );
+
+    // Public pages can use benign, non-credential query parameters.
+    for (final allowed in <String>[
+      'https://docs.example.org/guide?lang=en',
+      'https://docs.example.org/guide?page=2&lang=ar',
+      'https://docs.example.org/guide?q=cache%20miss',
+      'https://docs.example.org/guide?q=50%25',
+    ]) {
+      expect(
+        VerifiedArticle.parseList(safeJson.replaceFirst(
+          'https://docs.example.org/recovery', allowed,
+        )).single.citations.single,
+        allowed,
+        reason: 'Harmless public citation query rejected: $allowed',
+      );
+    }
+
+    // Encoding a credential key or using a signed URL must never bypass.
+    for (final forbidden in <String>[
+      'https://docs.example.org/guide?token=private',
+      'https://docs.example.org/guide?api_key=private',
+      'https://docs.example.org/guide?X-Goog-Signature=private',
+      'https://docs.example.org/guide?X-Amz-Signature=private',
+      'https://docs.example.org/guide?lang=en%26token%3Dprivate',
+      'https://docs.example.org/guide?access%255Ftoken=private',
+      'https://docs.example.org/guide?%252525252574oken=private',
+      'https://docs.example.org/guide?sessionid=private',
+      'https://docs.example.org/guide?lang=en#untrusted',
+    ]) {
+      expect(
+        () => VerifiedArticle.parseList(safeJson.replaceFirst(
+          'https://docs.example.org/recovery', forbidden,
+        )),
+        throwsFormatException,
+        reason: 'Unsafe nested query must be rejected: $forbidden',
+      );
+    }
   });
 
   testWidgets('unconfigured article server has an honest offline state', (tester) async {
