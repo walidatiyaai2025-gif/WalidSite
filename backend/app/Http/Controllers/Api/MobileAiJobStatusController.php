@@ -38,6 +38,7 @@ final class MobileAiJobStatusController extends Controller
 
         $status = match ($job->status) {
             'completed', 'failed', 'running', 'queued', 'blocked', 'cancelled' => $job->status,
+            'retry' => 'queued',
             default => 'failed',
         };
         $progress = match ($status) {
