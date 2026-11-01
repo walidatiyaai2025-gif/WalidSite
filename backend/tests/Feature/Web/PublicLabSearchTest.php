@@ -93,8 +93,8 @@ class PublicLabSearchTest extends TestCase
     {
         $this->get('/search?q='.urlencode('<img src=x onerror=alert(1)>'))
             ->assertOk()->assertDontSee('<img src=x onerror=', false);
-        $this->get('/search?q='.str_repeat('x', 200))
-            ->assertOk()->assertSee('No verified public matches.');
+        $this->getJson('/search?q='.str_repeat('x', 200))
+            ->assertUnprocessable()->assertJsonValidationErrors('q');
     }
 
     public function test_site_search_finds_verified_article_body_but_not_newer_private_revisions(): void
