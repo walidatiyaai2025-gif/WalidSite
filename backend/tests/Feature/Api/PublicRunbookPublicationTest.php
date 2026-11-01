@@ -123,7 +123,7 @@ final class PublicRunbookPublicationTest extends TestCase
             'version' => 2,
             'body_md' => '# Approved version two',
             'checksum' => hash('sha256', '# Approved version two'),
-            'created_at' => now(),
+            'created_at' => now()->subMinutes(2),
         ]);
 
         // Before changing the current version, an unpinned later record
@@ -134,8 +134,10 @@ final class PublicRunbookPublicationTest extends TestCase
 
         DB::table('runbooks')->where('id', $id)->update(['version' => 2]);
         $this->getJson('/api/v1/mobile/solutions/'.$id)->assertNotFound();
+        // Even a matching body and checksum must not inherit the OLD
+        // validation timestamp: this newer version did not yet exist then.
         DB::table('runbooks')->where('id', $id)
-            ->update(['body_md' => '# Approved version two', 'validated_at' => null]);
+            ->update(['body_md' => '# Approved version two']);
         $this->getJson('/api/v1/mobile/solutions/'.$id)->assertNotFound();
 
         // A new independent review can make this exact stored version
