@@ -5,6 +5,18 @@
 <link rel="canonical" href="{{ route('public.article', ['slug' => $article->slug, 'lang' => $locale]) }}">
 <link rel="alternate" hreflang="ar" href="{{ route('public.article', ['slug' => $article->slug, 'lang' => 'ar']) }}">
 <link rel="alternate" hreflang="en" href="{{ route('public.article', ['slug' => $article->slug, 'lang' => 'en']) }}">
+{{-- Public SEO describes only the already reviewed, currently authorized revision.
+     Never turn drafts or unverified professional claims into crawler metadata. --}}
+@php($structuredArticle = [
+    '@context' => 'https://schema.org',
+    '@type' => 'TechArticle',
+    'headline' => $locale === 'ar' ? $article->title_ar : $article->title_en,
+    'inLanguage' => $locale,
+    'mainEntityOfPage' => route('public.article', ['slug' => $article->slug, 'lang' => $locale]),
+    'datePublished' => $article->published_at?->toIso8601String(),
+    'citation' => array_values(array_unique(array_column($revision->citations_json, 'source_url'))),
+])
+<script type="application/ld+json">{!! json_encode($structuredArticle, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR) !!}</script>
 @endpush
 @push('styles')
 <style>
