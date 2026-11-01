@@ -58,7 +58,9 @@ button{min-height:44px;border-radius:8px;border:1px solid white;color:white;back
 <tbody>
 @foreach($rows as $row)
 <tr>
-<td>{{ $row->display_name }}</td>
+<td>{{ $row->display_name }}@if($row->deleted_at)
+<span class="muted">({{ $locale === 'ar' ? 'مؤرشف' : 'Archived' }})</span>
+@endif</td>
 <td>{{ $row->daily_budget_minor }} {{ $row->currency }}</td>
 <td>{{ $row->cost_currency ?? '—' }}</td>
 <td>{{ $row->receipt_count }}</td>

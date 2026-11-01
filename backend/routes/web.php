@@ -195,12 +195,16 @@ Route::middleware('auth:web')->group(function (): void {
                     ->where('usage.created_at', '>=', $today)
                     ->where('usage.created_at', '<', $tomorrow);
             })
-            ->whereNull('provider.deleted_at')
+            // Provider archival revokes credentials, not financial history.
+            // Keep active zero-use rows and only archived rows with receipts
+            // from the current UTC day; never reactivate a deleted provider.
+            ->where(fn ($query) => $query->whereNull('provider.deleted_at')
+                ->orWhereNotNull('usage.id'))
             ->select('provider.id', 'provider.display_name', 'provider.daily_budget_minor',
-                'provider.currency', 'usage.cost_currency')
+                'provider.currency', 'provider.deleted_at', 'usage.cost_currency')
             ->selectRaw('COUNT(usage.id) AS receipt_count, COALESCE(SUM(usage.cost_minor), 0) AS spend_minor')
             ->groupBy('provider.id', 'provider.display_name', 'provider.daily_budget_minor',
-                'provider.currency', 'usage.cost_currency')
+                'provider.currency', 'provider.deleted_at', 'usage.cost_currency')
             ->orderBy('provider.display_name')->orderBy('provider.id')
             ->orderBy('usage.cost_currency')
             ->paginate(20)->withQueryString();
