@@ -65,8 +65,7 @@ final class PublicLabCatalogTest extends TestCase
             ->assertJsonCount(0, 'data.tools')
             ->assertJsonCount(0, 'data.articles')
             ->assertJsonCount(0, 'data.runbooks')
-            ->assertJsonPath('meta.lang', 'en')
-            ;
+            ->assertJsonPath('meta.lang', 'en');
         // Symfony appends the private directive to no-store during response
         // preparation. Both directives are required, regardless of ordering.
         $this->assertStringContainsString('no-store',
