@@ -81,12 +81,13 @@ class AbandonedBranchCleanupTest(unittest.TestCase):
             len([p for p in self.api.requested if "/git/ref/heads/" in p]), 2,
         )
 
-    def test_all_four_additional_verified_branches_delete_only_when_unchanged(self):
+    def test_all_verified_branches_delete_only_when_unchanged(self):
         expected = {
             150: ("chore/145-guarded-abandoned-cleanup", 149),
             156: ("fix/setup-production-https-all-steps", 159),
             170: ("fix/168-setup-schema-mismatch-recovery-guard", 171),
             172: ("fix/169-schema-mismatch-recovery-guard", 171),
+            337: ("fix/332-mobile-learning-unique-page-slugs", 336),
         }
         for pr, (branch, successor) in expected.items():
             with self.subTest(pr=pr):
