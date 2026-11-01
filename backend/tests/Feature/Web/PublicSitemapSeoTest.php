@@ -158,4 +158,68 @@ class PublicSitemapSeoTest extends TestCase
             ->assertDontSee('secrets-canary')
             ->assertSee('rel="sitemap"', false);
     }
+
+    public function test_sitemap_finds_safe_results_after_more_than_two_hundred_unusable_candidates(): void
+    {
+        $safeArticle = $this->article('sitemap-late-valid-article');
+        // Put the safe destination *behind* more than the former SQL limit.
+        Article::whereKey($safeArticle->id)->update(['published_at' => now()->subDays(7)]);
+        $safeProject = $this->project('sitemap-late-valid-project');
+        $safeProject->update(['published_at' => now()->subDays(7)]);
+
+        for ($i = 1; $i <= 201; $i++) {
+            // Still meets the cheap SQL publiclyVisible() scope, but fails
+            // the authoritative pinned-revision citation validation.
+            $revoked = $this->article('sitemap-revoked-'.$i);
+            $revoked->revisions()->firstOrFail()->update([
+                'validation_json' => [
+                    'citations_passed' => false,
+                    'technical_passed' => true,
+                ],
+            ]);
+
+            // Public and date-verified DB evidence, but its token-bearing
+            // URL is intentionally rejected by the public proof serializer.
+            $unsafe = $this->project('sitemap-unsafe-'.$i, 'public',
+                'https://docs.example.org/proof?private=token-'.$i);
+            $unsafe->update(['published_at' => now()->subMinutes(3)]);
+        }
+
+        $response = $this->get('/sitemap.xml')->assertOk();
+        foreach (['ar', 'en'] as $lang) {
+            $response->assertSee(e(route('public.article', [
+                'slug' => $safeArticle->slug, 'lang' => $lang,
+            ])), false);
+            $response->assertSee(e(route('public.project', [
+                'slug' => $safeProject->slug, 'lang' => $lang,
+            ])), false);
+        }
+        $response->assertDontSee('sitemap-revoked-')
+            ->assertDontSee('sitemap-unsafe-')
+            ->assertDontSee('token-201');
+        $this->assertNotFalse(simplexml_load_string($response->getContent()));
+    }
+
+    public function test_sitemap_caps_each_type_at_two_hundred_verified_destinations(): void
+    {
+        for ($i = 1; $i <= 201; $i++) {
+            $this->article('sitemap-cap-article-'.$i);
+            $this->project('sitemap-cap-project-'.$i);
+        }
+
+        $response = $this->get('/sitemap.xml')->assertOk();
+        $xml = simplexml_load_string($response->getContent());
+        $this->assertNotFalse($xml);
+        $locations = array_map(static fn ($node) => (string) $node,
+            $xml->xpath('//*[local-name()="loc"]') ?: []);
+
+        $articles = array_filter($locations,
+            static fn ($url) => str_contains($url, '/blog/sitemap-cap-article-'));
+        $projects = array_filter($locations,
+            static fn ($url) => str_contains($url, '/projects/sitemap-cap-project-'));
+
+        // Two locale destinations per eligible entry; no unbounded sitemap.
+        $this->assertCount(400, $articles);
+        $this->assertCount(400, $projects);
+    }
 }
