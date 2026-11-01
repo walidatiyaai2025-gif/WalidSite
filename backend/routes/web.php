@@ -507,77 +507,89 @@ Route::middleware('auth:web')->group(function (): void {
             'estimated_cost_minor' => ['required', 'integer', 'min:1', 'max:100000000'],
         ]);
 
-        $model = \App\Models\AiModel::query()->with('provider')
-            ->findOrFail($input['model_id']);
-        $provider = $model->provider;
-        $capabilities = $model->capabilities_json;
-        $savedCredential = $provider?->getRawOriginal('secret_ciphertext');
-        $eligible = $model->enabled
-            && is_array($capabilities)
-            && in_array('image-generation', $capabilities, true)
-            && preg_match('/^[A-Za-z0-9_.:\\-]{1,90}$/D', (string) $model->provider_model_id) === 1
-            && $provider !== null
-            && ! $provider->trashed()
-            && $provider->enabled
-            && $provider->health_status === 'healthy'
-            && $provider->provider_type === 'openai-compatible'
-            && is_string($savedCredential)
-            && $savedCredential !== '';
-        if (! $eligible) {
-            return back()->withErrors([
-                'model_id' => $request->query('lang') === 'ar'
-                    ? 'النموذج المحدد غير مؤهل حاليًا لتوليد الصور.'
-                    : 'The selected model is not currently eligible for image generation.',
-            ]);
-        }
-
-        $estimate = (int) $input['estimated_cost_minor'];
-        $today = now('UTC')->startOfDay();
-        $tomorrow = $today->copy()->addDay();
-        $spentToday = (int) \Illuminate\Support\Facades\DB::table('ai_usage')
-            ->where('provider_id', $provider->id)
-            ->where('created_at', '>=', $today)
-            ->where('created_at', '<', $tomorrow)
-            ->sum('cost_minor');
-
-        // Count still-unsettled reservations so repeated admin clicks cannot
-        // overbook the configured daily ceiling before workers claim jobs.
-        $outstanding = 0;
-        $pendingJobs = \Illuminate\Support\Facades\DB::table('ai_jobs')
-            ->where('provider_id', $provider->id)
-            ->whereIn('status', ['queued', 'retry', 'running'])
-            ->get(['id', 'reserved_budget_minor']);
-        foreach ($pendingJobs as $pendingJob) {
-            $recorded = (int) \Illuminate\Support\Facades\DB::table('ai_usage')
-                ->where('job_id', $pendingJob->id)->sum('cost_minor');
-            $outstanding += max(0, (int) $pendingJob->reserved_budget_minor - $recorded);
-        }
-        $remaining = max(0, (int) $provider->daily_budget_minor - $spentToday - $outstanding);
-        if ($estimate > $remaining) {
-            return back()->withErrors([
-                'estimated_cost_minor' => $request->query('lang') === 'ar'
-                    ? 'الحجز المطلوب يتجاوز الميزانية اليومية المتاحة للمزود.'
-                    : 'The requested reservation exceeds the provider daily budget still available.',
-            ]);
-        }
-
+        $model = \App\Models\AiModel::query()->findOrFail($input['model_id']);
         $revision = \App\Models\ArticleRevision::query()->with('article')
             ->findOrFail($input['revision_id']);
+        $estimate = (int) $input['estimated_cost_minor'];
+        $locale = $request->query('lang') === 'ar' ? 'ar' : 'en';
+
         try {
-            $jobId = app(\App\AI\EditorialJobDispatcher::class)->enqueue(
-                $revision, $provider, $model->provider_model_id, true, $estimate
+            // All admin image reservations use the provider row as a mutex,
+            // shared with worker claims and edits to the provider budget.
+            // Capacity check and durable enqueue must commit together.
+            $jobId = \Illuminate\Support\Facades\DB::transaction(
+                function () use ($model, $revision, $estimate, $locale): string {
+                    $provider = \App\Models\AiProvider::query()
+                        ->whereKey($model->provider_id)->lockForUpdate()->first();
+                    // Re-read the model and provider under the budget lock:
+                    // neither a stale UI selection nor cached health is safe.
+                    $currentModel = \App\Models\AiModel::query()->find($model->id);
+                    $capabilities = $currentModel?->capabilities_json;
+                    $savedCredential = $provider?->getRawOriginal('secret_ciphertext');
+                    $eligible = $provider !== null
+                        && $currentModel !== null
+                        && $currentModel->provider_id === $provider->id
+                        && $currentModel->enabled
+                        && is_array($capabilities)
+                        && in_array('image-generation', $capabilities, true)
+                        && preg_match('/^[A-Za-z0-9_.:\\-]{1,90}$/D', (string) $currentModel->provider_model_id) === 1
+                        && ! $provider->trashed()
+                        && $provider->enabled
+                        && $provider->health_status === 'healthy'
+                        && $provider->provider_type === 'openai-compatible'
+                        && is_string($savedCredential) && $savedCredential !== '';
+                    if (! $eligible) {
+                        throw \Illuminate\Validation\ValidationException::withMessages([
+                            'model_id' => $locale === 'ar'
+                                ? 'النموذج المحدد غير مؤهل حاليًا لتوليد الصور.'
+                                : 'The selected model is not currently eligible for image generation.',
+                        ]);
+                    }
+
+                    $today = now('UTC')->startOfDay();
+                    $tomorrow = $today->copy()->addDay();
+                    $spentToday = (int) \Illuminate\Support\Facades\DB::table('ai_usage')
+                        ->where('provider_id', $provider->id)
+                        ->where('created_at', '>=', $today)
+                        ->where('created_at', '<', $tomorrow)
+                        ->sum('cost_minor');
+                    // Include unsettled reservations, less already-reported
+                    // receipts, without counting that spend twice.
+                    $outstanding = 0;
+                    $pendingJobs = \Illuminate\Support\Facades\DB::table('ai_jobs')
+                        ->where('provider_id', $provider->id)
+                        ->whereIn('status', ['queued', 'retry', 'running'])
+                        ->get(['id', 'reserved_budget_minor']);
+                    foreach ($pendingJobs as $pendingJob) {
+                        $recorded = (int) \Illuminate\Support\Facades\DB::table('ai_usage')
+                            ->where('job_id', $pendingJob->id)->sum('cost_minor');
+                        $outstanding += max(0, (int) $pendingJob->reserved_budget_minor - $recorded);
+                    }
+                    $remaining = max(0, (int) $provider->daily_budget_minor - $spentToday - $outstanding);
+                    if ($estimate > $remaining) {
+                        throw \Illuminate\Validation\ValidationException::withMessages([
+                            'estimated_cost_minor' => $locale === 'ar'
+                                ? 'الحجز المطلوب يتجاوز الميزانية اليومية المتاحة للمزود.'
+                                : 'The requested reservation exceeds the provider daily budget still available.',
+                        ]);
+                    }
+
+                    return app(\App\AI\EditorialJobDispatcher::class)->enqueue(
+                        $revision, $provider, $currentModel->provider_model_id, true, $estimate
+                    );
+                }, 3
             );
         } catch (\DomainException|\InvalidArgumentException $exception) {
             return back()->withErrors([
-                'revision_id' => $request->query('lang') === 'ar'
+                'revision_id' => $locale === 'ar'
                     ? 'المسودة تغيرت أو لم تعد مؤهلة. حدّث الصفحة وحاول من أحدث مسودة.'
                     : 'The draft changed or is no longer eligible. Refresh and use the latest draft.',
             ]);
         }
 
         return redirect()->route('admin.media.index', [
-            'lang' => $request->query('lang') === 'ar' ? 'ar' : 'en',
-        ])->with('status', $request->query('lang') === 'ar'
+            'lang' => $locale,
+        ])->with('status', $locale === 'ar'
             ? 'تمت إضافة مهمة توليد الصورة إلى الطابور الآمن: '.$jobId
             : 'Artwork generation queued safely: '.$jobId);
     })->middleware('throttle:10,1')->name('admin.media.queue');
