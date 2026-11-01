@@ -16,6 +16,7 @@ void main() {
     MobileDiagnoseAction? diagnose,
     MobileSaveAction? save,
     Future<ReviewedRunbook> Function(String id)? detail,
+    DateTime Function()? nowUtc,
   }) async {
     await tester.pumpWidget(MaterialApp(
       home: AiTroubleshooterScreen(
@@ -24,6 +25,7 @@ void main() {
         diagnoseAction: diagnose,
         saveAction: save,
         detailLoader: detail,
+        nowUtc: nowUtc,
       ),
     ));
   }
@@ -403,4 +405,96 @@ void main() {
     await reveal(tester, const Key('ai-report-error-disabled'));
     expect(find.text('الإبلاغ غير متاح حاليًا'), findsOneWidget);
   });
+  testWidgets('expired login token is rejected without revealing credentials',
+      (tester) async {
+    final now = DateTime.utc(2026, 11, 1, 10);
+    var diagnosisCalls = 0;
+    await pumpScreen(
+      tester,
+      nowUtc: () => now,
+      login: (_, __) async => MobileAiSession(
+        token: token,
+        expiresAt: now.subtract(const Duration(seconds: 1)),
+      ),
+      diagnose: (_, __, ___, ____) async {
+        diagnosisCalls++;
+        throw StateError('Must not diagnose with an expired token');
+      },
+    );
+    await login(tester);
+    expect(find.byKey(const Key('ai-login-email')), findsOneWidget);
+    expect(find.text('Session expired. Sign in again.'), findsOneWidget);
+    expect(find.text('correct horse battery staple'), findsNothing);
+    expect(find.text(token), findsNothing);
+    expect(diagnosisCalls, 0);
+  });
+
+  testWidgets('expires in-memory login before attempting diagnosis in Arabic',
+      (tester) async {
+    var now = DateTime.utc(2026, 11, 1, 10);
+    var diagnosisCalls = 0;
+    await pumpScreen(
+      tester,
+      arabic: true,
+      nowUtc: () => now,
+      login: (_, __) async => MobileAiSession(
+        token: token,
+        expiresAt: DateTime.utc(2026, 11, 1, 10, 1),
+      ),
+      diagnose: (_, __, ___, ____) async {
+        diagnosisCalls++;
+        throw StateError('Expired bearer must never reach the API');
+      },
+    );
+    await login(tester);
+    now = now.add(const Duration(minutes: 2));
+    await reveal(tester, const Key('ai-diagnose-submit'));
+    await tester.tap(find.byKey(const Key('ai-diagnose-submit')));
+    await tester.pumpAndSettle();
+    expect(diagnosisCalls, 0);
+    expect(find.byKey(const Key('ai-login-email')), findsOneWidget);
+    expect(find.text('انتهت صلاحية الجلسة. سجّل الدخول مرة أخرى.'),
+        findsOneWidget);
+    expect(find.text(token), findsNothing);
+  });
+
+  testWidgets('expired token cannot save previously reviewed AI result',
+      (tester) async {
+    var now = DateTime.utc(2026, 11, 1, 10);
+    var saveCalls = 0;
+    await pumpScreen(
+      tester,
+      nowUtc: () => now,
+      login: (_, __) async => MobileAiSession(
+        token: token,
+        expiresAt: DateTime.utc(2026, 11, 1, 10, 1),
+      ),
+      diagnose: (_, __, ___, ____) async => const MobileAiJob(
+        id: jobId,
+        status: 'completed',
+        progressPercent: 100,
+        resultUrl: '/api/v1/mobile/solutions/$runbookId',
+        retryAfterSeconds: null,
+      ),
+      save: (_, __) async { saveCalls++; },
+    );
+    await login(tester);
+    await tester.enterText(find.byKey(const Key('ai-technology')), 'Laravel');
+    await tester.enterText(
+        find.byKey(const Key('ai-question')), 'Why is the queue stalled?');
+    await reveal(tester, const Key('ai-consent'));
+    await tester.tap(find.byKey(const Key('ai-consent')));
+    await reveal(tester, const Key('ai-diagnose-submit'));
+    await tester.tap(find.byKey(const Key('ai-diagnose-submit')));
+    await tester.pumpAndSettle();
+    await reveal(tester, const Key('ai-save-answer'));
+    now = now.add(const Duration(minutes: 2));
+    await tester.tap(find.byKey(const Key('ai-save-answer')));
+    await tester.pumpAndSettle();
+    expect(saveCalls, 0);
+    expect(find.byKey(const Key('ai-login-email')), findsOneWidget);
+    expect(find.byKey(const Key('ai-job-card')), findsNothing);
+    expect(find.text('Session expired. Sign in again.'), findsOneWidget);
+  });
+
 }
