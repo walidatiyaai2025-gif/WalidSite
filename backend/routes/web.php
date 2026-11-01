@@ -315,7 +315,7 @@ Route::middleware('auth:web')->group(function (): void {
             'enabled' => ['required', 'boolean'],
             'supports_text' => ['required', 'boolean'],
         ]);
-        if (array_diff(array_keys($request->except('_token', '_method')), array_keys($input)) !== []) {
+        if (array_diff(array_keys($request->except('_token', '_method', 'lang')), array_keys($input)) !== []) {
             throw \Illuminate\Validation\ValidationException::withMessages([
                 'model' => 'Only model registration fields are supported.',
             ]);
@@ -344,7 +344,7 @@ Route::middleware('auth:web')->group(function (): void {
         abort_unless($request->user()?->canAccessAdmin(), 403);
         $request->validate(['lang' => ['sometimes', 'in:ar,en']]);
         $fields = $request->validate(['enabled' => ['required', 'boolean']]);
-        if (array_diff(array_keys($request->except('_token', '_method')), ['enabled']) !== []) {
+        if (array_diff(array_keys($request->except('_token', '_method', 'lang')), ['enabled']) !== []) {
             throw \Illuminate\Validation\ValidationException::withMessages([
                 'model' => 'Only the enablement state can be changed here.',
             ]);
@@ -368,7 +368,7 @@ Route::middleware('auth:web')->group(function (): void {
             'per_minute' => ['required', 'integer', 'between:1,60'],
             'per_day' => ['required', 'integer', 'between:1,10000'],
         ]);
-        if (array_diff(array_keys($request->except('_token', '_method')), array_keys($input)) !== []) {
+        if (array_diff(array_keys($request->except('_token', '_method', 'lang')), array_keys($input)) !== []) {
             throw \Illuminate\Validation\ValidationException::withMessages([
                 'route' => 'Only task routing fields are supported.',
             ]);
