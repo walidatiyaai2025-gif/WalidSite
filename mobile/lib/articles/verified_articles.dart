@@ -5,6 +5,8 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
+import '../runbooks/offline_guide_text_search.dart';
+
 /// Reads ONLY published, evidence-checked articles from the existing public API.
 /// No AI diagnosis, authentication or remote caching is implied by this screen.
 class VerifiedArticle {
@@ -463,14 +465,17 @@ class _VerifiedArticleLibraryState extends State<VerifiedArticleLibrary> {
 
                 // Search stays entirely on device. Do not send entered terms
                 // to the article service; the helper explains loaded-only scope.
-                final query = _query.trim().toLowerCase();
-                final matches = query.isEmpty
+                // Reuse the already-tested on-device guide matcher: Arabic
+                // diacritics and Alef/Ya spellings are normalized, while all
+                // typed keywords may match across the visible title and body.
+                // Never send search terms to the server, index citations, or
+                // show articles which have not passed the verified-page gate.
+                final matches = OfflineGuideTextSearch.normalize(_query).isEmpty
                     ? articles
-                    : articles
-                        .where((article) =>
-                            article.title.toLowerCase().contains(query) ||
-                            article.body.toLowerCase().contains(query))
-                        .toList(growable: false);
+                    : articles.where((article) =>
+                        OfflineGuideTextSearch.matches(
+                          _query, [article.title, article.body],
+                        )).toList(growable: false);
                 final hasMore = _loadedAdditional
                     ? _hasMoreAfterAdditional
                     : first.hasMorePages;
