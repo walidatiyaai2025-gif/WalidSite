@@ -182,6 +182,29 @@ Route::middleware('auth:web')->group(function (): void {
         ]);
     })->name('admin.providers.index');
 
+    // ADMIN-05: one read-only routing projection for authorized web admins.
+    // Persisted limits and observed health are not live provider eligibility
+    // or proof that an AI task can run. Never select endpoint or secret fields.
+    Route::get('/admin/ai/routing', function (Request $request) {
+        abort_unless($request->user()?->canAccessAdmin(), 403);
+        $request->validate([
+            'lang' => ['sometimes', 'in:ar,en'],
+            'page' => ['sometimes', 'integer', 'min:1', 'max:10000'],
+        ]);
+        $providers = \App\Models\AiProvider::query()
+            ->select([
+                'id', 'display_name', 'provider_type', 'enabled',
+                'health_status', 'routing_priority', 'concurrent_limit',
+                'timeout_seconds', 'daily_budget_minor', 'currency',
+            ])
+            ->orderBy('routing_priority')->orderBy('id')
+            ->paginate(20)
+            ->appends(['lang' => $request->query('lang') === 'ar' ? 'ar' : 'en']);
+
+        return response()->view('admin.ai.routing', compact('providers'))
+            ->header('Cache-Control', 'no-store');
+    })->name('admin.routing.index');
+
     // T016: bounded, read-only provider billing audit. Saved daily budgets
     // are displayed as settings, not claimed as enforced spend limits.
     // Keep receipts partitioned by their *actual* currency and provider.
@@ -237,11 +260,24 @@ Route::middleware('auth:web')->group(function (): void {
         } elseif (trim((string) $request->input('secret', '')) === '') {
             $request->request->remove('secret');
         }
+        // Only the exact internal routing return marker may change the
+        // destination. Arbitrary URLs never become redirect targets.
+        $backToRouting = $request->query('return') === 'routing';
+        if ($backToRouting) {
+            $request->validate([
+                'lang' => ['sometimes', 'in:ar,en'],
+                'page' => ['sometimes', 'integer', 'min:1', 'max:10000'],
+            ]);
+        }
         app(\App\Http\Controllers\Api\AiProviderController::class)->update($request, $provider);
-        return redirect()->route('admin.providers.index',
-            $request->query('lang') === 'ar' ? ['lang' => 'ar'] : []
-        )->with('status', $request->query('lang') === 'ar'
-            ? 'تم تحديث مزود الذكاء الاصطناعي.' : 'Provider updated.');
+        $redirect = $backToRouting ? 'admin.routing.index' : 'admin.providers.index';
+        $parameters = $request->query('lang') === 'ar' ? ['lang' => 'ar'] : [];
+        if ($backToRouting && $request->query('page') !== null) {
+            $parameters['page'] = (int) $request->query('page');
+        }
+        return redirect()->route($redirect, $parameters)
+            ->with('status', $request->query('lang') === 'ar'
+                ? 'تم تحديث مزود الذكاء الاصطناعي.' : 'Provider updated.');
     })->middleware('throttle:20,1')->name('admin.providers.update');
 
     Route::post('/admin/ai/providers/{provider}/test', function (
