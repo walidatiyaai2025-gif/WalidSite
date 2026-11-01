@@ -129,4 +129,125 @@ class PublicLabSearchTest extends TestCase
             ->assertDontSee('Verified database runbook');
     }
 
+
+    /** Construct one valid publication and optionally withdraw its evidence. */
+    private function discoveryArticle(string $slug, bool $revoke = false): Article
+    {
+        $article = Article::create([
+            'slug' => $slug,
+            'title_en' => 'Discovery article '.$slug,
+            'title_ar' => 'مقال بحث موثق '.$slug,
+            'canonical_lang' => 'en',
+        ]);
+        $revision = $article->revisions()->create([
+            'revision_no' => 1,
+            'body_md' => 'Published source-reviewed discovery guidance.',
+            'status' => 'validated',
+            'citations_json' => [[
+                'source_url' => 'https://docs.example.org/discovery',
+                'verified' => true,
+            ]],
+            'validation_json' => [
+                'citations_passed' => true,
+                'technical_passed' => true,
+            ],
+        ]);
+        $article->publishVerified();
+        if ($revoke) {
+            $revision->update(['validation_json' => [
+                'citations_passed' => false,
+                'technical_passed' => true,
+            ]]);
+        }
+        return $article;
+    }
+
+    public function test_lab_finds_verified_article_after_more_than_fifteen_revoked_publications(): void
+    {
+        $safe = $this->discoveryArticle('lab-later-safe');
+        $safe->forceFill(['published_at' => now()->subDays(4)])->save();
+        for ($i = 1; $i <= 18; $i++) {
+            $bad = $this->discoveryArticle('lab-revoked-'.$i, true);
+            $bad->forceFill(['published_at' => now()->subMinute()])->save();
+        }
+
+        $this->get('/lab?lang=en')->assertOk()
+            ->assertSee('Discovery article lab-later-safe')
+            ->assertDontSee('Discovery article lab-revoked-');
+        $this->get('/lab?lang=ar')->assertOk()
+            ->assertSee('مقال بحث موثق lab-later-safe')
+            ->assertDontSee('مقال بحث موثق lab-revoked-');
+    }
+
+    public function test_search_finds_verified_article_after_ten_revoked_matching_articles(): void
+    {
+        for ($i = 1; $i <= 13; $i++) {
+            $this->discoveryArticle('search-discovery-revoked-'.$i, true);
+        }
+        $safe = $this->discoveryArticle('search-discovery-safe');
+        $this->get('/search?q=discovery&lang=en')->assertOk()
+            ->assertSee(e(route('public.article', [
+                'slug' => $safe->slug, 'lang' => 'en',
+            ])), false)
+            ->assertSee('Discovery article search-discovery-safe')
+            ->assertDontSee('Discovery article search-discovery-revoked-');
+        $this->get('/search?q=discovery&lang=ar')->assertOk()
+            ->assertSee('مقال بحث موثق search-discovery-safe')
+            ->assertDontSee('مقال بحث موثق search-discovery-revoked-');
+    }
+
+    public function test_search_finds_verified_project_after_ten_unsafe_matching_projects(): void
+    {
+        for ($i = 1; $i <= 13; $i++) {
+            $project = Project::create([
+                'slug' => 'searchable-unsafe-'.$i,
+                'title' => 'Searchable unsafe case '.$i,
+                'summary_en' => 'Public documentation',
+                'summary_ar' => 'وثائق متاحة',
+                'role_en' => 'Engineer',
+                'status' => 'completed',
+                'visibility' => 'public',
+                'published_at' => now()->subDay(),
+            ]);
+            ProjectEvidence::create([
+                'project_id' => $project->id,
+                'evidence_type' => 'document',
+                'url' => 'https://docs.example.org/proof?token=secret-'.$i,
+                'visibility' => 'public',
+                'verified_at' => now()->subDay(),
+            ]);
+        }
+
+        $safe = Project::create([
+            'slug' => 'searchable-safe-case',
+            'title' => 'Searchable verified case',
+            'summary_en' => 'Public documentation',
+            'summary_ar' => 'وثائق متاحة',
+            'role_en' => 'Engineer',
+            'status' => 'completed',
+            'visibility' => 'public',
+            'published_at' => now()->subDay(),
+        ]);
+        ProjectEvidence::create([
+            'project_id' => $safe->id,
+            'evidence_type' => 'document',
+            'url' => 'https://docs.example.org/proof',
+            'visibility' => 'public',
+            'verified_at' => now()->subDay(),
+        ]);
+
+        $this->get('/search?q=Searchable&lang=en')->assertOk()
+            ->assertSee(e(route('public.project', [
+                'slug' => $safe->slug, 'lang' => 'en',
+            ])), false)
+            ->assertSee('Searchable verified case')
+            ->assertDontSee('Searchable unsafe case')
+            ->assertDontSee('secret-');
+        $this->get('/search?q=Searchable&lang=ar')->assertOk()
+            ->assertSee(e(route('public.project', [
+                'slug' => $safe->slug, 'lang' => 'ar',
+            ])), false)
+            ->assertDontSee('Searchable unsafe case');
+    }
+
 }
