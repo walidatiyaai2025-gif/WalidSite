@@ -14,10 +14,17 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        // T011: one explicit registry per application process. T014 may
-        // register reviewed job handlers during provider boot; no arbitrary
-        // handler class names are ever resolved from database payloads.
-        $this->app->singleton(\App\AI\AiStepHandlerRegistry::class);
+        // T011/T014: construct the trusted handler allowlist once per app
+        // container. Plain schedule:run / ai:tick must not require a manual
+        // test-only registration step before editorial work can run.
+        // Handler class names never come from jobs, DB rows, or HTTP input.
+        $this->app->singleton(\App\AI\AiStepHandlerRegistry::class, function ($app) {
+            $registry = new \App\AI\AiStepHandlerRegistry();
+            $app->make(\App\AI\EditorialJobDispatcher::class)
+                ->registerHandlers($registry);
+
+            return $registry;
+        });
         (new \App\Support\Deployment\FirstRunBootstrap())->prepare();
     }
 
