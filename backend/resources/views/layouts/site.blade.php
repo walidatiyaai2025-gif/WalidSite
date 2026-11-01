@@ -5,8 +5,22 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="color-scheme" content="light">
-    <meta name="description" content="{{ $locale === 'ar' ? 'الموقع المهني لوليد عطية — تحت التطوير.' : 'The engineering portfolio of Waleed Atiya, currently in development.' }}">
+    <meta name="description" content="@yield('meta_description', $locale === 'ar' ? 'الموقع المهني لوليد عطية — المعلومات العامة المتاحة بعد التحقق.' : 'Waleed Atiya engineering portfolio — evidence-reviewed public information.')">
     <title>@yield('title', 'Waleed Atiya — Engineering')</title>
+    {{-- Only the T007 public screens are in this SEO scope. Recruiter variants
+         retain validated focus, while arrays and arbitrary query strings can
+         never be reflected into canonical or alternate-language URLs. --}}
+    @php($seoPage = request()->route()?->getName())
+    @if (in_array($seoPage, ['home', 'public.about', 'public.expertise', 'public.hire'], true))
+        @php($seoRawTrack = request()->query()['track'] ?? null)
+        @php($seoFilters = $seoPage === 'public.hire' && is_string($seoRawTrack)
+            && in_array($seoRawTrack, ['database', 'software', 'delivery'], true)
+                ? ['track' => $seoRawTrack] : [])
+        <link rel="canonical" href="{{ route($seoPage, array_merge(['lang' => $locale], $seoFilters)) }}">
+        <link rel="alternate" hreflang="en" href="{{ route($seoPage, array_merge(['lang' => 'en'], $seoFilters)) }}">
+        <link rel="alternate" hreflang="ar" href="{{ route($seoPage, array_merge(['lang' => 'ar'], $seoFilters)) }}">
+        <link rel="alternate" hreflang="x-default" href="{{ route($seoPage, array_merge(['lang' => 'en'], $seoFilters)) }}">
+    @endif
     <style>
         :root {
             color-scheme: light;

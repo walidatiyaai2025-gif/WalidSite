@@ -3,6 +3,9 @@
 @extends('layouts.site')
 
 @section('title', $ar ? 'وليد عطية | التقنية والمشاريع الموثقة' : 'Waleed Atiya | Engineering & Verified Work')
+@section('meta_description', $ar
+    ? 'استكشف خبرات وليد عطية التقنية والمشاريع والمقالات التي اجتازت مراجعة النشر والأدلة.'
+    : 'Explore Waleed Atiya engineering expertise, projects and articles after evidence and publication review.')
 
 @push('styles')
 <style>
