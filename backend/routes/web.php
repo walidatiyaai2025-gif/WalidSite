@@ -243,6 +243,109 @@ Route::middleware('auth:web')->group(function (): void {
             ->header('Cache-Control', 'no-store');
     })->whereUuid('provider')->name('admin.providers.audit');
 
+    // ADMIN-03/13: consolidated, read-only provider configuration audit.
+    // It exposes audited *field names*, never untrusted stored values, actor
+    // details or provider credentials. Archived providers retain history.
+    Route::get('/admin/audit', function (Request $request) {
+        abort_unless($request->user()?->canAccessAdmin(), 403);
+        $today = now('UTC')->toDateString();
+        $input = $request->validate([
+            'lang' => ['sometimes', 'in:ar,en'],
+            'page' => ['sometimes', 'integer', 'min:1', 'max:10000'],
+            'provider' => ['sometimes', 'uuid'],
+            'action' => ['sometimes', 'in:created,updated,tested,deleted'],
+            'day' => ['sometimes', 'date_format:Y-m-d', 'before_or_equal:'.$today],
+            'format' => ['sometimes', 'in:csv'],
+        ]);
+        $locale = $input['lang'] ?? 'en';
+        $allowedFields = [
+            'display_name', 'provider_type', 'base_url', 'enabled',
+            'concurrent_limit', 'timeout_seconds', 'daily_budget_minor',
+            'currency', 'routing_priority', 'secret_rotated', 'secret_removed',
+        ];
+        $auditQuery = \Illuminate\Support\Facades\DB::table('ai_provider_audit_events as event')
+            ->join('ai_providers as provider', 'provider.id', '=', 'event.provider_id')
+            ->select([
+                'event.id', 'event.provider_id', 'event.action',
+                'event.changed_fields_json', 'event.created_at',
+                'provider.display_name', 'provider.deleted_at',
+            ])
+            ->when(isset($input['provider']), fn ($query) => $query
+                ->where('event.provider_id', $input['provider']))
+            ->when(isset($input['action']), fn ($query) => $query
+                ->where('event.action', $input['action']))
+            ->when(isset($input['day']), function ($query) use ($input) {
+                $start = \Carbon\CarbonImmutable::parse($input['day'], 'UTC')->startOfDay();
+                $query->where('event.created_at', '>=', $start)
+                    ->where('event.created_at', '<', $start->addDay());
+            })
+            ->orderByDesc('event.created_at')->orderByDesc('event.id');
+
+        $redact = static function ($event) use ($allowedFields) {
+            $raw = json_decode($event->changed_fields_json, true);
+            $event->fields = array_values(array_unique(array_filter(
+                is_array($raw) ? $raw : [],
+                static fn ($field): bool => is_string($field)
+                    && in_array($field, $allowedFields, true)
+            )));
+            $event->action = in_array($event->action, ['created', 'updated', 'tested', 'deleted'], true)
+                ? $event->action : 'other';
+            unset($event->changed_fields_json);
+            return $event;
+        };
+
+        if (($input['format'] ?? null) === 'csv') {
+            // Never stream an unbounded history or emit spreadsheet formulas
+            // from a user-editable provider display name.
+            $window = (clone $auditQuery)->limit(1001)->get();
+            $truncated = $window->count() > 1000;
+            $rows = $window->take(1000)->map($redact);
+            $safeCell = static function (string $value): string {
+                return preg_match('/^[=+\-@\t\r]/u', $value) === 1
+                    ? "'".$value : $value;
+            };
+            return response()->streamDownload(static function () use ($rows, $safeCell): void {
+                $stream = fopen('php://output', 'wb');
+                fwrite($stream, "\xEF\xBB\xBF");
+                fputcsv($stream, ['UTC time', 'Provider', 'Action', 'Changed field names']);
+                foreach ($rows as $event) {
+                    fputcsv($stream, [
+                        (string) $event->created_at,
+                        $safeCell((string) $event->display_name),
+                        $event->action,
+                        implode(', ', $event->fields),
+                    ]);
+                }
+                fclose($stream);
+            }, 'provider-audit-'.$today.'.csv', [
+                'Content-Type' => 'text/csv; charset=UTF-8',
+                'Cache-Control' => 'no-store',
+                'X-Content-Type-Options' => 'nosniff',
+                'X-Export-Truncated' => $truncated ? 'true' : 'false',
+            ]);
+        }
+
+        $events = (clone $auditQuery)->paginate(20)->appends(array_filter([
+            'lang' => $locale,
+            'provider' => $input['provider'] ?? null,
+            'action' => $input['action'] ?? null,
+            'day' => $input['day'] ?? null,
+        ], static fn ($value): bool => $value !== null));
+        $events->getCollection()->transform($redact);
+        $providers = \App\Models\AiProvider::withTrashed()
+            ->select('id', 'display_name')->orderBy('display_name')
+            ->orderBy('id')->get();
+        $filters = [
+            'provider' => $input['provider'] ?? '',
+            'action' => $input['action'] ?? '',
+            'day' => $input['day'] ?? '',
+        ];
+
+        return response()->view('admin.ai.security-audit', compact(
+            'events', 'providers', 'filters', 'locale', 'today'
+        ))->header('Cache-Control', 'no-store');
+    })->name('admin.audit.index')->middleware('throttle:30,1');
+
     // ADMIN-05: one read-only routing projection for authorized web admins.
     // Persisted limits and observed health are not live provider eligibility
     // or proof that an AI task can run. Never select endpoint or secret fields.
