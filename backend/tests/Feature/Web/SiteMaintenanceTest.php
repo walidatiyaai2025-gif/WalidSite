@@ -138,6 +138,9 @@ class SiteMaintenanceTest extends TestCase
     {
         $previousEnvironment = $this->app['env'];
         $this->app->instance('env', 'production');
+        // This regression targets the transport guard; CSRF is independently
+        // enforced and must not intercept the request before the guard.
+        $this->withoutMiddleware(\\Illuminate\\Foundation\\Http\\Middleware\\ValidateCsrfToken::class);
         $token = str_repeat('h', 40);
         config([
             'site.setup_enabled' => true,
@@ -146,19 +149,18 @@ class SiteMaintenanceTest extends TestCase
         ]);
 
         try {
-            $this->withServerVariables(['HTTPS' => 'off']);
-            $this->get('/setup')->assertForbidden();
-            $this->get('/setup?lang=ar')->assertForbidden();
-            $this->post('/setup/unlock', ['token' => $token])->assertForbidden();
-            $this->post('/setup/configure', [
+            $this->get('http://localhost/setup')->assertForbidden();
+            $this->get('http://localhost/setup?lang=ar')->assertForbidden();
+            $this->post('http://localhost/setup/unlock', ['token' => $token])->assertForbidden();
+            $this->post('http://localhost/setup/configure', [
                 'db_host' => 'localhost',
                 'db_port' => 3306,
                 'db_database' => 'private_data',
                 'db_username' => 'private_writer',
                 'db_password' => 'do-not-log-this-secret',
             ])->assertForbidden();
-            $this->post('/setup/database')->assertForbidden();
-            $this->post('/setup/finish', [
+            $this->post('http://localhost/setup/database')->assertForbidden();
+            $this->post('http://localhost/setup/finish', [
                 'password' => 'Never-Accept-Over-Plain-HTTP!',
                 'password_confirmation' => 'Never-Accept-Over-Plain-HTTP!',
             ])->assertForbidden();
@@ -174,6 +176,7 @@ class SiteMaintenanceTest extends TestCase
     {
         $previousEnvironment = $this->app['env'];
         $this->app->instance('env', 'production');
+        $this->withoutMiddleware(\\Illuminate\\Foundation\\Http\\Middleware\\ValidateCsrfToken::class);
         $token = str_repeat('s', 40);
         config([
             'site.setup_enabled' => true,
@@ -182,28 +185,24 @@ class SiteMaintenanceTest extends TestCase
         ]);
 
         try {
-            $this->withServerVariables(['HTTPS' => 'on']);
-            $this->get('/setup')->assertOk()->assertSee('Server setup token');
-            $this->post('/setup/unlock', ['token' => $token])->assertRedirect('/setup');
-            $this->get('/setup')->assertOk()->assertSee('name="db_password"', false);
+            $this->get('https://localhost/setup')->assertOk()->assertSee('Server setup token');
+            $this->post('https://localhost/setup/unlock', ['token' => $token])->assertRedirect();
+            $this->get('https://localhost/setup')->assertOk()->assertSee('name="db_password"', false);
 
-            // Authentication via HTTPS never authorizes a later HTTP request.
-            $this->withServerVariables(['HTTPS' => 'off']);
-            $this->get('/setup')->assertForbidden();
-            $this->post('/setup/unlock', ['token' => $token])->assertForbidden();
-            $this->post('/setup/database')->assertForbidden();
-            $this->post('/setup/finish', [
+            // Successful HTTPS authorization does not permit HTTP downgrade.
+            $this->get('http://localhost/setup')->assertForbidden();
+            $this->post('http://localhost/setup/unlock', ['token' => $token])->assertForbidden();
+            $this->post('http://localhost/setup/database')->assertForbidden();
+            $this->post('http://localhost/setup/finish', [
                 'password' => 'Strong-Test-Owner-Password-123!',
                 'password_confirmation' => 'Strong-Test-Owner-Password-123!',
             ])->assertForbidden();
 
-            $this->withServerVariables(['HTTPS' => 'on']);
-            $this->get('/setup')->assertOk()->assertSee('name="db_password"', false);
+            $this->get('https://localhost/setup')->assertOk()->assertSee('name="db_password"', false);
 
-            // A disabled installer must remain indistinguishable (404).
+            // A disabled installer stays indistinguishable (404).
             config(['site.setup_enabled' => false]);
-            $this->withServerVariables(['HTTPS' => 'off']);
-            $this->get('/setup')->assertNotFound();
+            $this->get('http://localhost/setup')->assertNotFound();
         } finally {
             $this->app->instance('env', $previousEnvironment);
         }
