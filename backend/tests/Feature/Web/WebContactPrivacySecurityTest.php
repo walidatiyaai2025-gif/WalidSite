@@ -51,17 +51,19 @@ final class WebContactPrivacySecurityTest extends TestCase
         foreach (['en', 'ar'] as $lang) {
             $withoutConsent = $this->message();
             unset($withoutConsent['privacy_consent']);
+            // Follow the validation redirect: Laravel flashes errors to
+            // precisely this next response, not to a later standalone GET.
             $this->from('/contact?lang='.$lang)
+                ->followingRedirects()
                 ->post('/contact?lang='.$lang, $withoutConsent)
-                ->assertRedirect('/contact?lang='.$lang)
-                ->assertSessionHasErrors('privacy_consent');
-            $this->get('/contact?lang='.$lang)->assertOk()
+                ->assertOk()
                 ->assertSee('aria-describedby="contact-privacy-consent-error"', false)
                 ->assertSee('id="contact-privacy-consent-error"', false);
         }
 
         $this->post('/contact', $this->message(['privacy_consent' => '0']))
-            ->assertSessionHasErrors('privacy_consent');
+            ->assertOk()
+            ->assertSee('id="contact-privacy-consent-error"', false);
         Mail::assertNothingSent();
     }
 
