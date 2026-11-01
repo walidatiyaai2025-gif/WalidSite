@@ -270,17 +270,21 @@ class NoTerminalInstallerTest extends TestCase
             'site.setup_database_ready' => false,
             'site.environment_path' => $path]);
         $this->app->instance('env', 'production');
+        // Production enforces CSRF before route validation. Supply a valid
+        // session token so this regression exercises canonical URL safety.
+        $csrf = str_repeat('c', 40);
+        $this->withSession(['_token' => $csrf]);
         $database = Mockery::mock(DatabaseConfiguration::class)->makePartial();
         $database->shouldNotReceive('probe');
         $this->app->instance(DatabaseConfiguration::class, $database);
         try {
             $this->post('https://localhost/setup/unlock',
-                ['token' => str_repeat('p', 40)])->assertRedirect('/setup');
+                ['token' => str_repeat('p', 40), '_token' => $csrf])->assertRedirect('/setup');
             $this->post('https://localhost/setup/configure', [
                 'site_url' => 'https://127.0.0.1',
                 'db_host' => 'localhost', 'db_port' => 3306,
                 'db_database' => 'site', 'db_username' => 'writer',
-                'db_password' => 'not-saved',
+                'db_password' => 'not-saved', '_token' => $csrf,
             ])->assertSessionHasErrors('site_url');
             $this->assertFileDoesNotExist($path);
         } finally {
