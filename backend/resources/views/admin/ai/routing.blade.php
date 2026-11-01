@@ -47,7 +47,8 @@ button{min-height:44px;border:0;border-radius:9px;background:var(--link);color:w
 <p class="notice">{{ $locale === 'ar'
 ? 'تعرض هذه الصفحة أولويات المزودين وحدودهم المحفوظة. الأقل رقمًا أولًا. الحالة الصحية هي آخر فحص مسجل فقط، وليست اتصالًا مباشرًا أو ضمان تنفيذ المهمة. الميزانيات حدود مهيأة، وليست رصيدًا متبقيًا مؤكّدًا.'
 : 'This page displays saved provider priorities and limits; lower priority numbers come first. Health is the last recorded check, not live reachability or a task guarantee. Budgets are configured settings, not verified remaining spend.' }}</p>
-<p><a href="{{ route('admin.providers.index', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'إضافة مزود أو تعديل عنوانه ومفتاحه' : 'Add a provider or change its endpoint and secret' }}</a></p>
+<p><a href="{{ route('admin.providers.index', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'إضافة مزود أو تعديل عنوانه ومفتاحه' : 'Add a provider or change its endpoint and secret' }}</a>
+· <a href="{{ route('admin.models.index', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'تسجيل النماذج وربط المهمة بالأساسي والبدائل وحدود التكلفة' : 'Register models and configure primary/fallback task routes and cost limits' }}</a></p>
 @if(session('status'))<p class="notice" role="status">{{ session('status') }}</p>@endif
 @if($errors->any())<div class="notice" role="alert"><strong>{{ $locale === 'ar' ? 'لم يتم حفظ الإعدادات' : 'Settings were not saved' }}</strong>
 <ul>@foreach($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></div>@endif
