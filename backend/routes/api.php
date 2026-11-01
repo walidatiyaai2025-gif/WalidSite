@@ -51,13 +51,13 @@ Route::get('/public/resume', [PublicResumeController::class, 'index'])
 Route::get('/public/search', [PublicSearchController::class, 'index'])
     ->name('api.public.search')->middleware('throttle:60,1');
 
+// WEB-09: verified articles and signed-off runbooks only; no invented tools.
+Route::get('/public/tools', [PublicLabController::class, 'index'])
+    ->name('api.public.tools')->middleware('throttle:60,1');
+
 // MOBILE-08: published-only learning tracks with no private user progress.
 Route::get('/mobile/learn', [PublicLearningPathController::class, 'index'])
     ->name('api.mobile.learn')->middleware('throttle:60,1');
-
-// WEB-09: lab resources are existing evidence-checked publications only.
-Route::get('/public/tools', [PublicLabController::class, 'index'])
-    ->name('api.public.tools')->middleware('throttle:60,1');
 
 // MOBILE-04/MOBILE-05: anonymous read-only, reviewed version-pinned guides.
 // A missing/unreviewed guide is an honest 404; never return the bundled draft.
