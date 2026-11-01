@@ -82,5 +82,42 @@ void main() {
     expect(find.text('SQL Server والاعتمادية والأداء'), findsOneWidget);
     expect(find.textContaining('ستُنشر الأدلة الموثّقة'), findsOneWidget);
   });
-}
 
+  testWidgets('Arabic device locale opens RTL and manual switch still works', (
+    WidgetTester tester,
+  ) async {
+    tester.binding.platformDispatcher.localeTestValue = const Locale('ar', 'KW');
+    addTearDown(tester.binding.platformDispatcher.clearLocaleTestValue);
+
+    await tester.pumpWidget(const WaleedTechApp());
+    expect(find.text('رفيق وليد التقني'), findsOneWidget);
+    expect(find.byTooltip('Switch to English'), findsOneWidget);
+    expect(
+      Directionality.of(tester.element(find.text('رفيق وليد التقني'))),
+      TextDirection.rtl,
+    );
+
+    await tester.tap(find.byTooltip('Switch to English'));
+    await tester.pumpAndSettle();
+    expect(find.text('Waleed Tech Companion'), findsOneWidget);
+    expect(
+      Directionality.of(tester.element(find.text('Waleed Tech Companion'))),
+      TextDirection.ltr,
+    );
+  });
+
+  testWidgets('unsupported device locale falls back to English LTR', (
+    WidgetTester tester,
+  ) async {
+    tester.binding.platformDispatcher.localeTestValue = const Locale('fr', 'FR');
+    addTearDown(tester.binding.platformDispatcher.clearLocaleTestValue);
+
+    await tester.pumpWidget(const WaleedTechApp());
+    expect(find.text('Waleed Tech Companion'), findsOneWidget);
+    expect(find.byTooltip('Switch to Arabic'), findsOneWidget);
+    expect(
+      Directionality.of(tester.element(find.text('Waleed Tech Companion'))),
+      TextDirection.ltr,
+    );
+  });
+}
