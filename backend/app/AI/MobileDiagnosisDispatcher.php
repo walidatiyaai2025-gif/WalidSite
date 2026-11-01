@@ -57,7 +57,9 @@ final class MobileDiagnosisDispatcher
             $model = AiModel::query()->with('provider')->find($request->model_id);
             $provider = $model?->provider;
             if ($model === null || $provider === null || $provider->id !== $job->provider_id
-                || ! $model->enabled || ! in_array('text', $model->capabilities_json ?? [], true)) {
+                || ! $model->enabled || ! $provider->enabled
+                || $provider->health_status !== 'healthy'
+                || ! in_array('text', $model->capabilities_json ?? [], true)) {
                 throw new DomainException('Diagnosis model configuration changed.');
             }
 
