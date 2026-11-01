@@ -35,6 +35,13 @@ a,button:focus-visible,input:focus-visible{outline-offset:3px}a{color:var(--acce
 <h2>{{ $locale === 'ar' ? 'الخطوة 2: إعداد قاعدة البيانات' : 'Step 2: Configure database' }}</h2>
 <p>{{ $locale === 'ar' ? 'أنشئ قاعدة بيانات فارغة ومستخدمًا لها من قسم MySQL Databases في cPanel، ثم أدخل البيانات هنا. سيتم إنشاء APP_KEY وحفظ ملف .env تلقائيًا دون Terminal.' : 'Create an empty database and user in cPanel MySQL Databases, then enter the credentials here. APP_KEY and private .env will be generated automatically; no Terminal is needed.' }}</p>
 <form method="post" action="{{ route('site.setup.configure') }}">@csrf
+<label for="site_url">{{ $locale === 'ar' ? 'الرابط الرسمي للموقع (HTTPS)' : 'Canonical website URL (HTTPS)' }}</label>
+<input id="site_url" name="site_url" type="url" inputmode="url"
+       placeholder="https://example.com" value="{{ old('site_url') }}"
+       required maxlength="255" autocomplete="url" aria-describedby="site_url_help">
+<p id="site_url_help"><small>{{ $locale === 'ar'
+    ? 'أدخل رابط الدومين النهائي بنفسك (مثل https://example.com)، وليس رابط المعاينة أو لوحة cPanel. يُحفظ للرابط الدائم والبريد.'
+    : 'Enter your final domain (for example https://example.com), not a preview or cPanel URL. This is used for permanent links and email.' }}</small></p>
 <label for="db_host">{{ $locale === 'ar' ? 'خادم قاعدة البيانات' : 'Database host' }}</label>
 <input id="db_host" name="db_host" value="{{ old('db_host', 'localhost') }}" required maxlength="253" autocomplete="off">
 <label for="db_port">{{ $locale === 'ar' ? 'المنفذ' : 'Port' }}</label>

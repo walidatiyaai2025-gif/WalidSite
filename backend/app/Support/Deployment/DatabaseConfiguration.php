@@ -35,8 +35,55 @@ class DatabaseConfiguration
         return config('site.setup_database_ready') === true;
     }
 
+    /**
+     * The canonical URL must be entered by the installer, never inferred from
+     * an untrusted HTTP Host header. Keep installations at the domain root:
+     * console-generated links must not inherit query strings or credentials.
+     */
+    public function canonicalSiteUrl(string $url): ?string
+    {
+        if ($url === '' || strlen($url) > 255
+            || preg_match('/[\\x00-\\x20\\x7F]/', $url) === 1
+            || filter_var($url, FILTER_VALIDATE_URL) === false) {
+            return null;
+        }
+        $parts = parse_url($url);
+        if (! is_array($parts) || ! isset($parts['scheme'], $parts['host'])
+            || isset($parts['user']) || isset($parts['pass'])
+            || isset($parts['query']) || isset($parts['fragment'])
+            || (isset($parts['path']) && ! in_array($parts['path'], ['', '/'], true))) {
+            return null;
+        }
+
+        $scheme = strtolower($parts['scheme']);
+        $host = strtolower($parts['host']);
+        $isLoopback = in_array($host, ['localhost', '127.0.0.1', '[::1]'], true);
+        if ($scheme !== 'https' && ! ($scheme === 'http'
+            && app()->environment(['local', 'testing']) && $isLoopback)) {
+            return null;
+        }
+        // Reject ambiguous or invalid DNS names. IP literals are accepted
+        // only when PHP validates them; localhost is for local setup alone.
+        $ip = trim($host, '[]');
+        $isIp = filter_var($ip, FILTER_VALIDATE_IP) !== false;
+        if (! $isIp && $host !== 'localhost'
+            && preg_match('/\\A[a-z0-9]+(?:-[a-z0-9]+)*(?:\\.[a-z0-9]+(?:-[a-z0-9]+)*)+\\z/D', $host) !== 1) {
+            return null;
+        }
+        if ($host === 'localhost' && ! app()->environment(['local', 'testing'])) {
+            return null;
+        }
+
+        return $scheme.'://'.$host
+            .(isset($parts['port']) ? ':'.$parts['port'] : '');
+    }
+
     public function save(array $input, string $appUrl): void
     {
+        $appUrl = $this->canonicalSiteUrl($appUrl);
+        if ($appUrl === null) {
+            throw new RuntimeException('Invalid canonical site URL.');
+        }
         $key = (string) config('app.key');
         $token = (string) config('site.setup_token');
         if (! str_starts_with($key, 'base64:') || strlen($token) < 32) {
