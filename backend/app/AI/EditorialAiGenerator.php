@@ -100,8 +100,16 @@ final class EditorialAiGenerator
         AiProvider $provider, string $model, string $prompt,
         string $jobId, string $owner, int $estimatedCostMinor = 0
     ): Asset {
+        // Only the supplied genuine owner photograph may depict the owner.
+        // Normalize Arabic diacritics/tatweel before checking the prompt:
+        // image requests in either language must not bypass this safety gate.
+        $safetyPrompt = preg_replace('/[\x{064B}-\x{065F}\x{0670}\x{0640}]/u', '', $prompt);
         if (mb_strlen($prompt) < 12 || mb_strlen($prompt) > 1000
-            || preg_match('/\b(?:portrait|headshot|selfie|photo of walid|photo of waleed|walid atiya|waleed atiya|face of walid|face of waleed)\b/i', $prompt)) {
+            || ! is_string($safetyPrompt)
+            || preg_match(
+                '/(?:\b(?:portrait|headshot|selfie|walid|waleed)\b|وليد|صورتي|وجهي|ملامحي|بورتريه|سيلفي|صورة\s+شخصية|رسم\s+شخصي)/iu',
+                $safetyPrompt
+            ) === 1) {
             throw new InvalidArgumentException('Only bounded original technical artwork is allowed.');
         }
         $this->authorizeLeasedCall($provider, $model, $jobId, $owner, $estimatedCostMinor);
