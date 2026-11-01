@@ -27,9 +27,23 @@ final class EditorialArtworkRights
         }
         return DB::transaction(function () use ($asset, $reviewer): bool {
             $asset = Asset::query()->whereKey($asset->id)->lockForUpdate()->firstOrFail();
+            // Generated assets are written ONLY as ai-artwork/<UUID>.<raster>.
+            // Prefix checks alone permit arbitrary local filenames, nested
+            // paths, traversal and mismatched MIME extensions to masquerade
+            // as generator-owned artwork if an asset row is corrupted.
+            $extension = match ($asset->mime_type) {
+                'image/png' => 'png',
+                'image/jpeg' => 'jpg',
+                'image/webp' => 'webp',
+                default => null,
+            };
             if ($asset->origin !== 'ai-generated' || $asset->rights_status !== 'unverified'
-                || ! in_array($asset->mime_type, ['image/png', 'image/jpeg', 'image/webp'], true)
-                || ! str_starts_with($asset->storage_key, 'ai-artwork/')) {
+                || $extension === null || ! is_string($asset->storage_key)
+                || preg_match(
+                    '/\Aai-artwork\/[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}\.'
+                        .$extension.'\z/D',
+                    $asset->storage_key
+                ) !== 1) {
                 throw new DomainException('Unreviewed generated artwork required.');
             }
             $disk = Storage::disk('local');
