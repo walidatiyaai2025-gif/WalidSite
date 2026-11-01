@@ -115,8 +115,12 @@ final class ResearchSourceIntake
 
     private function isLocalHost(string $host): bool
     {
-        foreach (['localhost', '.localhost', '.local', '.internal', '.test', '.invalid', '.onion'] as $suffix) {
-            if ($host === $suffix || str_ends_with($host, $suffix)) {
+        // A candidate can enter the AI provider prompt BEFORE a later
+        // publication review. Never copy local DNS names or internal routes
+        // into third-party inference, even if HTTPS syntax is valid.
+        foreach (['localhost', 'local', 'localdomain', 'internal', 'svc',
+            'lan', 'home', 'arpa', 'test', 'invalid', 'onion'] as $suffix) {
+            if ($host === $suffix || str_ends_with($host, '.'.$suffix)) {
                 return true;
             }
         }

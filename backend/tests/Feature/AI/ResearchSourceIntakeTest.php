@@ -54,6 +54,13 @@ class ResearchSourceIntakeTest extends TestCase
             'https://docs.example.org/guide?next=%2525253Fticket%2525253Dprivate',
             'https://docs.example.org/guide?next=%2525252525252525private',
             'https://storage.local/guide',
+            'https://service.localdomain/guide',
+            'https://kubernetes.default.svc/runbook',
+            'https://router.lan/guide',
+            'https://device.home/guide',
+            'https://gateway.home.arpa/metadata',
+            'https://10.2.0.192.in-addr.arpa/guide',
+            'https://docs.example.internal/guide',
             'not a URL',
         ] as $url) {
             try {
