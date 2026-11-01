@@ -20,6 +20,29 @@ class VerifiedArticle {
   final String body;
   final List<String> citations;
 
+  // Keep benign public citation query parameters; never show signed links.
+  // Match Laravel's reviewed-source parameter filter at each encoding depth.
+  static bool _hasSafeCitationQuery(String rawQuery) {
+    final credentialKey = RegExp(
+      r'(?:^|[?&#;])(?:access[_-]?token|refresh[_-]?token|id[_-]?token|'
+      r'token|api[_-]?key|key|auth(?:orization)?|password|passwd|secret|'
+      r'signature|sig|session(?:id)?|jwt|bearer|client[_-]?secret|'
+      r'private[_-]?key|code|ticket|awsaccesskeyid|'
+      r'x[-_]amz[-_][a-z0-9_-]+|x[-_]goog[-_][a-z0-9_-]+)=',
+      caseSensitive: false,
+    );
+    var query = rawQuery;
+    for (var depth = 0; depth < 4; depth++) {
+      if (credentialKey.hasMatch(query)) return false;
+      final next = Uri.decodeComponent(
+        query.replaceAll(RegExp(r'%(?![a-fA-F0-9]{2})'), '%25'),
+      );
+      if (next == query) return true;
+      query = next;
+    }
+    return false;
+  }
+
   static List<VerifiedArticle> parseList(String json) {
     final value = jsonDecode(json);
     if (value is! Map<String, dynamic> || value['data'] is! List) {
@@ -63,9 +86,7 @@ class VerifiedArticle {
         if (citation is! String || citation.length > 2048) {
           throw const FormatException('Unsafe citation');
         }
-        // Treat API citations as untrusted input even when upstream says
-        // the article was verified. Query strings can contain signed URLs,
-        // private redirects or access credentials; never expose them in UI.
+        // Treat API citations as untrusted: allow benign queries, never keys.
         final url = Uri.tryParse(citation);
         final host = url?.host.toLowerCase() ?? '';
         const privateSuffixes = [
@@ -74,8 +95,8 @@ class VerifiedArticle {
         if (url == null ||
             url.scheme != 'https' ||
             url.userInfo.isNotEmpty ||
-            url.hasQuery ||
             url.hasFragment ||
+            !_hasSafeCitationQuery(url.query) ||
             (url.hasPort && url.port != 443) ||
             !RegExp(
               r'^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$',
