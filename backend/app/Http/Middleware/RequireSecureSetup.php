@@ -16,13 +16,13 @@ use Symfony\Component\HttpFoundation\Response;
  */
 final class RequireSecureSetup
 {
-    public function handle(Request $request, Closure $next, SiteInstaller $installer): Response
+    public function handle(Request $request, Closure $next): Response
     {
         if (app()->environment('production') && ! $request->isSecure()) {
             // Preserve the public 404 contract for disabled or completed
             // installations before disclosing that setup requires HTTPS.
             // No setup token or credential is read or validated here.
-            abort_unless($installer->allowed(), 404);
+            abort_unless(app(SiteInstaller::class)->allowed(), 404);
             abort(403, 'HTTPS is required for setup.');
         }
 
