@@ -115,9 +115,12 @@ void main() {
       store: store,
       bundled: () => SynchronousFuture<OfflineRunbookPack>(fallback),
     );
-    expect((await first.load()).version, '0.1.0');
+    final before = await first.load();
+    expect(before.version, '0.1.0');
+    expect(before.signedVerified, isFalse);
     final synced = await first.sync();
     expect(synced.version, '2.0.0');
+    expect(synced.signedVerified, isTrue);
     expect(synced.items.single.steps(true).first, 'تحقق من النسخة');
     expect(store.writes, 1);
     expect(requests, 1);
@@ -127,7 +130,9 @@ void main() {
       store: store,
       bundled: () => SynchronousFuture<OfflineRunbookPack>(fallback),
     );
-    expect((await restarted.load()).version, '2.0.0');
+    final offlineCopy = await restarted.load();
+    expect(offlineCopy.version, '2.0.0');
+    expect(offlineCopy.signedVerified, isTrue);
     expect(requests, 1, reason: 'Offline cold start must not fetch network');
   });
 
@@ -242,9 +247,12 @@ void main() {
     ));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('runbook-offline')), findsOneWidget);
+    expect(find.textContaining('حزمة تعليمية مرفقة'), findsOneWidget);
     await tester.tap(find.byKey(const Key('runbook-sync')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('runbook-safe-checklist')), findsOneWidget);
+    expect(find.textContaining('نسخة موقّعة تم التحقق منها'), findsOneWidget);
+    expect(find.textContaining('حزمة تعليمية مرفقة'), findsNothing);
     expect(find.text('قائمة تغيير معتمدة'), findsOneWidget);
     expect(find.byKey(const Key('runbook-offline')), findsNothing);
   });
