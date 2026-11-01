@@ -223,7 +223,7 @@ foreach (['about', 'expertise', 'hire'] as $professionalPage) {
         $positions = collect();
         $certifications = collect();
         $skills = collect();
-        $rawTrack = $request->query('track', 'all');
+        $rawTrack = $request->query()['track'] ?? 'all';
         $track = is_string($rawTrack) ? $rawTrack : 'all';
         $tracks = [
             'database' => ['Database & Reliability'],
@@ -314,7 +314,7 @@ Route::get('/projects/{slug}', function (Request $request, string $slug) {
 Route::get('/resume', function (Request $request) {
     // CV variants change emphasis, not the owner's verified career history.
     // Unknown and array-valued parameters cannot select unapproved content.
-    $requestedTrack = $request->query('track', 'all');
+    $requestedTrack = $request->query()['track'] ?? 'all';
     $tracks = [
         'all' => [],
         'database' => ['Database & Reliability'],
