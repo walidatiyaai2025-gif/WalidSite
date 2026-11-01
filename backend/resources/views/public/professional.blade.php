@@ -113,12 +113,16 @@
 
         <aside class="professional-panel" aria-labelledby="professional-next">
             <h2 id="professional-next">{{ $locale === 'ar' ? 'استكشف الموقع' : 'Continue exploring' }}</h2>
-            <p>{{ $locale === 'ar' ? 'روابط فعلية إلى الصفحات المتاحة. تحميل السيرة الذاتية والتواصل المباشر سيُفعّلان بعد التحقق.' : 'These links open available pages. CV download and direct contact are not available until validated.' }}</p>
+            <p>{{ $locale === 'ar'
+                ? 'استعرض السيرة العامة المعتمدة بالمسار المهني المختار، أو افتح صفحة التواصل لمعرفة حالة استقبال الرسائل.'
+                : 'Review the evidence-verified public resume for your selected focus, or open the contact page to check message availability.' }}</p>
             <div class="professional-links">
                 <a href="{{ route('public.github', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'مشاريع GitHub' : 'GitHub projects' }}</a>
                 <a class="secondary" href="{{ route('public.about', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'نبذة وخبرات' : 'About' }}</a>
                 <a class="secondary" href="{{ route('public.expertise', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'المهارات' : 'Expertise' }}</a>
-                <a class="secondary" href="{{ route('public.hire', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'التوظيف' : 'Recruiter' }}</a>
+                <a class="secondary" href="{{ route('public.hire', ['lang' => $locale, 'track' => $page === 'hire' ? $track : 'all']) }}">{{ $locale === 'ar' ? 'التوظيف' : 'Recruiter' }}</a>
+                <a class="secondary" href="{{ route('public.resume', ['lang' => $locale, 'track' => $page === 'hire' ? $track : 'all']) }}">{{ $locale === 'ar' ? 'السيرة العامة حسب المجال' : 'View focused public resume' }}</a>
+                <a class="secondary" href="{{ route('public.contact', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'التواصل' : 'Contact' }}</a>
             </div>
         </aside>
     </div>
