@@ -272,6 +272,33 @@ class OfflineRunbookDetail extends StatelessWidget {
           Text(arabic ? 'خطوات توضيحية عامة' : 'General guidance steps',
               style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 12),
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: FilledButton.icon(
+              key: const Key('runbook-copy-steps'),
+              icon: const Icon(Icons.copy_outlined),
+              label: Text(arabic ? 'نسخ الخطوات مع المصدر' : 'Copy steps with source'),
+              onPressed: () async {
+                // A copy must never omit evidence status or switch language.
+                final copyText = [
+                  item.title(arabic),
+                  arabic ? 'إصدار الحزمة: ${pack.version}' : 'Pack version: ${pack.version}',
+                  arabic ? 'المصدر: ${pack.source}' : 'Source: ${pack.source}',
+                  if (pack.isStale)
+                    arabic
+                        ? 'غير موثق حديثًا — لا تستخدمه كإجراء تشغيلي معتمد.'
+                        : 'Stale / unverified: not approved for production operations.',
+                  for (var i = 0; i < steps.length; i++) '${i + 1}. ${steps[i]}',
+                ].join('\n');
+                await Clipboard.setData(ClipboardData(text: copyText));
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                  content: Text(arabic ? 'تم نسخ الخطوات مع المصدر والتحذير.' : 'Steps, source and warning copied.'),
+                ));
+              },
+            ),
+          ),
+          const SizedBox(height: 12),
           for (var i = 0; i < steps.length; i++)
             Padding(
               padding: const EdgeInsets.only(bottom: 12),
