@@ -27,12 +27,12 @@
 'name' => $locale === 'ar' ? 'الاسم' : 'Name',
 'email' => $locale === 'ar' ? 'البريد' : 'Email',
 default => $locale === 'ar' ? 'الموضوع' : 'Subject' } }}</label>
-<input id="contact-{{ $field }}" type="{{ $field === 'email' ? 'email' : 'text' }}" name="{{ $field }}" value="{{ old($field) }}" required maxlength="{{ $field === 'email' ? 254 : 140 }}">
-@error($field)<p class="contact-error">{{ $message }}</p>@enderror
+<input id="contact-{{ $field }}" type="{{ $field === 'email' ? 'email' : 'text' }}" name="{{ $field }}" value="{{ old($field) }}" required maxlength="{{ $field === 'email' ? 254 : 140 }}" @error($field) aria-invalid="true" aria-describedby="contact-{{ $field }}-error" @enderror>
+@error($field)<p id="contact-{{ $field }}-error" class="contact-error" role="alert">{{ $message }}</p>@enderror
 @endforeach
 <label for="contact-message">{{ $locale === 'ar' ? 'الرسالة' : 'Message' }}</label>
-<textarea id="contact-message" name="message" required maxlength="3000">{{ old('message') }}</textarea>
-@error('message')<p class="contact-error">{{ $message }}</p>@enderror
+<textarea id="contact-message" name="message" required maxlength="3000" @error('message') aria-invalid="true" aria-describedby="contact-message-error" @enderror>{{ old('message') }}</textarea>
+@error('message')<p id="contact-message-error" class="contact-error" role="alert">{{ $message }}</p>@enderror
 <button type="submit">{{ $locale === 'ar' ? 'إرسال' : 'Send message' }}</button>
 </form>
 @endif
