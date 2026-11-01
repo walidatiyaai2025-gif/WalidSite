@@ -19,7 +19,8 @@ main{padding:clamp(20px,4vw,52px);min-width:0}h1{color:var(--nav);font-size:clam
 .panel a{color:var(--link);display:inline-block;min-height:44px}th,td{padding:12px;text-align:start;border-bottom:1px solid var(--border)}
 button{background:transparent;color:#fff;border:1px solid #fff;border-radius:8px;min-height:44px;padding:8px;font:inherit}
 @media(max-width:700px){.layout{grid-template-columns:1fr}aside{padding:16px}}
-</style></head>
+</style>    @include('partials.web-fonts')
+</head>
 <body><a class="skip" href="#content">{{ $locale === 'ar' ? 'اذهب للمحتوى' : 'Skip to content' }}</a>
 <div class="layout"><aside>
 <h2>{{ $locale === 'ar' ? 'إدارة وليد سايت' : 'Waleed Site Admin' }}</h2>

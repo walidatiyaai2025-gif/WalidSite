@@ -14,6 +14,7 @@
         a:focus-visible,button:focus-visible,input:focus-visible {outline:3px solid #00A999;outline-offset:2px;}
         .error { color:#A72330; } p { margin:12px 0 0; }
     </style>
+    @include('partials.web-fonts')
 </head>
 <body><main><form action="{{ route('admin.login.submit') }}" method="post">
     @csrf

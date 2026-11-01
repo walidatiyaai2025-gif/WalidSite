@@ -19,6 +19,7 @@ th{color:var(--nav)}.scroll{overflow-x:auto}.muted{color:#55718B}
 button{min-height:44px;border-radius:8px;border:1px solid white;color:white;background:transparent;padding:8px 14px;font:inherit}
 @media(max-width:700px){.layout{grid-template-columns:1fr}aside{padding:16px}}
 </style>
+    @include('partials.web-fonts')
 </head>
 <body>
 <a class="skip" href="#content">{{ $locale === 'ar' ? 'تجاوز إلى المحتوى' : 'Skip to content' }}</a>

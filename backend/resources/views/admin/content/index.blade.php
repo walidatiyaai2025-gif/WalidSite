@@ -21,7 +21,8 @@ button{font:inherit;min-height:44px;border:0;border-radius:9px;padding:10px 16px
 button.secondary{background:var(--nav)}.article{border-bottom:1px solid var(--edge);padding:12px 0}
 table{width:100%;border-collapse:collapse}td,th{text-align:start;border-bottom:1px solid var(--edge);padding:10px;overflow-wrap:anywhere}
 @media(max-width:720px){.shell{grid-template-columns:1fr}aside{padding:12px}aside a{display:inline-block}table{font-size:14px}}
-</style></head>
+</style>    @include('partials.web-fonts')
+</head>
 <body>
 <a class="skip" href="#content">{{ $locale === 'ar' ? 'تجاوز إلى المحتوى' : 'Skip to content' }}</a>
 <div class="shell"><aside><h2>{{ $locale === 'ar' ? 'إدارة وليد سايت' : 'Waleed Site Admin' }}</h2>

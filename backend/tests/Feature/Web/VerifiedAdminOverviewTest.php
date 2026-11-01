@@ -141,4 +141,22 @@ class VerifiedAdminOverviewTest extends TestCase
             ->assertSee('USD')->assertSee('KWD');
     }
 
+
+    public function test_admin_pages_use_shared_google_fonts_in_both_locales(): void
+    {
+        $this->actingAs($this->userWithRole('admin'), 'web');
+
+        foreach ([
+            route('admin.home'),
+            route('admin.providers.index'),
+            route('admin.usage.index'),
+            route('admin.content.index'),
+        ] as $url) {
+            $this->get($url.'?lang=ar')
+                ->assertOk()
+                ->assertSee('fonts.googleapis.com/css2?family=Inter', false)
+                ->assertSee('family=Tajawal', false)
+                ->assertSee('font-family: var(--wa-font-ui)', false);
+        }
+    }
 }
