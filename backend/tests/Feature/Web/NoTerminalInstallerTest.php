@@ -309,4 +309,59 @@ class NoTerminalInstallerTest extends TestCase
         ])->assertForbidden();
         $this->assertFileDoesNotExist($path);
     }
+    public function test_production_wizard_rejects_private_dns_site_url_before_database_probe_or_private_env_write(): void
+    {
+        $env = $this->app['env'];
+        $path = storage_path('app/private-dns-site-test-'.bin2hex(random_bytes(6)));
+        $token = str_repeat('d', 40);
+        config([
+            'site.setup_enabled' => true,
+            'site.setup_token' => $token,
+            'site.setup_database_ready' => false,
+            'site.environment_path' => $path,
+        ]);
+        $this->app->instance('env', 'production');
+
+        // Exercise HTTPS, valid session unlock and CSRF, then enforce the
+        // canonical origin restriction at the real setup POST boundary.
+        $this->withSession(['_token' => str_repeat('c', 40)]);
+        $database = Mockery::mock(DatabaseConfiguration::class)->makePartial();
+        $database->shouldNotReceive('probe');
+        $database->shouldNotReceive('save');
+        $this->app->instance(DatabaseConfiguration::class, $database);
+
+        try {
+            $this->post('https://localhost/setup/unlock', [
+                'token' => $token,
+                '_token' => str_repeat('c', 40),
+            ])->assertRedirect('/setup');
+            $csrf = session()->token();
+            $password = 'do-not-store-my-private-database-password';
+
+            foreach ([
+                'https://metadata.google.internal',
+                'https://office.lan',
+                'https://gateway.home.arpa',
+                'https://service.svc',
+                'https://site.example.test',
+            ] as $unsafe) {
+                $this->post('https://localhost/setup/configure', [
+                    'site_url' => $unsafe,
+                    'db_host' => 'localhost',
+                    'db_port' => 3306,
+                    'db_database' => 'fresh_site',
+                    'db_username' => 'database_user',
+                    'db_password' => $password,
+                    '_token' => $csrf,
+                ])->assertSessionHasErrors('site_url')
+                  ->assertSessionMissing('_old_input.db_password')
+                  ->assertDontSee($password);
+                $this->assertFileDoesNotExist($path);
+            }
+        } finally {
+            $this->app->instance('env', $env);
+            @unlink($path);
+        }
+    }
+
 }
