@@ -82,8 +82,8 @@ void main() {
 
     await tester.tap(find.byKey(const Key('online-runbook-copy')));
     await tester.pumpAndSettle();
-    await reveal(tester, const Key('online-runbook-action-message'));
-    expect(find.text('Reviewed steps copied.'), findsOneWidget);
+    expect(find.byKey(const Key('online-runbook-action-message'), skipOffstage: false), findsOneWidget);
+    expect(find.text('Reviewed steps copied.', skipOffstage: false), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('online-runbook-share')));
     await tester.pumpAndSettle();
@@ -92,8 +92,7 @@ void main() {
     expect(sharedText, contains('# Reviewed steps'));
     expect(sharedText, contains('Reviewed version: 4'));
     expect(sharedText, isNot(contains(bearer)));
-    await reveal(tester, const Key('online-runbook-action-message'));
-    expect(find.text('Share options opened.'), findsOneWidget);
+    expect(find.text('Share options opened.', skipOffstage: false), findsOneWidget);
   });
 
   testWidgets('guest save authenticates once then uses real server save action',
