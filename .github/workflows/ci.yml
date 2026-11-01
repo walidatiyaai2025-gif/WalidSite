@@ -163,11 +163,12 @@ jobs:
         run: |
           python3 qa/build_cpanel_package.py --source . --output dist/WalidSite-cPanel.zip --sha "$GITHUB_SHA"
           unzip -t dist/WalidSite-cPanel.zip
-          sha256sum dist/WalidSite-cPanel.zip
+          (cd dist && sha256sum --check WalidSite-cPanel.zip.sha256)
+          python3 -c 'from pathlib import Path; from qa.build_cpanel_package import verify_archive; import os; verify_archive(Path("dist/WalidSite-cPanel.zip"), os.environ["GITHUB_SHA"])'
       - uses: actions/upload-artifact@v4
         with:
           name: WalidSite-cPanel-installer
-          path: dist/WalidSite-cPanel.zip
+          path: dist/WalidSite-cPanel.zip*
           if-no-files-found: error
           retention-days: 30
 
