@@ -164,6 +164,46 @@ class SiteMaintenanceTest extends TestCase
         }
     }
 
+    public function test_disabled_or_finished_installer_is_hidden_over_plain_http_in_production(): void
+    {
+        $priorEnvironment = $this->app['env'];
+        $this->app->instance('env', 'production');
+        $this->withSession(['_token' => str_repeat('c', 40)]);
+        config([
+            'site.setup_enabled' => false,
+            'site.setup_token' => str_repeat('h', 40),
+        ]);
+
+        try {
+            // A rejected transport must not make a closed wizard visible
+            // (403). Historical behavior and the installation contract are
+            // consistently 404 on HTTP and HTTPS.
+            $this->get('http://localhost/setup')->assertNotFound();
+            $this->get('https://localhost/setup')->assertNotFound();
+            foreach (['/setup/unlock', '/setup/configure', '/setup/database', '/setup/finish'] as $path) {
+                $this->post('http://localhost'.$path, ['_token' => session()->token()])
+                    ->assertNotFound();
+            }
+
+            // A completed installation stays undiscoverable even if the
+            // configuration toggle is accidentally left enabled.
+            config(['site.setup_enabled' => true]);
+            $owner = User::create([
+                'email' => 'setup-installed@example.test',
+                'password_hash' => 'test-already-activated',
+                'status' => 'active',
+            ]);
+            $owner->roles()->attach(Role::firstOrCreate(['name' => 'owner'])->id);
+            $this->get('http://localhost/setup')->assertNotFound();
+            $this->get('https://localhost/setup')->assertNotFound();
+            $this->post('http://localhost/setup/finish', [
+                '_token' => session()->token(), 'password' => 'not-accepted',
+            ])->assertNotFound();
+        } finally {
+            $this->app->instance('env', $priorEnvironment);
+        }
+    }
+
     public function test_manual_updates_can_be_disabled_without_hiding_status(): void
     {
         config(['site.updates_enabled' => false]);
