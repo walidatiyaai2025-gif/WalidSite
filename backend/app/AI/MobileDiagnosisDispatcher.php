@@ -7,6 +7,7 @@ use App\Models\AiDiagnosisRequest;
 use App\Models\AiModel;
 use App\Models\AiProvider;
 use App\Models\AiRoute;
+use App\Models\User;
 use DomainException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Crypt;
@@ -46,6 +47,10 @@ final class MobileDiagnosisDispatcher
         }
 
         try {
+            // A diagnosis can sit in the durable queue while its account is
+            // disabled. Authorization at enqueue time is not permission to
+            // transmit that account's encrypted question later.
+            $this->ensureActiveRequester($request);
             $payload = json_decode(
                 Crypt::decryptString($request->request_blob),
                 true,
@@ -110,6 +115,9 @@ final class MobileDiagnosisDispatcher
             // changes pricing, route, provider credentials or model state.
             // Never send private input using a stale selection or currency.
             [$model, $provider] = $this->currentConfiguration($request, $job);
+            // A reviewer/catalog query may be slow. Recheck the account at the
+            // final outbound boundary, not only when the worker starts.
+            $this->ensureActiveRequester($request);
             $base = ProviderEndpoint::normalize($provider->base_url);
             if ($provider->provider_type === 'openai-compatible') {
                 $response = Http::acceptJson()
@@ -184,6 +192,19 @@ final class MobileDiagnosisDispatcher
         } catch (Throwable) {
             $request->forceFill(['request_blob' => null])->save();
             throw new RuntimeException('Mobile diagnosis failed safely.');
+        }
+    }
+
+    /**
+     * Revalidate identity through an authoritative DB read, never through
+     * the bearer token or an old in-memory user relation. The caller's
+     * error handler securely clears retained private input on failure.
+     */
+    private function ensureActiveRequester(AiDiagnosisRequest $request): void
+    {
+        if (! User::query()->whereKey($request->user_id)
+            ->where('status', 'active')->exists()) {
+            throw new DomainException('Mobile diagnosis requester is no longer active.');
         }
     }
 
