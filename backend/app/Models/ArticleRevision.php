@@ -111,15 +111,30 @@ class ArticleRevision extends Model
             }
         }
 
-        // Signed documentation URLs and OAuth fragments can contain
-        // credentials even when an editor has marked the source reviewed.
-        // Keep ordinary public docs query strings, but never publish common
-        // API keys, capability tokens or cloud signing parameters.
-        $parameters = urldecode((string) ($parts['query'] ?? ''))
-            .'&'.urldecode((string) ($parts['fragment'] ?? ''));
-        return preg_match(
-            '/(?:^|[?&;])(?:access[_-]?token|token|api[_-]?key|key|auth(?:orization)?|password|secret|signature|sig|session|jwt|client[_-]?secret|private[_-]?key|code|ticket|awsaccesskeyid|x[-_]amz[-_][a-z0-9_-]+|x[-_]goog[-_][a-z0-9_-]+)=/i',
-            $parameters
-        ) !== 1;
+        // A verified citation is published verbatim. Signed links and
+        // nested redirect URLs may hide credential keys behind several
+        // percent-encoding layers (e.g. %2574oken -> %74oken -> token).
+        // Check every layer of BOTH the query and fragment, without fetching
+        // the URL or recording values. Bound work and fail closed on excess
+        // nesting rather than exposing an ambiguous capability URL.
+        $parameters = (string) ($parts['query'] ?? '')
+            .'&'.(string) ($parts['fragment'] ?? '');
+        for ($depth = 0; $depth < 4; $depth++) {
+            if (preg_match(
+                '/(?:^|[?&;])(?:access[_-]?token|refresh[_-]?token|id[_-]?token|token|api[_-]?key|key|auth(?:orization)?|password|passwd|secret|signature|sig|session(?:id)?|jwt|bearer|client[_-]?secret|private[_-]?key|code|ticket|awsaccesskeyid|x[-_]amz[-_][a-z0-9_-]+|x[-_]goog[-_][a-z0-9_-]+)=/i',
+                $parameters
+            ) === 1) {
+                return false;
+            }
+
+            $decoded = rawurldecode($parameters);
+            if ($decoded === $parameters) {
+                return true;
+            }
+            $parameters = $decoded;
+        }
+
+        // Deeply re-encoded parameters have no safe public interpretation.
+        return false;
     }
 }
