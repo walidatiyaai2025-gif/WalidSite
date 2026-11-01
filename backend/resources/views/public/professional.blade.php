@@ -163,6 +163,25 @@
                 @else
                     <div class="professional-tags">@foreach ($skills as $skill)<span>{{ $locale === 'ar' ? $skill->name_ar : $skill->name_en }}</span>@endforeach</div>
                 @endif
+                {{-- Source-reviewed professional claims are general evidence.
+                     No claim-to-track association exists, so do not invent one. --}}
+                @if (count($approvedClaims) > 0)
+                    <section aria-labelledby="recruiter-evidence-heading">
+                        <h3 id="recruiter-evidence-heading">{{ $locale === 'ar' ? 'أدلة مهنية عامة معتمدة للنشر' : 'Published supporting evidence' }}</h3>
+                        <p class="article-note">{{ $locale === 'ar'
+                            ? 'هذه الأدلة عامة ولا تعني اعتمادًا خاصًا بالمجال المحدد. تُعرض فقط العبارات المراجعة ذات روابط الأدلة العامة الآمنة.'
+                            : 'These public statements are not endorsements of the selected career track. Only reviewed statements with safe, public evidence links are shown.' }}</p>
+                        <ul class="professional-evidence">
+                            @foreach ($approvedClaims as $claim)
+                                <li>
+                                    <span>{{ $claim['text'] }}</span>
+                                    <a href="{{ $claim['evidence_url'] }}" target="_blank" rel="noopener noreferrer"
+                                       aria-label="{{ $locale === 'ar' ? 'افتح دليل: ' : 'Open evidence for: ' }}{{ $claim['text'] }}">{{ $locale === 'ar' ? 'عرض الدليل' : 'View evidence' }}</a>
+                                </li>
+                            @endforeach
+                        </ul>
+                    </section>
+                @endif
             @endif
         </section>
 
