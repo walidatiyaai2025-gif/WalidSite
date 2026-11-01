@@ -94,6 +94,21 @@
                 @if(request()->routeIs('public.search'))
                     @php($languageArgs['q'] = request()->query('q', ''))
                 @endif
+                @if(request()->routeIs('public.projects'))
+                    {{-- Keep project search/filter context on AR/EN links without
+                         reflecting array-valued or unsupported query inputs. --}}
+                    @php($projectParams = request()->query())
+                    @php($rawProjectSearch = $projectParams['q'] ?? '')
+                    @php($projectSearch = is_string($rawProjectSearch) ? mb_substr(trim($rawProjectSearch), 0, 80) : '')
+                    @php($rawProjectStatus = $projectParams['status'] ?? '')
+                    @php($projectStatus = is_string($rawProjectStatus) && in_array($rawProjectStatus, ['completed', 'in_progress', 'research', 'archived'], true) ? $rawProjectStatus : '')
+                    @if($projectSearch !== '')
+                        @php($languageArgs['q'] = $projectSearch)
+                    @endif
+                    @if($projectStatus !== '')
+                        @php($languageArgs['status'] = $projectStatus)
+                    @endif
+                @endif
                 @if(request()->routeIs('public.resume', 'public.hire'))
                     @php($trackParams = request()->query())
                     @php($resumeTrack = $trackParams['track'] ?? 'all')
