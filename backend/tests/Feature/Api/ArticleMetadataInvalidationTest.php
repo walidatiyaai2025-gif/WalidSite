@@ -68,7 +68,7 @@ class ArticleMetadataInvalidationTest extends TestCase
 
         // A separate editorial approval, not the metadata write itself,
         // is needed to make the new title and old reviewed body public again.
-        $revision->update([
+        $revision->refresh()->update([
             'status' => 'validated',
             'validation_json' => [
                 'citations_passed' => true,
@@ -94,7 +94,8 @@ class ArticleMetadataInvalidationTest extends TestCase
             'publishable' => true,
         ]);
 
-        // Even a rights-cleared replacement was not part of the old review.
+        // The changed canonical language requires review; the image's
+        // independent rights checks continue to apply to public output.
         $article->update([
             'canonical_lang' => 'ar',
             'hero_asset_id' => $asset->id,
@@ -103,6 +104,29 @@ class ArticleMetadataInvalidationTest extends TestCase
         $this->assertSame('draft', $article->fresh()->status);
         $this->assertFalse($revision->fresh()->hasVerifiedEvidence());
         $this->getJson('/api/v1/public/articles/'.$article->slug)->assertNotFound();
+    }
+
+    public function test_new_hero_alone_uses_live_rights_gate_without_discarding_text_review(): void
+    {
+        [$article, $revision] = $this->publishedArticle();
+        $asset = Asset::create([
+            'asset_key' => 'pending-hero',
+            'mime_type' => 'image/png',
+            'storage_key' => 'private/unapproved-image.png',
+            'sha256' => str_repeat('f', 64),
+            'origin' => 'owner-supplied',
+            'rights_status' => 'pending',
+            'publishable' => false,
+        ]);
+
+        $article->update(['hero_asset_id' => $asset->id]);
+        $this->assertSame('published', $article->fresh()->status);
+        $this->assertTrue($revision->fresh()->hasVerifiedEvidence());
+        $this->getJson('/api/v1/public/articles/'.$article->slug)->assertNotFound();
+
+        $asset->update(['rights_status' => 'cleared', 'publishable' => true]);
+        $this->getJson('/api/v1/public/articles/'.$article->slug)->assertOk()
+            ->assertJsonPath('data.hero_image_url', null);
     }
 
     public function test_metadata_and_publication_in_one_save_cannot_reuse_old_approval(): void
