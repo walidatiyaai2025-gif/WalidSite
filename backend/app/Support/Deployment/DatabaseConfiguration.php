@@ -150,10 +150,32 @@ class DatabaseConfiguration
             $escaped = str_replace(['\\', '"', '$'], ['\\\\', '\\"', '\\$'], $value);
             $line = in_array($name, ['APP_DEBUG', 'SITE_SETUP_ENABLED', 'SITE_SETUP_DATABASE_READY', 'SITE_UPDATES_ENABLED', 'SITE_AUTO_MIGRATE'], true)
                 ? $name.'='.$value : $name.'="'.$escaped.'"';
-            $pattern = '/^'.preg_quote($name, '/').'\s*=.*$/m';
-            if (preg_match($pattern, $text)) {
-                $text = preg_replace_callback($pattern, static fn (): string => $line, $text, 1);
-            } else {
+            // A pre-existing cPanel .env may contain duplicate assignments
+            // (including "export KEY=..."). Leaving later stale entries can
+            // override the just-saved password or keep a setup token active.
+            // Match entire lines only; never swallow adjacent keys or comments.
+            $pattern = '/^[ \t]*(?:export[ \t]+)?'.preg_quote($name, '/').'[ \t]*=[^\r\n]*(?:\r?\n|$)/m';
+            $seen = false;
+            $replaced = preg_replace_callback(
+                $pattern,
+                static function (array $matches) use (&$seen, $line): string {
+                    if ($seen) {
+                        return '';
+                    }
+                    $seen = true;
+                    // Preserve the original line ending for the first key.
+                    $original = $matches[0];
+                    $newline = str_ends_with($original, "\r\n") ? "\r\n"
+                        : (str_ends_with($original, "\n") ? "\n" : '');
+                    return $line.$newline;
+                },
+                $text
+            );
+            if ($replaced === null) {
+                throw new RuntimeException('Cannot normalize private settings.');
+            }
+            $text = $replaced;
+            if (! $seen) {
                 $text .= (str_ends_with($text, "\n") || $text === '' ? '' : "\n").$line."\n";
             }
         }
