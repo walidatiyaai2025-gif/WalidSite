@@ -12,9 +12,14 @@ return Application::configure(basePath: dirname(__DIR__))
         apiPrefix: 'api/v1',
         commands: __DIR__.'/../routes/console.php',
         health: '/up',
+        then: static function (): void {
+            \Illuminate\Support\Facades\Route::middleware('web')
+                ->group(base_path('routes/site-maintenance.php'));
+        },
     )
     ->withMiddleware(function (Middleware $middleware): void {
         // Session and CSRF use Laravel's standard 'web' middleware group.
+        $middleware->web(append: [\App\Http\Middleware\RequireInstallation::class]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(
