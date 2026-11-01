@@ -15,6 +15,54 @@ void main() {
   "published_at":"2026-10-31T18:00:00Z"}]}
   ''';
 
+  test('article API origin accepts only canonical public HTTPS destinations', () {
+    for (final trusted in <String>[
+      'https://articles.example.org',
+      'https://articles.example.org/',
+      'https://articles.example.org:443',
+      'https://PUBLIC.example.org',
+    ]) {
+      final uri = VerifiedArticleReader.validatedOrigin(trusted);
+      expect(uri, isNotNull, reason: 'Public HTTPS origin refused: $trusted');
+      expect(uri!.scheme, 'https');
+    }
+
+    // The configured server is a build-time value, but even a broken or
+    // modified build must not probe local addresses or private service hosts.
+    for (final untrusted in <String>[
+      '',
+      'http://articles.example.org',
+      'https://localhost',
+      'https://localhost:443',
+      'https://127.0.0.1',
+      'https://10.42.0.1',
+      'https://192.168.1.1',
+      'https://[::1]',
+      'https://[fc00::1234]',
+      'https://database.internal',
+      'https://articles.example.local',
+      'https://articles.example.test',
+      'https://articles.example.invalid',
+      'https://articles.example.onion',
+      'https://api.internal.example.org.internal',
+      'https://articles.example.org:8443',
+      'https://articles.example.org:80',
+      'https://writer:secret@articles.example.org',
+      'https://articles.example.org/api',
+      'https://articles.example.org/?token=secret',
+      'https://articles.example.org/#secret',
+      'https://articles.example.org.',
+      'https://nodot',
+      'https:///no-host',
+    ]) {
+      expect(
+        VerifiedArticleReader.validatedOrigin(untrusted),
+        isNull,
+        reason: 'Unsafe article API origin must fail closed: $untrusted',
+      );
+    }
+  });
+
   test('published article parser rejects unsupported or unsafe evidence', () {
     final items = VerifiedArticle.parseList(safeJson);
     expect(items, hasLength(1));
