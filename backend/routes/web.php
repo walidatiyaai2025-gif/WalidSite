@@ -894,7 +894,7 @@ foreach (['about', 'expertise', 'hire'] as $professionalPage) {
 
         // Reuse the public API's active-owner, publication and safe-URL gates;
         // never expose raw claim records or unchecked user-supplied URLs.
-        if ($profile && $professionalPage === 'about') {
+        if ($profile && in_array($professionalPage, ['about', 'hire'], true)) {
             $approvedClaims = app(\App\Http\Controllers\Api\PublicPortfolioController::class)
                 ->profile($request)->getData(true)['data']['claims'] ?? [];
         }
