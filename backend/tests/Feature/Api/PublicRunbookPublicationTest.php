@@ -36,6 +36,7 @@ final class PublicRunbookPublicationTest extends TestCase
             'runbook_id' => $id,
             'version' => $version,
             'body_md' => $content,
+            'reviewed_title' => 'Reviewed guide '. $slug,
             'checksum' => hash('sha256', $content),
             'created_at' => now()->subMinutes(6),
         ]);
@@ -47,6 +48,7 @@ final class PublicRunbookPublicationTest extends TestCase
     {
         $this->assertTrue(Schema::hasTable('runbooks'));
         $this->assertTrue(Schema::hasTable('runbook_versions'));
+        $this->assertTrue(Schema::hasColumn('runbook_versions', 'reviewed_title'));
         Http::fake();
 
         $this->getJson('/api/v1/mobile/runbooks')->assertOk()
@@ -122,6 +124,7 @@ final class PublicRunbookPublicationTest extends TestCase
             'runbook_id' => $id,
             'version' => 2,
             'body_md' => '# Approved version two',
+            'reviewed_title' => 'Reviewed guide versioned-guide',
             'checksum' => hash('sha256', '# Approved version two'),
             'created_at' => now()->subMinutes(2),
         ]);
@@ -203,4 +206,97 @@ final class PublicRunbookPublicationTest extends TestCase
         DB::table('runbooks')->where('id', $id)->delete();
         $this->assertDatabaseCount('runbook_versions', 0);
     }
+
+    public function test_post_review_title_change_is_withdrawn_from_list_and_detail_without_touching_body_checksum(): void
+    {
+        $id = $this->guide('title-must-be-reviewed');
+        Http::fake();
+        $this->getJson('/api/v1/mobile/runbooks')->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.title', 'Reviewed guide title-must-be-reviewed');
+        $this->getJson('/api/v1/mobile/solutions/'.$id)->assertOk()
+            ->assertJsonPath('data.title', 'Reviewed guide title-must-be-reviewed');
+
+        // A change to a live display heading is NOT a new editorial review,
+        // even when the body and version checksum are byte-identical.
+        DB::table('runbooks')->where('id', $id)
+            ->update(['title' => 'Unreviewed new operating procedure']);
+        $this->getJson('/api/v1/mobile/runbooks')->assertOk()
+            ->assertJsonCount(0, 'data')
+            ->assertJsonPath('meta.has_more_pages', false)
+            ->assertDontSee('Unreviewed new operating procedure');
+        $this->getJson('/api/v1/mobile/solutions/'.$id)
+            ->assertNotFound()
+            ->assertDontSee('Unreviewed new operating procedure');
+
+        // Revert the live metadata to its reviewed snapshot. Do not change
+        // any review or version state in order to restore the original title.
+        DB::table('runbooks')->where('id', $id)
+            ->update(['title' => 'Reviewed guide title-must-be-reviewed']);
+        $this->getJson('/api/v1/mobile/solutions/'.$id)->assertOk()
+            ->assertJsonPath('data.title', 'Reviewed guide title-must-be-reviewed');
+        Http::assertNothingSent();
+    }
+
+    public function test_unreviewed_or_legacy_null_title_never_inherits_published_status(): void
+    {
+        $valid = $this->guide('legitimate-title');
+        $legacy = $this->guide('legacy-without-reviewed-title');
+        $wrong = $this->guide('title-review-mismatch');
+        $blank = $this->guide('blank-reviewed-title');
+
+        DB::table('runbook_versions')->where('runbook_id', $legacy)
+            ->update(['reviewed_title' => null]);
+        DB::table('runbook_versions')->where('runbook_id', $wrong)
+            ->update(['reviewed_title' => 'Another guide title']);
+        DB::table('runbook_versions')->where('runbook_id', $blank)
+            ->update(['reviewed_title' => '  ']);
+        $listed = $this->getJson('/api/v1/mobile/runbooks')->assertOk()
+            ->assertJsonCount(1, 'data')->assertJsonPath('data.0.id', $valid)
+            ->assertDontSee('Another guide title')
+            ->assertDontSee('legacy-without-reviewed-title');
+        foreach ([$legacy, $wrong, $blank] as $id) {
+            $this->getJson('/api/v1/mobile/solutions/'.$id)->assertNotFound();
+            $listed->assertDontSee($id);
+        }
+
+        // New review is explicit; migrations must never copy a live title
+        // into existing version records automatically.
+        DB::table('runbook_versions')->where('runbook_id', $legacy)
+            ->update(['reviewed_title' => 'Reviewed guide legacy-without-reviewed-title']);
+        $this->getJson('/api/v1/mobile/solutions/'.$legacy)->assertOk()
+            ->assertJsonPath('data.title', 'Reviewed guide legacy-without-reviewed-title');
+    }
+
+    public function test_new_version_requires_matching_title_and_a_review_later_than_that_snapshot(): void
+    {
+        $id = $this->guide('reviewed-new-version');
+        $newTitle = 'Reviewed next-version heading';
+        $newBody = '# Revised approved body';
+        DB::table('runbook_versions')->insert([
+            'id' => (string) Str::uuid(),
+            'runbook_id' => $id,
+            'version' => 2,
+            'body_md' => $newBody,
+            'reviewed_title' => $newTitle,
+            'checksum' => hash('sha256', $newBody),
+            'created_at' => now()->subMinute(),
+        ]);
+        DB::table('runbooks')->where('id', $id)->update([
+            'title' => $newTitle, 'body_md' => $newBody, 'version' => 2,
+        ]);
+        // Old review predates v2, so it cannot implicitly approve its title.
+        $this->getJson('/api/v1/mobile/solutions/'.$id)->assertNotFound();
+        DB::table('runbooks')->where('id', $id)
+            ->update(['validated_at' => now()]);
+        $this->getJson('/api/v1/mobile/solutions/'.$id)->assertOk()
+            ->assertJsonPath('data.title', $newTitle)
+            ->assertJsonPath('data.version', 2)
+            ->assertJsonPath('data.markdown', $newBody);
+
+        DB::table('runbooks')->where('id', $id)
+            ->update(['title' => 'A new edit without review']);
+        $this->getJson('/api/v1/mobile/solutions/'.$id)->assertNotFound();
+    }
+
 }
