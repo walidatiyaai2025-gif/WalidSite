@@ -62,7 +62,10 @@ class VerifiedBlogPagesTest extends TestCase
         $this->get('/blog?category=databases&lang=ar')->assertOk()
             ->assertSee('دليل قواعد البيانات الموثق')
             ->assertSee('value="databases" selected', false)
-            ->assertSee('href="'.route('public.article', ['slug'=>$article->slug, 'lang'=>'ar']).'"', false);
+            ->assertSee('href="'.e(route('public.article', [
+                'slug' => $article->slug, 'lang' => 'ar',
+                'source' => 'blog', 'category' => 'databases',
+            ])).'"', false);
         $this->get('/blog?q=nonexistent')->assertOk()->assertDontSee('Verified database guide');
         $this->get('/blog?q=database')->assertOk()->assertSee('Verified database guide');
 
