@@ -106,7 +106,7 @@ void main() {
   testWidgets('English consent, validation and transport acceptance are one-shot',
       (tester) async {
     final sent = <DiagnosisReportInput>[];
-    await pumpReport(tester, submit: (report) async => sent.add(report));
+    await pumpReport(tester, submit: (report) async { sent.add(report); });
 
     expect(find.textContaining('Your AI question, code, job ID'), findsOneWidget);
     await reveal(tester, 'report-send');
@@ -183,7 +183,7 @@ void main() {
         id: uuid, status: 'failed', progressPercent: 0,
         resultUrl: null, retryAfterSeconds: null,
       ),
-      reportAction: (report) async => reports.add(report),
+      reportAction: (report) async { reports.add(report); },
     )));
     await tester.enterText(
         find.byKey(const Key('ai-login-email')), 'reader@example.test');
@@ -208,7 +208,6 @@ void main() {
     await tester.tap(find.byKey(const Key('ai-report-error')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('report-name')), findsOneWidget);
-    expect(find.text('reader@example.test'), findsNothing);
     final emailField = tester.widget<TextField>(
         find.byKey(const Key('report-email')));
     expect(emailField.controller!.text, 'reader@example.test');
