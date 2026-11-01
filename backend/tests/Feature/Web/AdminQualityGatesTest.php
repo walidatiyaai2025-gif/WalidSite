@@ -280,7 +280,7 @@ final class AdminQualityGatesTest extends TestCase
             ->assertDontSee('PRIVATE-QUALITY-DRAFT-BODY')
             ->assertDontSee('PRIVATE-CURRENT-REVISION')
             ->assertDontSee('private/result/path');
-        $this->assertSame(25, substr_count($first->getContent(), 'class="block"'));
+        $this->assertSame(25, substr_count($first->getContent(), '/admin/content?article='));
 
         $middle = $this->get('/admin/quality?lang=ar&drafts_page=2&jobs_page=2')->assertOk()
             ->assertSee('dir="rtl"', false)
@@ -300,7 +300,7 @@ final class AdminQualityGatesTest extends TestCase
             ->assertSee('jobs_page=2', false)
             ->assertSee('drafts_page=3', false);
         // Only four editorial rows are present on the final draft page.
-        $this->assertSame(4, substr_count($last->getContent(), 'class="block"'));
+        $this->assertSame(4, substr_count($last->getContent(), '/admin/content?article='));
         // Admin review stays behind authorization even with paging parameters.
         $this->actingAs($this->account('reader'), 'web')
             ->get('/admin/quality?drafts_page=2&jobs_page=2')->assertForbidden();
