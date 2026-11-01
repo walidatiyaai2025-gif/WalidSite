@@ -5,6 +5,21 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
 /*
+ * Serve only the version-controlled, approved real portrait. Public pages
+ * must not rely on GitHub's mutable raw-content domain being reachable.
+ * This fixed path cannot be used to read arbitrary private server files.
+ */
+Route::get('/media/owner-portrait.jpg', static function () {
+    $portrait = base_path('../assets/portraits/portrait-light-derived.jpg');
+    abort_unless(is_file($portrait), 404);
+
+    return response()->file($portrait, [
+        'Cache-Control' => 'public, max-age=86400',
+        'X-Content-Type-Options' => 'nosniff',
+    ]);
+})->name('public.owner-portrait');
+
+/*
  * WEB-01 public landing: do not turn mockup counts or CV draft rows into
  * published professional claims. Reuse the API's owner/URL approval policy.
  * Render only evidence-safe projects and publication-validated articles.
