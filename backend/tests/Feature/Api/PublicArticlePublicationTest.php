@@ -183,6 +183,64 @@ class PublicArticlePublicationTest extends TestCase
         $first->assertDontSee('access_token');
     }
 
+    /**
+     * WEB-07/MOBILE-07 cards must always resolve to WEB-08/API details.
+     * Legacy reviewed publications with underscores are still SQL-visible
+     * but cannot match the canonical [a-zA-Z0-9-]+ detail routes.
+     */
+    public function test_public_and_mobile_feeds_exclude_non_routable_slugs_before_page_slots(): void
+    {
+        Http::fake();
+
+        for ($i = 1; $i <= 17; $i++) {
+            $legacy = $this->article(sprintf('legacy_unroutable_%02d', $i));
+            $this->revision($legacy, 1, true, '# technical slug migration');
+            $legacy->publishVerified();
+            $legacy->forceFill(['published_at' => now()->subMinute()])->save();
+        }
+
+        $expected = [];
+        for ($i = 1; $i <= 13; $i++) {
+            $safe = $this->article(sprintf('approved-routable-%02d', $i));
+            $this->revision($safe, 1, true, '# technical approved details');
+            $safe->publishVerified();
+            // Explicit, distinct timestamps avoid random UUID tie breakers.
+            $safe->forceFill(['published_at' => now()->subDays(2)->subMinutes($i)])->save();
+            $expected[] = $safe->slug;
+        }
+
+        foreach (['/api/v1/public/articles', '/api/v1/mobile/articles'] as $route) {
+            foreach (['en', 'ar'] as $lang) {
+                $first = $this->getJson($route.'?lang='.$lang.'&q=technical&page=1')
+                    ->assertOk()->assertJsonCount(12, 'data')
+                    ->assertJsonPath('meta.has_more_pages', true)
+                    ->assertJsonPath('meta.current_page', 1)
+                    ->assertDontSee('legacy_unroutable_');
+                $second = $this->getJson($route.'?lang='.$lang.'&q=technical&page=2')
+                    ->assertOk()->assertJsonCount(1, 'data')
+                    ->assertJsonPath('meta.has_more_pages', false)
+                    ->assertJsonPath('meta.current_page', 2)
+                    ->assertDontSee('legacy_unroutable_');
+                $this->getJson($route.'?lang='.$lang.'&q=technical&page=3')
+                    ->assertOk()->assertJsonCount(0, 'data')
+                    ->assertJsonPath('meta.has_more_pages', false);
+
+                $this->assertSame($expected, array_merge(
+                    array_column($first->json('data'), 'slug'),
+                    array_column($second->json('data'), 'slug')
+                ));
+                $first->assertJsonPath('data.0.title', $lang === 'ar'
+                    ? 'دليل تقني موثق' : 'Verified technical guide');
+            }
+        }
+
+        $this->getJson('/api/v1/public/articles/legacy_unroutable_01')
+            ->assertNotFound();
+        $this->getJson('/api/v1/public/articles/'.$expected[0])
+            ->assertOk()->assertJsonPath('data.slug', $expected[0]);
+        Http::assertNothingSent();
+    }
+
     public function test_unsafe_only_publications_never_advertise_a_next_page(): void
     {
         foreach (range(1, 14) as $i) {

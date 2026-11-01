@@ -55,6 +55,13 @@ class PublicArticleController extends Controller
         // lazy() loads only 100 candidates at a time; stop as soon as the
         // next eligible article proves there is another public page.
         foreach ($articles->orderByDesc('published_at')->orderBy('id')->lazy(100) as $article) {
+            // A reviewed article can have a legacy slug that the public and
+            // mobile detail route cannot resolve. Never let such records
+            // consume a page slot or advertise a phantom next page.
+            if (preg_match('/\\A[A-Za-z0-9-]+\\z/D', $article->slug) !== 1) {
+                continue;
+            }
+
             $revision = $article->publicRevision();
             if (! $revision instanceof ArticleRevision) {
                 continue;
