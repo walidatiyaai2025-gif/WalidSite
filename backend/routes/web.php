@@ -297,8 +297,9 @@ Route::middleware('auth:web')->group(function (): void {
         if (($input['format'] ?? null) === 'csv') {
             // Never stream an unbounded history or emit spreadsheet formulas
             // from a user-editable provider display name.
-            $rows = (clone $auditQuery)->limit(1001)->get()->take(1000)->map($redact);
-            $truncated = (clone $auditQuery)->limit(1001)->get()->count() > 1000;
+            $window = (clone $auditQuery)->limit(1001)->get();
+            $truncated = $window->count() > 1000;
+            $rows = $window->take(1000)->map($redact);
             $safeCell = static function (string $value): string {
                 return preg_match('/^[=+\-@\t\r]/u', $value) === 1
                     ? "'".$value : $value;
