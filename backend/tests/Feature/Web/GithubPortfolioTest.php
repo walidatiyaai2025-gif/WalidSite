@@ -70,6 +70,36 @@ class GithubPortfolioTest extends TestCase
             ->assertDontSee('href="https://github.com/owner/public-repo"', false);
     }
 
+    public function test_array_valued_github_filters_fail_to_neutral_filters_without_warning(): void
+    {
+        config(['portfolio.github_public_repos' => ['owner/public-repo']]);
+        Http::fake(['api.github.com/repos/*' => Http::response($this->verifiedRepo(), 200)]);
+
+        // A request can supply nested arrays instead of strings. The verified
+        // repository must still render, rather than erroring or interpreting
+        // PHP's "Array" conversion as an actual search/filter value.
+        $this->get('/github?q[]=unknown&language[]=Flutter')->assertOk()
+            ->assertSee('owner/public-repo')
+            ->assertSee('View repository')
+            ->assertSee('value=""', false)
+            ->assertDontSee('No repositories match');
+
+        $this->get('/github?lang=ar&q[query][]=unknown&language[choice]=Flutter')
+            ->assertOk()
+            ->assertSee('dir="rtl"', false)
+            ->assertSee('owner/public-repo')
+            ->assertDontSee('No repositories match');
+
+        // A valid scalar filter still applies even if the *other* filter is
+        // malformed; invalid array values never override valid user choices.
+        $this->get('/github?q[]=unknown&language=Flutter')->assertOk()
+            ->assertSee('No repositories match');
+        $this->get('/github?q=real&language[]=Flutter')->assertOk()
+            ->assertSee('View repository');
+
+        Http::assertSentCount(1);
+    }
+
     public function test_search_and_language_filters_affect_actual_cards(): void
     {
         config(['portfolio.github_public_repos' => ['owner/public-repo']]);
