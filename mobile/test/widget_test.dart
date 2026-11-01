@@ -43,6 +43,23 @@ void main() {
     expect(find.text('Explore engineering topics'), findsOneWidget);
   });
 
+  testWidgets('AI troubleshooter entry opens a real configured-or-unavailable screen', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(const WaleedTechApp());
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('ai-troubleshooter-entry')),
+      140,
+    );
+    await tester.ensureVisible(find.byKey(const Key('ai-troubleshooter-entry')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('ai-troubleshooter-entry')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('AI Troubleshooter'), findsOneWidget);
+    expect(find.byKey(const Key('ai-unconfigured')), findsOneWidget);
+  });
+
   testWidgets('language switch changes layout to Arabic RTL and back', (
     WidgetTester tester,
   ) async {
