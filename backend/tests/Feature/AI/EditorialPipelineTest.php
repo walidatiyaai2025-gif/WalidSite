@@ -258,6 +258,46 @@ class EditorialPipelineTest extends TestCase
             $jobId, 'review-worker', 50);
     }
 
+    public function test_registered_durable_editorial_job_runs_one_safe_step_and_preserves_private_review(): void
+    {
+        Http::fake(['http://127.0.0.1:11434/api/generate' => Http::response([
+            'response' => '# Model-generated unreviewed technical draft',
+        ], 200)]);
+        $article = $this->article();
+        $source = app(\\App\\AI\\ResearchDraftComposer::class)->saveDraft(
+            $article, 'Produce a cautious technical backup guide',
+            ['https://docs.example.org/backup']
+        );
+        $provider = $this->provider('ollama-compatible');
+        $dispatcher = app(\\App\\AI\\EditorialJobDispatcher::class);
+        $jobId = $dispatcher->enqueue($source, $provider, 'local-model');
+        $dispatcher->registerHandlers(app(\\App\\AI\\AiStepHandlerRegistry::class));
+
+        $result = app(\\App\\AI\\BoundedAiWorker::class)->tick(
+            'editorial-worker', app(\\App\\AI\\AiStepHandlerRegistry::class)->handlers()
+        );
+        $this->assertSame(['state' => 'completed', 'job_id' => $jobId], $result);
+        $this->assertSame('completed', DB::table('ai_jobs')->where('id', $jobId)->value('status'));
+        $this->assertSame(2, $article->revisions()->count());
+        $this->assertFalse($article->fresh()->isReadyToPublish());
+        $this->assertSame('draft', $article->revisions()->orderByDesc('revision_no')->first()->status);
+        $this->assertSame(1, DB::table('ai_job_steps')->where('job_id', $jobId)
+            ->where('status', 'completed')->count());
+    }
+
+    public function test_registered_artwork_job_fails_closed_without_compatible_generator(): void
+    {
+        $article = $this->article();
+        $source = app(\\App\\AI\\ResearchDraftComposer::class)->saveDraft(
+            $article, 'A documented technical backup diagram',
+            ['https://docs.example.org/backup']
+        );
+        $this->expectException(DomainException::class);
+        app(\\App\\AI\\EditorialJobDispatcher::class)->enqueue(
+            $source, $this->provider('ollama-compatible'), 'local-model', true
+        );
+    }
+
     public function test_local_ollama_text_draft_stays_unverified_without_paid_receipt(): void
     {
         Http::fake(['http://127.0.0.1:11434/api/generate' => Http::response([
