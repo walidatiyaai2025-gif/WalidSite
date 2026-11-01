@@ -431,4 +431,54 @@ final class MobileAiDiagnoseTest extends TestCase
         $this->assertNull($request->fresh()->request_blob);
         $this->assertNull($request->fresh()->selected_runbook_id);
     }
+
+    public function test_diagnosis_expiring_during_catalog_lookup_never_reaches_provider(): void
+    {
+        [$provider, $model] = $this->configure();
+        $user = $this->user();
+        $this->reviewedRunbook();
+        $request = AiDiagnosisRequest::create([
+            'user_id' => $user->id,
+            'model_id' => $model->id,
+            'request_blob' => Crypt::encryptString(json_encode([
+                'question' => 'Sensitive diagnostic question',
+                'technology' => 'SQL Server',
+                'code_snippet' => 'private-code',
+            ], JSON_THROW_ON_ERROR)),
+            'expires_at' => now()->addSeconds(2),
+        ]);
+        $request->forceFill(['job_id' => app(DurableAiQueue::class)->enqueue(
+            $provider, 'mobile-diagnosis', 'mobile-diagnosis:'.$request->id,
+            ['classify'], 0, 1
+        )])->save();
+        Http::fake();
+
+        // The initial validity check passes; time advances while catalog data
+        // is read, so the final outbound-boundary check must reject the input.
+        $runbooks = $this->mock(\App\Http\Controllers\Api\PublicRunbookController::class);
+        $runbooks->shouldReceive('index')->once()->andReturnUsing(function () {
+            $this->travel(5)->seconds();
+            return response()->json(['data' => [[
+                'id' => (string) Str::uuid(),
+                'title' => 'Reviewed recovery',
+                'markdown' => '# Reviewed recovery',
+            ]]]);
+        });
+
+        try {
+            app(MobileDiagnosisDispatcher::class)->execute((object) [
+                'id' => $request->job_id,
+                'provider_id' => $provider->id,
+            ], 'classify', 'test-worker');
+            $this->fail('Expired diagnosis must never reach the provider.');
+        } catch (\RuntimeException $exception) {
+            $this->assertSame('Mobile diagnosis failed safely.', $exception->getMessage());
+        } finally {
+            $this->travelBack();
+        }
+
+        Http::assertNothingSent();
+        $this->assertNull($request->fresh()->request_blob);
+        $this->assertNull($request->fresh()->selected_runbook_id);
+    }
 }
