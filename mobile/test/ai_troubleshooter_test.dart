@@ -336,6 +336,7 @@ void main() {
     await reveal(tester, const Key('ai-diagnose-submit'));
     await tester.tap(find.byKey(const Key('ai-diagnose-submit')));
     await tester.pumpAndSettle();
+    await reveal(tester, const Key('ai-job-status'));
     expect(find.textContaining('Retry after about 30 seconds'), findsOneWidget);
     expect(find.byKey(const Key('ai-open-solution')), findsNothing);
 
