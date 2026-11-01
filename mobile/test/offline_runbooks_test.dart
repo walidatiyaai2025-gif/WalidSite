@@ -42,6 +42,66 @@ void main() {
     expect(find.text('Offline pack version: 0.1.0'), findsOneWidget);
   });
 
+  testWidgets('offline search matches steps in the selected language only', (tester) async {
+    const pack = OfflineRunbookPack(
+      version: '0.1.0',
+      source: 'Bundled educational draft',
+      lastSynced: null,
+      verifiedAt: null,
+      items: [
+        OfflineRunbook(
+          id: 'recovery',
+          titleEn: 'Recovery plan',
+          titleAr: 'خطة التعافي',
+          stepsEn: ['Perform a safe rollback'],
+          stepsAr: ['استرجع النسخة بأمان'],
+        ),
+        OfflineRunbook(
+          id: 'backup',
+          titleEn: 'Backup checklist',
+          titleAr: 'قائمة النسخ',
+          stepsEn: ['Verify snapshots'],
+          stepsAr: ['تحقق من اللقطات'],
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(MaterialApp(
+      home: OfflineRunbookLibrary(
+        arabic: false,
+        bundledPack: SynchronousFuture<OfflineRunbookPack>(pack),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('runbook-search')), 'rollback');
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('runbook-recovery')), findsOneWidget);
+    expect(find.byKey(const Key('runbook-backup')), findsNothing);
+
+    await tester.pumpWidget(MaterialApp(
+      home: Directionality(
+        textDirection: TextDirection.rtl,
+        child: OfflineRunbookLibrary(
+          arabic: true,
+          bundledPack: SynchronousFuture<OfflineRunbookPack>(pack),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('runbook-search')), 'استرجع');
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('runbook-recovery')), findsOneWidget);
+    expect(find.byKey(const Key('runbook-backup')), findsNothing);
+
+    // The English-only word must not match Arabic-only guidance.
+    await tester.enterText(find.byKey(const Key('runbook-search')), 'rollback');
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('runbook-recovery')), findsNothing);
+    expect(find.text('لا توجد أدلة مطابقة.'), findsOneWidget);
+  });
+
   testWidgets('Arabic runbooks use local RTL strings', (tester) async {
     // The English end-to-end test exercises the real bundled asset. For
     // locale-specific widget coverage, inject a deterministic immutable
