@@ -9,12 +9,16 @@ use Symfony\Component\HttpFoundation\Response;
 
 final class RequireInstallation
 {
-    public function handle(Request $request, Closure $next, SiteInstaller $installer): Response
+    public function __construct(private readonly SiteInstaller $installer)
+    {
+    }
+
+    public function handle(Request $request, Closure $next): Response
     {
         if (! config('site.setup_enabled')
             || strlen((string) config('site.setup_token')) < 32
             || $request->is('setup') || $request->is('setup/*')
-            || $installer->isInstalled()) {
+            || $this->installer->isInstalled()) {
             return $next($request);
         }
 
