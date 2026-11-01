@@ -477,11 +477,11 @@ Route::get('/projects', function (Request $request) {
     }
 
     if ($search !== '') {
-        $term = '%'.addcslashes($search, '%_\\').'%';
+        $term = '%'.str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $search).'%';
         $query->where(function ($q) use ($term): void {
-            $q->where('title', 'like', $term)
-                ->orWhere('summary_en', 'like', $term)
-                ->orWhere('summary_ar', 'like', $term);
+            $q->whereRaw("projects.title LIKE ? ESCAPE '!'", [$term])
+                ->orWhereRaw("projects.summary_en LIKE ? ESCAPE '!'", [$term])
+                ->orWhereRaw("projects.summary_ar LIKE ? ESCAPE '!'", [$term]);
         });
     }
 
@@ -643,17 +643,17 @@ Route::get('/blog', function (Request $request) {
     $query = \App\Models\Article::query()->publiclyVisible();
 
     if ($search !== '') {
-        $term = '%'.addcslashes($search, '%_\\').'%';
+        $term = '%'.str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $search).'%';
         // Match only the immutable published revision pinned to this article.
         // A newer draft must never make an otherwise unrelated title appear
         // searchable or reveal words from unpublished professional material.
         $query->where(fn ($builder) => $builder
-            ->where('title_en', 'like', $term)
-            ->orWhere('title_ar', 'like', $term)
+            ->whereRaw("articles.title_en LIKE ? ESCAPE '!'", [$term])
+            ->orWhereRaw("articles.title_ar LIKE ? ESCAPE '!'", [$term])
             ->orWhereHas('revisions', fn ($revision) => $revision
                 ->where('status', 'validated')
                 ->whereColumn('article_revisions.revision_no', 'articles.published_revision_no')
-                ->where('body_md', 'like', $term)));
+                ->whereRaw("article_revisions.body_md LIKE ? ESCAPE '!'", [$term])));
     }
     if ($category !== '') {
         $query->whereHas('categories', fn ($builder) => $builder->where('slug', $category));
@@ -764,18 +764,18 @@ Route::get('/search', function (Request $request) {
     $projects = collect();
 
     if ($search !== '') {
-        $term = '%'.addcslashes($search, '%_\\').'%';
+        $term = '%'.str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $search).'%';
         // Filter the pinned published revision's live evidence before
         // consuming one of ten search slots. Chunked DB iteration avoids
         // large in-memory lists even with long revoked prefixes.
         foreach (\App\Models\Article::query()->publiclyVisible()
             ->where(fn ($builder) => $builder
-                ->where('title_en', 'like', $term)
-                ->orWhere('title_ar', 'like', $term)
+                ->whereRaw("articles.title_en LIKE ? ESCAPE '!'", [$term])
+                ->orWhereRaw("articles.title_ar LIKE ? ESCAPE '!'", [$term])
                 ->orWhereHas('revisions', fn ($revision) => $revision
                     ->where('status', 'validated')
                     ->whereColumn('article_revisions.revision_no', 'articles.published_revision_no')
-                    ->where('body_md', 'like', $term)))
+                    ->whereRaw("article_revisions.body_md LIKE ? ESCAPE '!'", [$term])))
             ->orderBy('id')->lazy(100) as $article) {
             if ($article->publicRevision() === null) {
                 continue;
@@ -788,8 +788,10 @@ Route::get('/search', function (Request $request) {
 
         $api = app(\App\Http\Controllers\Api\PublicPortfolioController::class);
         foreach (\App\Models\Project::query()->publiclyVerified()
-            ->where(fn ($builder) => $builder->where('title', 'like', $term)
-                ->orWhere('summary_en', 'like', $term)->orWhere('summary_ar', 'like', $term))
+            ->where(fn ($builder) => $builder
+                ->whereRaw("projects.title LIKE ? ESCAPE '!'", [$term])
+                ->orWhereRaw("projects.summary_en LIKE ? ESCAPE '!'", [$term])
+                ->orWhereRaw("projects.summary_ar LIKE ? ESCAPE '!'", [$term]))
             ->orderBy('id')->lazy(100) as $record) {
             $project = $api->publicProjectData($record, $request);
             if (empty($project['evidence_urls'])) {
