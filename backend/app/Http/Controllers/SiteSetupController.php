@@ -31,7 +31,10 @@ final class SiteSetupController extends Controller
         // A saved but unreachable database must not strand the owner on an
         // error page with no way to fix the credentials without a terminal.
         // A healthy configured database remains locked against re-pointing.
-        $connectionFailed = $configured && ! $status['ready'];
+        // An unknown applied migration means a reachable but incompatible
+        // database, NOT lost credentials. Never offer database replacement.
+        $historyMismatch = $configured && ($status['history_mismatch'] ?? false);
+        $connectionFailed = $configured && ! $status['ready'] && ! $historyMismatch;
         // If a deployment introduced new migrations or the DB went offline
         // between steps, return safely to the database step instead of
         // trapping the owner on an unusable final form.
