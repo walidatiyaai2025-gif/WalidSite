@@ -35,7 +35,10 @@ class ArticleRevision extends Model
         // Updating either in place must never inherit earlier approval,
         // including when a caller submits "validated" in the same update.
         static::updating(static function (self $revision): void {
-            if ($revision->isDirty(['body_md', 'citations_json'])) {
+            // Approval is bound to content AND the specific article/revision
+            // identity. Reparenting or renumbering an approved revision must
+            // never transfer a sign-off to a different publication slot.
+            if ($revision->isDirty(['body_md', 'citations_json', 'article_id', 'revision_no'])) {
                 $revision->status = 'draft';
                 $revision->validation_json = [
                     'citations_passed' => false,
