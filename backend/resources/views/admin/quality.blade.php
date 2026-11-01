@@ -74,7 +74,7 @@ a{color:var(--link)}a:focus-visible,button:focus-visible{outline:3px solid #00A9
 </section>
 
 <section class="panel" aria-labelledby="failures-title">
-<h2 id="failures-title">{{ $locale === 'ar' ? 'فشل وإعادة محاولة مهام AI' : 'AI failures and retries' }}</h2>
+<h2 id="failures-title">{{ $locale === 'ar' ? 'فشل وإعادة محاولة مهام AI' : 'AI failures and retries' }} ({{ $failedJobs->total() }})</h2>
 <p class="muted">{{ $locale === 'ar'
 ? 'إعادة المحاولة الآن تزيل مهلة الانتظار فقط من مهمة retry قابلة للاسترداد. لا تعيد إحياء failed ولا تزيد الحد الأقصى للمحاولات.'
 : 'Retry now only removes the wait from an existing recoverable retry. It never revives failed work or increases the maximum attempt count.' }}</p>
@@ -108,6 +108,9 @@ a{color:var(--link)}a:focus-visible,button:focus-visible{outline:3px solid #00A9
 </tr>
 @endforeach
 </tbody></table></div>
+<nav aria-label="{{ $locale === 'ar' ? 'صفحات مهام AI الفاشلة' : 'AI failure pages' }}">
+{{ $failedJobs->links() }}
+</nav>
 @endif
 </section>
 </main></div></body></html>
