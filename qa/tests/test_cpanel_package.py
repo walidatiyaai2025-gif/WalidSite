@@ -77,6 +77,14 @@ class TestCpanelPackage(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "composer.lock"):
             build(self.root, self.output, "b" * 40)
 
+    def test_composer_cli_symlinks_are_not_exposed_in_zip(self):
+        executable = self.root / "backend/vendor/bin/psysh"
+        executable.parent.mkdir(parents=True, exist_ok=True)
+        executable.symlink_to(self.root / "backend/vendor/autoload.php")
+        build(self.root, self.output, "d" * 40)
+        with zipfile.ZipFile(self.output) as zip:
+            self.assertNotIn("application/vendor/bin/psysh", zip.namelist())
+
     def test_symlink_fails_closed(self):
         shortcut = self.root / "backend/app/shortcut.php"
         shortcut.symlink_to(self.root / "backend/.env")
