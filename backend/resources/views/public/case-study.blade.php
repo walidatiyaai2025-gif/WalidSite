@@ -43,5 +43,9 @@
 @endforeach
 </ul>
 </section>
+<nav class="study-next" aria-label="{{ $locale === 'ar' ? 'خطوات تالية لدراسة الحالة' : 'Case study next steps' }}">
+    <a href="{{ route('public.contact', ['lang' => $locale, 'project' => $project['slug']]) }}">{{ $locale === 'ar' ? 'استفسر عن دراسة الحالة الموثقة' : 'Ask about this verified case study' }}</a>
+    <a href="{{ route('public.resume', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'عرض السيرة المهنية الموثقة' : 'View verified public resume' }}</a>
+</nav>
 </article>
 @endsection
