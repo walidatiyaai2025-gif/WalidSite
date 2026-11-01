@@ -13,6 +13,7 @@ class OfflineRunbookPack {
     required this.lastSynced,
     required this.verifiedAt,
     required this.items,
+    this.signedVerified = false,
   });
 
   final String version;
@@ -20,6 +21,10 @@ class OfflineRunbookPack {
   final DateTime? lastSynced;
   final DateTime? verifiedAt;
   final List<OfflineRunbook> items;
+
+  // True only after pinned-key signature verification by SignedRunbookSource.
+  // Not parsed from downloaded JSON or inferred from publisher timestamps.
+  final bool signedVerified;
 
   bool get isStale {
     final verified = verifiedAt;
@@ -256,7 +261,11 @@ class _OfflineRunbookLibraryState extends State<OfflineRunbookLibrary> {
                   key: Key('runbook-${item.id}'),
                   leading: const Icon(Icons.menu_book_outlined),
                   title: Text(item.title(arabic)),
-                  subtitle: Text(arabic ? 'حزمة محلية — لا تحتاج إنترنت' : 'Bundled — available without internet'),
+                  subtitle: Text(pack.signedVerified
+                      ? (arabic ? 'نسخة موقّعة تم التحقق منها — متاحة دون إنترنت'
+                          : 'Verified signed snapshot — saved offline')
+                      : (arabic ? 'حزمة تعليمية مرفقة — متاحة دون إنترنت'
+                          : 'Bundled educational copy — available offline')),
                   onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
                     builder: (_) => OfflineRunbookDetail(arabic: arabic, item: item, pack: pack),
                   )),
