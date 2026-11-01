@@ -4,12 +4,15 @@ use App\Http\Controllers\Api\IdentityController;
 use App\Http\Controllers\Api\AiProviderController;
 use App\Http\Controllers\Api\PublicPortfolioController;
 use App\Http\Controllers\Api\PublicArticleController;
+use App\Http\Middleware\RequireSecureApiTransport;
 use Illuminate\Support\Facades\Route;
 
+// Transport is checked before any login credentials are validated.
 Route::post('/auth/login', [IdentityController::class, 'login'])
-    ->middleware('throttle:6,1');
+    ->middleware([RequireSecureApiTransport::class, 'throttle:6,1']);
 
-Route::middleware('auth:sanctum')->group(function (): void {
+// Block insecure bearer-token requests before Sanctum or privileged handlers.
+Route::middleware([RequireSecureApiTransport::class, 'auth:sanctum'])->group(function (): void {
     Route::get('/mobile/me', [IdentityController::class, 'me']);
     Route::post('/auth/logout', [IdentityController::class, 'logout']);
     Route::get('/admin/identity-check', [IdentityController::class, 'adminCheck']);
