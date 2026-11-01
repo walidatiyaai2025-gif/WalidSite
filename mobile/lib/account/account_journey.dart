@@ -144,10 +144,12 @@ class MobileAccountClient {
   static Uri? configuredOrigin() =>
       VerifiedArticleReader.validatedOrigin(MobileAiClient.apiOrigin);
 
-  Future<String> _request(String method, String path, String bearer,
+  Future<String> _request(String method, String path, String? bearer,
       {Map<String, String>? query}) async {
     final origin = configuredOrigin();
-    if (origin == null || bearer.isEmpty || bearer.length > 8192 ||
+    if (origin == null || (bearer == null &&
+            !(method == 'GET' && _articlePath.hasMatch(path))) ||
+        (bearer != null && (bearer.isEmpty || bearer.length > 8192)) ||
         !path.startsWith('/api/v1/') || path.contains('?')) {
       throw const FormatException('Invalid account request');
     }
@@ -158,7 +160,9 @@ class MobileAccountClient {
           .timeout(const Duration(seconds: 8));
       request.followRedirects = false;
       request.headers.set(HttpHeaders.acceptHeader, 'application/json');
-      request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $bearer');
+      if (bearer != null) {
+        request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $bearer');
+      }
       final response = await request.close().timeout(const Duration(seconds: 8));
       if (response.statusCode != HttpStatus.ok) {
         throw MobileAiHttpException(response.statusCode);
@@ -216,7 +220,7 @@ class MobileAccountClient {
       throw const FormatException('Invalid saved article');
     }
     final response = jsonDecode(await _request(
-      'GET', item.detailPath, 'public-read',
+      'GET', item.detailPath, null,
       query: {'lang': arabic ? 'ar' : 'en'},
     ));
     if (response is! Map<String, dynamic> ||
