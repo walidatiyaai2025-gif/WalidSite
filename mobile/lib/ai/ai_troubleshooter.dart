@@ -99,6 +99,9 @@ class MobileAiJob {
   }
 
   String? reviewedRunbookId() {
+    // A server-provided URL is never evidence that an unfinished or failed
+    // diagnosis produced a reviewed, published solution.
+    if (status != 'completed' || progressPercent != 100) return null;
     final raw = resultUrl;
     if (raw == null || raw.length > 120) return null;
     final match = RegExp(
