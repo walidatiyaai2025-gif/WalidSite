@@ -70,3 +70,40 @@ unsupported-language fallback.
 Validated the checked-in iOS runner on macOS 15.8.1 with Flutter 3.47.6 and Xcode 26.3. `flutter analyze` reported no issues; `flutter test` passed all 22 tests. Xcode built the simulator app with code signing disabled and `IPHONEOS_DEPLOYMENT_TARGET=13.0`; the app installed and launched on an iPhone 17 Pro / iOS 26.3 Simulator. The captured home screen is [`evidence/t005-ios-simulator-home-en.png`](evidence/t005-ios-simulator-home-en.png).
 
 This confirms a debug simulator build and launch against the checked-in iOS 13 target; it is not an iOS device build, release artifact, App Store signing, or staging smoke. Android's `com.example.waleed_tech_companion` and iOS's `com.example.waleedTechCompanion` remain development identifiers pending owner-approved production IDs. T005 remains open until those external release/staging gates are resolved.
+
+## T013 signed offline snapshot sync — operational contract
+
+Runbooks work with no network using the bundled educational fallback.
+A signed update is optional and disabled if either compile-time setting is missing:
+
+- WALIDSITE_RUNBOOK_PACK_URL: approved public HTTPS URL to a JSON envelope
+  (no query, fragment, credentials, redirects, private IP or loopback).
+- WALIDSITE_RUNBOOK_PUBLIC_KEY: base64 of the publisher's pinned 32-byte
+  Ed25519 public key (never a private key). These are dart-defines passed
+  at release build. No service, URL, keys or live content are invented here.
+
+The envelope schema is walidsite.signed-runbook-pack.v1 with payload_base64
+containing exact UTF-8 bytes of the walidsite.offline-runbook-pack.v1 JSON and
+signature_base64 containing an Ed25519 signature over those exact bytes.
+The verified timestamp must be UTC and no more than five minutes in the future.
+Payload, envelope, item, step and network sizes are bounded.
+
+The user explicitly starts a sync from the offline library. HTTPS is required;
+redirects are forbidden. The signed payload is verified BEFORE replacing the
+cached app-support snapshot. A previously verified newer timestamp cannot be
+replaced by an older signed payload. On cold start the cache is reverified
+with the pinned publisher key before being displayed; if corrupted or unsigned
+the bundled pack is used with its original stale/unverified warning. Failed
+sync never erases the existing pack or reports false success, and the UI shows
+a bilingual, redacted error state without network details.
+
+mobile/test/signed_runbook_sync_test.dart uses an ephemeral test Ed25519
+keypair, synthetic transport and in-memory cache to prove signature validation,
+persistence/restart, tampering rejection, rollback prevention, disabled
+configuration, size/host checks, bilingual UI and offline preservation.
+The test key is NOT a production signing identity.
+
+Canonical MOBILE-05/MOBILE-06 visuals require approved screenshot comparison
+and real Android/iOS staging smoke under T024/T025. Real publisher deployment,
+approved production signing keys and remote endpoint are not in this repository.
+The offline fallback does not depend on those external integrations.
