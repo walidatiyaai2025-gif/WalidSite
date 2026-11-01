@@ -75,7 +75,7 @@ def verify_archive(output, expected_sha=None):
         for info in archive.infolist():
             name = info.filename
             parts = Path(name).parts
-            if (not name or name.startswith("/") or "\\\\" in name
+            if (not name or name.startswith("/") or "\\" in name
                     or ".." in parts or "." in parts
                     or (not name.startswith(("application/", "public_html/", "contracts/"))
                         and name not in ("PACKAGE-MANIFEST.json", "INSTALL-CPANEL-AR.md"))):
@@ -180,7 +180,7 @@ def build(source, output, sha):
     checksum = hashlib.sha256(output.read_bytes()).hexdigest()
     # Publish the sidecar alongside the ZIP for straightforward offline checks.
     output.with_name(output.name + ".sha256").write_text(
-        f"{checksum}  {output.name}\\n", encoding="ascii"
+        f"{checksum}  {output.name}\n", encoding="ascii"
     )
     return {"sha256": checksum,
             "files": len(entries), "bytes": output.stat().st_size}
