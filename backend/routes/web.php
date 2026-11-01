@@ -654,9 +654,27 @@ Route::get('/blog', function (Request $request) {
         $query->whereHas('categories', fn ($builder) => $builder->where('slug', $category));
     }
 
-    $categories = \App\Models\Category::query()
-        ->whereHas('articles', fn ($article) => $article->publiclyVisible())
-        ->orderBy('slug')->get();
+    // Blog filters are public discovery, so a category may only be listed
+    // while at least one of its articles passes the definitive current
+    // citation/media-rights check. The cheap SQL publication scope alone
+    // includes withdrawn evidence and would expose misleading taxonomy.
+    // Eager-load category IDs in bounded DB chunks; keep only distinct IDs
+    // (not all articles) in memory and make the final list deterministic.
+    $publicCategoryIds = [];
+    foreach (\App\Models\Article::query()->publiclyVisible()
+        ->with('categories:id')->orderBy('id')->lazy(100) as $candidate) {
+        if ($candidate->publicRevision() === null) {
+            continue;
+        }
+        foreach ($candidate->categories as $candidateCategory) {
+            $publicCategoryIds[$candidateCategory->id] = true;
+        }
+    }
+    $categories = $publicCategoryIds === []
+        ? collect()
+        : \App\Models\Category::query()
+            ->whereIn('id', array_keys($publicCategoryIds))
+            ->orderBy('slug')->get();
     // A SQL-published article can lose citation or media rights after
     // publication. Apply the authoritative pinned revision check BEFORE
     // counting/page slicing; otherwise withdrawn rows create sparse pages

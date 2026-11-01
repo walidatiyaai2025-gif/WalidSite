@@ -235,4 +235,73 @@ class VerifiedBlogPagesTest extends TestCase
             ->assertDontSee('revoke-after-list-');
     }
 
+
+    public function test_blog_category_options_require_live_verified_articles_in_both_languages(): void
+    {
+        $validCategory = Category::create([
+            'slug' => 'verified-category',
+            'name_en' => 'Verified category choice',
+            'name_ar' => 'تصنيف موثق ومتاح',
+        ]);
+        $withdrawnCategory = Category::create([
+            'slug' => 'withdrawn-category',
+            'name_en' => 'Withdrawn-only category',
+            'name_ar' => 'تصنيف محتواه مسحوب',
+        ]);
+        $draftCategory = Category::create([
+            'slug' => 'draft-only-category',
+            'name_en' => 'Draft-only category',
+            'name_ar' => 'تصنيف مسودة غير منشورة',
+        ]);
+
+        $valid = $this->publishForPagination('valid-category-article');
+        $valid->categories()->attach($validCategory->id);
+        $revoked = $this->publishForPagination('withdrawn-category-article', true);
+        $revoked->categories()->attach($withdrawnCategory->id);
+        // A category attached exclusively to a never-published draft is hidden.
+        $draft = Article::create([
+            'slug' => 'draft-category-article',
+            'title_en' => 'Draft article',
+            'title_ar' => 'مسودة',
+            'canonical_lang' => 'en',
+        ]);
+        $draft->categories()->attach($draftCategory->id);
+
+        foreach (['en', 'ar'] as $lang) {
+            $page = $this->get('/blog?lang='.$lang)->assertOk()
+                ->assertSee('<option value="verified-category"', false)
+                ->assertDontSee('<option value="withdrawn-category"', false)
+                ->assertDontSee('<option value="draft-only-category"', false)
+                ->assertDontSee('Withdrawn-only category')
+                ->assertDontSee('تصنيف محتواه مسحوب')
+                ->assertDontSee('Draft-only category');
+            $page->assertSee($lang === 'ar'
+                ? 'تصنيف موثق ومتاح' : 'Verified category choice');
+        }
+
+        // An independent approved article must make a category available.
+        $recovered = $this->publishForPagination('newly-approved-category-article');
+        $recovered->categories()->attach($withdrawnCategory->id);
+        $this->get('/blog?lang=en')->assertOk()
+            ->assertSee('<option value="withdrawn-category"', false)
+            ->assertSee('Withdrawn-only category');
+        $this->get('/blog?lang=ar')->assertOk()
+            ->assertSee('تصنيف محتواه مسحوب');
+
+        // Removing the last remaining live proof immediately hides its choice
+        // without editing the stored taxonomy or disclosing revoked content.
+        $recovered->revisions()->firstOrFail()->update([
+            'validation_json' => [
+                'citations_passed' => false,
+                'technical_passed' => true,
+            ],
+        ]);
+        $this->get('/blog?lang=en')->assertOk()
+            ->assertDontSee('<option value="withdrawn-category"', false)
+            ->assertSee('<option value="verified-category"', false);
+        $this->get('/blog?category=withdrawn-category&lang=en')->assertOk()
+            ->assertSee('No source-verified published articles')
+            ->assertDontSee('Withdrawn-only category');
+    }
+
 }
