@@ -8,6 +8,8 @@ use Illuminate\Support\Facades\Route;
 Route::get('/setup', [SiteSetupController::class, 'show'])->name('site.setup');
 Route::post('/setup/unlock', [SiteSetupController::class, 'unlock'])
     ->middleware('throttle:site-setup-unlock')->name('site.setup.unlock');
+Route::post('/setup/configure', [SiteSetupController::class, 'configure'])
+    ->middleware('throttle:site-setup-actions')->name('site.setup.configure');
 Route::post('/setup/database', [SiteSetupController::class, 'database'])
     ->middleware('throttle:site-setup-actions')->name('site.setup.database');
 Route::post('/setup/finish', [SiteSetupController::class, 'finish'])
