@@ -14,6 +14,7 @@ void main() {
     bool arabic = false,
     MobileLoginAction? login,
     MobileDiagnoseAction? diagnose,
+    MobileJobStatusAction? poll,
     MobileSaveAction? save,
     Future<ReviewedRunbook> Function(String id)? detail,
     DateTime Function()? nowUtc,
@@ -23,6 +24,7 @@ void main() {
         arabic: arabic,
         loginAction: login,
         diagnoseAction: diagnose,
+        jobStatusAction: poll,
         saveAction: save,
         detailLoader: detail,
         nowUtc: nowUtc,
@@ -317,21 +319,34 @@ void main() {
     expect(find.text(token), findsNothing);
   });
 
-  testWidgets('failed job and queued job never invent a solution',
+  testWidgets('queued job can fail by read-only status without a second POST',
       (tester) async {
-    var calls = 0;
+    var diagnoses = 0;
+    var reads = 0;
     await pumpScreen(
       tester,
       login: (_, __) async =>
           const MobileAiSession(token: token, expiresAt: null),
       diagnose: (_, __, ___, ____) async {
-        calls++;
-        return MobileAiJob(
+        diagnoses++;
+        return const MobileAiJob(
           id: jobId,
-          status: calls == 1 ? 'queued' : 'failed',
-          progressPercent: calls == 1 ? 0 : 100,
+          status: 'queued',
+          progressPercent: 0,
           resultUrl: null,
-          retryAfterSeconds: calls == 1 ? 30 : null,
+          retryAfterSeconds: 30,
+        );
+      },
+      poll: (bearer, id) async {
+        reads++;
+        expect(bearer, token);
+        expect(id, jobId);
+        return const MobileAiJob(
+          id: jobId,
+          status: 'failed',
+          progressPercent: 100,
+          resultUrl: null,
+          retryAfterSeconds: null,
         );
       },
     );
@@ -350,16 +365,27 @@ void main() {
     await reveal(tester, const Key('ai-diagnose-submit'));
     await tester.tap(find.byKey(const Key('ai-diagnose-submit')));
     await tester.pumpAndSettle();
-    await reveal(tester, const Key('ai-job-status'));
     expect(find.textContaining('Retry after about 30 seconds'), findsOneWidget);
     expect(find.byKey(const Key('ai-open-solution')), findsNothing);
-
-    await reveal(tester, const Key('ai-diagnose-submit'));
-    await tester.tap(find.byKey(const Key('ai-diagnose-submit')));
+    expect(tester.widget<FilledButton>(
+      find.byKey(const Key('ai-diagnose-submit')),
+    ).onPressed, isNull);
+    await reveal(tester, const Key('ai-refresh-status'));
+    expect(tester.widget<OutlinedButton>(
+      find.byKey(const Key('ai-refresh-status')),
+    ).onPressed, isNull);
+    expect(reads, 0);
+    await tester.pump(const Duration(seconds: 30));
+    await tester.pump();
+    await reveal(tester, const Key('ai-refresh-status'));
+    await tester.tap(find.byKey(const Key('ai-refresh-status')));
     await tester.pumpAndSettle();
     await reveal(tester, const Key('ai-message'));
-    expect(find.text('The diagnosis could not complete safely.'), findsOneWidget);
+    expect(find.text('The diagnosis could not complete safely.'),
+        findsOneWidget);
     expect(find.byKey(const Key('ai-open-solution')), findsNothing);
+    expect(diagnoses, 1);
+    expect(reads, 1);
   });
 
   testWidgets('Arabic journey is RTL and keeps reporting explicitly unavailable',
