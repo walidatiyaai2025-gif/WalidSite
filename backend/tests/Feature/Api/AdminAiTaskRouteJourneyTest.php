@@ -141,8 +141,10 @@ final class AdminAiTaskRouteJourneyTest extends TestCase
         $this->withToken($this->token());
         $first = $this->model($usd, 'paid-usd');
         $second = $this->model($kwd, 'paid-kwd');
-        $this->getJson('/api/v1/admin/ai/models')
-            ->assertOk()->assertJsonPath('data.0.cost_currency', 'KWD');
+        $list = $this->getJson('/api/v1/admin/ai/models')->assertOk()
+            ->assertJsonCount(2, 'data');
+        $currencies = collect($list->json('data'))->pluck('cost_currency')->sort()->values()->all();
+        $this->assertSame(['KWD', 'USD'], $currencies);
         $this->putJson('/api/v1/admin/ai/task-routes/mobile-ai-diagnose',
             $this->routePayload($first, [], 'USD', 25))
             ->assertOk()->assertJsonPath('data.route.budget.reservation_minor', 25);
