@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\PublicAiExpertiseController;
 use App\Http\Controllers\Api\PublicHomeController;
 use App\Http\Controllers\Api\MobileHomeController;
 use App\Http\Controllers\Api\MobileSavedController;
+use App\Http\Controllers\Api\MobileAiDiagnoseController;
 use App\Http\Controllers\Api\MobileBootstrapController;
 use App\Http\Controllers\Api\PublicLabController;
 use App\Http\Controllers\Api\PublicArticleController;
@@ -39,6 +40,10 @@ Route::middleware([RequireSecureApiTransport::class, 'auth:sanctum'])->group(fun
     Route::delete('/mobile/saved/{resource_type}/{resource_id}', [MobileSavedController::class, 'destroy'])
         ->where('resource_type', 'article|runbook')->whereUuid('resource_id')
         ->name('api.mobile.saved.destroy')->middleware('throttle:30,1');
+    // MOBILE-03: authenticated, consent-based diagnosis can only select an
+    // already reviewed public solution. The controller applies route quotas.
+    Route::post('/mobile/ai/diagnose', MobileAiDiagnoseController::class)
+        ->name('api.mobile.ai.diagnose')->middleware('throttle:12,1');
     Route::post('/auth/logout', [IdentityController::class, 'logout']);
     Route::get('/admin/identity-check', [IdentityController::class, 'adminCheck']);
     // ADMIN-01: aggregated persisted metrics, never fabricated health or spend.
