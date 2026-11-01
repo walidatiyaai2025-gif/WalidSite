@@ -145,8 +145,13 @@ class DurableAiQueueTest extends TestCase
         $provider = $this->provider('openai-compatible', 100);
         $id = $queue->enqueue($provider, 'draft', 'budget:1', ['write'], 50);
         $queue->claimNext('worker-a');
+        // Simulate an administrator lowering the daily cap after admission.
+        // The attempted usage fits the job reservation but exceeds the
+        // newly enforced provider cap, so this tests the daily gate alone.
+        DB::table('ai_providers')->where('id', $provider->id)
+            ->update(['daily_budget_minor' => 40]);
         try {
-            $queue->recordUsage($id, 'worker-a', 'too:expensive', 101, 'USD');
+            $queue->recordUsage($id, 'worker-a', 'too:expensive', 41, 'USD');
             $this->fail('Excess usage was accepted.');
         } catch (DomainException $e) {
             $this->assertSame('Daily provider spending cap reached.', $e->getMessage());
@@ -187,6 +192,69 @@ class DurableAiQueueTest extends TestCase
         $this->assertDatabaseCount('job_leases', 0);
         $this->travel(31)->seconds();
         $this->assertSame($id, $queue->claimNext('worker-b')?->id);
+    }
+
+
+    public function test_cumulative_usage_cannot_exceed_job_reservation_even_with_daily_headroom(): void
+    {
+        $queue = new DurableAiQueue();
+        $provider = $this->provider('openai-compatible', 1000);
+        $id = $queue->enqueue($provider, 'draft', 'reservation:multi', ['write'], 120);
+        $this->assertSame($id, $queue->claimNext('worker-a')?->id);
+
+        $this->assertTrue($queue->recordUsage($id, 'worker-a', 'res:first', 80, 'USD'));
+        $this->assertTrue($queue->recordUsage($id, 'worker-a', 'res:second', 40, 'USD'));
+        // An identical replay must stay idempotent even when at the limit.
+        $this->assertFalse($queue->recordUsage($id, 'worker-a', 'res:second', 40, 'USD'));
+
+        try {
+            $queue->recordUsage($id, 'worker-a', 'res:over', 1, 'USD');
+            $this->fail('Cumulative receipts exceeded the reserved job cost.');
+        } catch (DomainException $exception) {
+            $this->assertSame('AI job usage exceeds reserved cost.', $exception->getMessage());
+        }
+
+        $this->assertSame(120, (int) DB::table('ai_usage')->where('job_id', $id)
+            ->sum('cost_minor'));
+        $this->assertSame(2, DB::table('ai_usage')->where('job_id', $id)->count());
+        $this->assertSame('running', DB::table('ai_jobs')->where('id', $id)
+            ->value('status'));
+    }
+
+    public function test_single_receipt_cannot_exceed_own_reservation(): void
+    {
+        $queue = new DurableAiQueue();
+        $provider = $this->provider('openai-compatible', 1000);
+        $id = $queue->enqueue($provider, 'draft', 'reservation:single', ['write'], 50);
+        $this->assertSame($id, $queue->claimNext('worker-a')?->id);
+
+        try {
+            $queue->recordUsage($id, 'worker-a', 'res:too-large', 51, 'USD');
+            $this->fail('An over-reservation receipt was accepted.');
+        } catch (DomainException $exception) {
+            $this->assertSame('AI job usage exceeds reserved cost.', $exception->getMessage());
+        }
+        $this->assertDatabaseCount('ai_usage', 0);
+    }
+
+    public function test_free_local_usage_allows_zero_cost_but_never_unreserved_charges(): void
+    {
+        $queue = new DurableAiQueue();
+        $provider = $this->provider('ollama-compatible', 1000);
+        $id = $queue->enqueue($provider, 'draft', 'reservation:local', ['write'], 0);
+        $this->assertSame($id, $queue->claimNext('worker-a')?->id);
+        $this->assertTrue($queue->recordUsage($id, 'worker-a', 'res:local-zero', 0, 'USD'));
+
+        try {
+            $queue->recordUsage($id, 'worker-a', 'res:local-charged', 1, 'USD');
+            $this->fail('Unreserved local-provider charges were accepted.');
+        } catch (DomainException $exception) {
+            $this->assertSame('AI job usage exceeds reserved cost.', $exception->getMessage());
+        }
+
+        $this->assertSame(1, DB::table('ai_usage')->where('job_id', $id)->count());
+        $this->assertSame(0, (int) DB::table('ai_usage')->where('job_id', $id)
+            ->sum('cost_minor'));
     }
 
     public function test_unsafe_opaque_output_reference_is_rejected(): void
