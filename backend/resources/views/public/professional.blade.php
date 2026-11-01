@@ -34,6 +34,9 @@
     .professional-links a.secondary { border: 1px solid var(--wa-soft-border); background: white; color: var(--wa-primary); }
     .professional-empty { background: var(--wa-subtle); border: 1px dashed var(--wa-soft-border);
         border-radius: 12px; padding: 19px; color: var(--wa-body); }
+    .professional-evidence { margin: 0; padding-inline-start: 24px; }
+    .professional-evidence li { padding-block: 9px; border-top: 1px solid var(--wa-soft-border); }
+    .professional-evidence a { color: var(--wa-cta); font-weight: 800; text-underline-offset: 3px; }
     .professional-filter { display: flex; gap: 10px; flex-wrap: wrap; align-items: end; margin-bottom: 24px; }
     .professional-filter label { display: block; font-weight: 700; color: var(--wa-primary); margin-bottom: 6px; }
     .professional-filter select { min-width: 200px; min-height: 44px; padding: 9px; font: inherit;
@@ -76,6 +79,19 @@
                 @empty
                     <div class="professional-empty" role="status">{{ $locale === 'ar' ? 'الشهادات قيد مراجعة الأدلة، ولن تُعرض قبل التحقق.' : 'Credentials remain hidden until supporting evidence is verified.' }}</div>
                 @endforelse
+
+                @if (count($approvedClaims) > 0)
+                    <h2 style="margin-top:28px">{{ $locale === 'ar' ? 'الادعاءات المهنية المدعومة بالأدلة' : 'Evidence-backed professional statements' }}</h2>
+                    <ul class="professional-evidence">
+                        @foreach ($approvedClaims as $claim)
+                            <li>
+                                <span>{{ $claim['text'] }}</span>
+                                <a href="{{ $claim['evidence_url'] }}" target="_blank" rel="noopener noreferrer"
+                                   aria-label="{{ $locale === 'ar' ? 'افتح دليل: ' : 'Open evidence for: ' }}{{ $claim['text'] }}">{{ $locale === 'ar' ? 'عرض الدليل' : 'View evidence' }}</a>
+                            </li>
+                        @endforeach
+                    </ul>
+                @endif
             @elseif ($page === 'expertise')
                 <h2 id="professional-section">{{ $locale === 'ar' ? 'المهارات المعتمدة' : 'Evidence-verified skills' }}</h2>
                 @if ($skills->isEmpty())
