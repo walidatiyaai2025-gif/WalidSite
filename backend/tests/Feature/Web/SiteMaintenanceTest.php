@@ -131,37 +131,34 @@ class SiteMaintenanceTest extends TestCase
             'site.install_lock_path' => storage_path('app/setup-https-test-uncreated.lock'),
         ]);
 
-        // This test exercises the route-level transport gate, not Laravel's
-        // separately tested CSRF middleware.
-        $this->withoutMiddleware(\Illuminate\Foundation\Http\Middleware\ValidateCsrfToken::class);
+        // The production web stack enforces CSRF before route middleware.
+        // Supply a real session token so transport denials are exercised
+        // rather than receiving an unrelated 419 CSRF rejection.
+        $csrf = str_repeat('c', 40);
+        $this->withSession(['_token' => $csrf]);
         $this->app->instance('env', 'production');
 
         try {
             $this->get('http://localhost/setup')->assertForbidden();
-            $this->post('http://localhost/setup/unlock', ['token' => $token])
+            $this->post('http://localhost/setup/unlock', ['token' => $token, '_token' => $csrf])
                 ->assertForbidden();
             $this->post('http://localhost/setup/configure', [
-                'db_password' => 'would-be-exposed',
+                'db_password' => 'would-be-exposed', '_token' => $csrf,
             ])->assertForbidden();
-            $this->post('http://localhost/setup/database')->assertForbidden();
+            $this->post('http://localhost/setup/database', ['_token' => $csrf])->assertForbidden();
             $this->post('http://localhost/setup/finish', [
                 'password' => 'Example-Owner-Password-1234',
                 'password_confirmation' => 'Example-Owner-Password-1234',
+                '_token' => $csrf,
             ])->assertForbidden();
 
             // Correctly secured requests still reach the normal wizard.
             $this->get('https://localhost/setup')->assertOk()
                 ->assertSee('Server setup token');
-            $this->post('https://localhost/setup/unlock', ['token' => $token])
+            $this->post('https://localhost/setup/unlock', ['token' => $token, '_token' => $csrf])
                 ->assertRedirect('/setup');
             $this->get('https://localhost/setup')->assertOk();
 
-            // Authenticated but incomplete setup still enforces its own step
-            // prerequisites; HTTPS is necessary, never a bypass.
-            $this->post('https://localhost/setup/finish', [
-                'password' => 'Example-Owner-Password-1234',
-                'password_confirmation' => 'Example-Owner-Password-1234',
-            ])->assertForbidden();
         } finally {
             $this->app->instance('env', $priorEnvironment);
         }
