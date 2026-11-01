@@ -37,7 +37,7 @@ button.secondary{background:var(--primary)}.muted{color:#55718B}.actions{display
 <a href="{{ route('admin.providers.index', ['lang' => $locale]) }}" aria-current="page">{{ $locale === 'ar' ? 'مزودو AI' : 'AI providers' }}</a>
 <a href="{{ route('admin.usage.index', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'سجل استخدام AI' : 'AI usage audit' }}</a>
 <a href="{{ route('home', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'الموقع العام' : 'Public website' }}</a></nav></aside>
-<main id="content" class="body">
+<main id="content" class="body" tabindex="-1">
 <div class="top">
   <h1>{{ $locale === 'ar' ? 'مزودو الذكاء الاصطناعي' : 'AI providers' }}</h1>
   <div class="actions">
@@ -93,7 +93,7 @@ button.secondary{background:var(--primary)}.muted{color:#55718B}.actions{display
 @foreach($providers as $provider)
 <section class="card" aria-labelledby="provider-{{ $provider->id }}">
 <h3 id="provider-{{ $provider->id }}">{{ $provider->display_name }}</h3>
-<p class="muted">{{ $provider->provider_type }} · {{ $provider->enabled ? 'Enabled' : 'Disabled' }} · {{ $provider->health_status }}</p>
+<p class="muted">{{ $provider->provider_type }} · {{ $provider->enabled ? ($locale === 'ar' ? 'مفعّل' : 'Enabled') : ($locale === 'ar' ? 'معطّل' : 'Disabled') }} · {{ $provider->health_status }}</p>
 <p class="muted">{{ $locale === 'ar' ? 'المفتاح المحفوظ' : 'Saved credential' }}: {{ $provider->secret_ciphertext === null ? ($locale === 'ar' ? 'غير موجود' : 'Not saved') : ($locale === 'ar' ? 'محفوظ ومخفي' : 'Stored, hidden') }}</p>
 @if($provider->last_checked_at)<p class="muted">{{ $locale === 'ar' ? 'آخر فحص' : 'Last health check' }}: <time datetime="{{ $provider->last_checked_at->toIso8601String() }}">{{ $provider->last_checked_at->toIso8601String() }}</time></p>@endif
 <form method="post" action="{{ route('admin.providers.update', ['provider' => $provider->id, 'lang' => $locale]) }}">@csrf @method('PATCH')
