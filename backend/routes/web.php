@@ -567,6 +567,98 @@ Route::middleware('auth:web')->group(function (): void {
             ? 'تم إلغاء حقوق النشر العام؛ أزيلت أهلية الصورة للنشر.'
             : 'Media rights revoked; public eligibility removed.');
     })->middleware('throttle:10,1')->name('admin.media.revoke');
+    // T020 ADMIN-07: bounded, persisted quality evidence only. Never render
+    // article bodies, citation URLs, provider endpoints, secrets, payload
+    // hashes, idempotency keys, prompts, result refs or private storage paths.
+    Route::get('/admin/quality', function (Request $request) {
+        abort_unless($request->user()?->canAccessAdmin(), 403);
+        $request->validate([
+            'lang' => ['sometimes', 'in:ar,en'],
+        ]);
+
+        $qualityRows = \App\Models\ArticleRevision::query()
+            ->with(['article.heroAsset'])
+            ->whereHas('article', fn ($article) => $article->where('status', 'draft'))
+            ->whereRaw('article_revisions.revision_no = (SELECT MAX(latest.revision_no) FROM article_revisions AS latest WHERE latest.article_id = article_revisions.article_id)')
+            ->orderByDesc('updated_at')->orderBy('id')->limit(50)->get()
+            ->map(function ($revision): array {
+                $article = $revision->article;
+                $validation = is_array($revision->validation_json)
+                    ? $revision->validation_json : [];
+                $imageRights = $article->hero_asset_id === null
+                    || $article->heroAsset?->isPubliclyUsable() === true;
+
+                return [
+                    'article_id' => $article->id,
+                    'revision_id' => $revision->id,
+                    'title_en' => $article->title_en,
+                    'title_ar' => $article->title_ar,
+                    'revision_no' => $revision->revision_no,
+                    'revision_status' => $revision->status,
+                    'citations_passed' => ($validation['citations_passed'] ?? false) === true,
+                    'technical_passed' => ($validation['technical_passed'] ?? false) === true,
+                    'evidence_passed' => $revision->hasVerifiedEvidence(),
+                    'image_rights_passed' => $imageRights,
+                    'publication_ready' => $article->isReadyToPublish(),
+                ];
+            });
+
+        $failedJobs = \Illuminate\Support\Facades\DB::table('ai_jobs as job')
+            ->join('ai_providers as provider', 'provider.id', '=', 'job.provider_id')
+            ->whereIn('job.status', ['retry', 'failed'])
+            ->select([
+                'job.id', 'job.job_type', 'job.status',
+                'job.attempt_count', 'job.max_attempts',
+                'job.next_attempt_at', 'job.last_error_code', 'job.updated_at',
+                'provider.display_name as provider_name',
+            ])
+            ->orderByDesc('job.updated_at')->limit(50)->get();
+
+        return view('admin.quality', compact('qualityRows', 'failedJobs'));
+    })->name('admin.quality.index');
+
+    Route::post('/admin/quality/jobs/{job}/retry', function (Request $request, string $job) {
+        abort_unless($request->user()?->canAccessAdmin(), 403);
+        $request->validate(['lang' => ['sometimes', 'in:ar,en']]);
+
+        $retried = \Illuminate\Support\Facades\DB::transaction(function () use ($job): bool {
+            $record = \Illuminate\Support\Facades\DB::table('ai_jobs')
+                ->where('id', $job)->lockForUpdate()->first();
+            if (! $record) {
+                abort(404);
+            }
+
+            // "Retry now" accelerates only an already recoverable retry.
+            // It never increases max_attempts or revives terminal/active work.
+            if ($record->status !== 'retry'
+                || (int) $record->attempt_count >= (int) $record->max_attempts
+                || \Illuminate\Support\Facades\DB::table('job_leases')
+                    ->where('job_id', $job)->exists()) {
+                return false;
+            }
+
+            \Illuminate\Support\Facades\DB::table('ai_jobs')->where('id', $job)->update([
+                'next_attempt_at' => null,
+                'updated_at' => now(),
+            ]);
+            return true;
+        }, 3);
+
+        if (! $retried) {
+            return back()->withErrors([
+                'retry' => $request->query('lang') === 'ar'
+                    ? 'المهمة ليست في حالة إعادة محاولة قابلة للاسترداد، ولم يتم تغييرها.'
+                    : 'The job is not in a recoverable retry state and was not changed.',
+            ]);
+        }
+
+        return redirect()->route('admin.quality.index', [
+            'lang' => $request->query('lang') === 'ar' ? 'ar' : 'en',
+        ])->with('status', $request->query('lang') === 'ar'
+            ? 'أصبحت المهمة جاهزة لمحاولة العامل التالية ضمن حدودها الحالية.'
+            : 'The job is ready for the next worker attempt within its existing limits.');
+    })->whereUuid('job')->middleware('throttle:10,1')->name('admin.quality.retry');
+
 });
 
 Route::get('/github', function (Request $request, \App\Integrations\GitHub\PublicRepositoryDirectory $directory) {
