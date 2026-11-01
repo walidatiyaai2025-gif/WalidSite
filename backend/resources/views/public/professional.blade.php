@@ -157,6 +157,9 @@
                 : 'Review the evidence-verified public resume for your selected focus, or open the contact page to check message availability.' }}</p>
             <div class="professional-links">
                 <a href="{{ route('public.github', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'مشاريع GitHub' : 'GitHub projects' }}</a>
+                {{-- WEB-03: the gallery itself verifies publication and live public proof.
+                     Never imply that a listed case study certifies a particular skill. --}}
+                <a class="secondary" href="{{ route('public.projects', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'دراسات حالة موثقة' : 'Verified case studies' }}</a>
                 <a class="secondary" href="{{ route('public.about', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'نبذة وخبرات' : 'About' }}</a>
                 <a class="secondary" href="{{ route('public.expertise', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'المهارات' : 'Expertise' }}</a>
                 <a class="secondary" href="{{ route('public.hire', ['lang' => $locale, 'track' => $page === 'hire' ? $track : 'all']) }}">{{ $locale === 'ar' ? 'التوظيف' : 'Recruiter' }}</a>
