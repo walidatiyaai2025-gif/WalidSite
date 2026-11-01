@@ -3,6 +3,7 @@
 namespace Tests\Feature\Api;
 
 use App\AI\DurableAiQueue;
+use App\AI\MobileDiagnosisDispatcher;
 use App\Models\AiDiagnosisRequest;
 use App\Models\AiModel;
 use App\Models\AiProvider;
@@ -363,5 +364,41 @@ final class MobileAiDiagnoseTest extends TestCase
         $this->assertStringNotContainsString($private, Artisan::output());
         $this->assertNull(DB::table('ai_diagnosis_requests')
             ->where('id', $request->id)->value('request_blob'));
+    }
+
+    public function test_queued_diagnosis_refuses_revoked_provider_and_purges_private_input(): void
+    {
+        [$provider, $model] = $this->configure();
+        $user = $this->user();
+        $request = AiDiagnosisRequest::create([
+            'user_id' => $user->id,
+            'model_id' => $model->id,
+            'request_blob' => Crypt::encryptString(json_encode([
+                'question' => 'Sensitive diagnosis question',
+                'technology' => 'SQL Server',
+                'code_snippet' => 'private snippet',
+            ], JSON_THROW_ON_ERROR)),
+            'expires_at' => now()->addHour(),
+        ]);
+        $request->forceFill(['job_id' => app(DurableAiQueue::class)->enqueue(
+            $provider, 'mobile-diagnosis', 'mobile-diagnosis:'.$request->id,
+            ['classify'], 0, 1
+        )])->save();
+        $provider->forceFill(['enabled' => false])->save();
+        Http::fake();
+
+        try {
+            app(MobileDiagnosisDispatcher::class)->execute((object) [
+                'id' => $request->job_id,
+                'provider_id' => $provider->id,
+            ], 'classify', 'test-worker');
+            $this->fail('A revoked provider must not process a queued diagnosis.');
+        } catch (\RuntimeException $exception) {
+            $this->assertSame('Mobile diagnosis failed safely.', $exception->getMessage());
+        }
+
+        Http::assertNothingSent();
+        $this->assertNull($request->fresh()->request_blob);
+        $this->assertNull($request->fresh()->selected_runbook_id);
     }
 }
