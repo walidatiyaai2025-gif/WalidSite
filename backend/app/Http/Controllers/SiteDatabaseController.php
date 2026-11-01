@@ -4,17 +4,23 @@ namespace App\Http\Controllers;
 
 use App\Support\Deployment\DatabaseConfiguration;
 use App\Support\Deployment\SiteInstaller;
+use App\Support\Deployment\SiteUpdater;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Throwable;
 
 final class SiteDatabaseController extends Controller
 {
-    public function store(Request $request, SiteInstaller $installer, DatabaseConfiguration $database): RedirectResponse
+    public function store(Request $request, SiteInstaller $installer, DatabaseConfiguration $database, SiteUpdater $updater): RedirectResponse
     {
         abort_unless($installer->allowed(), 404);
         abort_unless($request->session()->get('site_setup_authorized') === true, 403);
-        abort_if($database->isConfigured(), 403);
+        // Credential recovery is allowed only if the saved connection fails.
+        // Keep a healthy database pinned; the destination must still pass the
+        // empty-database probe and all original setup protections.
+        if ($database->isConfigured()) {
+            abort_if($updater->inspect()['ready'], 403);
+        }
         if (app()->environment('production') && ! $request->isSecure()) {
             abort(403, 'HTTPS is required for setup.');
         }
