@@ -22,7 +22,7 @@ class CaseStudyStatusLocalizationTest extends TestCase
 
         foreach ($statuses as $status => [$english, $arabic]) {
             $project = Project::create([
-                'slug' => 'verified-case-'.$status,
+                'slug' => 'verified-case-'.str_replace('_', '-', $status),
                 'title' => 'Evidence-backed case',
                 'summary_en' => 'Published project with public proof',
                 'summary_ar' => 'مشروع منشور بأدلة عامة',
