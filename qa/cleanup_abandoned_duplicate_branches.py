@@ -39,6 +39,7 @@ DUPLICATES = (
     AbandonedDuplicate(156, "fix/setup-production-https-all-steps", "5f8077063851664212865ca8771f1605f8963bec", 159),
     AbandonedDuplicate(170, "fix/168-setup-schema-mismatch-recovery-guard", "c7a19ce12cdf81e3f00b00ae42688f2b2dcf3f9a", 171),
     AbandonedDuplicate(172, "fix/169-schema-mismatch-recovery-guard", "a267bf9bf2d7f459ca16e0d8a87098292d37c717", 171),
+    AbandonedDuplicate(337, "fix/332-mobile-learning-unique-page-slugs", "a23acce511542be2977082de530783a0201bcf97", 336),
 )
 
 
