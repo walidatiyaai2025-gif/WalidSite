@@ -11,7 +11,7 @@
         border:1px solid var(--wa-soft-border); border-radius:18px; background:#fff; }
     .case-field { flex: 1 1 260px; }
     .case-field label { display:block; font-weight:700; margin-bottom:6px; }
-    .case-field input { width:100%; min-height:44px; padding:10px 12px; border:1px solid #97B4C8;
+    .case-field input, .case-field select { width:100%; min-height:44px; padding:10px 12px; border:1px solid #97B4C8;
         border-radius:10px; font:inherit; }
     .case-button { display:inline-flex; align-items:center; justify-content:center; min-height:44px;
         padding:10px 18px; background:var(--wa-cta); color:#fff; border:0; border-radius:10px;
@@ -30,6 +30,9 @@
 </style>
 @endpush
 
+@php($statusLabels = $locale === 'ar'
+    ? ['completed' => 'مكتمل', 'in_progress' => 'قيد التنفيذ', 'research' => 'بحث', 'archived' => 'مؤرشف']
+    : ['completed' => 'Completed', 'in_progress' => 'In progress', 'research' => 'Research', 'archived' => 'Archived'])
 @section('content')
 <section class="site-wrap case-page" aria-labelledby="project-heading">
     <h1 id="project-heading">{{ $locale === 'ar' ? 'مشاريع ودراسات حالة موثقة' : 'Verified projects and case studies' }}</h1>
@@ -44,6 +47,15 @@
             <input id="project-search" name="q" type="search" value="{{ $search }}" maxlength="80"
                 placeholder="{{ $locale === 'ar' ? 'عنوان أو ملخص' : 'Title or summary' }}">
         </div>
+        <div class="case-field">
+            <label for="project-status">{{ $locale === 'ar' ? 'حالة المشروع' : 'Project status' }}</label>
+            <select id="project-status" name="status">
+                <option value="">{{ $locale === 'ar' ? 'كل الحالات' : 'All statuses' }}</option>
+                @foreach($statusLabels as $value => $label)
+                    <option value="{{ $value }}" @selected($status === $value)>{{ $label }}</option>
+                @endforeach
+            </select>
+        </div>
         <button class="case-button" type="submit">{{ $locale === 'ar' ? 'بحث' : 'Search' }}</button>
     </form>
 
@@ -55,7 +67,7 @@
         <div class="case-grid">
             @foreach($projects as $project)
                 <article class="case-card">
-                    <p class="case-meta">{{ $project['status'] }}</p>
+                    <p class="case-meta">{{ $statusLabels[$project['status']] ?? $project['status'] }}</p>
                     <h2>{{ $project['name'] }}</h2>
                     <p>{{ $project['summary'] }}</p>
                     @if (!empty($project['role']))

@@ -60,6 +60,40 @@ class PublicPortfolioAndContactTest extends TestCase
         $this->get('/projects?q=Missing')->assertOk()->assertDontSee('Documented Project');
     }
 
+    public function test_project_status_filter_is_localized_composable_and_only_shows_verified_evidence(): void
+    {
+        $completed = $this->project('completed-case');
+        $this->evidence($completed);
+
+        $research = $this->project('research-case');
+        $research->update(['status' => 'research']);
+        $this->evidence($research);
+
+        $unsafe = $this->project('unsafe-research');
+        $unsafe->update(['status' => 'research']);
+        $this->evidence($unsafe, 'public', true, 'https://localhost/internal');
+
+        $this->get('/projects?status=research&q=Documented&lang=ar')->assertOk()
+            ->assertSee('dir="rtl"', false)
+            ->assertSee('name="status"', false)
+            ->assertSee('value="research" selected', false)
+            ->assertSee('research-case')
+            ->assertSee('حالة المشروع')
+            ->assertDontSee('completed-case')
+            ->assertDontSee('unsafe-research');
+
+        $this->get('/projects?status=completed')->assertOk()
+            ->assertSee('completed-case')
+            ->assertDontSee('research-case');
+
+        // Non-scalar and unknown status input fails to the safe "all" filter.
+        $this->get('/projects?status[]=research')->assertOk()
+            ->assertSee('completed-case')->assertSee('research-case');
+        $this->get('/projects?status=unpublished')->assertOk()
+            ->assertSee('completed-case')->assertSee('research-case')
+            ->assertDontSee('unsafe-research');
+    }
+
     public function test_case_studies_fail_closed_for_private_draft_and_unverified_evidence(): void
     {
         $private = $this->project('internal-project', 'private');

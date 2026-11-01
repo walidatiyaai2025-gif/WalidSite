@@ -238,7 +238,16 @@ foreach (['about', 'expertise', 'hire'] as $professionalPage) {
 Route::get('/projects', function (Request $request) {
     $rawSearch = $request->query('q', '');
     $search = is_string($rawSearch) ? mb_substr(trim($rawSearch), 0, 80) : '';
+    // Never interpolate untrusted filter values into the query or reveal
+    // drafts: the public evidence gate remains authoritative.
+    $rawStatus = $request->query('status', '');
+    $status = is_string($rawStatus)
+        && in_array($rawStatus, ['completed', 'in_progress', 'research', 'archived'], true)
+            ? $rawStatus : '';
     $query = \App\Models\Project::query()->publiclyVerified();
+    if ($status !== '') {
+        $query->where('status', $status);
+    }
 
     if ($search !== '') {
         $term = '%'.addcslashes($search, '%_\\').'%';
@@ -257,7 +266,7 @@ Route::get('/projects', function (Request $request) {
         ->filter(fn (array $project): bool => count($project['evidence_urls'] ?? []) > 0)
         ->values();
 
-    return view('public.projects', compact('projects', 'paginated', 'search'));
+    return view('public.projects', compact('projects', 'paginated', 'search', 'status'));
 })->name('public.projects');
 
 Route::get('/projects/{slug}', function (Request $request, string $slug) {
