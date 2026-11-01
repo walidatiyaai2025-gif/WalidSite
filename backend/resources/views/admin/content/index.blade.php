@@ -9,7 +9,7 @@
 :root{color-scheme:light;--nav:#163B66;--ink:#142E4D;--link:#126DE1;--edge:#D3E3ED;--bg:#F5F9FC}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 Inter,Arial,sans-serif}
 :lang(ar) body{font-family:Tajawal,Arial,sans-serif}
-a{color:var(--link)}a:focus-visible,button:focus-visible{outline:3px solid #00A999;outline-offset:3px}
+a{color:var(--link)}a:focus-visible,button:focus-visible,select:focus-visible,input:focus-visible{outline:3px solid #00A999;outline-offset:3px}
 .skip{position:absolute;top:-90px;inset-inline-start:10px;padding:12px;background:white}.skip:focus{top:10px}
 .shell{display:grid;grid-template-columns:220px minmax(0,1fr);min-height:100vh}
 aside{background:var(--nav);color:#fff;padding:22px}aside a{color:#fff;display:block;padding:9px;min-height:44px}
@@ -18,7 +18,7 @@ main{padding:clamp(18px,4vw,44px);min-width:0}.top{display:flex;justify-content:
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,360px),1fr));gap:16px}
 .status{font-weight:700}.muted{color:#55718B}.actions{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
 button{font:inherit;min-height:44px;border:0;border-radius:9px;padding:10px 16px;background:var(--link);color:white;cursor:pointer}
-button.secondary{background:var(--nav)}.article{border-bottom:1px solid var(--edge);padding:12px 0}
+button.secondary{background:var(--nav)}.article{border-bottom:1px solid var(--edge);padding:12px 0}.exception{border-inline-start:4px solid #8B5A00;padding-inline-start:14px}.field{margin:12px 0}.field label{display:block;font-weight:700;margin-bottom:5px}.field select{width:100%;min-height:44px;border:1px solid #97B4C8;border-radius:9px;padding:8px 10px;background:#fff;color:var(--ink);font:inherit}.confirm{display:flex;gap:8px;align-items:flex-start;margin:12px 0}.confirm input{margin-top:6px}
 table{width:100%;border-collapse:collapse}td,th{text-align:start;border-bottom:1px solid var(--edge);padding:10px;overflow-wrap:anywhere}
 @media(max-width:720px){.shell{grid-template-columns:1fr}aside{padding:12px}aside a{display:inline-block}table{font-size:14px}}
 </style>    @include('partials.web-fonts')
@@ -58,9 +58,41 @@ table{width:100%;border-collapse:collapse}td,th{text-align:start;border-bottom:1
 <p><strong>{{ $locale === 'ar' ? 'جاهز للنشر' : 'Publication ready' }}:</strong> {{ $selected->isReadyToPublish() ? ($locale === 'ar' ? 'نعم' : 'Yes') : ($locale === 'ar' ? 'لا' : 'No') }}</p>
 <p><strong>{{ $locale === 'ar' ? 'حقوق الصورة الرئيسية' : 'Hero image rights' }}:</strong>
 {{ $selected->hero_asset_id ? ($selected->heroAsset?->isPubliclyUsable() ? ($locale === 'ar' ? 'مجازة' : 'Cleared') : ($locale === 'ar' ? 'غير مجازة' : 'Not cleared')) : ($locale === 'ar' ? 'لا توجد صورة' : 'No image') }}</p>
+@php
+$latestRevision = $revisions->first();
+$latestChecks = is_array($latestRevision?->validation_json) ? $latestRevision->validation_json : [];
+$requiresExceptionReview = $latestRevision !== null
+    && (($latestChecks['risk_level'] ?? null) !== 'low'
+        || ($latestChecks['contains_professional_claims'] ?? null) !== false);
+@endphp
 @if($selected->status === 'published')
 <form method="post" action="{{ route('admin.content.unpublish', ['article'=>$selected->id,'lang'=>$locale]) }}">@csrf
 <button type="submit" class="secondary">{{ $locale === 'ar' ? 'إلغاء النشر' : 'Unpublish article' }}</button></form>
+@elseif($selected->isReadyToPublish() && $requiresExceptionReview)
+<div class="exception" role="region" aria-labelledby="exception-review-title">
+<h3 id="exception-review-title">{{ $locale === 'ar' ? 'مراجعة استثنائية مطلوبة' : 'Exceptional owner review required' }}</h3>
+<p class="muted">{{ $locale === 'ar'
+    ? 'هذا الإصدار لا يطابق سياسة النشر العادي. لا يمكن نشره إلا بقرار صريح من المالك مع سبب مراجعة مسجل، وبعد بقاء جميع بوابات الأدلة وحقوق الصور ناجحة.'
+    : 'This revision does not qualify for ordinary publishing. It requires an explicit owner decision with a recorded review reason, while all evidence and image-rights gates must remain valid.' }}</p>
+@if(auth()->user()?->hasRole('owner'))
+<form method="post" action="{{ route('admin.editorial.manual', ['article'=>$selected->id,'lang'=>$locale]) }}">@csrf
+<div class="field"><label for="exception-reason">{{ $locale === 'ar' ? 'سبب القرار' : 'Decision reason' }}</label>
+<select id="exception-reason" name="reason" required>
+<option value="">{{ $locale === 'ar' ? 'اختر سببًا موثقًا' : 'Select a recorded reason' }}</option>
+<option value="source_reviewed">{{ $locale === 'ar' ? 'تمت مراجعة المصادر' : 'Sources reviewed' }}</option>
+<option value="technical_reviewed">{{ $locale === 'ar' ? 'تمت المراجعة الفنية' : 'Technical review completed' }}</option>
+<option value="legal_reviewed">{{ $locale === 'ar' ? 'تمت المراجعة القانونية' : 'Legal review completed' }}</option>
+</select></div>
+<label class="confirm"><input type="checkbox" name="confirmed" value="1" required>
+<span>{{ $locale === 'ar'
+    ? 'أؤكد أنني المالك وأنني راجعت هذا الإصدار وأتحمل قرار النشر الاستثنائي.'
+    : 'I confirm that I am the owner, reviewed this revision, and am making this exceptional publication decision.' }}</span></label>
+<button type="submit">{{ $locale === 'ar' ? 'سجّل القرار وانشر' : 'Record decision and publish' }}</button>
+</form>
+@else
+<p role="status"><strong>{{ $locale === 'ar' ? 'يتطلب موافقة المالك.' : 'Owner approval is required.' }}</strong></p>
+@endif
+</div>
 @elseif($selected->isReadyToPublish())
 <form method="post" action="{{ route('admin.content.publish', ['article'=>$selected->id,'lang'=>$locale]) }}">@csrf
 <button type="submit">{{ $locale === 'ar' ? 'اعتماد ونشر الإصدار الموثّق' : 'Approve and publish verified revision' }}</button></form>
