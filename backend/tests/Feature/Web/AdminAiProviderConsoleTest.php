@@ -180,7 +180,6 @@ class AdminAiProviderConsoleTest extends TestCase
 
     public function test_arabic_provider_workflow_preserves_locale_and_secures_credentials(): void
     {
-        Http::fake();
         $this->actingAs($this->account(), 'web');
 
         $this->get('/admin/ai/providers?lang=ar')->assertOk()
