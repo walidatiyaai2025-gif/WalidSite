@@ -562,6 +562,7 @@ class EditorialPipelineTest extends TestCase
     public function test_artwork_review_rejects_traversal_nested_paths_and_mime_mismatch_before_storage(): void
     {
         Storage::fake('local');
+        $reviewer = $this->owner();
         $uuid = (string) Str::uuid();
         foreach ([
             'ai-artwork/../private/image.png',
@@ -582,7 +583,7 @@ class EditorialPipelineTest extends TestCase
             ]);
             try {
                 app(\App\AI\EditorialArtworkRights::class)->approve(
-                    $asset, $this->owner(), true, true
+                    $asset, $reviewer, true, true
                 );
                 $this->fail('Unsafe path reached the artwork approval flow.');
             } catch (DomainException $exception) {
