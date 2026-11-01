@@ -29,6 +29,9 @@ final class PublicRunbookController extends Controller
             ->where('r.offline_ok', true)
             ->whereNotNull('r.validated_at')
             ->where('r.validated_at', '<=', now())
+            // A new checksum-matching version cannot inherit a review that
+            // happened BEFORE its snapshot was created.
+            ->whereColumn('r.validated_at', '>=', 'v.created_at')
             ->where('r.version', '>', 0)
             ->select(
                 'r.id', 'r.slug', 'r.title', 'r.body_md', 'r.version',
