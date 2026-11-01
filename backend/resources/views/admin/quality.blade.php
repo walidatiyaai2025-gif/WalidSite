@@ -70,6 +70,9 @@ a{color:var(--link)}a:focus-visible,button:focus-visible{outline:3px solid #00A9
 </tr>
 @endforeach
 </tbody></table></div>
+<nav aria-label="{{ $locale === 'ar' ? 'صفحات مراجعة المسودات' : 'Editorial draft pages' }}">
+{{ $qualityRows->links() }}
+</nav>
 @endif
 </section>
 
