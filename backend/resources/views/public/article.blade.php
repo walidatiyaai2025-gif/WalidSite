@@ -1,7 +1,7 @@
-@php($locale = request()->query('lang') === 'ar' ? 'ar' : 'en')
 {{-- Preserve only validated, on-site browse context. Never accept caller
      supplied return URLs, extra query keys, arrays or unapproved content. --}}
 @php
+    $locale = request()->query('lang') === 'ar' ? 'ar' : 'en';
     $rawBrowse = request()->query();
     $rawSearch = $rawBrowse['q'] ?? null;
     $browseSearch = is_string($rawSearch) && mb_strlen(trim($rawSearch)) <= 80
