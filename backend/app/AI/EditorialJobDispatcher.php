@@ -50,7 +50,11 @@ final class EditorialJobDispatcher
             throw new DomainException('Selected provider cannot generate images.');
         }
         $kind = $image ? 'editorial-art' : 'editorial-draft';
-        $key = 'editorial:'.($image ? 'image' : 'draft').':'.$revision->id.':'.$model;
+        // A queued draft is bound to the exact source text, citations and
+        // article topic. No prompt, URL or private source is stored in the key.
+        // Sixteen SHA-256 hex digits keep the maximum key at 160 characters.
+        $key = 'editorial:'.($image ? 'image' : 'draft').':'.$revision->id.':'
+            .$model.':'.$this->intentFingerprint($revision);
 
         return $this->queue->enqueue($provider, $kind, $key, ['generate'],
             $estimatedCostMinor);
@@ -70,7 +74,7 @@ final class EditorialJobDispatcher
     {
         if ($step !== 'generate'
             || ! preg_match(
-                '/^editorial:(draft|image):([0-9a-f-]{36}):([A-Za-z0-9_.:\-]{1,90})$/D',
+                '/^editorial:(draft|image):([0-9a-f-]{36}):([A-Za-z0-9_.:\-]{1,90}):([a-f0-9]{16})$/D',
                 $job->idempotency_key, $parts
             ) || ($parts[1] === 'image') !== $image) {
             throw new DomainException('Unrecognized editorial job intent.');
@@ -79,7 +83,8 @@ final class EditorialJobDispatcher
         $revision = ArticleRevision::query()->findOrFail($parts[2]);
         $article = $revision->article;
         if ($revision->status !== 'draft'
-            || $article->revisions()->orderByDesc('revision_no')->value('id') !== $revision->id) {
+            || $article->revisions()->orderByDesc('revision_no')->value('id') !== $revision->id
+            || ! hash_equals($parts[4], $this->intentFingerprint($revision))) {
             throw new DomainException('Editorial review or content has changed since queueing.');
         }
         $provider = AiProvider::query()->findOrFail($job->provider_id);
@@ -98,4 +103,28 @@ final class EditorialJobDispatcher
             $job->id, $owner, $estimate);
         return 'editorial/revisions/'.$draft->id;
     }
+
+    /**
+     * Opaque snapshot of all editorial intent consumed by the AI generator.
+     * Refreshing the revision at admission and reading it again at execution
+     * prevents silent prompt/source/topic substitution while jobs are queued.
+     */
+    private function intentFingerprint(ArticleRevision $revision): string
+    {
+        $article = $revision->article;
+        if (! $article) {
+            throw new DomainException('Editorial article is missing.');
+        }
+
+        return substr(hash('sha256', json_encode([
+            'body' => $revision->body_md,
+            'citations' => $revision->citations_json,
+            'slug' => $article->slug,
+            'title_en' => $article->title_en,
+            'title_ar' => $article->title_ar,
+            'canonical_lang' => $article->canonical_lang,
+            'article_status' => $article->status,
+        ], JSON_THROW_ON_ERROR)), 0, 16);
+    }
+
 }
