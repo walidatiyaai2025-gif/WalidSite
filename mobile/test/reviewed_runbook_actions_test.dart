@@ -82,6 +82,7 @@ void main() {
 
     await tester.tap(find.byKey(const Key('online-runbook-copy')));
     await tester.pumpAndSettle();
+    await reveal(tester, const Key('online-runbook-action-message'));
     expect(find.text('Reviewed steps copied.'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('online-runbook-share')));
@@ -91,6 +92,7 @@ void main() {
     expect(sharedText, contains('# Reviewed steps'));
     expect(sharedText, contains('Reviewed version: 4'));
     expect(sharedText, isNot(contains(bearer)));
+    await reveal(tester, const Key('online-runbook-action-message'));
     expect(find.text('Share options opened.'), findsOneWidget);
   });
 
