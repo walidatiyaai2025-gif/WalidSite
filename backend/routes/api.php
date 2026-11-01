@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\PublicAiExpertiseController;
 use App\Http\Controllers\Api\PublicHomeController;
 use App\Http\Controllers\Api\MobileHomeController;
 use App\Http\Controllers\Api\MobileSavedController;
+use App\Http\Controllers\Api\MobileInterviewController;
 use App\Http\Controllers\Api\MobileAiDiagnoseController;
 use App\Http\Controllers\Api\MobileAiJobStatusController;
 use App\Http\Controllers\Api\MobileBootstrapController;
@@ -41,6 +42,9 @@ Route::middleware([RequireSecureApiTransport::class, 'auth:sanctum'])->group(fun
     Route::delete('/mobile/saved/{resource_type}/{resource_id}', [MobileSavedController::class, 'destroy'])
         ->where('resource_type', 'article|runbook')->whereUuid('resource_id')
         ->name('api.mobile.saved.destroy')->middleware('throttle:30,1');
+    // MOBILE-09: private source-backed technical self-review; no AI scoring.
+    Route::post('/mobile/interview', MobileInterviewController::class)
+        ->name('api.mobile.interview')->middleware('throttle:20,1');
     // MOBILE-03: authenticated, consent-based diagnosis can only select an
     // already reviewed public solution. The controller applies route quotas.
     Route::post('/mobile/ai/diagnose', MobileAiDiagnoseController::class)
