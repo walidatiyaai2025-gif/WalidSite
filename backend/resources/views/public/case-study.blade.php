@@ -15,6 +15,9 @@
 .study p{color:var(--wa-body)}
 </style>
 @endpush
+@php($statusLabels = $locale === 'ar'
+    ? ['completed' => 'مكتمل', 'in_progress' => 'قيد التنفيذ', 'research' => 'بحث', 'archived' => 'مؤرشف']
+    : ['completed' => 'Completed', 'in_progress' => 'In progress', 'research' => 'Research', 'archived' => 'Archived'])
 @section('content')
 <article class="site-wrap study">
 <a href="{{ route('public.projects', ['lang'=>$locale]) }}">{{ $locale === 'ar' ? 'كل المشاريع' : 'All projects' }}</a>
@@ -22,7 +25,11 @@
 <p>{{ $project['summary'] }}</p>
 <section aria-labelledby="case-facts">
 <h2 id="case-facts">{{ $locale === 'ar' ? 'تفاصيل تم التحقق منها' : 'Verified facts' }}</h2>
-<p>{{ $locale === 'ar' ? 'الحالة' : 'Status' }}: {{ $project['status'] }}</p>
+<p>{{ $locale === 'ar' ? 'الحالة' : 'Status' }}: {{ $statusLabels[$project['status']] ?? ($locale === 'ar' ? 'غير محددة' : 'Unavailable') }}</p>
+@if(isset($statusLabels[$project['status']]))
+<p><a href="{{ route('public.projects', ['lang' => $locale, 'status' => $project['status']]) }}">
+{{ $locale === 'ar' ? 'عرض مشاريع أخرى بالحالة نفسها' : 'View projects with this status' }}</a></p>
+@endif
 @if(!empty($project['role']))
 <p>{{ $locale === 'ar' ? 'الدور' : 'Role' }}: {{ $project['role'] }}</p>
 @endif
