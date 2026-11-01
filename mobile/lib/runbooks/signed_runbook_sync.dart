@@ -128,7 +128,14 @@ class SignedRunbookSource {
         verified.isAfter(DateTime.now().toUtc().add(const Duration(minutes: 5)))) {
       throw const FormatException('Runbook publisher verification time missing/invalid');
     }
-    return pack;
+    return OfflineRunbookPack(
+      version: pack.version,
+      source: pack.source,
+      lastSynced: pack.lastSynced,
+      verifiedAt: pack.verifiedAt,
+      items: pack.items,
+      signedVerified: true,
+    );
   }
 }
 
