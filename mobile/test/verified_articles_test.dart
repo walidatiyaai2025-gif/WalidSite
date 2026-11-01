@@ -21,6 +21,9 @@ void main() {
       'https://articles.example.org/',
       'https://articles.example.org:443',
       'https://PUBLIC.example.org',
+      'https://myhome.example.org',
+      'https://lantern.example.org',
+      'https://svc-tools.example.org',
     ]) {
       final uri = VerifiedArticleReader.validatedOrigin(trusted);
       expect(uri, isNotNull, reason: 'Public HTTPS origin refused: $trusted');
@@ -45,6 +48,17 @@ void main() {
       'https://articles.example.invalid',
       'https://articles.example.onion',
       'https://api.internal.example.org.internal',
+      'https://resolver.localdomain',
+      'https://service.svc',
+      'https://tenant.svc.cluster.localdomain',
+      'https://router.lan',
+      'https://console.home',
+      'https://gateway.home.arpa',
+      'https://metadata.arpa',
+      'https://portal.corp',
+      'https://service.intranet',
+      'https://database.private',
+      'https://PRIVATE.LAN:443',
       'https://articles.example.org:8443',
       'https://articles.example.org:80',
       'https://writer:secret@articles.example.org',
@@ -94,6 +108,16 @@ void main() {
     for (final unsafe in <String>[
       'https://localhost.example.internal/guide',
       'https://docs.private.local/guide',
+      'https://service.svc/guide',
+      'https://node.localdomain/guide',
+      'https://printer.lan/guide',
+      'https://dashboard.home/guide',
+      'https://gateway.home.arpa/guide',
+      'https://resolver.arpa/guide',
+      'https://cluster.corp/guide',
+      'https://dashboard.intranet/guide',
+      'https://datastore.private/guide',
+      'https://SYSTEM.SVC:443/private',
       'https://docs.example.test/guide',
       'https://docs.example.invalid/guide',
       'https://docs.example.org:8443/guide',
@@ -128,6 +152,9 @@ void main() {
       'https://docs.example.org/guide?page=2&lang=ar',
       'https://docs.example.org/guide?q=cache%20miss',
       'https://docs.example.org/guide?q=50%25',
+      'https://myhome.example.org/guide?lang=ar',
+      'https://lantern.example.org/guide?page=2',
+      'https://svc-tools.example.org/guide?q=cache',
     ]) {
       expect(
         VerifiedArticle.parseList(safeJson.replaceFirst(
