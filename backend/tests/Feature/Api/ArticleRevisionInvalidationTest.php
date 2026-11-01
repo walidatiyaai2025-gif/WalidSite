@@ -107,6 +107,48 @@ class ArticleRevisionInvalidationTest extends TestCase
             ->assertJsonPath('data.body_markdown', '# New unreviewed information');
     }
 
+    public function test_reviewed_revision_cannot_be_transplanted_to_a_different_article(): void
+    {
+        [$original, $revision] = $this->reviewedArticle();
+        $other = Article::create([
+            'slug' => 'unreviewed-second-article',
+            'title_en' => 'New, unreviewed claim',
+            'title_ar' => 'ادعاء جديد لم يراجع',
+            'canonical_lang' => 'en',
+        ]);
+
+        try {
+            $revision->update(['article_id' => $other->id]);
+            $this->fail('An approved revision was reparented without reviewing the new article.');
+        } catch (DomainException $exception) {
+            $this->assertStringContainsString('immutable', $exception->getMessage());
+        }
+
+        $this->assertSame($original->id, $revision->fresh()->article_id);
+        $this->assertSame(1, $revision->fresh()->revision_no);
+        $this->assertFalse($other->isReadyToPublish());
+        $this->getJson('/api/v1/public/articles/'.$original->slug)
+            ->assertOk()->assertJsonPath('data.body_markdown', '# Reviewed content');
+        $this->getJson('/api/v1/public/articles/'.$other->slug)->assertNotFound();
+    }
+
+    public function test_published_revision_number_cannot_be_reassigned_to_bypass_pin(): void
+    {
+        [$article, $revision] = $this->reviewedArticle();
+
+        try {
+            $revision->update(['revision_no' => 2]);
+            $this->fail('An approved revision number was rewritten after publication.');
+        } catch (DomainException $exception) {
+            $this->assertStringContainsString('immutable', $exception->getMessage());
+        }
+
+        $this->assertSame(1, $revision->fresh()->revision_no);
+        $this->assertSame(1, $article->fresh()->published_revision_no);
+        $this->getJson('/api/v1/public/articles/'.$article->slug)
+            ->assertOk()->assertJsonPath('data.body_markdown', '# Reviewed content');
+    }
+
     public function test_unmodified_validated_revision_keeps_published_snapshot(): void
     {
         [$article, $revision] = $this->reviewedArticle();

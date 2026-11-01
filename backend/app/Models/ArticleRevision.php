@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use DomainException;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -35,6 +36,14 @@ class ArticleRevision extends Model
         // Updating either in place must never inherit earlier approval,
         // including when a caller submits "validated" in the same update.
         static::updating(static function (self $revision): void {
+            // The article association and sequence number identify the exact
+            // reviewed snapshot. Neither may be rewritten after creation:
+            // reparenting or renumbering would transfer editorial approval to
+            // another title or publication pin without a new review.
+            if ($revision->isDirty(['article_id', 'revision_no'])) {
+                throw new DomainException('Article revision identity is immutable after creation.');
+            }
+
             if ($revision->isDirty(['body_md', 'citations_json'])) {
                 $revision->status = 'draft';
                 $revision->validation_json = [
