@@ -59,7 +59,7 @@ final class ExpertiseCategoryFilterTest extends TestCase
             $unfiltered = $this->get(route('public.expertise', ['lang' => $locale]))
                 ->assertOk()->assertSee('role="search"', false);
             foreach (array_keys($categories) as $key) {
-                $unfiltered->assertSee('Claim '.$key.'-skill');
+                $unfiltered->assertSee(($locale === 'ar' ? 'مهارة ' : 'Claim ').$key.'-skill');
             }
             foreach ($categories as $key => $category) {
                 $response = $this->get(route('public.expertise', [
@@ -68,13 +68,13 @@ final class ExpertiseCategoryFilterTest extends TestCase
                     ->assertSee('id="expertise-category"', false)
                     ->assertSee('name="category"', false)
                     ->assertSee('value="'.$key.'" selected', false)
-                    ->assertSee('Claim '.$key.'-skill')
+                    ->assertSee(($locale === 'ar' ? 'مهارة ' : 'Claim ').$key.'-skill')
                     ->assertSee($locale === 'ar' ? 'إزالة التصفية' : 'Clear filter')
-                    ->assertDontSee('Claim unverified-database')
-                    ->assertDontSee('Claim other-owner-skill');
+                    ->assertDontSee(($locale === 'ar' ? 'مهارة ' : 'Claim ').'unverified-database')
+                    ->assertDontSee(($locale === 'ar' ? 'مهارة ' : 'Claim ').'other-owner-skill');
                 foreach (array_keys($categories) as $otherKey) {
                     if ($otherKey !== $key) {
-                        $response->assertDontSee('Claim '.$otherKey.'-skill');
+                        $response->assertDontSee(($locale === 'ar' ? 'مهارة ' : 'Claim ').$otherKey.'-skill');
                     }
                 }
             }
