@@ -67,6 +67,20 @@ final class SearchOverflowDiscoveryTest extends TestCase
             'canonical_lang' => 'en',
         ]);
 
+        // A public project without an approved evidence record cannot be
+        // included in either the default or project-only result set.
+        Project::create([
+            'slug' => 'overflow-private-project',
+            'title' => $term.' project without approved evidence',
+            'summary_en' => 'Unverified portfolio work',
+            'summary_ar' => 'مشروع غير موثق',
+            'role_en' => 'Engineer',
+            'role_ar' => 'مهندس',
+            'status' => 'completed',
+            'visibility' => 'public',
+            'published_at' => now()->subDay(),
+        ]);
+
         foreach (['en', 'ar'] as $locale) {
             $searchUrl = route('public.search', ['lang' => $locale, 'q' => $term]);
             $response = $this->get($searchUrl)->assertOk()
@@ -87,6 +101,35 @@ final class SearchOverflowDiscoveryTest extends TestCase
                     ->assertSee('Browse all matching projects')
                     ->assertSee('Showing at most 10 verified matches per type.');
             }
+
+            // WEB-13 content-type selector is server-enforced, not a
+            // cosmetic client-side hide. The other model is not queried
+            // into the preview, while full scoped result links stay valid.
+            $articlesOnly = $this->get(route('public.search', [
+                'lang' => $locale, 'q' => $term, 'type' => 'articles',
+            ]))->assertOk()
+                ->assertSee('value="articles" selected', false)
+                ->assertSee('overflow-article-1')
+                ->assertDontSee('overflow-project-')
+                ->assertDontSee('overflow-private-article')
+                ->assertSee('href="'.e(route('public.blog', [
+                    'lang' => $locale, 'q' => $term,
+                ])).'"', false);
+            $this->assertSame(10, substr_count($articlesOnly->getContent(), '/blog/overflow-article-'));
+            $articlesOnly->assertDontSee('Browse all matching projects');
+
+            $projectsOnly = $this->get(route('public.search', [
+                'lang' => $locale, 'q' => $term, 'type' => 'projects',
+            ]))->assertOk()
+                ->assertSee('value="projects" selected', false)
+                ->assertSee('overflow-project-1')
+                ->assertDontSee('overflow-article-')
+                ->assertDontSee('overflow-private-project')
+                ->assertSee('href="'.e(route('public.projects', [
+                    'lang' => $locale, 'q' => $term,
+                ])).'"', false);
+            $this->assertSame(10, substr_count($projectsOnly->getContent(), '/projects/overflow-project-'));
+            $projectsOnly->assertDontSee('Browse all matching articles');
 
             // Quick search intentionally remains bounded to ten valid rows.
             // The full filtered listings must not silently lose the 11th.
