@@ -59,7 +59,8 @@ Route::get('/', function (Request $request) {
     $featuredArticles = collect();
     foreach (\App\Models\Article::query()->publiclyVisible()
         ->orderByDesc('published_at')->orderBy('id')->lazy(100) as $article) {
-        if ($article->publicRevision() === null) {
+        if (preg_match('/\A[A-Za-z0-9-]+\z/D', $article->slug) !== 1
+            || $article->publicRevision() === null) {
             continue;
         }
         $featuredArticles->push($article);
@@ -668,7 +669,8 @@ Route::get('/blog', function (Request $request) {
     $publicCategoryIds = [];
     foreach (\App\Models\Article::query()->publiclyVisible()
         ->with('categories:id')->orderBy('id')->lazy(100) as $candidate) {
-        if ($candidate->publicRevision() === null) {
+        if (preg_match('/\A[A-Za-z0-9-]+\z/D', $candidate->slug) !== 1
+            || $candidate->publicRevision() === null) {
             continue;
         }
         foreach ($candidate->categories as $candidateCategory) {
@@ -691,7 +693,8 @@ Route::get('/blog', function (Request $request) {
     $entries = collect();
     foreach ($query->orderByDesc('published_at')->orderBy('id')->lazy(100) as $article) {
         $revision = $article->publicRevision();
-        if ($revision === null) {
+        if (preg_match('/\A[A-Za-z0-9-]+\z/D', $article->slug) !== 1
+            || $revision === null) {
             continue;
         }
         if ($total >= $offset && $entries->count() < $perPage) {
@@ -726,7 +729,8 @@ Route::get('/blog/{slug}', function (Request $request, string $slug) {
             ->whereHas('categories', fn ($query) => $query->whereIn('categories.id', $categoryIds))
             ->orderByDesc('articles.published_at')->orderBy('articles.id')
             ->lazy(100) as $candidate) {
-            if ($candidate->publicRevision() === null) {
+            if (preg_match('/\A[A-Za-z0-9-]+\z/D', $candidate->slug) !== 1
+            || $candidate->publicRevision() === null) {
                 continue;
             }
             $related->push($candidate);
@@ -746,7 +750,8 @@ Route::get('/lab', function () {
     // must be filtered before applying the 15-link lab display limit.
     foreach (\App\Models\Article::query()->publiclyVisible()
         ->orderByDesc('published_at')->orderBy('id')->lazy(100) as $article) {
-        if ($article->publicRevision() === null) {
+        if (preg_match('/\A[A-Za-z0-9-]+\z/D', $article->slug) !== 1
+            || $article->publicRevision() === null) {
             continue;
         }
         $articles->push($article);
@@ -777,7 +782,8 @@ Route::get('/search', function (Request $request) {
                     ->whereColumn('article_revisions.revision_no', 'articles.published_revision_no')
                     ->whereRaw("article_revisions.body_md LIKE ? ESCAPE '!'", [$term])))
             ->orderBy('id')->lazy(100) as $article) {
-            if ($article->publicRevision() === null) {
+            if (preg_match('/\A[A-Za-z0-9-]+\z/D', $article->slug) !== 1
+            || $article->publicRevision() === null) {
                 continue;
             }
             $articles->push($article);
