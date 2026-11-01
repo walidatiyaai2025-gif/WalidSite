@@ -12,7 +12,7 @@
 .ed-grid .ed-card{margin:0}.ed-card h2{color:var(--wa-primary)}
 .ed-form{display:flex;flex-wrap:wrap;align-items:end;gap:12px}.ed-form label{display:block;font-weight:700}
 .ed-form input,.ed-form select{font:inherit;padding:10px;border:1px solid #97B4C8;border-radius:10px;min-height:44px;min-width:190px}
-.ed-form button{min-height:44px;background:var(--wa-cta);color:#fff;border:0;border-radius:10px;padding:10px 18px;font:inherit;font-weight:700}
+.ed-form .ed-clear{display:inline-flex;align-items:center;min-height:44px;padding:10px 12px;font-weight:700;text-decoration:underline;text-underline-offset:3px}.ed-form .ed-clear:focus-visible{outline:3px solid var(--wa-primary);outline-offset:3px}.ed-form button{min-height:44px;background:var(--wa-cta);color:#fff;border:0;border-radius:10px;padding:10px 18px;font:inherit;font-weight:700}
 .article-content{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.9;color:var(--wa-body)}
 </style>
 @endpush
@@ -24,6 +24,9 @@
 <label for="all-q">{{ $locale === 'ar' ? 'كلمات البحث' : 'Search terms' }}</label>
 <input id="all-q" name="q" maxlength="80" type="search" value="{{ $search }}">
 <button type="submit">{{ $locale === 'ar' ? 'بحث' : 'Search' }}</button>
+@if($search !== '')
+<a class="ed-clear" href="{{ route('public.search', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'مسح البحث' : 'Clear search' }}</a>
+@endif
 </form>
 @if($search === '')
 <div class="ed-card" role="status">{{ $locale === 'ar' ? 'اكتب كلمة للبحث في المقالات والمشاريع العامة الموثقة.' : 'Enter a query to search published, evidence-verified articles and projects.' }}</div>
