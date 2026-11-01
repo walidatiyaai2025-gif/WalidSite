@@ -72,7 +72,10 @@ button.secondary{background:var(--primary)}.muted{color:#55718B}.actions{display
 <input type="number" id="concurrent-new" name="concurrent_limit" min="1" max="20" value="1"></div>
 <div class="field"><label for="timeout-new">{{ $locale === 'ar' ? 'المهلة (ثوان)' : 'Timeout (seconds)' }}</label>
 <input type="number" id="timeout-new" name="timeout_seconds" min="1" max="30" value="5"></div>
+<div class="field"><label for="priority-new">{{ $locale === 'ar' ? 'أولوية التوجيه (الأقل أولاً)' : 'Routing priority (lower first)' }}</label>
+<input type="number" id="priority-new" name="routing_priority" min="1" max="999" required value="{{ old('routing_priority', 100) }}"></div>
 </div>
+<p class="muted">{{ $locale === 'ar' ? 'الأولوية تحدد ترتيب المزودين المؤهلين في التوجيه؛ لا تضمن التشغيل دون فحص الصحة وحدود الاستخدام.' : 'Priority orders eligible providers in routing; it does not bypass health or budget eligibility checks.' }}</p>
 <input type="hidden" name="enabled" value="0">
 <button type="submit">{{ $locale === 'ar' ? 'إضافة معطّلاً افتراضيًا' : 'Create disabled provider' }}</button>
 </form>
@@ -106,6 +109,8 @@ button.secondary{background:var(--primary)}.muted{color:#55718B}.actions{display
 <input type="number" id="limit-{{ $provider->id }}" name="concurrent_limit" min="1" max="20" value="{{ $provider->concurrent_limit }}"></div>
 <div class="field"><label for="timeout-{{ $provider->id }}">{{ $locale === 'ar' ? 'مهلة الاتصال' : 'Timeout' }}</label>
 <input type="number" id="timeout-{{ $provider->id }}" name="timeout_seconds" min="1" max="30" value="{{ $provider->timeout_seconds }}"></div>
+<div class="field"><label for="priority-{{ $provider->id }}">{{ $locale === 'ar' ? 'أولوية التوجيه (الأقل أولاً)' : 'Routing priority (lower first)' }}</label>
+<input type="number" id="priority-{{ $provider->id }}" name="routing_priority" min="1" max="999" required value="{{ $provider->routing_priority }}"></div>
 <div class="field"><label for="currency-{{ $provider->id }}">{{ $locale === 'ar' ? 'العملة' : 'Currency' }}</label>
 <select id="currency-{{ $provider->id }}" name="currency">@foreach(['USD','KWD','EUR'] as $currency)
 <option value="{{ $currency }}" @selected($provider->currency === $currency)>{{ $currency }}</option>@endforeach</select></div>
