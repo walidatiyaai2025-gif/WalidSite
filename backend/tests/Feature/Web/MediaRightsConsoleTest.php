@@ -127,9 +127,12 @@ class MediaRightsConsoleTest extends TestCase
             ->assertSee('تحقق واعتمد الحقوق');
 
         $ownerSupplied = $this->media(false);
-        $this->get('/admin/ai/images')->assertOk()
-            ->assertSee($ownerSupplied->asset_key)
-            ->assertSeeInOrder([$asset->asset_key, 'Verify provenance and approve rights', $ownerSupplied->asset_key]);
+        $response = $this->get('/admin/ai/images')->assertOk()
+            ->assertSee($ownerSupplied->asset_key);
+        $this->assertSame(
+            1,
+            substr_count($response->getContent(), 'Verify provenance and approve rights')
+        );
         $this->assertFalse($ownerSupplied->fresh()->isPubliclyUsable());
     }
 
