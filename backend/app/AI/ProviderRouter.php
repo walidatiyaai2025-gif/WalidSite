@@ -29,17 +29,25 @@ final class ProviderRouter
         $eligible = array_filter($candidates, static function (array $candidate) use ($capability): bool {
             $id = $candidate['id'] ?? null;
             $capabilities = $candidate['capabilities'] ?? [];
-            $limit = max(1, (int) ($candidate['concurrent_limit'] ?? 1));
+            // Only installed adapter implementations may receive jobs.
+            // Unsupported types must not outrank a known provider merely
+            // because an imported candidate advertises more paid budget.
+            $type = $candidate['provider_type'] ?? null;
+            $supported = in_array($type, ['ollama-compatible', 'openai-compatible'], true);
+            // Missing capacity defaults to the documented single worker.
+            // An explicit zero/negative limit means NO available slot.
+            $limit = (int) ($candidate['concurrent_limit'] ?? 1);
             $inFlight = max(0, (int) ($candidate['in_flight'] ?? 0));
             $budgetRemaining = (float) ($candidate['daily_budget_remaining'] ?? 0);
             // Self-hosted Ollama inference has no paid-provider reservation.
-            // A zero *paid* budget must not disable otherwise healthy local
-            // inference. Unknown or managed types remain strictly funded.
-            $local = ($candidate['provider_type'] ?? null) === 'ollama-compatible';
+            // Paid OpenAI-compatible routing still requires a positive budget.
+            $local = $type === 'ollama-compatible';
             $budgetEligible = is_finite($budgetRemaining)
                 && ($local ? $budgetRemaining >= 0 : $budgetRemaining > 0);
 
-            return is_string($id) && $id !== ''
+            return $supported
+                && $limit >= 1
+                && is_string($id) && $id !== ''
                 && ($candidate['enabled'] ?? false) === true
                 && ($candidate['health_status'] ?? 'unverified') === 'healthy'
                 && is_array($capabilities)

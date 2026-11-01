@@ -117,4 +117,71 @@ class ProviderRouterTest extends TestCase
         ]));
     }
 
+
+    public function test_unsupported_adapter_cannot_outrank_supported_paid_or_local_provider(): void
+    {
+        $router = new ProviderRouter;
+
+        $this->assertSame('supported-paid', $router->selectProviderId('text', [
+            $this->provider([
+                'id' => 'unsupported-first', 'provider_type' => 'future-provider',
+                'routing_priority' => 1, 'daily_budget_remaining' => 1000,
+            ]),
+            $this->provider([
+                'id' => 'supported-paid', 'provider_type' => 'openai-compatible',
+                'routing_priority' => 2, 'daily_budget_remaining' => 5,
+            ]),
+        ]));
+        $this->assertSame('supported-local', $router->selectProviderId('text', [
+            $this->provider([
+                'id' => 'no-adapter', 'provider_type' => null,
+                'routing_priority' => 1, 'daily_budget_remaining' => 1000,
+            ]),
+            $this->provider([
+                'id' => 'supported-local', 'provider_type' => 'ollama-compatible',
+                'routing_priority' => 2, 'daily_budget_remaining' => 0,
+            ]),
+        ]));
+
+        $this->assertNull($router->selectProviderId('text', [
+            $this->provider(['provider_type' => 'unknown', 'daily_budget_remaining' => 100]),
+            $this->provider(['provider_type' => '', 'daily_budget_remaining' => 100]),
+            $this->provider(['provider_type' => null, 'daily_budget_remaining' => 100]),
+        ]));
+    }
+
+    public function test_zero_and_negative_capacity_cannot_be_silently_clamped_to_one(): void
+    {
+        $router = new ProviderRouter;
+
+        $this->assertSame('ready-paid', $router->selectProviderId('text', [
+            $this->provider([
+                'id' => 'zero-capacity-local', 'provider_type' => 'ollama-compatible',
+                'daily_budget_remaining' => 0, 'concurrent_limit' => 0,
+                'routing_priority' => 1,
+            ]),
+            $this->provider([
+                'id' => 'negative-capacity-paid', 'provider_type' => 'openai-compatible',
+                'daily_budget_remaining' => 100, 'concurrent_limit' => -1,
+                'routing_priority' => 2,
+            ]),
+            $this->provider([
+                'id' => 'ready-paid', 'provider_type' => 'openai-compatible',
+                'daily_budget_remaining' => 1, 'routing_priority' => 3,
+            ]),
+        ]));
+        $this->assertNull($router->selectProviderId('text', [
+            $this->provider(['concurrent_limit' => 0]),
+            $this->provider(['concurrent_limit' => -1]),
+            $this->provider(['concurrent_limit' => 2, 'in_flight' => 2]),
+        ]));
+
+        // A missing concurrency setting retains the one-job default.
+        $withoutLimit = $this->provider([
+            'id' => 'default-one-slot', 'provider_type' => 'ollama-compatible',
+            'daily_budget_remaining' => 0,
+        ]);
+        unset($withoutLimit['concurrent_limit']);
+        $this->assertSame('default-one-slot', $router->selectProviderId('text', [$withoutLimit]));
+    }
 }
