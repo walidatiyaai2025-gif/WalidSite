@@ -151,6 +151,37 @@ final class AdminImageQueueTest extends TestCase
             ->assertSee('أضف مهمة توليد الصورة');
     }
 
+    public function test_artwork_queue_requires_explicit_cost_estimate_in_both_locales(): void
+    {
+        $this->actingAs($this->account('owner'), 'web');
+        [$article, $revision] = $this->draft();
+        $model = $this->model($this->provider());
+
+        foreach (['en', 'ar'] as $locale) {
+            $response = $this->get('/admin/ai/images?lang='.$locale)->assertOk()
+                ->assertSee('id="reservation-help"', false)
+                ->assertSee('aria-describedby="reservation-help"', false)
+                ->assertSee('value="" required autocomplete="off"', false)
+                ->assertSee('href="'.route('admin.quality.index', ['lang' => $locale]).'"', false);
+
+            if ($locale === 'en') {
+                $response->assertSee('manual budget reservation')
+                    ->assertSee('Inspect failures and retry eligible jobs in Quality gates');
+            } else {
+                $response->assertSee('حجز ميزانية يدوي')
+                    ->assertSee('راجع الأعطال وأعد محاولة المهام المؤهلة من بوابات الجودة');
+            }
+        }
+
+        // Server validation must reject omission; never silently reserve a
+        // misleading single minor unit on the operator's behalf.
+        $this->post('/admin/ai/images/queue', [
+            'revision_id' => $revision->id,
+            'model_id' => $model->id,
+        ])->assertRedirect()->assertSessionHasErrors('estimated_cost_minor');
+        $this->assertDatabaseCount('ai_jobs', 0);
+    }
+
     public function test_admin_queues_real_durable_image_job_without_provider_http(): void
     {
         Http::fake();
