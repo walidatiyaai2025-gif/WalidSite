@@ -21,16 +21,22 @@ final class AiModelPrimaryRoutesTest extends TestCase
             'provider_type' => 'ollama-compatible',
             'base_url' => 'https://models.example.test/v1',
             'enabled' => true,
+            'capabilities_json' => [],
+            'cost_policy_json' => [],
         ]);
         $first = AiModel::create([
             'provider_id' => $provider->id,
             'provider_model_id' => 'local-first',
             'enabled' => true,
+            'capabilities_json' => [],
+            'cost_policy_json' => [],
         ]);
         $second = AiModel::create([
             'provider_id' => $provider->id,
             'provider_model_id' => 'local-second',
             'enabled' => true,
+            'capabilities_json' => [],
+            'cost_policy_json' => [],
         ]);
         $route = AiRoute::create([
             'task_type' => 'verified-learning-summary',
