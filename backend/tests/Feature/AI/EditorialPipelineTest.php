@@ -512,4 +512,86 @@ class EditorialPipelineTest extends TestCase
         Storage::disk('local')->assertMissing($key.'.rights.json');
     }
 
+
+    public function test_noncanonical_artwork_with_matching_bytes_and_manifest_cannot_be_approved(): void
+    {
+        Storage::fake('local');
+        Http::fake();
+        // These match a genuine generated image and its reviewed metadata,
+        // except that no generator could have created this arbitrary key.
+        $png = base64_decode(
+            'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFklEQVR4nGMUSdnCwMDAxMDAwMDAAAANmgEwmATK1AAAAABJRU5ErkJggg==',
+            true
+        );
+        $this->assertIsString($png);
+        $key = 'ai-artwork/imported-but-not-generated.png';
+        $sha = hash('sha256', $png);
+        $asset = \App\Models\Asset::create([
+            'asset_key' => 'forged-canonical-prefix',
+            'mime_type' => 'image/png',
+            'storage_key' => $key,
+            'sha256' => $sha,
+            'origin' => 'ai-generated',
+            'rights_status' => 'unverified',
+            'publishable' => false,
+        ]);
+        Storage::disk('local')->put($key, $png);
+        Storage::disk('local')->put($key.'.provenance.json', json_encode([
+            'asset_id' => $asset->id,
+            'sha256' => $sha,
+            'provider_id' => 'configured-provider',
+            'model' => 'approved-raster-model',
+            'prompt_sha256' => hash('sha256', 'original research diagram'),
+        ], JSON_THROW_ON_ERROR));
+
+        try {
+            app(\App\AI\EditorialArtworkRights::class)->approve(
+                $asset, $this->owner(), true, true
+            );
+            $this->fail('Arbitrary local key was granted public image rights.');
+        } catch (DomainException $exception) {
+            $this->assertSame('Unreviewed generated artwork required.', $exception->getMessage());
+        }
+
+        $this->assertSame('unverified', $asset->fresh()->rights_status);
+        $this->assertFalse($asset->fresh()->publishable);
+        Storage::disk('local')->assertMissing($key.'.rights.json');
+        Http::assertNothingSent();
+    }
+
+    public function test_artwork_review_rejects_traversal_nested_paths_and_mime_mismatch_before_storage(): void
+    {
+        Storage::fake('local');
+        $uuid = (string) Str::uuid();
+        foreach ([
+            'ai-artwork/../private/image.png',
+            'ai-artwork/nested/'.$uuid.'.png',
+            'ai-artwork/'.$uuid.'.jpg', // Valid UUID, wrong MIME extension.
+            'ai-artwork/'.$uuid.'.png.bak',
+            'ai-artwork/'.strtoupper($uuid).'.png',
+            'ai-artwork/'.$uuid.'.png/another',
+        ] as $index => $key) {
+            $asset = \App\Models\Asset::create([
+                'asset_key' => 'noncanonical-'.$index,
+                'mime_type' => 'image/png',
+                'storage_key' => $key,
+                'sha256' => str_repeat('a', 64),
+                'origin' => 'ai-generated',
+                'rights_status' => 'unverified',
+                'publishable' => false,
+            ]);
+            try {
+                app(\App\AI\EditorialArtworkRights::class)->approve(
+                    $asset, $this->owner(), true, true
+                );
+                $this->fail('Unsafe path reached the artwork approval flow.');
+            } catch (DomainException $exception) {
+                // If storage had been reached these missing fixture files
+                // would instead trigger an unrelated RuntimeException.
+                $this->assertSame('Unreviewed generated artwork required.', $exception->getMessage());
+            }
+            $this->assertFalse($asset->fresh()->publishable);
+        }
+    }
+
 }
