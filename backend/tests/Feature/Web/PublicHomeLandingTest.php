@@ -76,6 +76,23 @@ class PublicHomeLandingTest extends TestCase
             ->assertSee('لا توجد مقالات منشورة وموثقة');
     }
 
+    public function test_approved_portrait_is_delivered_from_same_origin_in_both_languages(): void
+    {
+        $portrait = dirname(base_path()).'/assets/portraits/portrait-light-derived.jpg';
+        $this->assertFileExists($portrait, 'The repository must ship the owner's approved portrait.');
+
+        foreach (['en', 'ar'] as $locale) {
+            $this->get('/?lang='.$locale)->assertOk()
+                ->assertSee('src="'.route('public.portrait').'"', false)
+                ->assertDontSee('raw.githubusercontent.com');
+        }
+
+        $this->get(route('public.portrait'))->assertOk()
+            ->assertHeader('Content-Type', 'image/jpeg')
+            ->assertHeader('X-Content-Type-Options', 'nosniff')
+            ->assertHeader('Cache-Control', 'public, max-age=3600');
+    }
+
     public function test_home_exposes_only_verified_case_studies_and_published_checked_articles(): void
     {
         $this->project('verified-case');
