@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -241,6 +242,28 @@ class MobileAiClient {
     return MobileAiJob.parse(response.value);
   }
 
+  /// Read-only status lookup. Never resubmits the prompt or reserves AI budget.
+  Future<MobileAiJob> readJob(String token, String jobId) async {
+    if (token.isEmpty ||
+        token.length > 8192 ||
+        !MobileAiJob._uuid.hasMatch(jobId)) {
+      throw const FormatException('Invalid diagnosis job identity');
+    }
+    final response = await _jsonRequest(
+      'GET',
+      '/api/v1/mobile/ai/jobs/$jobId',
+      bearer: token,
+    );
+    if (response.key != HttpStatus.ok) {
+      throw MobileAiHttpException(response.key);
+    }
+    final job = MobileAiJob.parse(response.value);
+    if (job.id.toLowerCase() != jobId.toLowerCase()) {
+      throw const FormatException('Mismatched diagnosis job identity');
+    }
+    return job;
+  }
+
   Future<void> saveRunbook(String token, String runbookId) async {
     if (token.isEmpty ||
         token.length > 8192 ||
@@ -280,12 +303,17 @@ typedef MobileDiagnoseAction = Future<MobileAiJob> Function(
   String codeSnippet,
 );
 typedef MobileSaveAction = Future<void> Function(String token, String runbookId);
+typedef MobileJobStatusAction = Future<MobileAiJob> Function(
+  String token,
+  String jobId,
+);
 
 class AiTroubleshooterScreen extends StatefulWidget {
   const AiTroubleshooterScreen({
     required this.arabic,
     this.loginAction,
     this.diagnoseAction,
+    this.jobStatusAction,
     this.saveAction,
     this.detailLoader,
     this.nowUtc,
@@ -295,6 +323,7 @@ class AiTroubleshooterScreen extends StatefulWidget {
   final bool arabic;
   final MobileLoginAction? loginAction;
   final MobileDiagnoseAction? diagnoseAction;
+  final MobileJobStatusAction? jobStatusAction;
   final MobileSaveAction? saveAction;
   final Future<ReviewedRunbook> Function(String id)? detailLoader;
   /// Injectable clock for deterministic session-expiry regression tests.
@@ -317,6 +346,9 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
   bool _consent = false;
   bool _busyLogin = false;
   bool _busyDiagnosis = false;
+  bool _busyPoll = false;
+  bool _pollReady = true;
+  Timer? _pollCooldown;
   bool _busySave = false;
   String? _message;
   MobileAiJob? _job;
@@ -324,6 +356,7 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
 
   @override
   void dispose() {
+    _pollCooldown?.cancel();
     _email.dispose();
     _password.dispose();
     _technology.dispose();
@@ -345,12 +378,49 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
       _token = null;
       _expiresAt = null;
       _job = null;
+      _resetPollCooldown();
       _saved = false;
       _consent = false;
       _message = _expiredSessionMessage;
     });
     return false;
   }
+
+  bool get _isPending =>
+      _job?.status == 'queued' || _job?.status == 'running';
+
+  void _resetPollCooldown() {
+    _pollCooldown?.cancel();
+    _pollCooldown = null;
+    _pollReady = true;
+  }
+
+  // Timer only unlocks the manual button. It NEVER sends a background request.
+  void _respectPollDelay(MobileAiJob job) {
+    _resetPollCooldown();
+    if (job.status != 'queued' && job.status != 'running') return;
+    final suggested = job.retryAfterSeconds ?? 30;
+    final seconds = suggested < 1 ? 1 : (suggested > 3600 ? 3600 : suggested);
+    _pollReady = false;
+    _pollCooldown = Timer(Duration(seconds: seconds), () {
+      if (mounted) setState(() => _pollReady = true);
+    });
+  }
+
+  String _jobMessage(MobileAiJob job) => switch (job.status) {
+        'completed' when job.reviewedRunbookId() != null => widget.arabic
+            ? 'تم العثور على حل منشور تمت مراجعته.'
+            : 'A reviewed published solution is ready.',
+        'completed' => widget.arabic
+            ? 'اكتمل التشخيص ولم يتم العثور على دليل مناسب.'
+            : 'Diagnosis completed with no suitable reviewed guide.',
+        'queued' || 'running' => widget.arabic
+            ? 'الطلب قيد المعالجة. حدّث الحالة بعد المدة المقترحة دون إرسال تشخيص جديد.'
+            : 'Diagnosis in progress. Refresh status after the advised delay without submitting again.',
+        _ => widget.arabic
+            ? 'تعذر إكمال التشخيص بأمان.'
+            : 'The diagnosis could not complete safely.',
+      };
 
   bool get _apiConfigured =>
       widget.loginAction != null ||
@@ -369,6 +439,10 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
             technology: technology,
             codeSnippet: codeSnippet,
           );
+
+  MobileJobStatusAction get _readStatus => widget.jobStatusAction ??
+      (String token, String jobId) =>
+          const MobileAiClient().readJob(token, jobId);
 
   MobileSaveAction get _save => widget.saveAction ??
       (String token, String runbookId) =>
@@ -449,7 +523,10 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
   }
 
   Future<void> _submit() async {
-    if (_busyDiagnosis || !_requireActiveSession()) return;
+    // An in-flight job must be checked with GET, never resubmitted with POST.
+    if (_busyDiagnosis || _busyPoll || _isPending || !_requireActiveSession()) {
+      return;
+    }
     final question = _question.text.trim();
     final technology = _technology.text.trim();
     if (!_consent) {
@@ -469,6 +546,7 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
       _busyDiagnosis = true;
       _message = null;
       _job = null;
+      _resetPollCooldown();
       _saved = false;
     });
     try {
@@ -477,20 +555,8 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
       if (!mounted) return;
       setState(() {
         _job = job;
-        _message = switch (job.status) {
-          'completed' when job.reviewedRunbookId() != null => widget.arabic
-              ? 'تم العثور على حل منشور تمت مراجعته.'
-              : 'A reviewed published solution is ready.',
-          'completed' => widget.arabic
-              ? 'اكتمل التشخيص ولم يتم العثور على دليل مناسب.'
-              : 'Diagnosis completed with no suitable reviewed guide.',
-          'queued' || 'running' => widget.arabic
-              ? 'الطلب قيد المعالجة. حاول مرة أخرى بعد المدة المقترحة.'
-              : 'The request is still processing. Retry after the suggested interval.',
-          _ => widget.arabic
-              ? 'تعذر إكمال التشخيص بأمان.'
-              : 'The diagnosis could not complete safely.',
-        };
+        _respectPollDelay(job);
+        _message = _jobMessage(job);
       });
     } catch (error) {
       if (!mounted) return;
@@ -499,10 +565,64 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
         _token = null;
         _expiresAt = null;
         _job = null;
+        _resetPollCooldown();
       }
       setState(() => _message = _genericError(error));
     } finally {
       if (mounted) setState(() => _busyDiagnosis = false);
+    }
+  }
+
+  Future<void> _refreshStatus() async {
+    if (_busyPoll || !_isPending || !_pollReady || !_requireActiveSession()) {
+      return;
+    }
+    final oldJob = _job!;
+    final token = _token!;
+    setState(() {
+      _busyPoll = true;
+      _pollReady = false;
+      _message = null;
+    });
+    try {
+      final updated = await _readStatus(token, oldJob.id);
+      if (!mounted) return;
+      if (!_requireActiveSession()) return;
+      // Never render a different user's or a different request's solution.
+      if (updated.id.toLowerCase() != oldJob.id.toLowerCase()) {
+        throw const FormatException('Mismatched diagnosis job identity');
+      }
+      setState(() {
+        _job = updated;
+        _respectPollDelay(updated);
+        _message = _jobMessage(updated);
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        if (error is MobileAiHttpException &&
+            (error.statusCode == 401 || error.statusCode == 403)) {
+          _token = null;
+          _expiresAt = null;
+          _job = null;
+          _consent = false;
+          _resetPollCooldown();
+        } else if (error is MobileAiHttpException &&
+            error.statusCode == 404) {
+          _job = null;
+          _resetPollCooldown();
+        } else {
+          // Retain the pending job but throttle subsequent manual reads.
+          _respectPollDelay(oldJob);
+        }
+        _message = error is MobileAiHttpException && error.statusCode == 404
+            ? (widget.arabic
+                ? 'لم تعد مهمة التشخيص متاحة. يمكنك بدء طلب جديد.'
+                : 'This diagnosis job is no longer available. You may start again.')
+            : _genericError(error);
+      });
+    } finally {
+      if (mounted) setState(() => _busyPoll = false);
     }
   }
 
@@ -717,7 +837,8 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
                     const SizedBox(height: 8),
                     FilledButton.icon(
                       key: const Key('ai-diagnose-submit'),
-                      onPressed: _busyDiagnosis ? null : _submit,
+                      onPressed: _busyDiagnosis || _busyPoll || _isPending
+                          ? null : _submit,
                       icon: const Icon(Icons.auto_awesome),
                       label: Text(_busyDiagnosis
                           ? (ar ? 'جارٍ التشخيص...' : 'Diagnosing...')
@@ -761,6 +882,30 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
                               Text(ar
                                   ? 'إعادة المحاولة بعد نحو ${_job!.retryAfterSeconds} ثانية.'
                                   : 'Retry after about ${_job!.retryAfterSeconds} seconds.'),
+                            if (_isPending) ...[
+                              const SizedBox(height: 12),
+                              Text(ar
+                                  ? 'التحقق من الحالة فقط لا يعيد إرسال السؤال أو يستهلك طلب AI جديدًا.'
+                                  : 'Checking status does not resend your question or start another AI request.'),
+                              const SizedBox(height: 8),
+                              OutlinedButton.icon(
+                                key: const Key('ai-refresh-status'),
+                                onPressed: _busyPoll || !_pollReady
+                                    ? null
+                                    : _refreshStatus,
+                                icon: const Icon(Icons.refresh),
+                                label: Text(_busyPoll
+                                    ? (ar ? 'جارٍ التحديث...' : 'Checking status...')
+                                    : (ar ? 'تحديث حالة التشخيص' : 'Refresh diagnosis status')),
+                              ),
+                              if (!_pollReady && !_busyPoll)
+                                Text(
+                                  ar
+                                      ? 'يمكن التحديث بعد فترة الانتظار المحددة؛ لا يُرسل طلب تلقائي.'
+                                      : 'Wait for the advised interval before refreshing. No automatic request is sent.',
+                                  key: const Key('ai-poll-wait'),
+                                ),
+                            ],
                             if (resultId != null) ...[
                               const SizedBox(height: 12),
                               FilledButton.icon(
