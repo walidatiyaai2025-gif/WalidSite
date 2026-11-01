@@ -30,6 +30,7 @@
 @elseif($articles->isEmpty() && $projects->isEmpty())
 <div class="ed-card" role="status">{{ $locale === 'ar' ? 'لا توجد نتائج عامة موثقة.' : 'No verified public matches.' }}</div>
 @else
+<p class="ed-card" role="status" aria-live="polite" data-testid="verified-search-summary">{{ $locale === 'ar' ? 'نتائج موثقة: ' : 'Verified results: ' }}{{ $articles->count() }} {{ $locale === 'ar' ? 'مقالات،' : 'articles,' }} {{ $projects->count() }} {{ $locale === 'ar' ? 'مشاريع.' : 'projects.' }}</p>
 @if($articles->isNotEmpty())
 <section class="ed-card" aria-labelledby="articles-h"><h2 id="articles-h">{{ $locale === 'ar' ? 'المقالات' : 'Articles' }}</h2><ul>
 @foreach($articles as $a)<li><a href="{{ route('public.article', ['slug'=>$a->slug,'lang'=>$locale]) }}">{{ $locale === 'ar' ? $a->title_ar : $a->title_en }}</a></li>@endforeach
