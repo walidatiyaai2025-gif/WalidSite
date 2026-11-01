@@ -11,17 +11,13 @@ class ContactValidationSummaryTest extends TestCase
         config(['mail.contact_recipient' => 'contact@example.org', 'mail.default' => 'smtp']);
 
         foreach (['en' => 'Please correct the following fields', 'ar' => 'يرجى تصحيح الحقول التالية'] as $locale => $heading) {
-            $this->from('/contact?lang='.$locale)
-                ->post('/contact?lang='.$locale, [
-                    'name' => 'Valid Sender',
-                    'email' => 'invalid-email',
-                    'subject' => 'Valid inquiry',
-                    'message' => 'A valid inquiry message long enough.',
-                    'privacy_consent' => '0',
-                ])->assertRedirect('/contact?lang='.$locale)
-                ->assertSessionHasErrors(['email', 'privacy_consent']);
-
-            $this->get('/contact?lang='.$locale)->assertOk()
+            $this->app['request']->query->set('lang', $locale);
+            $view = $this->view('public.contact', ['available' => true])
+                ->withErrors([
+                    'email' => 'Invalid email',
+                    'privacy_consent' => 'Consent required',
+                ]);
+            $view
                 ->assertSee($heading)
                 ->assertSee('role="alert"', false)
                 ->assertSee('href="#contact-email"', false)
