@@ -69,6 +69,11 @@ class EditorialPublicationAuditTest extends TestCase
         $this->assertFalse($second['has_more']);
 
         $this->assertSame(2, $first['revoked'] + $second['revoked']);
+        $this->assertDatabaseCount('editorial_events', 2);
+        $this->assertDatabaseHas('editorial_events', [
+            'action' => 'evidence_revoked',
+            'reason' => 'citation_or_rights_invalid',
+        ]);
         $this->assertSame(1, Article::query()->where('status', 'published')->count());
         $this->assertSame(2, Article::query()->where('status', 'draft')->count());
         $this->assertNotNull($articles[1]->fresh()->publicRevision());

@@ -257,8 +257,25 @@ Route::middleware('auth:web')->group(function (): void {
         if (! $article->isReadyToPublish()) {
             return back()->withErrors(['publish' => 'Citation, technical or image rights gates have not passed.']);
         }
+        $revision = $article->revisions()->orderByDesc('revision_no')->first();
+        $checks = $revision?->validation_json ?? [];
+        // High-risk and professional content must use an explicit, recorded
+        // owner-only exception decision, never the generic publish action.
+        if (($checks['risk_level'] ?? null) === 'high'
+            || ($checks['contains_professional_claims'] ?? null) === true) {
+            return back()->withErrors(['publish' => 'Owner manual review and a reason are required.']);
+        }
         try {
-            $article->publishVerified();
+            \Illuminate\Support\Facades\DB::transaction(function () use ($article, $request, $revision): void {
+                $article = \App\Models\Article::query()->whereKey($article->id)
+                    ->lockForUpdate()->firstOrFail();
+                $article->publishVerified();
+                app(\App\AI\EditorialScheduleRunner::class)->event(
+                    'manual:'.\Illuminate\Support\Str::uuid(),
+                    $article->id, $revision?->revision_no, $request->user()->id,
+                    'manual_published', 'content_reviewed'
+                );
+            }, 3);
         } catch (\DomainException $exception) {
             return back()->withErrors(['publish' => 'Publication checks changed; review again before publishing.']);
         }
@@ -273,10 +290,20 @@ Route::middleware('auth:web')->group(function (): void {
     ) {
         abort_unless($request->user()?->canAccessAdmin(), 403);
         // Revocation invalidates the public revision pointer immediately.
-        $article->forceFill([
-            'status' => 'draft', 'published_at' => null,
-            'published_revision_no' => null,
-        ])->save();
+        \Illuminate\Support\Facades\DB::transaction(function () use ($article, $request): void {
+            $locked = \App\Models\Article::query()->whereKey($article->id)
+                ->lockForUpdate()->firstOrFail();
+            $revisionNumber = $locked->published_revision_no;
+            $locked->forceFill([
+                'status' => 'draft', 'published_at' => null,
+                'published_revision_no' => null,
+            ])->save();
+            app(\App\AI\EditorialScheduleRunner::class)->event(
+                'manual:'.\Illuminate\Support\Str::uuid(),
+                $locked->id, $revisionNumber, $request->user()->id,
+                'manual_unpublished', 'owner_or_admin_revoked'
+            );
+        }, 3);
 
         return redirect()->route('admin.content.index', [
             'article' => $article->id, 'lang' => $request->query('lang') === 'ar' ? 'ar' : 'en',

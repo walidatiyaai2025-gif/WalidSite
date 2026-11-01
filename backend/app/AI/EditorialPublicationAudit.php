@@ -4,6 +4,8 @@ namespace App\AI;
 
 use App\Models\Article;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use InvalidArgumentException;
 
 /**
@@ -62,7 +64,20 @@ final class EditorialPublicationAudit
             $revoked = 0;
 
             foreach ($page as $articleId) {
-                if ($this->publisher->revokeInvalid($articleId) === 'revoked') {
+                $wasRevoked = DB::transaction(function () use ($articleId): bool {
+                    $publishedRevision = Article::query()->whereKey($articleId)
+                        ->value('published_revision_no');
+                    if ($this->publisher->revokeInvalid($articleId) !== 'revoked') {
+                        return false;
+                    }
+                    app(EditorialScheduleRunner::class)->event(
+                        'audit-revoke:'.Str::uuid(), $articleId,
+                        $publishedRevision, null, 'evidence_revoked',
+                        'citation_or_rights_invalid'
+                    );
+                    return true;
+                }, 3);
+                if ($wasRevoked) {
                     ++$revoked;
                 }
             }

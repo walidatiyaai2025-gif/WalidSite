@@ -15,6 +15,8 @@ return Application::configure(basePath: dirname(__DIR__))
         then: static function (): void {
             \Illuminate\Support\Facades\Route::middleware('web')
                 ->group(base_path('routes/site-maintenance.php'));
+            \Illuminate\Support\Facades\Route::middleware('web')
+                ->group(base_path('routes/editorial-automation.php'));
         },
     )
     ->withMiddleware(function (Middleware $middleware): void {
