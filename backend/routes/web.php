@@ -296,10 +296,12 @@ Route::middleware('auth:web')->group(function (): void {
                 'provider.currency', 'provider.deleted_at', 'usage.cost_currency')
             ->orderBy('provider.display_name')->orderBy('provider.id')
             ->orderBy('usage.cost_currency')
-            ->paginate(20)->appends([
+            ->paginate(20)->appends(array_filter([
                 'lang' => $request->query('lang') === 'ar' ? 'ar' : 'en',
-                'day' => $day,
-            ]);
+                // Preserve canonical today links unless the admin chose a
+                // day explicitly. Historical reports must retain the filter.
+                'day' => isset($input['day']) ? $day : null,
+            ], static fn ($value): bool => $value !== null));
 
         return response()->view('admin.ai.usage', compact('rows', 'day', 'oldestDay', 'todayDay'))
             ->header('Cache-Control', 'no-store');
