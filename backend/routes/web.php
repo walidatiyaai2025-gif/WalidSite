@@ -1195,52 +1195,59 @@ Route::get('/search', function (Request $request) {
     $input = $request->validate([
         'q' => ['sometimes', 'string', 'max:80'],
         'lang' => ['sometimes', 'in:ar,en'],
+        'type' => ['sometimes', 'in:all,articles,projects'],
     ]);
     $search = trim($input['q'] ?? '');
+    $type = $input['type'] ?? 'all';
     $articles = collect();
     $projects = collect();
 
     if ($search !== '') {
         $term = '%'.str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $search).'%';
-        // Filter the pinned published revision's live evidence before
-        // consuming one of ten search slots. Chunked DB iteration avoids
-        // large in-memory lists even with long revoked prefixes.
-        foreach (\App\Models\Article::query()->publiclyVisible()
-            ->where(fn ($builder) => $builder
-                ->whereRaw("articles.title_en LIKE ? ESCAPE '!'", [$term])
-                ->orWhereRaw("articles.title_ar LIKE ? ESCAPE '!'", [$term])
-                ->orWhereHas('revisions', fn ($revision) => $revision
-                    ->where('status', 'validated')
-                    ->whereColumn('article_revisions.revision_no', 'articles.published_revision_no')
-                    ->whereRaw("article_revisions.body_md LIKE ? ESCAPE '!'", [$term])))
-            ->orderBy('id')->lazy(100) as $article) {
-            if (preg_match('/\A[A-Za-z0-9-]+\z/D', $article->slug) !== 1
-            || $article->publicRevision() === null) {
-                continue;
-            }
-            $articles->push($article);
-            if ($articles->count() === 10) {
-                break;
+        // The canonical published revision and portfolio evidence gates are
+        // applied before consuming any of the ten quick-search result slots.
+        // Skip querying the excluded type instead of discarding results later.
+        if ($type !== 'projects') {
+            foreach (\App\Models\Article::query()->publiclyVisible()
+                ->where(fn ($builder) => $builder
+                    ->whereRaw("articles.title_en LIKE ? ESCAPE '!'", [$term])
+                    ->orWhereRaw("articles.title_ar LIKE ? ESCAPE '!'", [$term])
+                    ->orWhereHas('revisions', fn ($revision) => $revision
+                        ->where('status', 'validated')
+                        ->whereColumn('article_revisions.revision_no', 'articles.published_revision_no')
+                        ->whereRaw("article_revisions.body_md LIKE ? ESCAPE '!'", [$term])))
+                ->orderBy('id')->lazy(100) as $article) {
+                if (preg_match('/\A[A-Za-z0-9-]+\z/D', $article->slug) !== 1
+                    || $article->publicRevision() === null) {
+                    continue;
+                }
+                $articles->push($article);
+                if ($articles->count() === 10) {
+                    break;
+                }
             }
         }
 
-        $api = app(\App\Http\Controllers\Api\PublicPortfolioController::class);
-        foreach (\App\Models\Project::query()->publiclyVerified()
-            ->where(fn ($builder) => $builder
-                ->whereRaw("projects.title LIKE ? ESCAPE '!'", [$term])
-                ->orWhereRaw("projects.summary_en LIKE ? ESCAPE '!'", [$term])
-                ->orWhereRaw("projects.summary_ar LIKE ? ESCAPE '!'", [$term]))
-            ->orderBy('id')->lazy(100) as $record) {
-            $project = $api->publicProjectData($record, $request);
-            if (empty($project['evidence_urls'])) {
-                continue;
-            }
-            $projects->push($project);
-            if ($projects->count() === 10) {
-                break;
+        if ($type !== 'articles') {
+            $api = app(\App\Http\Controllers\Api\PublicPortfolioController::class);
+            foreach (\App\Models\Project::query()->publiclyVerified()
+                ->where(fn ($builder) => $builder
+                    ->whereRaw("projects.title LIKE ? ESCAPE '!'", [$term])
+                    ->orWhereRaw("projects.summary_en LIKE ? ESCAPE '!'", [$term])
+                    ->orWhereRaw("projects.summary_ar LIKE ? ESCAPE '!'", [$term]))
+                ->orderBy('id')->lazy(100) as $record) {
+                $project = $api->publicProjectData($record, $request);
+                if (empty($project['evidence_urls'])) {
+                    continue;
+                }
+                $projects->push($project);
+                if ($projects->count() === 10) {
+                    break;
+                }
             }
         }
     }
-    return view('public.search', compact('search', 'articles', 'projects'));
+
+    return view('public.search', compact('search', 'articles', 'projects', 'type'));
 })->name('public.search')->middleware('throttle:60,1');
 

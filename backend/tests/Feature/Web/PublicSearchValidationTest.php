@@ -15,6 +15,9 @@ final class PublicSearchValidationTest extends TestCase
         $this->getJson('/search?q='.str_repeat('x', 81))->assertUnprocessable();
         $this->getJson('/search?lang%5B%5D=ar')->assertUnprocessable();
         $this->getJson('/search?lang=fr')->assertUnprocessable();
+        $this->getJson('/search?type=tools')->assertUnprocessable();
+        $this->getJson('/search?type%5B%5D=articles')->assertUnprocessable();
+        $this->getJson('/search?type=articles%2Cprojects')->assertUnprocessable();
     }
 
     public function test_valid_bilingual_search_preserves_query_without_truncation(): void
@@ -27,5 +30,11 @@ final class PublicSearchValidationTest extends TestCase
             ->assertOk()->assertSee('قواعد بيانات')->assertSee('dir="rtl"', false);
 
         $this->get('/search?lang=ar')->assertOk();
+        $this->get('/search?lang=ar&type=projects')->assertOk()
+            ->assertSee('name="type"', false)
+            ->assertSee('value="projects" selected', false)
+            ->assertSee('dir="rtl"', false);
+        $this->get('/search?lang=en&type=all')->assertOk()
+            ->assertSee('value="all" selected', false);
     }
 }
