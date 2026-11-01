@@ -130,7 +130,7 @@ class ArticleRevision extends Model
             // Inspect each key component, not only the outer query name:
             // source[api_key], token[0], and filter[outer][access_token]
             // must all be rejected after each bounded decoding layer.
-            foreach (preg_split('/[&;]/', $parameters) as $parameter) {
+            foreach (preg_split('/[&;?#]/', $parameters) as $parameter) {
                 $key = explode('=', ltrim($parameter, '?#'), 2)[0];
                 foreach (preg_split('/[\\[\\]]+/', $key) as $segment) {
                     if (preg_match(
