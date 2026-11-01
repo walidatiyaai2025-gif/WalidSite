@@ -45,6 +45,8 @@ class EditorialReviewConsoleTest extends TestCase
             'validation_json' => [
                 'citations_passed' => $verified,
                 'technical_passed' => $verified,
+                'risk_level' => 'low',
+                'contains_professional_claims' => false,
             ],
         ]);
         return $article;
