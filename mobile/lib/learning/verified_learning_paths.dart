@@ -474,7 +474,7 @@ class _VerifiedLearningLessonReaderState
   @override
   void initState() {
     super.initState();
-    _index = widget.initialIndex.clamp(0, widget.track.lessons.length - 1);
+    _index = widget.initialIndex.clamp(0, widget.track.lessons.length - 1).toInt();
   }
 
   @override
