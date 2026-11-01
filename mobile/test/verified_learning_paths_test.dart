@@ -128,6 +128,63 @@ void main() {
     expect(find.text('مسار موثق آخر'), findsOneWidget);
   });
 
+  test('parser rejects duplicate slug even when UUIDs differ', () {
+    final duplicateSlug = response(1, [
+      track(),
+      track(id: idTwo, slug: 'database-recovery', title: 'Different track'),
+    ]);
+
+    expect(
+      () => VerifiedLearningPage.parse(duplicateSlug, 1),
+      throwsFormatException,
+    );
+
+    final distinct = VerifiedLearningPage.parse(response(1, [
+      track(),
+      track(id: idTwo, slug: 'verified-devops', title: 'Verified DevOps path'),
+    ]), 1);
+    expect(distinct.tracks.map((item) => item.slug).toList(), [
+      'database-recovery',
+      'verified-devops',
+    ]);
+  });
+
+  testWidgets('malformed first page is localized, non-leaking and retryable',
+      (tester) async {
+    var attempts = 0;
+    await tester.pumpWidget(MaterialApp(home: VerifiedLearningLibrary(
+      arabic: true,
+      pageLoader: (_) async {
+        attempts++;
+        if (attempts == 1) {
+          return VerifiedLearningPage.parse(response(1, [
+            track(),
+            track(
+              id: idTwo,
+              slug: 'database-recovery',
+              title: 'PRIVATE_DUPLICATE_SENTINEL',
+            ),
+          ]), 1);
+        }
+        return VerifiedLearningPage.parse(response(1, [
+          track(title: 'مسار موثق'),
+        ]), 1);
+      },
+    )));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('learning-retry')), findsOneWidget);
+    expect(find.text('تعذر تحميل المسارات.'), findsOneWidget);
+    expect(find.textContaining('PRIVATE_DUPLICATE_SENTINEL'), findsNothing);
+    expect(find.textContaining('Unverified learning track'), findsNothing);
+
+    await tester.tap(find.byKey(const Key('learning-retry')));
+    await tester.pumpAndSettle();
+    expect(attempts, 2);
+    expect(find.text('مسار موثق'), findsOneWidget);
+    expect(find.byKey(const Key('learning-retry')), findsNothing);
+  });
+
   test('parser fails closed on malformed, oversized and private records', () {
     final cases = <String>[
       '{}',
