@@ -93,7 +93,7 @@
                 @if(request()->routeIs('public.search'))
                     @php($languageArgs['q'] = request()->query('q', ''))
                 @endif
-                @if(request()->routeIs('public.resume'))
+                @if(request()->routeIs('public.resume', 'public.hire'))
                     @php($resumeTrack = request()->query('track', 'all'))
                     @php($languageArgs['track'] = is_string($resumeTrack) && in_array($resumeTrack, ['all', 'database', 'software', 'delivery'], true) ? $resumeTrack : 'all')
                 @endif
