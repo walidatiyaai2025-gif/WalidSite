@@ -62,9 +62,20 @@ final class MobileDiagnosisAdmission
                 || $provider->concurrent_limit < 1) {
                 continue;
             }
-            if ($provider->provider_type === 'openai-compatible'
-                && (! is_string($provider->secret_ciphertext) || trim($provider->secret_ciphertext) === '')) {
-                continue;
+            if ($provider->provider_type === 'openai-compatible') {
+                // A reserved amount is in the provider's configured minor
+                // units. Model pricing and explicit route currency must agree
+                // before the job is admitted; do not silently convert FX or
+                // use missing price policy as a zero-cost paid model.
+                $costPolicy = $model->cost_policy_json;
+                $modelCurrency = is_array($costPolicy) ? ($costPolicy['currency'] ?? null) : null;
+                $routeCurrency = $budget['currency'] ?? null;
+                if (! is_string($modelCurrency) || $modelCurrency !== $provider->currency
+                    || ($routeCurrency !== null && $routeCurrency !== $provider->currency)
+                    || ! is_string($provider->secret_ciphertext)
+                    || trim($provider->secret_ciphertext) === '') {
+                    continue;
+                }
             }
 
             $circuit = DB::table('ai_provider_circuits')
