@@ -35,6 +35,8 @@ for command in (
     "pdo_mysql",
     "php artisan migrate:fresh --force",
     "OwnerCvBaselineSeeder",
+    "qa/validate_visual_fidelity.py",
+    "python -m unittest discover -s qa/tests -p 'test_visual_*.py'",
 ):
     if command not in ci:
         errors.append(f"ci.yml is missing required quality command: {command}")
