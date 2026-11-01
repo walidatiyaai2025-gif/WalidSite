@@ -893,7 +893,10 @@ Route::post('/contact', function (Request $request) {
     // A populated hidden website field is not a legitimate inquiry and must
     // never reveal field errors, trigger a success notice, or reach mail.
     $honeypot = $request->input('website');
-    if (is_string($honeypot) && trim($honeypot) !== '') {
+    // The hidden field is a single text input. Treat arrays/objects and all
+    // other unexpected types as automated submissions as well: otherwise a
+    // crafted website[]=... bypasses the early exit and leaks form errors.
+    if ($honeypot !== null && (!is_string($honeypot) || trim($honeypot) !== '')) {
         return redirect()->route('public.contact', ['lang' => $request->query('lang') === 'ar' ? 'ar' : 'en']);
     }
 
