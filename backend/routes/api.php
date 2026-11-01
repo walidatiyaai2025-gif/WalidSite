@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\AiProviderController;
 use App\Http\Controllers\Api\AdminDashboardController;
 use App\Http\Controllers\Api\AdminArticleController;
 use App\Http\Controllers\Api\PublicPortfolioController;
+use App\Http\Controllers\Api\PublicAiExpertiseController;
 use App\Http\Controllers\Api\PublicHomeController;
 use App\Http\Controllers\Api\MobileHomeController;
 use App\Http\Controllers\Api\MobileSavedController;
@@ -77,6 +78,9 @@ Route::get('/public/profile', [PublicPortfolioController::class, 'profile'])
     ->name('api.public.profile')->middleware('throttle:60,1');
 Route::get('/public/expertise', [PublicPortfolioController::class, 'expertise'])
     ->name('api.public.expertise')->middleware('throttle:60,1');
+// WEB-06: AI expertise and case studies require live public evidence checks.
+Route::get('/public/expertise/ai', [PublicAiExpertiseController::class, 'index'])
+    ->name('api.public.expertise.ai')->middleware('throttle:60,1');
 Route::get('/public/resume', [PublicResumeController::class, 'index'])
     ->name('api.public.resume')->middleware('throttle:60,1');
 Route::get('/public/recruiter', [PublicRecruiterController::class, 'index'])
