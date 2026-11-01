@@ -3,6 +3,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'theme/waleed_theme.dart';
 import 'runbooks/offline_runbooks.dart';
 import 'articles/verified_articles.dart';
+import 'solutions/offline_solution_finder.dart';
 
 void main() => runApp(const WaleedTechApp());
 
@@ -106,6 +107,31 @@ class CompanionHome extends StatelessWidget {
                 trailing: Icon(arabic ? Icons.chevron_left : Icons.chevron_right),
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute<void>(builder: (_) => OfflineRunbookLibrary(arabic: arabic)),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Card(
+              child: ListTile(
+                key: const Key('offline-solution-finder-entry'),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+                leading: const Icon(Icons.manage_search_outlined, size: 30),
+                title: Text(arabic
+                    ? 'البحث عن حلول تقنية محلية'
+                    : 'Offline solution finder'),
+                subtitle: Text(arabic
+                    ? 'بحث فعلي في الأدلة المرفقة دون إرسال بيانات أو ادعاء تشخيص AI'
+                    : 'Search bundled guidance; no upload or claimed AI diagnosis'),
+                trailing: Icon(arabic
+                    ? Icons.chevron_left
+                    : Icons.chevron_right),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => OfflineSolutionFinder(arabic: arabic),
+                  ),
                 ),
               ),
             ),
