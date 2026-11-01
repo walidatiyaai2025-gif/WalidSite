@@ -139,6 +139,12 @@ final class MobileDiagnosisDispatcher
                 throw new DomainException('Unsupported diagnosis provider.');
             }
 
+            // A slow provider can return after the private-input retention window.
+            // Never publish a selection from an expired diagnosis request.
+            if ($request->expires_at->isPast()) {
+                throw new DomainException('Mobile diagnosis request is unavailable.');
+            }
+
             if (! $response->successful() || ! is_string($body)
                 || trim($body) === '' || mb_strlen($body) > 1000) {
                 throw new RuntimeException('Diagnosis provider returned no bounded selection.');
