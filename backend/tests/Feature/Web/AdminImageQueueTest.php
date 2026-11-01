@@ -417,7 +417,7 @@ final class AdminImageQueueTest extends TestCase
         }
 
         for ($index = 0; $index < 13; $index++) {
-            \App\Models\Asset::create([
+            $asset = \App\Models\Asset::create([
                 'asset_key' => 'media-history-'.$index,
                 'mime_type' => 'image/png',
                 'storage_key' => 'private/history-'.$index.'.png',
@@ -426,6 +426,10 @@ final class AdminImageQueueTest extends TestCase
                 'rights_status' => 'unverified',
                 'publishable' => false,
             ]);
+            $asset->forceFill([
+                'created_at' => now()->subMinutes($index),
+                'updated_at' => now()->subMinutes($index),
+            ])->save();
         }
 
         $first = $this->get('/admin/ai/images?lang=en')->assertOk()
@@ -437,8 +441,8 @@ final class AdminImageQueueTest extends TestCase
             ->assertDontSee($jobIds[20])
             ->assertDontSee($jobIds[42])
             ->assertSee('Registered assets (13)')
-            ->assertSee('media-history-12')
-            ->assertDontSee('media-history-0')
+            ->assertSee('media-history-0')
+            ->assertDontSee('media-history-12')
             ->assertDontSee('PRIVATE-IMAGE-PROVIDER-SECRET')
             ->assertDontSee($provider->base_url)
             ->assertDontSee('idempotency_key');
@@ -460,8 +464,8 @@ final class AdminImageQueueTest extends TestCase
             ->assertSee($jobIds[40])
             ->assertSee($jobIds[42])
             ->assertDontSee($jobIds[39])
-            ->assertSee('media-history-0')
-            ->assertDontSee('media-history-12')
+            ->assertSee('media-history-12')
+            ->assertDontSee('media-history-0')
             ->assertSee('jobs_page=3', false)
             ->assertSee('page=1', false);
         $this->assertSame(3, substr_count($last->getContent(), '<td><code>'));
