@@ -82,6 +82,7 @@ button{background:transparent;color:#fff;border:1px solid #fff;border-radius:8px
 <h2>{{ $locale === 'ar' ? 'إدارة المزودين' : 'Provider management' }}</h2>
 <p>{{ $locale === 'ar' ? 'الإعدادات محفوظة على الخادم.' : 'Provider configuration is managed on the server.' }}</p>
 <a href="{{ route('admin.providers.index', ['lang'=>$locale]) }}">{{ $locale === 'ar' ? 'فتح الإدارة' : 'Open settings' }}</a>
+<a href="{{ route('admin.routing.index', ['lang'=>$locale]) }}" style="margin-inline-start:16px">{{ $locale === 'ar' ? 'أولويات توجيه AI' : 'AI routing priorities' }}</a>
 <a href="{{ route('admin.usage.index', ['lang'=>$locale]) }}" style="margin-inline-start:16px">{{ $locale === 'ar' ? 'سجل الاستخدام حسب المزود' : 'Provider usage audit' }}</a>
 </section>
 </main></div></body></html>
