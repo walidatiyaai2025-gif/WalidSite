@@ -182,10 +182,12 @@ void main() {
 
   testWidgets('home has working learning link and no guessed production origin', (tester) async {
     await tester.pumpWidget(const WaleedTechApp());
+    // Position the lazy ListTile well inside the 800x600 test viewport.
+    // ensureVisible may leave the center outside the tappable region.
     await tester.scrollUntilVisible(
-      find.byKey(const Key('verified-learning-entry')), 130,
+      find.byKey(const Key('verified-learning-entry')), 150,
+      alignment: 0.25,
     );
-    await tester.ensureVisible(find.byKey(const Key('verified-learning-entry')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('verified-learning-entry')));
     await tester.pumpAndSettle();
