@@ -35,8 +35,8 @@ button{background:transparent;color:#fff;border:1px solid #fff;border-radius:8px
 <h1>{{ $locale === 'ar' ? 'نظرة عامة' : 'Administration overview' }}</h1>
 <a href="{{ route('admin.home', ['lang'=>$locale === 'ar' ? 'en' : 'ar']) }}">{{ $locale === 'ar' ? 'English' : 'العربية' }}</a>
 <p>{{ $locale === 'ar'
-? 'هذه أعداد الإعدادات المحفوظة فعليًا، وليست إحصاءات استخدام أو تكلفة.'
-: 'These values count saved configurations, not AI usage or costs.' }}</p>
+? 'البطاقات تلخص إعدادات المزودين المسجلة؛ استهلاك AI معروض فقط عندما توجد إيصالات استخدام محفوظة.'
+: 'Provider cards count saved configurations; AI usage is displayed only when stored receipts exist.' }}</p>
 <section aria-labelledby="provider-counters">
 <h2 id="provider-counters">{{ $locale === 'ar' ? 'حالة المزودين' : 'Provider status' }}</h2>
 <div class="cards">
@@ -78,5 +78,6 @@ button{background:transparent;color:#fff;border:1px solid #fff;border-radius:8px
 <h2>{{ $locale === 'ar' ? 'إدارة المزودين' : 'Provider management' }}</h2>
 <p>{{ $locale === 'ar' ? 'الإعدادات محفوظة على الخادم.' : 'Provider configuration is managed on the server.' }}</p>
 <a href="{{ route('admin.providers.index', ['lang'=>$locale]) }}">{{ $locale === 'ar' ? 'فتح الإدارة' : 'Open settings' }}</a>
+<a href="{{ route('admin.usage.index', ['lang'=>$locale]) }}" style="margin-inline-start:16px">{{ $locale === 'ar' ? 'سجل الاستخدام حسب المزود' : 'Provider usage audit' }}</a>
 </section>
 </main></div></body></html>
