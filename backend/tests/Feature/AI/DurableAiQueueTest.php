@@ -278,6 +278,38 @@ class DurableAiQueueTest extends TestCase
         $this->assertDatabaseCount('job_leases', 1);
     }
 
+    public function test_open_circuit_backlog_does_not_starve_other_providers_and_retries_after_cooldown(): void
+    {
+        $queue = new DurableAiQueue();
+        $blockedProvider = $this->provider();
+        $blockedFirst = null;
+        for ($i = 0; $i < 26; ++$i) {
+            $id = $queue->enqueue($blockedProvider, 'draft', 'circuit:queued:'.$i, ['research']);
+            $blockedFirst ??= $id;
+        }
+        DB::table('ai_provider_circuits')->insert([
+            'provider_id' => $blockedProvider->id,
+            'consecutive_failures' => 3,
+            'last_failure_code' => 'provider_timeout',
+            'opened_until' => now()->addMinutes(5),
+            'updated_at' => now(),
+        ]);
+
+        $healthy = $this->provider();
+        $eligible = $queue->enqueue($healthy, 'draft', 'circuit:eligible', ['research']);
+
+        // The 26 jobs on an open circuit are not discarded, but also do not
+        // occupy every slot in the 20-job database admission window.
+        $this->assertSame($eligible, $queue->claimNext('worker-a')?->id);
+        $this->assertSame(26, DB::table('ai_jobs')->where('provider_id', $blockedProvider->id)
+            ->where('status', 'queued')->count());
+        $queue->completeStep($eligible, 'worker-a', 'research', 'drafts/healthy');
+        $queue->completeJob($eligible, 'worker-a');
+
+        $this->travel(6)->minutes();
+        $this->assertSame($blockedFirst, $queue->claimNext('worker-b')?->id);
+    }
+
     public function test_unfunded_paid_backlog_cannot_starve_runnable_work(): void
     {
         $queue = new DurableAiQueue();
