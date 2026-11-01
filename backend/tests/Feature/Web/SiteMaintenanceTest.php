@@ -52,6 +52,9 @@ class SiteMaintenanceTest extends TestCase
             'site.setup_enabled' => true,
             'site.setup_token' => $token,
             'site.install_lock_path' => $path,
+            'site.setup_database_ready' => true,
+            'site.environment_path' => storage_path('app/site-test-environment'),
+            'site.bootstrap_path' => storage_path('app/site-test-bootstrap'),
         ]);
 
         try {
