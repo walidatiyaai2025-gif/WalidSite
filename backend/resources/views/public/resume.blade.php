@@ -7,6 +7,8 @@
 .resume section{background:#fff;border:1px solid var(--wa-soft-border);padding:24px;border-radius:18px;margin-block:18px}
 .resume article{padding:13px 0;border-top:1px solid var(--wa-soft-border)}
 .resume button{background:var(--wa-cta);border:0;border-radius:10px;color:#fff;padding:12px 18px;font:inherit;min-height:44px;cursor:pointer}
+.resume-skills{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;padding-inline-start:20px}
+.resume-skills li{padding-block:5px}
 @media print{.site-header,.site-footer,.resume-actions{display:none!important}.resume{padding:0}.resume section{break-inside:avoid}body{background:#fff}}
 </style>
 @endpush
@@ -35,6 +37,18 @@
 @empty
 <p>{{ $locale === 'ar' ? 'لا توجد شهادات مؤكدة للنشر حاليًا.' : 'No approved credential evidence is available yet.' }}</p>
 @endforelse
+</section>
+<section aria-labelledby="resume-skills-heading">
+<h2 id="resume-skills-heading">{{ $locale === 'ar' ? 'المهارات الموثقة' : 'Verified skills' }}</h2>
+@if($skills->isEmpty())
+<p>{{ $locale === 'ar' ? 'لم تُعتمد مهارات للنشر بعد.' : 'No evidence-verified skills are published yet.' }}</p>
+@else
+<ul class="resume-skills">
+@foreach($skills as $skill)
+<li>{{ $locale === 'ar' ? $skill->name_ar : $skill->name_en }}</li>
+@endforeach
+</ul>
+@endif
 </section>
 @endif
 </div>
