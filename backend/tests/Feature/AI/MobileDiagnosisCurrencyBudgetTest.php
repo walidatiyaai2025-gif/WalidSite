@@ -108,7 +108,7 @@ final class MobileDiagnosisCurrencyBudgetTest extends TestCase
         $this->assertTrue($selector->available());
 
         DB::table('ai_usage')->where('job_id', $oldJob)->delete();
-        $this->receipt($oldJob, $primary, 'USD', 90, now('UTC')->toDateTimeString());
+        $this->receipt($oldJob, $primary, 'USD', 95, now('UTC')->toDateTimeString());
         $this->assertSame($secondary->id, $selector->select()['provider']->id);
 
         DB::table('ai_usage')->where('job_id', $oldJob)->delete();
