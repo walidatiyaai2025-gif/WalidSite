@@ -13,22 +13,38 @@ class PublicPortfolioController extends Controller
 {
     public function projects(Request $request): JsonResponse
     {
-        $page = Project::query()->publiclyVerified()->orderByDesc('published_at')
-            ->orderBy('id')->paginate(12);
+        $perPage = 12;
+        $currentPage = max(1, \Illuminate\Pagination\Paginator::resolveCurrentPage());
+        // Bound arithmetic even when a client supplies an extreme page value.
+        $offset = min($currentPage - 1, intdiv(PHP_INT_MAX, $perPage)) * $perPage;
+        $visible = [];
+        $total = 0;
 
-        // A database 'verified' flag alone does not make an unsafe link
-        // usable public proof. Never expose such projects in the API DTO.
-        $visible = $page->getCollection()
-            ->map(fn (Project $project) => $this->publicProjectData($project, $request))
-            ->filter(fn (array $data) => ! empty($data['evidence_urls']))
-            ->values();
+        // Filtering AFTER SQL pagination leaks the number of projects whose
+        // evidence is unsafe and produces empty pages ahead of valid projects.
+        // The URL policy is deliberately checked in PHP (not a DB-specific
+        // regex) so SQLite and MariaDB produce the same exact pagination.
+        // lazy() holds only one small project chunk in memory; no remote
+        // evidence URL is ever fetched.
+        foreach (Project::query()->publiclyVerified()
+            ->orderByDesc('published_at')->orderBy('id')->lazy(100) as $project) {
+            $data = $this->publicProjectData($project, $request);
+            if (empty($data['evidence_urls'])) {
+                continue;
+            }
+
+            if ($total >= $offset && count($visible) < $perPage) {
+                $visible[] = $data;
+            }
+            $total++;
+        }
 
         return response()->json([
-            'data' => $visible->all(),
+            'data' => $visible,
             'meta' => [
-                'current_page' => $page->currentPage(),
-                'last_page' => $page->lastPage(),
-                'total' => $page->total(),
+                'current_page' => $currentPage,
+                'last_page' => max(1, (int) ceil($total / $perPage)),
+                'total' => $total,
             ],
         ]);
     }
