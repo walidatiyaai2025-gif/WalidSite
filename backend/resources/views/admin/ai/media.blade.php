@@ -28,7 +28,7 @@ button:disabled{opacity:.6}.actions{display:flex;gap:12px;align-items:center;fle
 <a href="{{ route('admin.home', ['lang'=>$locale]) }}">{{ $locale === 'ar' ? 'الرئيسية' : 'Overview' }}</a>
 <a href="{{ route('admin.content.index', ['lang'=>$locale]) }}">{{ $locale === 'ar' ? 'مراجعة المقالات' : 'Editorial review' }}</a>
 <a href="{{ route('admin.media.index', ['lang'=>$locale]) }}" aria-current="page">{{ $locale === 'ar' ? 'حقوق الصور' : 'Media rights' }}</a>
-</nav></aside><main id="content">
+</nav></aside><main id="content" tabindex="-1">
 <div class="top"><h1>{{ $locale === 'ar' ? 'مراجعة حقوق الصور' : 'Media rights review' }}</h1>
 <div class="actions">
 <a href="{{ route('admin.media.index', ['lang'=>$locale === 'ar' ? 'en' : 'ar']) }}">{{ $locale === 'ar' ? 'English' : 'العربية' }}</a>
@@ -91,12 +91,22 @@ button:disabled{opacity:.6}.actions{display:flex;gap:12px;align-items:center;fle
 <th>{{ $locale === 'ar' ? 'رمز الخطأ' : 'Error code' }}</th>
 </tr></thead><tbody>
 @foreach($imageJobs as $job)<tr>
-<td><code>{{ $job->id }}</code></td>
+<td><code dir="ltr">{{ $job->id }}</code></td>
 <td>{{ $job->provider_name }}</td>
-<td>{{ $job->status }}</td>
+<td>{{ $locale === 'ar'
+    ? match($job->status) {
+        'queued' => 'في الطابور',
+        'running' => 'قيد التنفيذ',
+        'retry' => 'بانتظار إعادة المحاولة',
+        'failed' => 'فشلت',
+        'completed' => 'مكتملة',
+        'cancelled' => 'ملغاة',
+        default => $job->status,
+    }
+    : $job->status }}</td>
 <td>{{ $job->attempt_count }}/{{ $job->max_attempts }}</td>
 <td>{{ $job->reserved_budget_minor }} {{ $job->currency }}</td>
-<td>{{ $job->last_error_code ?? '—' }}</td>
+<td><code dir="ltr">{{ $job->last_error_code ?? '—' }}</code></td>
 </tr>@endforeach
 </tbody></table></div>
 <nav aria-label="{{ $locale === 'ar' ? 'صفحات مهام توليد الصور' : 'Artwork queue pages' }}">
@@ -112,9 +122,24 @@ button:disabled{opacity:.6}.actions{display:flex;gap:12px;align-items:center;fle
 <div class="records">@foreach($assets as $asset)
 <article class="record">
 <h3>{{ $asset->asset_key }}</h3>
-<p><strong>{{ $locale === 'ar' ? 'المنشأ' : 'Origin' }}:</strong> {{ $asset->origin }}</p>
+<p><strong>{{ $locale === 'ar' ? 'المنشأ' : 'Origin' }}:</strong>
+{{ $locale === 'ar'
+    ? match($asset->origin) {
+        'ai-generated' => 'مولدة بالذكاء الاصطناعي',
+        'owner-supplied' => 'مقدمة من المالك',
+        default => $asset->origin,
+    }
+    : $asset->origin }}</p>
 <p><strong>{{ $locale === 'ar' ? 'النوع' : 'Type' }}:</strong> {{ $asset->mime_type }}</p>
-<p><strong>{{ $locale === 'ar' ? 'حالة الحقوق' : 'Rights status' }}:</strong> {{ $asset->rights_status }}</p>
+<p><strong>{{ $locale === 'ar' ? 'حالة الحقوق' : 'Rights status' }}:</strong>
+{{ $locale === 'ar'
+    ? match($asset->rights_status) {
+        'unverified' => 'غير متحقق منها',
+        'cleared' => 'مراجعة ومعتمدة',
+        'revoked' => 'ملغاة',
+        default => $asset->rights_status,
+    }
+    : $asset->rights_status }}</p>
 <p><strong>{{ $locale === 'ar' ? 'مسموح بالنشر' : 'Publicly usable' }}:</strong>
 {{ $asset->isPubliclyUsable() ? ($locale === 'ar' ? 'نعم' : 'Yes') : ($locale === 'ar' ? 'لا' : 'No') }}</p>
 @if($asset->origin === 'ai-generated' && $asset->rights_status === 'unverified' && ! $asset->publishable)
