@@ -207,7 +207,7 @@ Route::middleware('auth:web')->group(function (): void {
                 'provider.currency', 'provider.deleted_at', 'usage.cost_currency')
             ->orderBy('provider.display_name')->orderBy('provider.id')
             ->orderBy('usage.cost_currency')
-            ->paginate(20)->withQueryString();
+            ->paginate(20)->appends(['lang' => $request->query('lang') === 'ar' ? 'ar' : 'en']);
 
         return view('admin.ai.usage', compact('rows'));
     })->name('admin.usage.index');
