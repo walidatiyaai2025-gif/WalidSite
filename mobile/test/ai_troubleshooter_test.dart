@@ -127,6 +127,7 @@ void main() {
   testWidgets('consent gates diagnosis and successful result opens reviewed detail',
       (tester) async {
     var diagnoseCalls = 0;
+    var detailSaveCalls = 0;
     String? receivedToken;
     String? receivedQuestion;
     String? receivedTechnology;
@@ -149,6 +150,11 @@ void main() {
           resultUrl: '/api/v1/mobile/solutions/$runbookId',
           retryAfterSeconds: null,
         );
+      },
+      save: (bearer, id) async {
+        detailSaveCalls++;
+        expect(bearer, token);
+        expect(id, runbookId);
       },
       detail: (id) async {
         expect(id, runbookId);
@@ -209,6 +215,12 @@ void main() {
     expect(find.text('Reviewed SQL recovery'), findsOneWidget);
     expect(find.byKey(const Key('online-runbook-body')), findsOneWidget);
     expect(find.textContaining('RESTORE DATABASE'), findsNothing);
+    expect(find.text(token), findsNothing);
+    await reveal(tester, const Key('online-runbook-save'));
+    await tester.tap(find.byKey(const Key('online-runbook-save')));
+    await tester.pumpAndSettle();
+    expect(detailSaveCalls, 1);
+    expect(find.byKey(const Key('online-runbook-login-email')), findsNothing);
     expect(find.text(token), findsNothing);
   });
 
