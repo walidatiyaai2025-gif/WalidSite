@@ -165,4 +165,101 @@ final class QualityIncidentTriageTest extends TestCase
         }
         Http::assertNothingSent();
     }
+
+    public function test_exact_id_filter_and_no_matching_incidents_have_truthful_empty_state(): void
+    {
+        Http::fake();
+        $this->actingAs($this->actor('owner'), 'web');
+        $provider = $this->provider();
+        $retry = $this->incident($provider, 'retry');
+        $failed = $this->incident($provider, 'failed', 3);
+        $unknown = (string) Str::uuid();
+
+        $this->get('/admin/quality?lang=en&job_id='.$retry)->assertOk()
+            ->assertSee('AI failures and retries (1)')
+            ->assertSee($retry)->assertDontSee($failed)
+            ->assertSee('value="'.$retry.'"', false);
+
+        $this->get('/admin/quality?lang=ar&job_id='.$retry.'&job_status=failed')
+            ->assertOk()
+            ->assertSee('فشل وإعادة محاولة مهام AI (0)')
+            ->assertSee('لا توجد أعطال تطابق هذه المرشحات.')
+            ->assertDontSee($failed)->assertDontSee($retry);
+
+        $this->get('/admin/quality?job_id='.$unknown)->assertOk()
+            ->assertSee('No incidents match these filters.');
+        $this->get('/admin/quality')->assertOk()
+            ->assertSee('AI failures and retries (2)');
+
+        Http::assertNothingSent();
+    }
+
+    public function test_filtered_backlog_pagination_retains_locale_and_current_query(): void
+    {
+        Http::fake();
+        $this->actingAs($this->actor(), 'web');
+        $provider = $this->provider();
+        $retryIds = [];
+        for ($index = 0; $index < 27; $index++) {
+            $id = $this->incident($provider, 'retry');
+            DB::table('ai_jobs')->where('id', $id)->update([
+                'updated_at' => now()->subMinutes($index),
+            ]);
+            $retryIds[] = $id;
+        }
+        $failed = $this->incident($provider, 'failed', 3);
+
+        $first = $this->get('/admin/quality?lang=ar&job_status=retry')->assertOk()
+            ->assertSee('فشل وإعادة محاولة مهام AI (27)')
+            ->assertSee($retryIds[0])->assertSee($retryIds[24])
+            ->assertDontSee($retryIds[25])->assertDontSee($failed)
+            ->assertSee('jobs_page=2', false)
+            ->assertSee('job_status=retry', false)
+            ->assertSee('lang=ar', false);
+        $this->assertSame(25, substr_count($first->getContent(), 'step_failed'));
+
+        $last = $this->get('/admin/quality?lang=ar&job_status=retry&jobs_page=2')
+            ->assertOk()->assertSee($retryIds[25])->assertSee($retryIds[26])
+            ->assertDontSee($retryIds[0])->assertDontSee($failed)
+            ->assertSee('jobs_page=1', false);
+        $this->assertSame(2, substr_count($last->getContent(), 'step_failed'));
+        Http::assertNothingSent();
+    }
+
+    public function test_leased_retry_and_terminal_job_never_expose_action_or_change_state(): void
+    {
+        Http::fake();
+        $this->actingAs($this->actor(), 'web');
+        $provider = $this->provider();
+        $retry = $this->incident($provider, 'retry');
+        $failed = $this->incident($provider, 'failed', 3);
+
+        DB::table('job_leases')->insert([
+            'id' => (string) Str::uuid(),
+            'job_id' => $retry,
+            'owner_key' => 'PRIVATE-WORKER-IDENTITY',
+            'expires_at' => now()->addMinutes(2),
+            'lease_version' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->get('/admin/quality?lang=en&inspect_job='.$retry)->assertOk()
+            ->assertSee('Retry is not available for this job.')
+            ->assertDontSee('Retry this job now')
+            ->assertDontSee('PRIVATE-WORKER-IDENTITY');
+
+        $this->post('/admin/quality/jobs/'.$retry.'/retry?lang=en&inspect_job='.$retry)
+            ->assertRedirect()->assertSessionHasErrors('retry');
+        $this->assertNotNull(DB::table('ai_jobs')
+            ->where('id', $retry)->value('next_attempt_at'));
+
+        $this->get('/admin/quality?lang=ar&inspect_job='.$failed)->assertOk()
+            ->assertSee('إعادة المحاولة غير مسموحة لهذه المهمة حاليًا.')
+            ->assertDontSee('إعادة محاولة هذه المهمة الآن');
+        $this->post('/admin/quality/jobs/'.$failed.'/retry?lang=en')
+            ->assertSessionHasErrors('retry');
+        Http::assertNothingSent();
+    }
+
 }
