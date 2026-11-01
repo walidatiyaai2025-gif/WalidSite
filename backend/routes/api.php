@@ -12,6 +12,7 @@ use App\Http\Controllers\Api\PublicLearningPathController;
 use App\Http\Controllers\Api\PublicSearchController;
 use App\Http\Controllers\Api\PublicResumeController;
 use App\Http\Controllers\Api\PublicRecruiterController;
+use App\Http\Controllers\Api\PublicContactController;
 use App\Http\Middleware\RequireSecureApiTransport;
 use Illuminate\Support\Facades\Route;
 
@@ -54,6 +55,10 @@ Route::get('/public/recruiter', [PublicRecruiterController::class, 'index'])
     ->name('api.public.recruiter')->middleware('throttle:60,1');
 Route::get('/public/search', [PublicSearchController::class, 'index'])
     ->name('api.public.search')->middleware('throttle:60,1');
+
+// WEB-14: anonymous consent-based contact, HTTPS required before accepting PII.
+Route::post('/public/contact', [PublicContactController::class, 'store'])
+    ->name('api.public.contact')->middleware([RequireSecureApiTransport::class, 'throttle:4,1']);
 
 // WEB-09: verified articles and signed-off runbooks only; no invented tools.
 Route::get('/public/tools', [PublicLabController::class, 'index'])
