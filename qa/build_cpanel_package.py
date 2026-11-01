@@ -37,6 +37,11 @@ STORAGE = ("storage/app/private", "storage/framework/cache/data",
 
 def safe(file, root):
     if file.is_symlink():
+        # Composer creates vendor/bin CLI shims as symlinks; the web app
+        # never needs them. Exclude those rather than shipping link targets
+        # that may escape the application directory after deployment.
+        if file.relative_to(root).parts[:3] == ("backend", "vendor", "bin"):
+            return False
         raise ValueError("Refuse symbolic link: " + str(file))
     parts = file.relative_to(root).parts
     if any(x in EXCLUDE_PARTS for x in parts):
