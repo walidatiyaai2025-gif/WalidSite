@@ -68,6 +68,28 @@ table{width:100%;border-collapse:collapse}th,td{text-align:start;padding:9px;ove
 <button>{{ $locale === 'ar' ? 'حفظ الموعد' : 'Schedule' }}</button>
 </form>
 @endif
+</section>
+<section class="panel" aria-labelledby="manual-title">
+<h2 id="manual-title">{{ $locale === 'ar' ? 'مراجعة ونشر يدوي مع توثيق السبب' : 'Manual review with recorded reason' }}</h2>
+<p class="muted">{{ $locale === 'ar' ? 'الحالات عالية المخاطر متاحة للمالك فقط، مع الالتزام بمراجعة المصادر والفحوص وحقوق الصور.' : 'Only the owner can approve high-risk/professional content. Independent citation, technical and rights gates still apply.' }}</p>
+@if($candidates->isEmpty())
+<p>{{ $locale === 'ar' ? 'لا توجد مقالات جاهزة للمراجعة.' : 'No verified articles ready for review.' }}</p>
+@else
+@foreach($candidates as $candidate)
+<form method="post" action="{{ route('admin.editorial.manual', ['article'=>$candidate->id,'lang'=>$locale]) }}">
+@csrf
+<p><strong>{{ $locale === 'ar' ? $candidate->title_ar : $candidate->title_en }}</strong></p>
+<label for="reason-{{ $candidate->id }}">{{ $locale === 'ar' ? 'سبب الموافقة' : 'Approval reason' }}</label>
+<select name="reason" id="reason-{{ $candidate->id }}" required>
+<option value="source_reviewed">{{ $locale === 'ar' ? 'تمت مراجعة المصادر' : 'Sources independently reviewed' }}</option>
+<option value="technical_reviewed">{{ $locale === 'ar' ? 'تمت المراجعة الفنية' : 'Technical validation reviewed' }}</option>
+<option value="legal_reviewed">{{ $locale === 'ar' ? 'تمت مراجعة حقوق النشر' : 'Rights and legal review completed' }}</option>
+</select>
+<label><input type="checkbox" name="confirmed" value="1" required> {{ $locale === 'ar' ? 'أؤكد مسؤوليتي عن قرار النشر' : 'I confirm this publication decision' }}</label>
+<button>{{ $locale === 'ar' ? 'مراجعة ونشر يدوي' : 'Record decision and publish' }}</button>
+</form>
+@endforeach
+@endif
 </section></div>
 <section class="panel" aria-labelledby="queues"><h2 id="queues">{{ $locale === 'ar' ? 'الجدول المحفوظ' : 'Persisted schedule' }}</h2>
 @if($schedules->isEmpty())<p>{{ $locale === 'ar' ? 'لا توجد مهام مجدولة.' : 'No scheduled publications.' }}</p>
