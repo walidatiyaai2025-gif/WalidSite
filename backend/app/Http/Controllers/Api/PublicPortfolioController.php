@@ -27,6 +27,15 @@ class PublicPortfolioController extends Controller
         // lazy() holds only one small project chunk in memory; no remote
         // evidence URL is ever fetched.
         foreach (Project::query()->publiclyVerified()
+            // Laravel eager-loads each 100-row lazy() chunk in one query.
+            // Keep the exact same per-project limit used by detail results,
+            // rather than issuing one evidence query for every candidate.
+            ->with(['evidence' => static fn ($evidence) => $evidence
+                ->where('visibility', 'public')
+                ->whereNotNull('verified_at')
+                ->where('verified_at', '<=', now())
+                ->orderBy('id')
+                ->limit(50)])
             ->orderByDesc('published_at')->orderBy('id')->lazy(100) as $project) {
             $data = $this->publicProjectData($project, $request);
             if (empty($data['evidence_urls'])) {
@@ -93,11 +102,18 @@ class PublicPortfolioController extends Controller
     public function publicProjectData(Project $project, Request $request): array
     {
         $ar = $request->query('lang') === 'ar';
-        $urls = $project->evidence()
-            ->where('visibility', 'public')
-            ->whereNotNull('verified_at')
-            ->where('verified_at', '<=', now())
-            ->orderBy('id')->limit(50)->pluck('url')
+        // List results use the bounded eager-loaded evidence for their chunk.
+        // Detail requests are not eager loaded and retain the original guarded
+        // 50-row query. Both paths apply the same URL safety policy below.
+        $evidenceUrls = $project->relationLoaded('evidence')
+            ? $project->evidence->pluck('url')
+            : $project->evidence()
+                ->where('visibility', 'public')
+                ->whereNotNull('verified_at')
+                ->where('verified_at', '<=', now())
+                ->orderBy('id')->limit(50)->pluck('url');
+
+        $urls = $evidenceUrls
             ->filter(fn ($url) => $this->safeEvidenceUrl($url))
             ->unique()->values()->all();
 

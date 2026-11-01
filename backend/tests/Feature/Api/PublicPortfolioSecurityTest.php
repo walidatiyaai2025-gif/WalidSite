@@ -9,6 +9,7 @@ use App\Models\Role;
 use App\Models\ProjectEvidence;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
@@ -206,6 +207,81 @@ class PublicPortfolioSecurityTest extends TestCase
             ->assertJsonPath('meta.last_page', 1)
             ->assertDontSee($project->slug);
         $this->getJson('/api/v1/public/projects/'.$project->slug)->assertNotFound();
+    }
+
+    public function test_public_project_listing_has_chunk_bounded_evidence_queries(): void
+    {
+        foreach (range(1, 125) as $i) {
+            $project = $this->project();
+            $this->proof($project, 'public', true, 'https://docs.example.test/proof');
+        }
+
+        $evidenceQueries = 0;
+        DB::listen(static function ($event) use (&$evidenceQueries): void {
+            if (str_contains(strtolower($event->sql), 'project_evidence')) {
+                $evidenceQueries++;
+            }
+        });
+
+        $this->getJson('/api/v1/public/projects')->assertOk()
+            ->assertJsonCount(12, 'data')
+            ->assertJsonPath('meta.total', 125)
+            ->assertJsonPath('meta.last_page', 11);
+
+        // Two lazy() batches plus the final end-of-cursor query, NOT 125
+        // separate evidence selects. The upper bound also tolerates the
+        // portable whereHas() existence checks on SQLite and MariaDB.
+        $this->assertLessThanOrEqual(8, $evidenceQueries,
+            'Project evidence must be loaded by chunk, not once per project.');
+    }
+
+    public function test_eager_loaded_public_evidence_obeys_per_project_fifty_row_cap(): void
+    {
+        $expectedVisible = [];
+        $all = [];
+        foreach ([1, 2, 3] as $group) {
+            $project = $this->project();
+            $all[$group] = $project;
+            foreach (range(1, 51) as $index) {
+                $shouldBeSafe = ($group < 3 && $index === 1)
+                    || ($group === 3 && $index === 51);
+                $url = $shouldBeSafe
+                    ? 'https://docs.example.test/approved-'.$group
+                    : 'https://docs.example.test/proof?token=private';
+
+                $evidence = new ProjectEvidence([
+                    'project_id' => $project->id,
+                    'evidence_type' => 'public_document',
+                    'url' => $url,
+                    'visibility' => 'public',
+                    'verified_at' => now()->subDay(),
+                ]);
+                // Enforce deterministic UUID sorting independent of wall clock.
+                $evidence->id = sprintf('00000000-0000-4000-8000-%012d', $group * 100 + $index);
+                $evidence->save();
+            }
+            if ($group < 3) {
+                $expectedVisible[] = $project->slug;
+            }
+        }
+
+        $list = $this->getJson('/api/v1/public/projects');
+        $list->assertOk()->assertJsonPath('meta.total', 2)
+            ->assertJsonCount(2, 'data')
+            ->assertDontSee('token=private');
+        $this->assertEqualsCanonicalizing($expectedVisible,
+            array_column($list->json('data'), 'slug'));
+
+        foreach ([1, 2] as $group) {
+            $this->getJson('/api/v1/public/projects/'.$all[$group]->slug)
+                ->assertOk()->assertJsonCount(1, 'data.evidence_urls')
+                ->assertJsonPath('data.evidence_urls.0',
+                    'https://docs.example.test/approved-'.$group);
+        }
+        // A safe 51st link cannot bypass the first-50 limit on either route.
+        $list->assertDontSee($all[3]->slug);
+        $this->getJson('/api/v1/public/projects/'.$all[3]->slug)
+            ->assertNotFound();
     }
 
     public function test_public_profile_ignores_non_owner_and_inactive_owner_records(): void
