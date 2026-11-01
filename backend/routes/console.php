@@ -30,6 +30,32 @@ Schedule::command('ai:tick')
     ->withoutOverlapping(4);
 
 /*
+ * Privacy cleanup for interrupted MOBILE-03 work. Clear only expired private
+ * request blobs in a bounded batch; job/result metadata remains auditable.
+ */
+Artisan::command('ai:purge-expired-diagnosis-inputs', function () {
+    $ids = \Illuminate\Support\Facades\DB::table('ai_diagnosis_requests')
+        ->whereNotNull('request_blob')
+        ->where('expires_at', '<=', now())
+        ->orderBy('expires_at')
+        ->limit(100)
+        ->pluck('id');
+    if ($ids->isEmpty()) {
+        $this->line('Expired diagnosis inputs cleared: 0');
+        return 0;
+    }
+    $count = \Illuminate\Support\Facades\DB::table('ai_diagnosis_requests')
+        ->whereIn('id', $ids)
+        ->update(['request_blob' => null, 'updated_at' => now()]);
+    $this->line('Expired diagnosis inputs cleared: '.$count);
+    return 0;
+})->purpose('Clear expired private mobile diagnosis input in a bounded batch');
+
+Schedule::command('ai:purge-expired-diagnosis-inputs')
+    ->hourly()
+    ->withoutOverlapping(5);
+
+/*
  * T022: one bounded page per scheduled invocation. No resident daemon, AI
  * inference, or automatic draft approval. Host cron must separately execute
  * Laravel's schedule:run; installing this code does not activate hosting.
