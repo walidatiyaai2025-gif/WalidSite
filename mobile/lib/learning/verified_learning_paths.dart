@@ -59,7 +59,8 @@ class VerifiedLearningPage {
       throw const FormatException('Invalid learning catalog page');
     }
     final tracks = <VerifiedLearningTrack>[];
-    final seen = <String>{};
+    final seenIds = <String>{};
+    final seenSlugs = <String>{};
     final uuid = RegExp(
       r'^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$',
     );
@@ -70,9 +71,10 @@ class VerifiedLearningPage {
           record.length != 4 ||
           record['id'] is! String ||
           !uuid.hasMatch(record['id'] as String) ||
-          !seen.add(record['id'] as String) ||
+          !seenIds.add(record['id'] as String) ||
           record['slug'] is! String ||
           !slugPattern.hasMatch(record['slug'] as String) ||
+          !seenSlugs.add(record['slug'] as String) ||
           record['title'] is! String ||
           (record['title'] as String).trim().isEmpty ||
           (record['title'] as String).length > 220 ||
