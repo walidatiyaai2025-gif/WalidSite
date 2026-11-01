@@ -18,6 +18,7 @@ class AppServiceProvider extends ServiceProvider
         // register reviewed job handlers during provider boot; no arbitrary
         // handler class names are ever resolved from database payloads.
         $this->app->singleton(\App\AI\AiStepHandlerRegistry::class);
+        (new \App\Support\Deployment\FirstRunBootstrap())->prepare();
     }
 
     /**
