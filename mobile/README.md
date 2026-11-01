@@ -64,3 +64,9 @@ language switching remains available without network access or added permissions
 The choice is session-local: restarting follows the device again, not a claimed
 persistent preference. Widget tests cover Arabic launch/manual switching and
 unsupported-language fallback.
+
+## T005 iOS Simulator validation (2026-11-01)
+
+Validated the checked-in iOS runner on macOS 15.8.1 with Flutter 3.47.6 and Xcode 26.3. `flutter analyze` reported no issues; `flutter test` passed all 22 tests. Xcode built the simulator app with code signing disabled and `IPHONEOS_DEPLOYMENT_TARGET=13.0`; the app installed and launched on an iPhone 17 Pro / iOS 26.3 Simulator. The captured home screen is [`evidence/t005-ios-simulator-home-en.png`](evidence/t005-ios-simulator-home-en.png).
+
+This confirms a debug simulator build and launch against the checked-in iOS 13 target; it is not an iOS device build, release artifact, App Store signing, or staging smoke. Android's `com.example.waleed_tech_companion` and iOS's `com.example.waleedTechCompanion` remain development identifiers pending owner-approved production IDs. T005 remains open until those external release/staging gates are resolved.
