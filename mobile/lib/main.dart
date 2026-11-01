@@ -10,6 +10,7 @@ import 'github/verified_github_portfolio.dart';
 import 'solutions/offline_solution_finder.dart';
 import 'ai/ai_troubleshooter.dart';
 import 'account/account_journey.dart';
+import 'preferences/mobile_preferences.dart';
 
 void main() => runApp(const WaleedTechApp());
 
@@ -49,6 +50,7 @@ class _WaleedTechAppState extends State<WaleedTechApp> {
       home: CompanionHome(
         arabic: _arabic,
         onToggleLanguage: () => setState(() => _arabic = !_arabic),
+        onSetLanguage: (value) => setState(() => _arabic = value),
       ),
     );
   }
@@ -58,11 +60,13 @@ class CompanionHome extends StatelessWidget {
   const CompanionHome({
     required this.arabic,
     required this.onToggleLanguage,
+    this.onSetLanguage,
     super.key,
   });
 
   final bool arabic;
   final VoidCallback onToggleLanguage;
+  final ValueChanged<bool>? onSetLanguage;
 
   static const List<_Topic> _topics = [
     _Topic(
@@ -273,6 +277,30 @@ class CompanionHome extends StatelessWidget {
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute<void>(
                     builder: (_) => MobileAccountJourney(arabic: arabic),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Card(
+              child: ListTile(
+                key: const Key('mobile-preferences-entry'),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16, vertical: 12,
+                ),
+                leading: const Icon(Icons.tune_outlined, size: 30),
+                title: Text(arabic ? 'التفضيلات' : 'Preferences'),
+                subtitle: Text(arabic
+                    ? 'اللغة والأدلة المحلية وخيارات الخصوصية المدعومة'
+                    : 'Language, local guides and available privacy settings'),
+                trailing: Icon(arabic ? Icons.chevron_left : Icons.chevron_right),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => MobilePreferencesScreen(
+                      arabic: arabic,
+                      onLanguageChanged: onSetLanguage ??
+                          (_) => onToggleLanguage(),
+                    ),
                   ),
                 ),
               ),
