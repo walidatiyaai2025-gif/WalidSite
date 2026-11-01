@@ -180,12 +180,19 @@ final class AdminAiTaskRouteJourneyTest extends TestCase
     {
         Http::fake();
         $provider = $this->provider('Authorization provider');
+        $existingModel = AiModel::create([
+            'provider_id' => $provider->id,
+            'provider_model_id' => 'existing-protected-model',
+            'enabled' => true,
+            'capabilities_json' => ['text'],
+            'cost_policy_json' => [],
+        ]);
         $urls = [
             ['GET', '/api/v1/admin/ai/models'],
             ['POST', '/api/v1/admin/ai/models'],
             ['GET', '/api/v1/admin/ai/task-routes/mobile-ai-diagnose'],
             ['PUT', '/api/v1/admin/ai/task-routes/mobile-ai-diagnose'],
-            ['PATCH', '/api/v1/admin/ai/models/00000000-0000-4000-8000-000000000000'],
+            ['PATCH', '/api/v1/admin/ai/models/'.$existingModel->id],
         ];
         foreach ($urls as [$verb, $url]) {
             $this->json($verb, $url)->assertUnauthorized();
@@ -215,7 +222,8 @@ final class AdminAiTaskRouteJourneyTest extends TestCase
         } finally {
             $this->app->instance('env', $env);
         }
-        $this->assertDatabaseCount('ai_models', 0);
+        $this->assertDatabaseCount('ai_models', 1);
+        $this->assertTrue($existingModel->fresh()->enabled);
         $this->assertDatabaseCount('ai_routes', 0);
         Http::assertNothingSent();
     }
