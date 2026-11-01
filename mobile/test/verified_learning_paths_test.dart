@@ -422,4 +422,82 @@ void main() {
     expect(find.byKey(const Key('learning-more-error')), findsNothing);
   });
 
+
+  for (final arabic in [false, true]) {
+    testWidgets('verified lesson reader moves between published steps: ' +
+        (arabic ? 'Arabic' : 'English'), (tester) async {
+      var calls = 0;
+      await tester.pumpWidget(MaterialApp(
+        home: VerifiedLearningLibrary(
+          arabic: arabic,
+          pageLoader: (page) async {
+            calls++;
+            return VerifiedLearningPage.parse(response(page, [track()]), page);
+          },
+        ),
+      ));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('learning-track-database-recovery')));
+      await tester.pumpAndSettle();
+      final open = find.byKey(const Key('learning-open-lesson-0'));
+      await tester.ensureVisible(open);
+      await tester.pumpAndSettle();
+      await tester.tap(open);
+      await tester.pumpAndSettle();
+
+      expect(find.text(arabic ? 'الدرس 1 من 2' : 'Lesson 1 of 2'),
+          findsOneWidget);
+      expect(find.text('Backup verification'), findsOneWidget);
+      expect(find.text('Check documented backups'), findsOneWidget);
+      expect(find.byKey(const Key('learning-progress-disclaimer')), findsOneWidget);
+      expect(find.text(arabic ? 'موضع القراءة الحالي لا يُحفظ في حسابك.' :
+          'This reading position is not saved to your account.'), findsOneWidget);
+      expect(tester.widget<OutlinedButton>(
+          find.byKey(const Key('learning-previous-lesson'))).onPressed, isNull);
+      expect(tester.widget<FilledButton>(
+          find.byKey(const Key('learning-next-lesson'))).onPressed, isNotNull);
+
+      await tester.ensureVisible(find.byKey(const Key('learning-next-lesson')));
+      await tester.tap(find.byKey(const Key('learning-next-lesson')));
+      await tester.pumpAndSettle();
+      expect(find.text(arabic ? 'الدرس 2 من 2' : 'Lesson 2 of 2'), findsOneWidget);
+      expect(find.text('استعادة البيانات'), findsOneWidget);
+      expect(find.text('تجربة الاستعادة'), findsOneWidget);
+      expect(find.text('Check documented backups'), findsNothing);
+      expect(tester.widget<FilledButton>(
+          find.byKey(const Key('learning-next-lesson'))).onPressed, isNull);
+
+      await tester.tap(find.byKey(const Key('learning-previous-lesson')));
+      await tester.pumpAndSettle();
+      expect(find.text(arabic ? 'الدرس 1 من 2' : 'Lesson 1 of 2'), findsOneWidget);
+      expect(calls, 1, reason: 'Reading steps must never re-fetch or persist progress');
+      expect(find.textContaining('certificate'), findsNothing);
+    });
+  }
+
+  testWidgets('open second vetted lesson directly and navigate backward', (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      home: VerifiedLearningLibrary(
+        arabic: false,
+        pageLoader: (page) async => VerifiedLearningPage.parse(
+          response(page, [track()]), page,
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('learning-track-database-recovery')));
+    await tester.pumpAndSettle();
+    final open = find.byKey(const Key('learning-open-lesson-1'));
+    await tester.ensureVisible(open);
+    await tester.pumpAndSettle();
+    await tester.tap(open);
+    await tester.pumpAndSettle();
+    expect(find.text('Lesson 2 of 2'), findsOneWidget);
+    expect(find.text('تجربة الاستعادة'), findsOneWidget);
+    expect(tester.widget<FilledButton>(
+        find.byKey(const Key('learning-next-lesson'))).onPressed, isNull);
+    await tester.tap(find.byKey(const Key('learning-previous-lesson')));
+    await tester.pumpAndSettle();
+    expect(find.text('Lesson 1 of 2'), findsOneWidget);
+  });
 }
