@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
@@ -257,6 +258,7 @@ final class MobileAiDiagnoseTest extends TestCase
             ->postJson('/api/v1/mobile/ai/diagnose', $this->payload())
             ->assertStatus(429);
 
+        Auth::forgetGuards();
         $this->withToken($this->token($secondUser))
             ->postJson('/api/v1/mobile/ai/diagnose', $this->payload())
             ->assertOk();
