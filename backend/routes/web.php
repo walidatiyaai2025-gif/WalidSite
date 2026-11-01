@@ -591,6 +591,7 @@ Route::middleware('auth:web')->group(function (): void {
         abort_unless($request->user()?->canAccessAdmin(), 403);
         $request->validate([
             'lang' => ['sometimes', 'in:ar,en'],
+            'jobs_page' => ['sometimes', 'integer', 'min:1', 'max:10000'],
         ]);
 
         $qualityRows = \App\Models\ArticleRevision::query()
@@ -629,7 +630,11 @@ Route::middleware('auth:web')->group(function (): void {
                 'job.next_attempt_at', 'job.last_error_code', 'job.updated_at',
                 'provider.display_name as provider_name',
             ])
-            ->orderByDesc('job.updated_at')->limit(50)->get();
+            // A hard 50-row cap hid older recoverable jobs from admins.
+            // A stable tie-break prevents duplicate/missing rows across pages.
+            ->orderByDesc('job.updated_at')->orderBy('job.id')
+            ->paginate(25, ['*'], 'jobs_page')
+            ->appends(['lang' => $request->query('lang') === 'ar' ? 'ar' : 'en']);
 
         return view('admin.quality', compact('qualityRows', 'failedJobs'));
     })->name('admin.quality.index');
