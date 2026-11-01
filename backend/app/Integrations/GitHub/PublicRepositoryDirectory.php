@@ -56,8 +56,12 @@ final class PublicRepositoryDirectory
      */
     private function fetchOne(string $slug): array
     {
+        // An allowlist entry is not public evidence. GitHub may return 404,
+        // private visibility or malformed metadata: do not disclose the
+        // configured (possibly private) repository name to the public page
+        // or through its search filter until verification succeeds.
         $unavailable = [
-            'full_name' => $slug,
+            'full_name' => null,
             'status' => 'unavailable',
             'verified_at' => null,
         ];
