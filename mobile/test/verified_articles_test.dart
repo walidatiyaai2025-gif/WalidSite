@@ -127,4 +127,79 @@ void main() {
     expect(Directionality.of(tester.element(find.text('المقالات التقنية'))),
         TextDirection.rtl);
   });
+
+  testWidgets('local article search filters title and body without another API load', (tester) async {
+    final items = <VerifiedArticle>[
+      ...VerifiedArticle.parseList(safeJson),
+      const VerifiedArticle(
+        slug: 'network-routing',
+        title: 'Network routing',
+        body: 'Firewall troubleshooting with published references',
+        citations: ['https://docs.example.org/network'],
+      ),
+    ];
+    var loadCount = 0;
+    await tester.pumpWidget(MaterialApp(
+      home: VerifiedArticleLibrary(
+        arabic: false,
+        loader: () {
+          loadCount++;
+          return SynchronousFuture<List<VerifiedArticle>>(items);
+        },
+      ),
+    ));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('article-database-recovery')), findsOneWidget);
+    expect(find.byKey(const Key('article-network-routing')), findsOneWidget);
+
+    final search = find.byKey(const Key('article-search-input'));
+    await tester.enterText(search, '  FIREWALL  ');
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('article-network-routing')), findsOneWidget);
+    expect(find.byKey(const Key('article-database-recovery')), findsNothing);
+
+    await tester.enterText(search, 'no documented match');
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('article-search-empty')), findsOneWidget);
+    expect(find.text('No verified articles match your search.'), findsOneWidget);
+    expect(find.byKey(const Key('article-network-routing')), findsNothing);
+
+    await tester.enterText(search, '');
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('article-database-recovery')), findsOneWidget);
+    expect(find.byKey(const Key('article-network-routing')), findsOneWidget);
+    expect(loadCount, 1, reason: 'Filtering never reloads or uploads search text');
+  });
+
+  testWidgets('Arabic article search preserves RTL and localized empty state', (tester) async {
+    const items = <VerifiedArticle>[
+      VerifiedArticle(
+        slug: 'arabic-recovery',
+        title: 'دليل الاستعادة',
+        body: 'خطوات استعادة قواعد البيانات',
+        citations: ['https://docs.example.org/recovery'],
+      ),
+    ];
+    await tester.pumpWidget(MaterialApp(
+      locale: const Locale('ar'),
+      home: Directionality(
+        textDirection: TextDirection.rtl,
+        child: VerifiedArticleLibrary(
+          arabic: true,
+          loader: () => SynchronousFuture<List<VerifiedArticle>>(items),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    final search = find.byKey(const Key('article-search-input'));
+    expect(find.text('البحث في المقالات الموثقة'), findsOneWidget);
+    await tester.enterText(search, 'قواعد');
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('article-arabic-recovery')), findsOneWidget);
+
+    await tester.enterText(search, 'غير موجود');
+    await tester.pumpAndSettle();
+    expect(find.text('لا توجد مقالات موثقة تطابق البحث.'), findsOneWidget);
+    expect(Directionality.of(tester.element(search)), TextDirection.rtl);
+  });
 }
