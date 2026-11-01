@@ -387,10 +387,16 @@ Route::middleware('auth:web')->group(function (): void {
                 ->where('provider_type', 'openai-compatible')
                 ->where('daily_budget_minor', '>', 0))
             ->orderBy('provider_model_id')->limit(100)->get()
-            ->filter(fn ($model) => in_array(
-                'image-generation', $model->capabilities_json ?? [], true
-            ) && is_string($model->provider?->secret_ciphertext)
-                && $model->provider->secret_ciphertext !== '')
+            ->filter(function ($model): bool {
+                $capabilities = $model->capabilities_json;
+                $provider = $model->provider;
+                $savedCredential = $provider?->getRawOriginal('secret_ciphertext');
+
+                return is_array($capabilities)
+                    && in_array('image-generation', $capabilities, true)
+                    && is_string($savedCredential) && $savedCredential !== ''
+                    && preg_match('/^[A-Za-z0-9_.:\\-]{1,90}$/D', (string) $model->provider_model_id) === 1;
+            })
             ->take(50)->values();
 
         // Offer only the current draft revision for each draft article.
@@ -432,15 +438,19 @@ Route::middleware('auth:web')->group(function (): void {
         $model = \App\Models\AiModel::query()->with('provider')
             ->findOrFail($input['model_id']);
         $provider = $model->provider;
+        $capabilities = $model->capabilities_json;
+        $savedCredential = $provider?->getRawOriginal('secret_ciphertext');
         $eligible = $model->enabled
-            && in_array('image-generation', $model->capabilities_json ?? [], true)
+            && is_array($capabilities)
+            && in_array('image-generation', $capabilities, true)
+            && preg_match('/^[A-Za-z0-9_.:\\-]{1,90}$/D', (string) $model->provider_model_id) === 1
             && $provider !== null
             && ! $provider->trashed()
             && $provider->enabled
             && $provider->health_status === 'healthy'
             && $provider->provider_type === 'openai-compatible'
-            && is_string($provider->secret_ciphertext)
-            && $provider->secret_ciphertext !== '';
+            && is_string($savedCredential)
+            && $savedCredential !== '';
         if (! $eligible) {
             return back()->withErrors([
                 'model_id' => $request->query('lang') === 'ar'
