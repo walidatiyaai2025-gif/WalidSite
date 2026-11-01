@@ -5,6 +5,22 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
 /*
+ * WEB-01: Keep the approved real owner portrait on this deployment.
+ * A fixed, non-user-controlled path prevents filesystem traversal and avoids
+ * third-party raw GitHub availability affecting the first viewport.
+ */
+Route::get('/media/owner-portrait.jpg', static function () {
+    $portrait = base_path('../assets/portraits/portrait-light-derived.jpg');
+    abort_unless(is_file($portrait) && is_readable($portrait), 404);
+
+    return response()->file($portrait, [
+        'Content-Type' => 'image/jpeg',
+        'Cache-Control' => 'public, max-age=86400',
+        'X-Content-Type-Options' => 'nosniff',
+    ]);
+})->name('public.owner-portrait');
+
+/*
  * WEB-01 public landing: do not turn mockup counts or CV draft rows into
  * published professional claims. Reuse the API's owner/URL approval policy.
  * Render only evidence-safe projects and publication-validated articles.
