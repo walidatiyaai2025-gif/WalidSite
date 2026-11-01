@@ -6,6 +6,56 @@ use Illuminate\Support\Facades\Route;
 
 Route::view('/', 'welcome')->name('home');
 
+/*
+ * T012 public SEO sitemap: derive destinations from the SAME publication and
+ * proof checks as public pages, never from unapproved DB rows or draft revisions.
+ * Bounded reads prevent a crawler from triggering unbounded database work.
+ */
+Route::get('/sitemap.xml', function (Request $request) {
+    $entries = [];
+    $add = static function (string $name, array $parameters = []) use (&$entries): void {
+        $en = route($name, array_merge($parameters, ['lang' => 'en']));
+        $ar = route($name, array_merge($parameters, ['lang' => 'ar']));
+        foreach ([$en, $ar] as $url) {
+            $entries[] = ['url' => $url, 'en' => $en, 'ar' => $ar];
+        }
+    };
+
+    foreach ([
+        'home', 'public.about', 'public.expertise', 'public.hire',
+        'public.projects', 'public.github', 'public.blog', 'public.lab',
+        'public.resume',
+    ] as $name) {
+        $add($name);
+    }
+
+    \App\Models\Article::query()->publiclyVisible()
+        ->orderByDesc('published_at')->orderBy('id')->limit(200)->get()
+        ->each(static function (\App\Models\Article $article) use ($add): void {
+            if (preg_match('/\A[a-zA-Z0-9-]+\z/D', $article->slug) === 1
+                && $article->publicRevision() !== null) {
+                $add('public.article', ['slug' => $article->slug]);
+            }
+        });
+
+    $api = app(\App\Http\Controllers\Api\PublicPortfolioController::class);
+    \App\Models\Project::query()->publiclyVerified()
+        ->orderByDesc('published_at')->orderBy('id')->limit(200)->get()
+        ->each(static function (\App\Models\Project $project) use ($api, $request, $add): void {
+            // DB flags alone do not make a public, safe, independently usable
+            // evidence URL. The canonical API serializer enforces that policy.
+            if (preg_match('/\A[a-zA-Z0-9-]+\z/D', $project->slug) === 1
+                && ! empty($api->publicProjectData($project, $request)['evidence_urls'])) {
+                $add('public.project', ['slug' => $project->slug]);
+            }
+        });
+
+    return response()->view('public.sitemap', compact('entries'))
+        ->header('Content-Type', 'application/xml; charset=UTF-8')
+        ->header('Cache-Control', 'no-store');
+})->name('public.sitemap')->middleware('throttle:30,1');
+
+
 Route::get('/admin/login', [WebLoginController::class, 'form'])
     ->middleware('guest:web')->name('login');
 Route::post('/admin/login', [WebLoginController::class, 'login'])
