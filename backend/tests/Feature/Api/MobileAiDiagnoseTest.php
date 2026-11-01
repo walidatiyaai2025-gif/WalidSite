@@ -603,6 +603,14 @@ final class MobileAiDiagnoseTest extends TestCase
             ->assertJsonPath('data.result_url', null)
             ->assertJsonPath('data.retry_after_seconds', 30);
 
+        // A recoverable queue retry is still pending, never a final failure.
+        DB::table('ai_jobs')->where('id', $jobId)->update(['status' => 'retry']);
+        $this->withToken($this->token($owner))
+            ->getJson($endpoint)
+            ->assertOk()
+            ->assertJsonPath('data.status', 'queued')
+            ->assertJsonPath('data.retry_after_seconds', 30);
+
         $this->assertStringNotContainsString($private, $response->getContent());
         $this->assertStringNotContainsString($provider->id, $response->getContent());
         $this->assertStringContainsString('no-store', (string) $response->headers->get('Cache-Control'));
