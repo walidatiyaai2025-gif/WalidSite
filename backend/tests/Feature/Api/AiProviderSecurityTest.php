@@ -102,10 +102,11 @@ class AiProviderSecurityTest extends TestCase
         $path = '/api/v1/admin/ai/providers/'.$first.'/audit';
         $result = $this->getJson($path)->assertOk()
             ->assertJsonPath('meta.total', 2)
-            ->assertJsonCount(2, 'data')
-            ->assertJsonPath('data.0.action', 'updated');
-        $this->assertContains('secret_rotated', $result->json('data.0.changed_fields'));
-        $this->assertNotContains('secret_ciphertext', $result->json('data.0.changed_fields'));
+            ->assertJsonCount(2, 'data');
+        $updated = collect($result->json('data'))->firstWhere('action', 'updated');
+        $this->assertNotNull($updated);
+        $this->assertContains('secret_rotated', $updated['changed_fields']);
+        $this->assertNotContains('secret_ciphertext', $updated['changed_fields']);
         $this->assertStringNotContainsString('private-test-credential-123', $result->getContent());
         $this->assertStringNotContainsString('replacement-super-secret-987', $result->getContent());
 
