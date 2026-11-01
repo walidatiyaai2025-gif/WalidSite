@@ -43,6 +43,8 @@ jobs:
           python -m pip install --disable-pip-version-check --quiet Pillow==11.3.0
           python qa/validate_visual_fidelity.py
           python -m unittest discover -s qa/tests -p 'test_visual_*.py'
+      - name: Verify cPanel ZIP safety rules
+        run: python3 -m unittest discover -s qa/tests -p test_cpanel_package.py
       - name: Validate active CI workflow policy
         run: python3 qa/validate_ci_policy.py
       - name: Validate canonical owner CV source
