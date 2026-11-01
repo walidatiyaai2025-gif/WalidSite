@@ -90,6 +90,69 @@ void main() {
     expect(OfflineSolutionSearch.find(pack, 'راجع', arabic: true), [runbook]);
   });
 
+  test('Arabic marks, Alef and Ya variants match visible signed or bundled text', () {
+    const guide = OfflineRunbook(
+      id: 'arabic-database',
+      titleEn: 'Database administration guide',
+      titleAr: 'إِدارةُ قواعدِ البيانات',
+      stepsEn: ['Inspect network latency', 'Restore safe snapshots'],
+      stepsAr: ['افحص الاتصال بالشّبكة', 'راجع خُطَى الاسترجاع'],
+    );
+    const arabicPack = OfflineRunbookPack(
+      version: '1.0', source: 'Test reviewed guidance',
+      lastSynced: null, verifiedAt: null, items: [guide],
+    );
+
+    // An Arabic keyboard without diacritics must find the real title,
+    // including Alef variants, and combine keywords from separate fields.
+    expect(OfflineSolutionSearch.find(
+      arabicPack, 'ادارة قواعد', arabic: true,
+    ), [guide]);
+    expect(OfflineSolutionSearch.find(
+      arabicPack, 'البيانات الشبكة', arabic: true,
+    ), [guide]);
+    expect(OfflineSolutionSearch.find(
+      arabicPack, 'الاسترجاع ادارة', arabic: true,
+    ), [guide]);
+    expect(OfflineSolutionSearch.find(
+      arabicPack, 'database latency', arabic: false,
+    ), [guide]);
+
+    // An English-only translation never leaks into Arabic results.
+    expect(OfflineSolutionSearch.find(
+      arabicPack, 'database', arabic: true,
+    ), isEmpty);
+    expect(OfflineSolutionSearch.find(
+      arabicPack, 'الشبكة', arabic: false,
+    ), isEmpty);
+    expect(OfflineSolutionSearch.find(
+      arabicPack, 'ادارة missing', arabic: true,
+    ), isEmpty);
+    expect(OfflineSolutionSearch.find(
+      arabicPack, 'ـ   ّ', arabic: true,
+    ), isEmpty);
+  });
+
+  test('offline solution finder retains the 20-result limit for broad keywords', () {
+    final many = OfflineRunbookPack(
+      version: '1.0', source: 'Local fixture',
+      lastSynced: null, verifiedAt: null,
+      items: List.generate(25, (index) => OfflineRunbook(
+        id: 'guide-$index',
+        titleEn: 'Recovery guide $index',
+        titleAr: 'دليلُ التّعافي $index',
+        stepsEn: const ['Check backup'],
+        stepsAr: const ['تحقق من النسخة'],
+      )),
+    );
+    final result = OfflineSolutionSearch.find(
+      many, 'دليل التعافي', arabic: true,
+    );
+    expect(result.length, 20);
+    expect(result.first.id, 'guide-0');
+    expect(result.last.id, 'guide-19');
+  });
+
   testWidgets('finder opens real local steps and exposes stale pack provenance',
       (tester) async {
     await tester.pumpWidget(MaterialApp(
