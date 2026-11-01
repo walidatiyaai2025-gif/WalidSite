@@ -13,6 +13,9 @@
 .study section{background:#fff;padding:26px;border:1px solid var(--wa-soft-border);border-radius:18px;margin-block:20px}
 .study a{color:var(--wa-cta);overflow-wrap:anywhere;min-height:44px}
 .study p{color:var(--wa-body)}
+.study-next{display:flex;flex-wrap:wrap;gap:14px;margin-block:24px}
+.study-next a{display:inline-flex;align-items:center;min-height:44px;padding:10px 16px;border:1px solid var(--wa-soft-border);border-radius:10px;background:#fff;font-weight:700}
+.study-next a:focus-visible{outline:3px solid var(--wa-cta);outline-offset:3px}
 </style>
 @endpush
 @php($statusLabels = $locale === 'ar'
