@@ -79,9 +79,15 @@ class AdminSecureTransportTest extends TestCase
         $this->app->instance('env', 'production');
 
         try {
+            // When the test switches Laravel into production, CSRF is
+            // enforced rather than bypassed as it is in the testing env.
+            // Supply the real session token instead of disabling middleware.
+            $csrf = str_repeat('c', 40);
+            $this->withSession(['_token' => $csrf]);
             $this->get('https://localhost/admin/login')->assertOk()
                 ->assertSee('name="_token"', false);
             $this->post('https://localhost/admin/login', [
+                '_token' => $csrf,
                 'email' => $owner->email,
                 'password' => 'Synthetic-Strong-Password-123!',
             ])->assertRedirect('/admin');
@@ -91,7 +97,8 @@ class AdminSecureTransportTest extends TestCase
                 ->assertSee('Administration overview');
             $this->get('https://localhost/admin/ai/providers')->assertOk();
             $this->get('https://localhost/admin/updates')->assertOk();
-            $this->post('https://localhost/admin/logout')
+            $this->withSession(['_token' => $csrf]);
+            $this->post('https://localhost/admin/logout', ['_token' => $csrf])
                 ->assertRedirect('/admin/login');
             $this->assertGuest('web');
         } finally {
