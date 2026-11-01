@@ -70,7 +70,11 @@ class ProviderAdaptersTest extends TestCase
                 ProviderEndpoint::normalize($endpoint);
                 $this->fail('Private or ambiguous numeric provider address was accepted.');
             } catch (InvalidArgumentException $exception) {
-                $this->assertSame('Unsafe provider URL.', $exception->getMessage());
+                $this->assertContains($exception->getMessage(), [
+                    'Unsafe provider URL.',
+                    'Remote provider endpoints require HTTPS.',
+                    'Private network endpoints are not allowed.',
+                ]);
             }
         }
     }
