@@ -66,6 +66,9 @@ final class ResearchSourceIntake
             || filter_var($host, FILTER_VALIDATE_DOMAIN, FILTER_FLAG_HOSTNAME) === false
             || ! str_contains($host, '.')
             || $this->isLocalHost($host)
+            // A signed download may place key=value in a URL path segment.
+            // These sources are copied to model prompts before fact review.
+            || $this->containsCredentialParameter((string) ($parts['path'] ?? ''))
             || $this->containsCredentialParameter($query)
             || $this->containsCredentialParameter((string) ($parts['fragment'] ?? ''))) {
             throw new InvalidArgumentException('Research sources must use a safe public HTTPS URL.');
@@ -99,7 +102,7 @@ final class ResearchSourceIntake
                 // The outer URL is bounded to 2048 bytes, so the bracketed
                 // key segments are also bounded without parsing untrusted
                 // arrays or ever forwarding a credential-bearing URL.
-                '/(?:^|[?#&;\\[])(?:access[_-]?token|refresh[_-]?token|id[_-]?token|token|api[_-]?key|key|auth(?:orization)?|password|passwd|secret|client[_-]?secret|private[_-]?key|signature|sig|session(?:id)?|jwt|bearer|code|ticket|awsaccesskeyid|x[-_]amz[-_][a-z0-9_-]+|x[-_]goog[-_][a-z0-9_-]+)\\]?(?:\\[[^\\]\\r\\n]*\\])*=/i',
+                '/(?:^|[\x2f?#&;\\[])(?:access[_-]?token|refresh[_-]?token|id[_-]?token|token|api[_-]?key|key|auth(?:orization)?|password|passwd|secret|client[_-]?secret|private[_-]?key|signature|sig|session(?:id)?|jwt|bearer|code|ticket|awsaccesskeyid|x[-_]amz[-_][a-z0-9_-]+|x[-_]goog[-_][a-z0-9_-]+)\\]?(?:\\[[^\\]\\r\\n]*\\])*=/i',
                 $value,
             ) === 1) {
                 return true;
