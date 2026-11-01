@@ -150,6 +150,48 @@ class ProviderRouterTest extends TestCase
         ]));
     }
 
+    public function test_image_generation_never_routes_to_unsupported_local_ollama(): void
+    {
+        $router = new ProviderRouter;
+        $local = $this->provider([
+            'id' => 'healthy-local',
+            'provider_type' => 'ollama-compatible',
+            'capabilities' => ['image-generation', 'text', 'vision', 'embeddings'],
+            'daily_budget_remaining' => 0,
+            'routing_priority' => 1,
+        ]);
+        $paid = $this->provider([
+            'id' => 'paid-image-provider',
+            'provider_type' => 'openai-compatible',
+            'capabilities' => ['image-generation'],
+            'daily_budget_remaining' => 50,
+            'routing_priority' => 10,
+        ]);
+
+        // Stored "image-generation" capability on Ollama is insufficient:
+        // only the configured OpenAI-compatible generation adapter exists.
+        $this->assertNull($router->selectProviderId('image-generation', [$local]));
+        $this->assertSame('paid-image-provider',
+            $router->selectProviderId('image-generation', [$local, $paid]));
+
+        // A blocked/underfunded paid provider is not a reason to route
+        // image-generation to an incapable local adapter.
+        $this->assertNull($router->selectProviderId('image-generation', [
+            $local,
+            array_replace($paid, ['daily_budget_remaining' => 0]),
+        ]));
+        $this->assertNull($router->selectProviderId('image-generation', [
+            $local,
+            array_replace($paid, ['health_status' => 'unverified']),
+        ]));
+
+        // Unpaid local text/vision/embeddings are still independently valid.
+        foreach (['text', 'vision', 'embeddings'] as $capability) {
+            $this->assertSame('healthy-local',
+                $router->selectProviderId($capability, [$local]));
+        }
+    }
+
     public function test_zero_and_negative_capacity_cannot_be_silently_clamped_to_one(): void
     {
         $router = new ProviderRouter;
