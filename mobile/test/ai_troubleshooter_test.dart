@@ -578,6 +578,8 @@ void main() {
 
     await reveal(tester, const Key('ai-refresh-status'));
     expect(find.text('تحديث حالة التشخيص'), findsOneWidget);
+    expect(find.text('في الانتظار · 0%'), findsOneWidget);
+    expect(find.text('queued · 0%'), findsNothing);
     expect(getCalls, 0);
     expect(tester.widget<OutlinedButton>(
       find.byKey(const Key('ai-refresh-status')),
@@ -596,7 +598,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(getCalls, 1);
     await reveal(tester, const Key('ai-job-status'));
-    expect(find.text('running · 50%'), findsOneWidget);
+    expect(find.text('قيد التنفيذ · 50%'), findsOneWidget);
     expect(find.byKey(const Key('ai-open-solution')), findsNothing);
 
     await tester.pump(const Duration(minutes: 5));
@@ -608,6 +610,7 @@ void main() {
     expect(postCalls, 1);
     await reveal(tester, const Key('ai-open-solution'));
     expect(find.text('افتح الحل المراجع'), findsOneWidget);
+    expect(find.text('مكتمل · 100%'), findsOneWidget);
     expect(find.byKey(const Key('ai-refresh-status')), findsNothing);
     expect(find.text(token), findsNothing);
   });
@@ -727,9 +730,67 @@ void main() {
     await tester.pumpAndSettle();
     expect(getCalls, 1);
     await reveal(tester, const Key('ai-job-status'));
-    expect(find.text('queued · 0%'), findsOneWidget);
+    expect(find.text('Queued · 0%'), findsOneWidget);
     expect(find.byKey(const Key('ai-open-solution')), findsNothing);
     expect(find.text(token), findsNothing);
   });
 
+
+  testWidgets('terminal job states have safe bilingual labels', (tester) async {
+    const labels = {
+      'failed': ['Failed', 'فشل'],
+      'blocked': ['Blocked', 'محظور'],
+      'cancelled': ['Cancelled', 'ملغى'],
+    };
+    var submitCount = 0;
+
+    for (final arabic in [false, true]) {
+      for (final item in labels.entries) {
+        // Discard the previous diagnosis widget to avoid reusing a session
+        // or an asynchronous job state across language/status scenarios.
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump();
+        await pumpScreen(
+          tester,
+          arabic: arabic,
+          login: (_, __) async =>
+              const MobileAiSession(token: token, expiresAt: null),
+          diagnose: (_, __, ___, ____) async {
+            submitCount++;
+            return MobileAiJob(
+              id: jobId,
+              status: item.key,
+              progressPercent: 0,
+              resultUrl: null,
+              retryAfterSeconds: null,
+            );
+          },
+        );
+        await login(tester);
+        await tester.enterText(find.byKey(const Key('ai-technology')), 'SQL');
+        await tester.enterText(
+          find.byKey(const Key('ai-question')),
+          'Why did the diagnosis not complete?',
+        );
+        await reveal(tester, const Key('ai-consent'));
+        await tester.tap(find.byKey(const Key('ai-consent')));
+        await reveal(tester, const Key('ai-diagnose-submit'));
+        await tester.tap(find.byKey(const Key('ai-diagnose-submit')));
+        await tester.pumpAndSettle();
+        await reveal(tester, const Key('ai-job-status'));
+
+        expect(
+          find.text('${item.value[arabic ? 1 : 0]} · 0%'),
+          findsOneWidget,
+        );
+        if (arabic) {
+          expect(find.text('${item.key} · 0%'), findsNothing);
+        }
+        expect(find.byKey(const Key('ai-open-solution')), findsNothing);
+        expect(find.byKey(const Key('ai-refresh-status')), findsNothing);
+        expect(find.text(token), findsNothing);
+      }
+    }
+    expect(submitCount, 6);
+  });
 }

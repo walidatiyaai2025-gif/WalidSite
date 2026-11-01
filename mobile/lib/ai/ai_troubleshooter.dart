@@ -407,6 +407,18 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
     });
   }
 
+  // The API status is deliberately machine-readable, but the progress card
+  // must never expose untranslated state tokens to Arabic readers.
+  String _statusLabel(String status) => switch (status) {
+        'queued' => widget.arabic ? 'في الانتظار' : 'Queued',
+        'running' => widget.arabic ? 'قيد التنفيذ' : 'Running',
+        'completed' => widget.arabic ? 'مكتمل' : 'Completed',
+        'failed' => widget.arabic ? 'فشل' : 'Failed',
+        'blocked' => widget.arabic ? 'محظور' : 'Blocked',
+        'cancelled' => widget.arabic ? 'ملغى' : 'Cancelled',
+        _ => widget.arabic ? 'حالة غير معروفة' : 'Unknown status',
+      };
+
   String _jobMessage(MobileAiJob job) => switch (job.status) {
         'completed' when job.reviewedRunbookId() != null => widget.arabic
             ? 'تم العثور على حل منشور تمت مراجعته.'
@@ -875,7 +887,7 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
                             ),
                             const SizedBox(height: 8),
                             Text(
-                              '${_job!.status} · ${_job!.progressPercent}%',
+                              '${_statusLabel(_job!.status)} · ${_job!.progressPercent}%',
                               key: const Key('ai-job-status'),
                             ),
                             if (_job!.retryAfterSeconds != null)
