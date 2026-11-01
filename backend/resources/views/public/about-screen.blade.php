@@ -40,6 +40,63 @@
 @media(max-width:850px){.about-grid{grid-template-columns:1fr}.about-panel--proof{grid-column:1}}
 @media(max-width:620px){.about-hero{grid-template-columns:1fr}.about-portrait{grid-row:1;max-width:205px}.about-actions a,.about-jump-links a{flex:1 1 auto;justify-content:center}}
 @media print{.site-header,.site-footer,.about-actions,.about-jump-links{display:none!important}.about-hero,.about-panel{break-inside:avoid;box-shadow:none}.about-screen{gap:12px}.about-grid{grid-template-columns:1fr}}
+
+/* WEB-02 owner reference: navy site header, pale hero, framed portrait and
+   full-width chronology. Scoped to About; never repaint other screens. */
+body:has(.about-screen){overflow-x:clip}
+body:has(.about-screen) .site-header{background:#1C4976;border-bottom:0}
+body:has(.about-screen) .brand{color:#fff;font-size:20px}
+body:has(.about-screen) .brand-mark{background:transparent;color:#00A999;width:auto;border-radius:0;font-size:32px}
+body:has(.about-screen) .language-link{background:transparent;border-color:transparent;color:#e6f2fa;border-radius:8px}
+body:has(.about-screen) .language-link[aria-current="page"]{color:#00A999}
+body:has(.about-screen) .header-links a[href*="/contact"]{background:#00A999;color:#123C5F;border-radius:14px}
+.about-screen{gap:42px}
+.about-hero{position:relative;z-index:0;min-height:320px;border:0;border-radius:0;background:#EAF5FB;
+    grid-template-columns:minmax(0,1fr) minmax(230px,340px);padding:35px 0}
+.about-hero::before{content:"";position:absolute;z-index:-1;top:0;bottom:0;left:50%;width:100vw;
+    transform:translateX(-50%);background:#EAF5FB}
+.about-hero h1{margin-bottom:14px}
+.about-kicker{display:inline-flex;align-items:center;min-height:40px;min-width:190px;background:#D8F4EF;
+    padding:8px 16px;border-radius:15px;color:#078E80;font-size:15px}
+.about-actions{margin-top:23px}
+.about-actions a{min-width:175px;justify-content:center;border:1px solid #00A999;border-radius:16px;color:#174870}
+.about-actions a:first-child{background:#079F94;border-color:#079F94;color:#fff}
+.about-actions a:nth-child(3){min-width:auto;border:0;text-decoration:underline}
+.about-jump-links{margin-top:14px}
+.about-jump-links a{background:transparent;border:0;min-height:36px;padding:4px 8px;color:#315471;text-decoration:underline}
+.about-portrait{position:relative;max-width:258px;margin:0}
+.about-portrait::before,.about-portrait::after{content:"";position:absolute;z-index:-1;
+    border-radius:24px;background:#2B668C;border:3px solid #00A999;width:85%;height:78%}
+.about-portrait::before{inset-block-start:13%;inset-inline-start:-50%}
+.about-portrait::after{inset-block-start:23%;inset-inline-start:-25%}
+.about-portrait img{border:4px solid #0B9F95;aspect-ratio:1/1;object-fit:cover;border-radius:20px}
+.about-portrait figcaption{font-size:11px}
+.about-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:24px}
+#about-career{grid-column:1/-1;padding:0;background:transparent;border:0}
+.about-timeline{display:grid;gap:18px;border:0;margin:0}
+.about-timeline li{display:grid;grid-template-columns:176px minmax(0,1fr);align-items:center;
+    column-gap:30px;min-height:95px;padding:19px 25px;background:#fff;border-radius:18px}
+.about-timeline li::before{display:none}
+.about-timeline li:last-child{padding-bottom:19px}
+.about-period{grid-column:1;grid-row:1/span 2;align-self:center;justify-content:center;
+    background:#E4F4F6;border-radius:13px;color:#087C78;min-height:46px;margin:0;padding:8px}
+.about-timeline h3{grid-column:2;align-self:end;margin:0}
+.about-timeline p{grid-column:2;align-self:start;margin:0}
+@media(max-width:850px){
+    .about-grid{grid-template-columns:1fr}
+    #about-career{grid-column:1}
+    .about-hero{grid-template-columns:minmax(0,1fr) 230px}
+}
+@media(max-width:620px){
+    .about-hero{grid-template-columns:1fr;padding-block:22px}
+    .about-portrait{grid-row:1;max-width:195px}
+    .about-timeline li{grid-template-columns:1fr;gap:5px}
+    .about-period,.about-timeline h3,.about-timeline p{grid-column:1;grid-row:auto;justify-self:start}
+    .about-period{min-height:40px}
+    body:has(.about-screen) .header-row{align-items:flex-start}
+}
+@media print{.about-hero::before,.about-portrait::before,.about-portrait::after{display:none!important}
+    #about-career{break-inside:auto}.about-timeline li{break-inside:avoid}}
 </style>
 @endpush
 
@@ -47,7 +104,7 @@
     <header class="about-hero">
         <div>
             <p class="about-kicker">{{ $locale === 'ar' ? 'المسيرة المهنية المنشورة بعد مراجعة الأدلة' : 'Evidence-gated public profile' }}</p>
-            <h1 id="about-screen-title">{{ $locale === 'ar' ? 'نبذة عن وليد عطية' : 'About Waleed Atiya' }}</h1>
+            <h1 id="about-screen-title">{{ $locale === 'ar' ? 'نبذة' : 'About' }}</h1>
             <p>{{ $locale === 'ar'
                 ? 'الخبرات والشهادات المعروضة هنا مستمدة من سجلات المالك المعتمدة للنشر. لا تظهر بيانات أصحاب الحسابات الأخرى أو الادعاءات التي لم تجتز مراجعة المصادر.'
                 : 'The experience and credentials below come from the owner’s publication-reviewed records. Other accounts and unapproved career statements remain private.' }}</p>
