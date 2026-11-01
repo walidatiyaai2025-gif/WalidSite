@@ -66,6 +66,12 @@ class DatabaseConfiguration
         // only when PHP validates them; localhost is for local setup alone.
         $ip = trim($host, '[]');
         $isIp = filter_var($ip, FILTER_VALIDATE_IP) !== false;
+        // Production canonical links must never point at private or reserved networks.
+        if ($isIp && app()->environment('production')
+            && filter_var($ip, FILTER_VALIDATE_IP,
+                FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false) {
+            return null;
+        }
         if (! $isIp && $host !== 'localhost'
             && preg_match('/\\A[a-z0-9]+(?:-[a-z0-9]+)*(?:\\.[a-z0-9]+(?:-[a-z0-9]+)*)+\\z/D', $host) !== 1) {
             return null;
