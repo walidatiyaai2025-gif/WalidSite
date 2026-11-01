@@ -175,6 +175,50 @@ void main() {
     expect(find.text('لا توجد أدلة مطابقة.'), findsOneWidget);
   });
 
+  testWidgets('offline library normalizes Arabic terms across title and steps',
+      (tester) async {
+    const guide = OfflineRunbook(
+      id: 'arabic-storage',
+      titleEn: 'Storage operations',
+      titleAr: 'إِدارةُ التَّخزين',
+      stepsEn: ['Check a safe backup'],
+      stepsAr: ['افحص نسخَ الاحتياط', 'راجع فحصَ الأداء'],
+    );
+    const pack = OfflineRunbookPack(
+      version: '1.0.0', source: 'Local fixture',
+      lastSynced: null, verifiedAt: null, items: [guide],
+    );
+    await tester.pumpWidget(MaterialApp(
+      home: Directionality(
+        textDirection: TextDirection.rtl,
+        child: OfflineRunbookLibrary(
+          arabic: true,
+          bundledPack: SynchronousFuture<OfflineRunbookPack>(pack),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    // No query is browse-all in the library (unlike the solution finder).
+    expect(find.byKey(const Key('runbook-arabic-storage')), findsOneWidget);
+    await tester.enterText(
+      find.byKey(const Key('runbook-search')), 'ادارة الاداء',
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('runbook-arabic-storage')), findsOneWidget);
+
+    await tester.enterText(
+      find.byKey(const Key('runbook-search')), 'storage',
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('runbook-arabic-storage')), findsNothing);
+    expect(find.text('لا توجد أدلة مطابقة.'), findsOneWidget);
+
+    await tester.enterText(find.byKey(const Key('runbook-search')), '   ');
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('runbook-arabic-storage')), findsOneWidget);
+  });
+
   testWidgets('offline runbook steps can be marked and unmarked with visible state', (tester) async {
     const item = OfflineRunbook(
       id: 'safe-progress',
