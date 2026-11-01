@@ -13,10 +13,17 @@ class PublicPortfolioController extends Controller
 {
     public function projects(Request $request): JsonResponse
     {
+        // Do not silently reinterpret malformed or extreme pagination input.
+        // A public API consumer must see a validation error rather than a
+        // different page or an unbounded offset. The same locale contract
+        // applies to public expertise and the browser-facing listings.
+        $input = $request->validate([
+            'page' => ['sometimes', 'integer', 'min:1', 'max:10000'],
+            'lang' => ['sometimes', 'in:ar,en'],
+        ]);
         $perPage = 12;
-        $currentPage = max(1, \Illuminate\Pagination\Paginator::resolveCurrentPage());
-        // Bound arithmetic even when a client supplies an extreme page value.
-        $offset = min($currentPage - 1, intdiv(PHP_INT_MAX, $perPage)) * $perPage;
+        $currentPage = (int) ($input['page'] ?? 1);
+        $offset = ($currentPage - 1) * $perPage;
         $visible = [];
         $total = 0;
 
