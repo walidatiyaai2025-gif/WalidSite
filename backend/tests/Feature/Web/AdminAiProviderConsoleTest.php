@@ -226,7 +226,7 @@ class AdminAiProviderConsoleTest extends TestCase
             });
 
             $this->post('/admin/ai/providers/'.$provider->id.'/test?lang='.$locale)
-                ->assertRedirect(route('admin.providers.index', ['lang' => $locale]))
+                ->assertRedirect(route('admin.providers.index', $locale === 'ar' ? ['lang' => 'ar'] : []))
                 ->assertSessionHas('error', $message);
 
             $this->get('/admin/ai/providers?lang='.$locale)->assertOk()
