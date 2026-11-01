@@ -29,13 +29,19 @@ final class EditorialJobDispatcher
         ArticleRevision $revision, AiProvider $provider, string $model,
         bool $image = false, int $estimatedCostMinor = 0
     ): string {
-        if (! $revision->exists || $revision->status !== 'draft'
+        if (! $revision->exists
             || ! Str::isUuid($revision->id)
             || ! preg_match('/^[A-Za-z0-9_.:\-]{1,90}$/D', $model)
             || $estimatedCostMinor < 0) {
             throw new InvalidArgumentException('A current draft and safe model are required.');
         }
+        // A reviewer may validate or revoke the revision while the caller
+        // still holds an old "draft" model. Refresh before admission; the
+        // worker's execution-time check remains a second safety boundary.
         $revision->refresh();
+        if ($revision->status !== 'draft') {
+            throw new InvalidArgumentException('A current draft and safe model are required.');
+        }
         $article = $revision->article;
         if (! $article || $article->revisions()->orderByDesc('revision_no')->value('id') !== $revision->id) {
             throw new DomainException('Only the latest article draft can be queued.');
