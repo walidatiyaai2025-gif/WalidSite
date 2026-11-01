@@ -149,6 +149,15 @@
                         @php($languageArgs['article'] = $reportArticle->slug)
                     @elseif(isset($reportProject) && is_array($reportProject) && isset($reportProject['slug']))
                         @php($languageArgs['project'] = $reportProject['slug'])
+                    @elseif(!array_key_exists('article', request()->query())
+                        && !array_key_exists('project', request()->query()))
+                        {{-- Recruiter topic is public, but only server-supported
+                             focus keys may pass through the language toggle. --}}
+                        @php($rawContactTrack = request()->query()['track'] ?? null)
+                        @if(is_string($rawContactTrack)
+                            && in_array($rawContactTrack, ['database', 'software', 'delivery'], true))
+                            @php($languageArgs['track'] = $rawContactTrack)
+                        @endif
                     @endif
                 @endif
                 @if(request()->routeIs('public.resume', 'public.hire'))

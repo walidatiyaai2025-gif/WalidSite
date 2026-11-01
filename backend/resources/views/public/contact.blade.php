@@ -3,7 +3,24 @@
 {{-- Direct view-render tests and callers without article context remain valid. --}}
 @php($reportArticle = $reportArticle ?? null)
 @php($reportProject = $reportProject ?? null)
+{{-- Recruiter track is an optional topic of inquiry, never verified CV proof.
+     Do not mix it with authoritative article/case-study contexts or reflect
+     array/unknown values into an editable subject or locale-switch URL. --}}
+@php($contactTrackRaw = request()->query()['track'] ?? null)
+@php($contactTrack = !$reportArticle && !$reportProject
+    && !array_key_exists('article', request()->query())
+    && !array_key_exists('project', request()->query())
+    && is_string($contactTrackRaw)
+    && in_array($contactTrackRaw, ['database', 'software', 'delivery'], true) ? $contactTrackRaw : null)
+@php($contactTrackLabels = [
+    'database' => $locale === 'ar' ? 'هندسة قواعد البيانات' : 'Database engineering',
+    'software' => $locale === 'ar' ? 'هندسة البرمجيات والبنية التحتية' : 'Software and infrastructure engineering',
+    'delivery' => $locale === 'ar' ? 'إدارة وتسليم المشاريع' : 'Project delivery',
+])
 @php($suggestedSubject = $suggestedSubject ?? '')
+@php($suggestedSubject = $suggestedSubject !== '' ? $suggestedSubject
+    : ($contactTrack ? ($locale === 'ar' ? 'استفسار عن مجال: ' : 'Inquiry about: ')
+        .$contactTrackLabels[$contactTrack] : ''))
 @section('title', $locale === 'ar' ? 'التواصل — وليد عطية' : 'Contact — Waleed Atiya')
 @push('styles')
 <style>
@@ -14,6 +31,8 @@
 .contact .contact-error-summary{border:2px solid #9D2735;border-radius:10px;padding:14px 18px;margin-bottom:18px}.contact .contact-error-summary a{text-decoration:underline;text-underline-offset:3px}.contact .contact-error-summary a:focus-visible{outline:3px solid var(--wa-primary);outline-offset:3px}.contact .contact-again{display:inline-flex;align-items:center;min-height:44px;margin-top:12px;text-decoration:underline;text-underline-offset:3px;font-weight:700}.contact .contact-again:focus-visible{outline:3px solid var(--wa-primary);outline-offset:3px}.contact-trap{position:absolute;left:-10000px;width:1px;height:1px;overflow:hidden}.contact-error{color:#9D2735}
 .contact-project-context a{display:inline-flex;align-items:center;min-height:44px;color:var(--wa-cta);font-weight:700;overflow-wrap:anywhere}
 .contact-project-context a:focus-visible{outline:3px solid var(--wa-cta);outline-offset:3px}
+.contact-track-context a{display:inline-flex;align-items:center;min-height:44px;color:var(--wa-cta);font-weight:700;overflow-wrap:anywhere}
+.contact-track-context a:focus-visible{outline:3px solid var(--wa-cta);outline-offset:3px}
 .contact .contact-consent{display:flex;gap:12px;align-items:flex-start;line-height:1.55;cursor:pointer}
 .contact .contact-consent input{display:inline-block;width:20px;height:20px;min-height:20px;flex:none;margin:3px 0 0;accent-color:var(--wa-cta)}
 </style>
@@ -32,6 +51,12 @@
 <p class="contact-project-context">
     {{ $locale === 'ar' ? 'استفسار عن دراسة الحالة المنشورة والموثقة:' : 'Inquiry about the published, verified case study:' }}
     <a href="{{ route('public.project', ['slug' => $reportProject['slug'], 'lang' => $locale]) }}">{{ $reportProject['name'] }}</a>
+</p>
+@endif
+@if($contactTrack)
+<p class="contact-track-context">
+    {{ $locale === 'ar' ? 'موضوع الاستفسار المختار (لا يُعد توثيقًا للخبرة):' : 'Selected inquiry topic (not proof of professional expertise):' }}
+    <a href="{{ route('public.hire', ['lang' => $locale, 'track' => $contactTrack]) }}">{{ $contactTrackLabels[$contactTrack] }}</a>
 </p>
 @endif
 @if(session('contact_delivered'))

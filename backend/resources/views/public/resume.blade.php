@@ -22,7 +22,7 @@
 <h1>{{ $locale === 'ar' ? 'السيرة المهنية العامة' : 'Public resume' }}</h1>
 <p>{{ $locale === 'ar' ? 'لا تظهر سوى الخبرات والشهادات المعتمدة للنشر بعد التحقق من الأدلة.' : 'Only evidence-verified experience and approved credentials are included.' }}</p>
 <div class="resume-actions"><button type="button" onclick="window.print()">{{ $locale === 'ar' ? 'طباعة أو حفظ PDF' : 'Print or save PDF' }}</button>
-<a href="{{ route('public.contact', ['lang'=>$locale]) }}">{{ $locale === 'ar' ? 'التواصل' : 'Contact' }}</a></div>
+<a href="{{ route('public.contact', array_merge(['lang' => $locale], $track !== 'all' ? ['track' => $track] : [])) }}">{{ $locale === 'ar' ? 'التواصل بشأن المسار' : 'Contact about this track' }}</a></div>
 <nav class="resume-tracks" aria-label="{{ $locale === 'ar' ? 'تصفية السيرة حسب المسار' : 'Resume focus by track' }}">
 @foreach([
     'all' => $locale === 'ar' ? 'جميع المسارات' : 'All tracks',

@@ -219,7 +219,9 @@
                 <a class="secondary" href="{{ route('public.expertise', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'المهارات' : 'Expertise' }}</a>
                 <a class="secondary" href="{{ route('public.hire', ['lang' => $locale, 'track' => $page === 'hire' ? $track : 'all']) }}">{{ $locale === 'ar' ? 'التوظيف' : 'Recruiter' }}</a>
                 <a class="secondary" href="{{ route('public.resume', ['lang' => $locale, 'track' => $page === 'hire' ? $track : 'all']) }}">{{ $locale === 'ar' ? 'السيرة العامة حسب المجال' : 'View focused public resume' }}</a>
-                <a class="secondary" href="{{ route('public.contact', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'التواصل' : 'Contact' }}</a>
+                {{-- WEB-12: retain the selected professional focus into the
+                     inquiry, without asserting that any claim proves this track. --}}
+                <a class="secondary" href="{{ route('public.contact', array_merge(['lang' => $locale], $page === 'hire' && $track !== 'all' ? ['track' => $track] : [])) }}">{{ $locale === 'ar' ? 'التواصل بشأن المجال' : 'Contact about this focus' }}</a>
             </div>
         </aside>
     </div>
