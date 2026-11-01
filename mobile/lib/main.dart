@@ -19,6 +19,15 @@ class _WaleedTechAppState extends State<WaleedTechApp> {
   bool _arabic = false;
 
   @override
+  void initState() {
+    super.initState();
+    // Respect the device's primary locale at app startup.
+    // The user can still switch languages explicitly during this session.
+    _arabic =
+        WidgetsBinding.instance.platformDispatcher.locale.languageCode == 'ar';
+  }
+
+  @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Waleed Tech Companion',
