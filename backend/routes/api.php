@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\IdentityController;
 use App\Http\Controllers\Api\AiProviderController;
 use App\Http\Controllers\Api\PublicPortfolioController;
+use App\Http\Controllers\Api\PublicHomeController;
 use App\Http\Controllers\Api\PublicArticleController;
 use App\Http\Controllers\Api\PublicRunbookController;
 use App\Http\Controllers\Api\PublicSearchController;
@@ -31,6 +32,9 @@ Route::middleware([RequireSecureApiTransport::class, 'auth:sanctum'])->group(fun
     Route::post('/admin/ai/providers/{provider}/test', [AiProviderController::class, 'test'])->middleware('throttle:5,1');
 });
 
+// WEB-01: same evidence-qualified owner, project and article feed as the web home.
+Route::get('/public/home', [PublicHomeController::class, 'index'])
+    ->name('api.public.home')->middleware('throttle:60,1');
 Route::get('/public/projects', [PublicPortfolioController::class, 'projects'])
     ->name('api.public.projects')->middleware('throttle:60,1');
 Route::get('/public/projects/{slug}', [PublicPortfolioController::class, 'project'])
