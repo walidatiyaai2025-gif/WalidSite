@@ -22,12 +22,13 @@ class PublicArticleController extends Controller
 
         $articles = Article::query()->publiclyVisible();
         if ($search !== '') {
-            // "%" and "_" are SQL LIKE wildcards, not user search operators.
-            // Escape them consistently with the public website search.
-            $term = '%'.addcslashes($search, '%_\\').'%';
+            // Explicit LIKE escape is needed on both SQLite (CI) and
+            // MariaDB (production). Backslash without ESCAPE is not portable.
+            // Bind the pattern; never interpolate untrusted text into SQL.
+            $term = '%'.str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $search).'%';
             $articles->where(function ($q) use ($term): void {
-                $q->where('title_en', 'like', $term)
-                    ->orWhere('title_ar', 'like', $term)
+                $q->whereRaw("articles.title_en LIKE ? ESCAPE '!'", [$term])
+                    ->orWhereRaw("articles.title_ar LIKE ? ESCAPE '!'", [$term])
                     // Match the exact revision pinned at publication, never
                     // a newer draft or an unrelated validated revision.
                     // The definitive publicRevision() rights/citation gate
@@ -35,7 +36,7 @@ class PublicArticleController extends Controller
                     ->orWhereHas('revisions', fn ($revision) => $revision
                         ->where('status', 'validated')
                         ->whereColumn('article_revisions.revision_no', 'articles.published_revision_no')
-                        ->where('body_md', 'like', $term));
+                        ->whereRaw("article_revisions.body_md LIKE ? ESCAPE '!'", [$term]));
             });
         }
 
