@@ -243,6 +243,18 @@ void main() {
     expect(find.byKey(const Key('article-network-routing')), findsOneWidget);
     expect(find.byKey(const Key('article-database-recovery')), findsNothing);
 
+    // Multi-term search spans a visible title and a visible body; terms
+    // must all match, and no additional API request is permitted.
+    await tester.enterText(search, 'network firewall');
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('article-network-routing')), findsOneWidget);
+    expect(find.byKey(const Key('article-database-recovery')), findsNothing);
+    expect(loadCount, 1);
+
+    await tester.enterText(search, 'network nonexistent');
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('article-search-empty')), findsOneWidget);
+
     await tester.enterText(search, 'no documented match');
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('article-search-empty')), findsOneWidget);
@@ -254,6 +266,65 @@ void main() {
     expect(find.byKey(const Key('article-database-recovery')), findsOneWidget);
     expect(find.byKey(const Key('article-network-routing')), findsOneWidget);
     expect(loadCount, 1, reason: 'Filtering never reloads or uploads search text');
+  });
+
+  testWidgets('Arabic article search tolerates marks and unaccented Alef and Ya',
+      (tester) async {
+    const items = <VerifiedArticle>[
+      VerifiedArticle(
+        slug: 'arabic-admin-guide',
+        title: 'إِدارةُ خوادمِ قواعد البيانات',
+        body: 'خُطَّةُ التعافِي موثقة بمراجع رسمية',
+        citations: ['https://docs.example.org/admin'],
+      ),
+      VerifiedArticle(
+        slug: 'arabic-network-guide',
+        title: 'دليل الشبكة',
+        body: 'خطوات تشخيص الاتصال',
+        citations: ['https://docs.example.org/network'],
+      ),
+    ];
+    var reads = 0;
+    await tester.pumpWidget(MaterialApp(
+      locale: const Locale('ar'),
+      home: Directionality(
+        textDirection: TextDirection.rtl,
+        child: VerifiedArticleLibrary(
+          arabic: true,
+          loader: () {
+            reads++;
+            return SynchronousFuture<List<VerifiedArticle>>(items);
+          },
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    final search = find.byKey(const Key('article-search-input'));
+
+    await tester.enterText(search, 'ادارة التعافي');
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('article-arabic-admin-guide')), findsOneWidget);
+    expect(find.byKey(const Key('article-arabic-network-guide')), findsNothing);
+    expect(reads, 1, reason: 'Search must remain strictly on device');
+
+    await tester.enterText(search, 'خوادم موثقة');
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('article-arabic-admin-guide')), findsOneWidget);
+
+    await tester.enterText(search, 'اداره غائبة');
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('article-search-empty')), findsOneWidget);
+
+    await tester.enterText(search, 'database');
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('article-search-empty')), findsOneWidget);
+
+    await tester.enterText(search, '   ');
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('article-arabic-admin-guide')), findsOneWidget);
+    expect(find.byKey(const Key('article-arabic-network-guide')), findsOneWidget);
+    expect(reads, 1);
+    expect(Directionality.of(tester.element(search)), TextDirection.rtl);
   });
 
   testWidgets('Arabic article search preserves RTL and localized empty state', (tester) async {
