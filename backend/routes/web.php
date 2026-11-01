@@ -1167,8 +1167,10 @@ Route::get('/search', function (Request $request) {
     $input = $request->validate([
         'q' => ['sometimes', 'string', 'max:80'],
         'lang' => ['sometimes', 'in:ar,en'],
+        'type' => ['sometimes', 'in:all,articles,projects'],
     ]);
     $search = trim($input['q'] ?? '');
+    $type = $input['type'] ?? 'all';
     $articles = collect();
     $projects = collect();
 
@@ -1177,7 +1179,8 @@ Route::get('/search', function (Request $request) {
         // Filter the pinned published revision's live evidence before
         // consuming one of ten search slots. Chunked DB iteration avoids
         // large in-memory lists even with long revoked prefixes.
-        foreach (\App\Models\Article::query()->publiclyVisible()
+        if ($type !== 'projects') {
+            foreach (\App\Models\Article::query()->publiclyVisible()
             ->where(fn ($builder) => $builder
                 ->whereRaw("articles.title_en LIKE ? ESCAPE '!'", [$term])
                 ->orWhereRaw("articles.title_ar LIKE ? ESCAPE '!'", [$term])
@@ -1196,7 +1199,10 @@ Route::get('/search', function (Request $request) {
             }
         }
 
-        $api = app(\App\Http\Controllers\Api\PublicPortfolioController::class);
+        }
+
+        if ($type !== 'articles') {
+            $api = app(\App\Http\Controllers\Api\PublicPortfolioController::class);
         foreach (\App\Models\Project::query()->publiclyVerified()
             ->where(fn ($builder) => $builder
                 ->whereRaw("projects.title LIKE ? ESCAPE '!'", [$term])
@@ -1212,7 +1218,8 @@ Route::get('/search', function (Request $request) {
                 break;
             }
         }
+        }
     }
-    return view('public.search', compact('search', 'articles', 'projects'));
+    return view('public.search', compact('search', 'articles', 'projects', 'type'));
 })->name('public.search')->middleware('throttle:60,1');
 
