@@ -45,7 +45,8 @@ button.secondary{background:var(--nav)}button.danger{background:#A52F3B}.muted{c
 <a href="{{ route('admin.providers.show', ['provider' => $provider->id, 'lang' => $locale === 'ar' ? 'en' : 'ar']) }}">{{ $locale === 'ar' ? 'English' : 'العربية' }}</a>
 </div>
 <p><a href="{{ route('admin.providers.index', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'عودة لجميع المزودين' : 'Back to providers' }}</a>
-· <a href="{{ route('admin.providers.audit', ['provider' => $provider->id, 'lang' => $locale]) }}">{{ $locale === 'ar' ? 'استعراض سجل التغييرات' : 'View provider change history' }}</a></p>
+· <a href="{{ route('admin.providers.audit', ['provider' => $provider->id, 'lang' => $locale]) }}">{{ $locale === 'ar' ? 'استعراض سجل التغييرات' : 'View provider change history' }}</a>
+· <a href="{{ route('admin.models.index', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'نماذج المزود وتوجيه المهام' : 'Provider models and task routes' }}</a></p>
 <p class="muted">{{ $locale === 'ar'
 ? 'المفتاح المخزن مشفّر ولا يمكن عرضه من هذه الشاشة. أي تعديل يلغي نتيجة فحص الاتصال القديمة. حدود الإنفاق إعدادات محفوظة وليست ضمانًا للتنفيذ.'
 : 'Stored credentials are encrypted and cannot be revealed here. Any edit invalidates an older connection check. Spending limits are saved configuration, not a task execution guarantee.' }}</p>
