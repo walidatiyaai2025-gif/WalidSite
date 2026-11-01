@@ -9,7 +9,9 @@ permissions:
   contents: read
 concurrency:
   group: pr-ci-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  # Preserve a running main build so the installer artifact can finish.
+  # Still cancel obsolete PR-head checks after a new PR commit.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   required-ci-gate:
     if: github.event.action != 'closed'
