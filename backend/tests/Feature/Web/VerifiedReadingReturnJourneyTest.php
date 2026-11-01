@@ -79,7 +79,8 @@ final class VerifiedReadingReturnJourneyTest extends TestCase
             $blog = $this->get($indexUrl)->assertOk()
                 ->assertSee('href="'.e($articleUrl).'"', false)
                 ->assertSee('reading-guide-11')
-                ->assertDontSee('reading-guide-10')
+                ->assertSee('reading-guide-10')
+                ->assertDontSee('reading-guide-09')
                 ->assertDontSee('secret-private-draft')
                 ->assertDontSee('revoked-unapproved-guide')
                 ->assertSee('href="'.e(route('public.blog', [
