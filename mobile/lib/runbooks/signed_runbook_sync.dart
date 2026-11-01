@@ -30,16 +30,30 @@ class SignedRunbookSource {
     final uri = Uri.tryParse(url);
     if (uri == null ||
         uri.scheme != 'https' ||
-        uri.host.isEmpty ||
         uri.userInfo.isNotEmpty ||
         uri.hasQuery ||
         uri.hasFragment ||
         uri.path.isEmpty ||
         uri.path == '/' ||
-        uri.host == 'localhost' ||
-        InternetAddress.tryParse(uri.host) != null ||
-        uri.host.endsWith('.local') ||
-        uri.host.endsWith('.internal')) {
+        (uri.hasPort && uri.port != 443)) {
+      return null;
+    }
+
+    // Pinned signatures protect content integrity, not the destination.
+    // Never connect to internal, numeric-alias or non-public DNS targets.
+    final host = uri.host.toLowerCase();
+    final publicHostPattern = RegExp(
+      r'^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$',
+    );
+    const privateSuffixes = [
+      'localhost', 'local', 'localdomain', 'internal', 'test',
+      'invalid', 'onion', 'lan', 'home', 'arpa', 'svc',
+    ];
+    if (InternetAddress.tryParse(host) != null ||
+        !publicHostPattern.hasMatch(host) ||
+        privateSuffixes.any(
+          (suffix) => host == suffix || host.endsWith('.$suffix'),
+        )) {
       return null;
     }
     return uri;

@@ -211,22 +211,75 @@ void main() {
 
   test('unsafe endpoints and oversized signed envelope fail closed', () async {
     final keys = await signer();
+    var transportCalls = 0;
     for (final url in [
       'http://docs.example.org/pack.json',
       'https://localhost/pack.json',
       'https://127.0.0.1/pack.json',
+      'https://[::1]/pack.json',
       'https://user:pass@docs.example.org/pack.json',
       'https://docs.example.org/pack.json?token=not-allowed',
       'https://docs.example.org/pack.json#fragment',
+      'https://docs.example.org:8443/pack.json',
+      'https://router.lan/pack.json',
+      'https://service.svc/pack.json',
+      'https://intranet.home/pack.json',
+      'https://endpoint.arpa/pack.json',
+      'https://sandbox.test/pack.json',
+      'https://archive.invalid/pack.json',
+      'https://hidden.onion/pack.json',
+      'https://docs.example.org./pack.json',
+      'https://bad_host.example.org/pack.json',
+      'https://0x7f000001/pack.json',
+      'https://2130706433/pack.json',
+      'https://docs.example.org/',
     ]) {
-      expect(SignedRunbookSource(url: url, publicKeyBase64: keys.key).configured, isFalse);
+      final blocked = SignedRunbookSource(
+        url: url,
+        publicKeyBase64: keys.key,
+        transport: (_) async {
+          transportCalls++;
+          return '{}';
+        },
+      );
+      expect(blocked.configured, isFalse, reason: url);
+      await expectLater(blocked.fetch(), throwsFormatException);
     }
+    expect(transportCalls, 0,
+        reason: 'Blocked destinations must not reach a network transport');
+
     final source = SignedRunbookSource(
       url: 'https://docs.example.org/pack.json',
       publicKeyBase64: keys.key,
       transport: (_) async => 'x' * (810 * 1024),
     );
     await expectLater(source.fetch(), throwsFormatException);
+  });
+
+  test('standard HTTPS port 443 permits signed public runbook sync', () async {
+    final keys = await signer();
+    final envelope = await signedEnvelope(key: keys.pair);
+    var calls = 0;
+    final source = SignedRunbookSource(
+      url: 'https://docs.example.org:443/packs/signed.json',
+      publicKeyBase64: keys.key,
+      transport: (uri) async {
+        calls++;
+        expect(uri.host, 'docs.example.org');
+        expect(uri.port, 443);
+        return envelope;
+      },
+    );
+    expect(source.configured, isTrue);
+    final repo = OfflineRunbookRepository(
+      source: source,
+      store: MemorySnapshotStore(),
+      bundled: () => SynchronousFuture<OfflineRunbookPack>(fallback),
+    );
+    final pack = await repo.sync();
+    expect(pack.signedVerified, isTrue);
+    expect(pack.items.single.id, 'safe-checklist');
+    expect(calls, 1);
   });
 
   testWidgets('bilingual manual sync replaces bundled guidance only after verification', (tester) async {
