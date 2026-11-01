@@ -447,15 +447,37 @@ class _ReviewedRunbookDetailState extends State<ReviewedRunbookDetail> {
   bool _sharing = false;
   bool _saved = false;
   String? _actionMessage;
+  int _detailEpoch = 0;
+
+  static String? _validatedBearer(String? token) =>
+      token != null && token.isNotEmpty && token.length <= 8192
+          ? token
+          : null;
 
   @override
   void initState() {
     super.initState();
-    final token = widget.initialBearer;
-    _bearer = token != null && token.isNotEmpty && token.length <= 8192
-        ? token
-        : null;
+    _bearer = _validatedBearer(widget.initialBearer);
     _refresh();
+  }
+
+  @override
+  void didUpdateWidget(covariant ReviewedRunbookDetail oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.id != widget.id || oldWidget.loader != widget.loader) {
+      // The same State may be reused for another reviewed guide. Never keep
+      // its saved flag, bearer or a prior guide's async action completion.
+      _detailEpoch++;
+      _bearer = _validatedBearer(widget.initialBearer);
+      _saving = false;
+      _sharing = false;
+      _saved = false;
+      _actionMessage = null;
+      _refresh();
+    } else if (oldWidget.initialBearer != widget.initialBearer &&
+        !_saving && !_saved) {
+      _bearer = _validatedBearer(widget.initialBearer);
+    }
   }
 
   void _refresh() {
@@ -511,11 +533,12 @@ class _ReviewedRunbookDetailState extends State<ReviewedRunbookDetail> {
 
   Future<void> _saveReviewed(ReviewedRunbook item) async {
     if (_saving || _saved) return;
+    final epoch = _detailEpoch;
 
     var bearer = _bearer;
     if (bearer == null) {
       bearer = await _promptForBearer();
-      if (!mounted || bearer == null) return;
+      if (!mounted || epoch != _detailEpoch || bearer == null) return;
       _bearer = bearer;
     }
 
@@ -525,7 +548,7 @@ class _ReviewedRunbookDetailState extends State<ReviewedRunbookDetail> {
     });
     try {
       await _save(bearer, item.id);
-      if (!mounted) return;
+      if (!mounted || epoch != _detailEpoch) return;
       setState(() {
         _saved = true;
         // Do not retain a bearer after its only required action.
@@ -535,7 +558,7 @@ class _ReviewedRunbookDetailState extends State<ReviewedRunbookDetail> {
             : 'The reviewed guide was saved to your account.';
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || epoch != _detailEpoch) return;
       if (error is RunbookActionHttpException &&
           (error.statusCode == 401 || error.statusCode == 403)) {
         _bearer = null;
@@ -543,7 +566,9 @@ class _ReviewedRunbookDetailState extends State<ReviewedRunbookDetail> {
       setState(() => _actionMessage =
           _actionFailure(error, login: false));
     } finally {
-      if (mounted) setState(() => _saving = false);
+      if (mounted && epoch == _detailEpoch) {
+        setState(() => _saving = false);
+      }
     }
   }
 
@@ -559,6 +584,7 @@ class _ReviewedRunbookDetailState extends State<ReviewedRunbookDetail> {
     BuildContext buttonContext,
   ) async {
     if (_sharing) return;
+    final epoch = _detailEpoch;
     setState(() {
       _sharing = true;
       _actionMessage = null;
@@ -569,7 +595,7 @@ class _ReviewedRunbookDetailState extends State<ReviewedRunbookDetail> {
       final opened = custom != null
           ? await custom(text, item.title)
           : await _platformShare(text, item.title, buttonContext);
-      if (!mounted) return;
+      if (!mounted || epoch != _detailEpoch) return;
       setState(() {
         _actionMessage = opened
             ? (widget.arabic
@@ -580,14 +606,16 @@ class _ReviewedRunbookDetailState extends State<ReviewedRunbookDetail> {
                 : 'Sharing is unavailable on this device.');
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || epoch != _detailEpoch) return;
       setState(() {
         _actionMessage = widget.arabic
             ? 'تعذر فتح المشاركة بأمان.'
             : 'Could not open sharing safely.';
       });
     } finally {
-      if (mounted) setState(() => _sharing = false);
+      if (mounted && epoch == _detailEpoch) {
+        setState(() => _sharing = false);
+      }
     }
   }
 
@@ -672,10 +700,11 @@ class _ReviewedRunbookDetailState extends State<ReviewedRunbookDetail> {
                   FilledButton.icon(
                     key: const Key('online-runbook-copy'),
                     onPressed: () async {
+                      final epoch = _detailEpoch;
                       await Clipboard.setData(
                         ClipboardData(text: item.markdown),
                       );
-                      if (!mounted) return;
+                      if (!mounted || epoch != _detailEpoch) return;
                       setState(() {
                         _actionMessage = ar
                             ? 'تم نسخ الخطوات المراجعة.'
