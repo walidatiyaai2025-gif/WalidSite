@@ -16,17 +16,41 @@
 .ed-form input,.ed-form select{font:inherit;padding:10px;border:1px solid #97B4C8;border-radius:10px;min-height:44px;min-width:190px}
 .ed-form button{min-height:44px;background:var(--wa-cta);color:#fff;border:0;border-radius:10px;padding:10px 18px;font:inherit;font-weight:700}
 .article-content{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.9;color:var(--wa-body)}
+.lab-resource-list{padding-inline-start:24px}.lab-resource-list li{margin-block:5px}.lab-resource-list a{min-height:44px;display:inline-flex;align-items:center}
 </style>
 @endpush
 @section('content')
 <section class="site-wrap editorial"><h1>{{ $locale === 'ar' ? 'المختبر التقني' : 'Technology lab' }}</h1>
 <p>{{ $locale === 'ar' ? 'الأدوات التفاعلية غير مفعّلة حتى التحقق منها. المتاح أدلة منشورة ذات مصادر فقط.' : 'Interactive tools are not active until verified. Only published, evidence-reviewed guides can be opened.' }}</p>
 <div class="ed-card">
-@if($articles->isEmpty())<p role="status">{{ $locale === 'ar' ? 'لا توجد أدلة منشورة أو تجارب حية.' : 'No reviewed guides or live tool demos are available yet.' }}</p>
+@if($articles->isEmpty() && $runbooks->isEmpty())
+    <p role="status">{{ $locale === 'ar' ? 'لا توجد أدلة منشورة أو تجارب حية.' : 'No reviewed guides or live tool demos are available yet.' }}</p>
 @else
-<ul>@foreach($articles as $a)
-<li><a href="{{ route('public.article', ['slug'=>$a->slug, 'lang'=>$locale]) }}">{{ $locale === 'ar' ? $a->title_ar : $a->title_en }}</a></li>
-@endforeach</ul>
+    @if($articles->isNotEmpty())
+    <section aria-labelledby="lab-articles-title">
+        <h2 id="lab-articles-title">{{ $locale === 'ar' ? 'المقالات التقنية الموثقة' : 'Reviewed technical articles' }}</h2>
+        <ul class="lab-resource-list">
+            @foreach($articles as $article)
+                <li><a href="{{ $article['url'] }}">{{ $article['title'] }}</a></li>
+            @endforeach
+        </ul>
+    </section>
+    @endif
+    @if($runbooks->isNotEmpty())
+    <section aria-labelledby="lab-runbooks-title">
+        <h2 id="lab-runbooks-title">{{ $locale === 'ar' ? 'أدلة التشغيل المعتمدة' : 'Approved runbooks' }}</h2>
+        <p>{{ $locale === 'ar'
+            ? 'أدلة تمت مراجعة النسخة المنشورة منها؛ لا يُعد اعتمادها إثباتًا لتنفيذها في بيئة تشغيل فعلية.'
+            : 'Version-reviewed guides; approval does not prove live execution.' }}</p>
+        <ul class="lab-resource-list">
+            @foreach($runbooks as $runbook)
+                <li><a href="{{ route('public.lab.runbook', ['id' => $runbook['id'], 'lang' => $locale]) }}">
+                    {{ $runbook['title'] }}
+                </a></li>
+            @endforeach
+        </ul>
+    </section>
+    @endif
 @endif
 </div></section>
 @endsection
