@@ -223,7 +223,8 @@ foreach (['about', 'expertise', 'hire'] as $professionalPage) {
         $positions = collect();
         $certifications = collect();
         $skills = collect();
-        $track = (string) $request->query('track', 'all');
+        $rawTrack = $request->query('track', 'all');
+        $track = is_string($rawTrack) ? $rawTrack : 'all';
         $tracks = [
             'database' => ['Database & Reliability'],
             'software' => ['Software & Integration', 'Infrastructure & Security'],
