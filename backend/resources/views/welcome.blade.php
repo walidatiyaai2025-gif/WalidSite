@@ -129,7 +129,7 @@
     <section class="landing-hero" aria-labelledby="landing-title">
         <div class="site-wrap landing-grid">
             <figure class="landing-portrait">
-                <img src="https://raw.githubusercontent.com/walidatiyaai2025-gif/WalidSite/main/assets/portraits/portrait-light-derived.jpg"
+                <img src="{{ route('public.portrait') }}"
                     width="640" height="760" decoding="async" fetchpriority="high"
                     alt="{{ $ar ? 'الصورة الشخصية الأصلية المعتمدة لوليد عطية' : 'Approved real portrait of Waleed Atiya' }}">
             </figure>
