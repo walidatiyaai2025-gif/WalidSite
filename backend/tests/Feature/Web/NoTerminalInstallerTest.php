@@ -280,6 +280,8 @@ class NoTerminalInstallerTest extends TestCase
         try {
             $this->post('https://localhost/setup/unlock',
                 ['token' => str_repeat('p', 40), '_token' => $csrf])->assertRedirect('/setup');
+            // Unlock regenerates the session and rotates the CSRF token.
+            $csrf = session()->token();
             $this->post('https://localhost/setup/configure', [
                 'site_url' => 'https://127.0.0.1',
                 'db_host' => 'localhost', 'db_port' => 3306,
