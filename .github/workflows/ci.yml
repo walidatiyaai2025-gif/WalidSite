@@ -49,6 +49,8 @@ jobs:
         run: python3 -m unittest discover -s qa/tests -p test_cpanel_package.py
       - name: Validate active CI workflow policy
         run: python3 qa/validate_ci_policy.py
+      - name: Verify fail-closed legacy duplicate branch reconciliation
+        run: python3 -m unittest discover -s qa/tests -p 'test_abandoned_branch_cleanup.py'
       - name: Validate canonical owner CV source
         run: python3 qa/validate_owner_cv.py
       - name: Reject merge markers and known sensitive files
@@ -248,3 +250,15 @@ jobs:
           29 feat/T001-governance-and-ci c89c0a080515cb846e0a408e7ecb27c6d15de26f
           30 feat/T001-runtime-scaffold 1803e74a477217597eee93a6d9f210f775b66deb
           MERGED_PRE_HOOK
+
+      # Execute only from trusted merged main, never from PR-provided code.
+      # This one-time reconciliation has a pinned six-branch allowlist.
+      - name: Checkout trusted main for abandoned duplicate reconciliation
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Prune verified abandoned duplicate branches only
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 qa/cleanup_abandoned_duplicate_branches.py
