@@ -1069,18 +1069,43 @@ Route::get('/contact', function (Request $request) {
             $reportArticle = $candidate;
         }
     }
+    // WEB-05 -> WEB-14: contextual project inquiries are only allowed for
+    // currently public, evidence-verified, route-reachable case studies.
+    // Never display a stored project title based only on an untrusted slug.
+    // When both keys are supplied, an article request takes precedence and a
+    // project cannot override or contaminate its subject.
+    $reportProject = null;
+    $rawProject = $request->query()['project'] ?? null;
+    if (! array_key_exists('article', $request->query())
+        && is_string($rawProject)
+        && preg_match('/\\A[A-Za-z0-9-]{1,120}\\z/D', $rawProject) === 1) {
+        $candidate = \App\Models\Project::query()->publiclyVerified()
+            ->where('slug', $rawProject)->first();
+        if ($candidate !== null) {
+            $publicData = app(\App\Http\Controllers\Api\PublicPortfolioController::class)
+                ->publicProjectData($candidate, $request);
+            if (! empty($publicData['evidence_urls'])) {
+                $reportProject = $publicData;
+            }
+        }
+    }
+
     // Limit the suggestion to the existing 140-character subject field.
-    // Visitors can edit the subject; no sent message is treated as verified.
+    // Visitors can edit it; their inquiry is not verified project evidence.
     $locale = $request->query('lang') === 'ar' ? 'ar' : 'en';
-    $suggestedSubject = $reportArticle === null ? ''
-        : ($locale === 'ar' ? 'ملاحظة بشأن المقال: ' : 'Article issue: ')
-            .mb_substr($reportArticle->slug, 0, 100);
+    $suggestedSubject = $reportArticle !== null
+        ? ($locale === 'ar' ? 'ملاحظة بشأن المقال: ' : 'Article issue: ')
+            .mb_substr($reportArticle->slug, 0, 100)
+        : ($reportProject !== null
+            ? ($locale === 'ar' ? 'استفسار عن المشروع: ' : 'Project inquiry: ')
+                .mb_substr($reportProject['slug'], 0, 100)
+            : '');
 
     $recipient = config('mail.contact_recipient');
     $available = is_string($recipient) && filter_var($recipient, FILTER_VALIDATE_EMAIL)
         && in_array(config('mail.default'), ['smtp', 'sendmail', 'ses', 'ses-v2', 'postmark', 'resend'], true);
 
-    return view('public.contact', compact('available', 'reportArticle', 'suggestedSubject'));
+    return view('public.contact', compact('available', 'reportArticle', 'reportProject', 'suggestedSubject'));
 })->name('public.contact');
 
 Route::post('/contact', function (Request $request) {

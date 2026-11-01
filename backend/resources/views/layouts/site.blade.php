@@ -142,6 +142,15 @@
                         @php($languageArgs['category'] = $selectedCategory)
                     @endif
                 @endif
+                @if(request()->routeIs('public.contact'))
+                    {{-- Use the actual publication-verified context supplied by
+                         the contact route, never echo raw query parameters. --}}
+                    @if(isset($reportArticle) && $reportArticle !== null)
+                        @php($languageArgs['article'] = $reportArticle->slug)
+                    @elseif(isset($reportProject) && is_array($reportProject) && isset($reportProject['slug']))
+                        @php($languageArgs['project'] = $reportProject['slug'])
+                    @endif
+                @endif
                 @if(request()->routeIs('public.resume', 'public.hire'))
                     @php($trackParams = request()->query())
                     @php($resumeTrack = $trackParams['track'] ?? 'all')

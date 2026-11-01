@@ -13,6 +13,9 @@
 .study section{background:#fff;padding:26px;border:1px solid var(--wa-soft-border);border-radius:18px;margin-block:20px}
 .study a{color:var(--wa-cta);overflow-wrap:anywhere;min-height:44px}
 .study p{color:var(--wa-body)}
+.study-next{display:flex;flex-wrap:wrap;gap:14px;margin-block:24px}
+.study-next a{display:inline-flex;align-items:center;min-height:44px;padding:10px 16px;border:1px solid var(--wa-soft-border);border-radius:10px;background:#fff;font-weight:700}
+.study-next a:focus-visible{outline:3px solid var(--wa-cta);outline-offset:3px}
 </style>
 @endpush
 @php($statusLabels = $locale === 'ar'
@@ -43,5 +46,9 @@
 @endforeach
 </ul>
 </section>
+<nav class="study-next" aria-label="{{ $locale === 'ar' ? 'خطوات تالية لدراسة الحالة' : 'Case study next steps' }}">
+    <a href="{{ route('public.contact', ['lang' => $locale, 'project' => $project['slug']]) }}">{{ $locale === 'ar' ? 'استفسر عن دراسة الحالة الموثقة' : 'Ask about this verified case study' }}</a>
+    <a href="{{ route('public.resume', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'عرض السيرة المهنية الموثقة' : 'View verified public resume' }}</a>
+</nav>
 </article>
 @endsection
