@@ -108,7 +108,7 @@ class PublicResumeTracksTest extends TestCase
         $this->get('/resume?lang=ar&track=database')->assertOk()
             ->assertSee('dir="rtl"', false)
             ->assertSee('مسار السيرة المهنية')
-            ->assertSee('href="'.route('public.resume', ['lang' => 'en', 'track' => 'database']).'"', false)
+            ->assertSee('href="'.e(route('public.resume', ['lang' => 'en', 'track' => 'database'])).'"', false)
             ->assertDontSee('Not For Publication')
             ->assertDontSee('Public Test Owner');
     }
