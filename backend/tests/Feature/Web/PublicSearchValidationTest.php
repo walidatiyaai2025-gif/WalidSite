@@ -11,10 +11,10 @@ final class PublicSearchValidationTest extends TestCase
 
     public function test_rejects_malformed_oversized_and_unsupported_search_parameters(): void
     {
-        $this->get('/search?q%5B%5D=php')->assertUnprocessable();
-        $this->get('/search?q='.str_repeat('x', 81))->assertUnprocessable();
-        $this->get('/search?lang%5B%5D=ar')->assertUnprocessable();
-        $this->get('/search?lang=fr')->assertUnprocessable();
+        $this->getJson('/search?q%5B%5D=php')->assertUnprocessable();
+        $this->getJson('/search?q='.str_repeat('x', 81))->assertUnprocessable();
+        $this->getJson('/search?lang%5B%5D=ar')->assertUnprocessable();
+        $this->getJson('/search?lang=fr')->assertUnprocessable();
     }
 
     public function test_valid_bilingual_search_preserves_query_without_truncation(): void
