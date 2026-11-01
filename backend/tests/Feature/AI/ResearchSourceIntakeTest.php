@@ -72,6 +72,45 @@ class ResearchSourceIntakeTest extends TestCase
         }
     }
 
+    public function test_nested_signed_query_and_fragment_keys_are_rejected_before_prompt_export(): void
+    {
+        $intake = new ResearchSourceIntake();
+
+        foreach ([
+            'https://docs.example.org/guide?token[]=private',
+            'https://docs.example.org/guide?token[0]=private',
+            'https://docs.example.org/guide?api_key[0][secret]=private',
+            'https://docs.example.org/guide?source[api_key]=private',
+            'https://docs.example.org/guide?source[outer][access_token]=private',
+            'https://docs.example.org/guide?filter[0][refresh_token]=private',
+            'https://docs.example.org/guide?source[signature][0]=private',
+            'https://docs.example.org/guide?X-Amz-Signature[0]=private',
+            'https://docs.example.org/guide?token%5B0%5D=private',
+            'https://docs.example.org/guide?source%5Bapi_key%5D=private',
+            'https://docs.example.org/guide?source%255Bapi_key%255D=private',
+            'https://docs.example.org/guide#state[client_secret]=private',
+            'https://docs.example.org/guide#sessionid%5B0%5D=private',
+        ] as $url) {
+            try {
+                $intake->candidateCitations([$url]);
+                $this->fail('Nested credential URL was accepted for AI prompt export.');
+            } catch (InvalidArgumentException $exception) {
+                $this->assertSame(
+                    'Research sources must use a safe public HTTPS URL.',
+                    $exception->getMessage()
+                );
+            }
+        }
+    }
+
+    public function test_harmless_nested_public_filters_are_preserved(): void
+    {
+        $url = 'https://docs.example.org/guide?topic[0]=backup&lang=ar&tokenized=public';
+        $this->assertSame([
+            ['source_url' => $url, 'verified' => false],
+        ], (new ResearchSourceIntake())->candidateCitations([$url]));
+    }
+
     public function test_public_noncredential_query_and_fragment_remain_allowed(): void
     {
         $this->assertSame([
