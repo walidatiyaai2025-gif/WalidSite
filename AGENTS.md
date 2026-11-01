@@ -9,10 +9,17 @@
 4. Record lane, claim, base SHA, owned paths, dependencies and test plan in the Issue. Keep issue/branch/PR one-to-one; avoid speculative branches.
 5. Use `backend/` for Laravel+Blade+Livewire+REST and `mobile/` for Flutter; do **not** create an independent web SPA or backend service.
 6. Keep GitHub Actions to exactly two effective workflows in `.github/workflows/`: CI and Release. CI must validate exact head of PR; don't merge red/unknown.
-7. Finish with code, tests, screenshots where UI, exact-head CI, merge SHA, staging evidence and issue closure; or explicitly mark external blockers without pretending deployment succeeded.
+7. For T001–T024, finish the **entire engineering scope** with code, automated tests, design/security evidence, exact-head CI and verified merge before closing as engineering-complete. Track unperformed staging, owner review and store verification separately under T025–T027; never claim those external gates passed.
 
 ## Owner role and content safety
 Ordinary implementation decisions are autonomous, reversible and logged; only bring the owner a verified preview for feedback. Never fabricate project counts, professional credentials, private employer details, AI endpoints, staging URLs, tests, or release results. Portraits of Waleed may use **only** the supplied real photograph and non-face-generative derivatives. Never commit the old SQL dump, API keys, signing secrets or personal subscriber lists.
+
+## Permanent owner directive — complete software before owner testing (2026-11-01)
+- Work autonomously to finish every feasible Laravel, Flutter, AI, design and integration task. **Do not ask the owner to test, approve screenshots, choose routine technical defaults or provide credentials during development.** Reserve the first hands-on owner acceptance for the completed website **and** app together, at the final T027 handoff.
+- **Engineering close-out is not a release claim.** T001–T024 may close individually only when their *full implemented scope* and local/CI-verifiable acceptance have passed, the exact-head PR CI is green and merged, and code-level omissions are absent. Missing live hosting, paid credentials, signed store packages, external permissions, final owner UX review or production smoke alone must not keep otherwise fully implemented engineering Issues open; register them as explicit deferred activation gates in T025/T026/T027 with evidence.
+- Code-dependent defects, failing tests, broken authorization, missing error/empty/offline flows, accessibility/security gaps, unimplemented providers/jobs or invalid contracts **remain blocking engineering defects**. Do not call partial slices complete.
+- For integrations that need external services, implement adapters, mock/fixture-driven tests, disabled/unavailable states and configuration securely now; keep real-provider runtime verification pending rather than inventing it. Do not weaken protective publication, copyright, secrecy or approval gates.
+- Exact scope, separation of phases, and reporting: [engineering-first delivery](docs/SETUP_AND_DELIVERY.md), [external dependency ledger](docs/EXTERNAL_DEPENDENCIES.md), [progress calculation](docs/PROGRESS_PERCENTAGE.md). T025–T027 remain open until their real release obligations are proven.
 
 ## Bootstrap phase
 T001 / Issue #2 is in progress: uploaded v6 is a **reference pack, not compiled software**. The initial governance/CI PR enables pack checks while scaffold tests will become mandatory as backend/mobile files arrive. A green *pack-only* check is not proof of a functioning application. T002–T027 remain blocked on their declared dependencies until merged.
