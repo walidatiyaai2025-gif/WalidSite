@@ -35,7 +35,7 @@ class PublicGithubPortfolioTest extends TestCase
             ->assertJsonCount(0, 'data')
             ->assertJsonPath('meta.total', 0)
             ->assertJsonPath('meta.lang', 'en')
-            ->assertHeader('Cache-Control', 'no-store');
+            ->assertHeader('Cache-Control', 'no-store, private');
         $this->getJson('/api/v1/public/github/portfolio?lang=ar')
             ->assertOk()
             ->assertJsonCount(0, 'data')
