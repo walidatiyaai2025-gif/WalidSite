@@ -541,7 +541,7 @@ void main() {
           status: 'queued',
           progressPercent: 0,
           resultUrl: null,
-          retryAfterSeconds: 30,
+          retryAfterSeconds: 300,
         );
       },
       poll: (bearer, id) async {
@@ -554,7 +554,7 @@ void main() {
             status: 'running',
             progressPercent: 50,
             resultUrl: null,
-            retryAfterSeconds: 30,
+            retryAfterSeconds: 300,
           );
         }
         return const MobileAiJob(
@@ -582,7 +582,14 @@ void main() {
     expect(tester.widget<OutlinedButton>(
       find.byKey(const Key('ai-refresh-status')),
     ).onPressed, isNull);
+    // Scroll animations advance fake test time; keep a wide, explicit
+    // server-advised cooldown so this remains deterministic on CI.
     await tester.pump(const Duration(seconds: 30));
+    await tester.pump();
+    expect(tester.widget<OutlinedButton>(
+      find.byKey(const Key('ai-refresh-status')),
+    ).onPressed, isNull);
+    await tester.pump(const Duration(seconds: 270));
     await tester.pump();
     await reveal(tester, const Key('ai-refresh-status'));
     await tester.tap(find.byKey(const Key('ai-refresh-status')));
@@ -592,7 +599,7 @@ void main() {
     expect(find.text('running · 50%'), findsOneWidget);
     expect(find.byKey(const Key('ai-open-solution')), findsNothing);
 
-    await tester.pump(const Duration(seconds: 30));
+    await tester.pump(const Duration(minutes: 5));
     await tester.pump();
     await reveal(tester, const Key('ai-refresh-status'));
     await tester.tap(find.byKey(const Key('ai-refresh-status')));
