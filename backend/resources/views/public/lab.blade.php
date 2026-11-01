@@ -17,6 +17,7 @@
 .ed-form button{min-height:44px;background:var(--wa-cta);color:#fff;border:0;border-radius:10px;padding:10px 18px;font:inherit;font-weight:700}
 .article-content{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.9;color:var(--wa-body)}
 .lab-resource-list{padding-inline-start:24px}.lab-resource-list li{margin-block:5px}.lab-resource-list a{min-height:44px;display:inline-flex;align-items:center}
+.lab-resource-more{min-height:44px;display:inline-flex;align-items:center;color:var(--wa-cta);font-weight:800;text-underline-offset:3px}
 </style>
 @endpush
 @section('content')
@@ -34,6 +35,7 @@
                 <li><a href="{{ $article['url'] }}">{{ $article['title'] }}</a></li>
             @endforeach
         </ul>
+        <a class="lab-resource-more" href="{{ route('public.blog', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'تصفح جميع المقالات الموثقة' : 'Browse all verified technical articles' }}</a>
     </section>
     @endif
     @if($runbooks->isNotEmpty())
@@ -49,6 +51,7 @@
                 </a></li>
             @endforeach
         </ul>
+        <a class="lab-resource-more" href="{{ route('public.lab.runbooks', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'تصفح مكتبة أدلة التشغيل كاملة' : 'Browse the full approved runbook library' }}</a>
     </section>
     @endif
 @endif

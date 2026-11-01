@@ -1311,14 +1311,38 @@ Route::get('/lab', function (Request $request) {
         ->header('Cache-Control', 'no-store');
 })->name('public.lab')->middleware('throttle:60,1');
 
+// WEB-09: page through every currently approved immutable runbook, not just
+// the fifteen-item lab homepage preview. Reuse the W1 API verification and
+// pagination contract instead of querying (or counting) draft database rows.
+Route::get('/lab/runbooks', function (Request $request) {
+    $request->validate([
+        'lang' => ['sometimes', 'in:ar,en'],
+        'page' => ['sometimes', 'integer', 'min:1', 'max:10000'],
+    ]);
+    $catalog = app(\App\Http\Controllers\Api\PublicRunbookController::class)
+        ->index($request)->getData(true);
+    $runbooks = collect($catalog['data'] ?? []);
+    $page = (int) $catalog['meta']['current_page'];
+    $hasMore = (bool) $catalog['meta']['has_more_pages'];
+
+    return response()->view('public.lab-runbooks', compact('runbooks', 'page', 'hasMore'))
+        ->header('Cache-Control', 'no-store');
+})->name('public.lab.runbooks')->middleware('throttle:60,1');
+
 Route::get('/lab/runbooks/{id}', function (Request $request, string $id) {
-    $request->validate(['lang' => ['sometimes', 'in:ar,en']]);
+    $input = $request->validate([
+        'lang' => ['sometimes', 'in:ar,en'],
+        // Carry the catalog location back to the user; never relax the
+        // immutable snapshot read gate or accept arbitrary return URLs.
+        'page' => ['sometimes', 'integer', 'min:1', 'max:10000'],
+    ]);
+    $libraryPage = (int) ($input['page'] ?? 1);
     // The detail is checked afresh on every read: a changed version, title,
     // review timestamp or checksum must fail closed with the API's own 404.
     $runbook = app(\App\Http\Controllers\Api\PublicRunbookController::class)
         ->show($id)->getData(true)['data'];
 
-    return response()->view('public.lab-runbook', compact('runbook'))
+    return response()->view('public.lab-runbook', compact('runbook', 'libraryPage'))
         ->header('Cache-Control', 'no-store');
 })->whereUuid('id')->name('public.lab.runbook')->middleware('throttle:60,1');
 
