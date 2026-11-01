@@ -48,6 +48,9 @@ Route::middleware([RequireSecureApiTransport::class, 'auth:sanctum'])->group(fun
     // ADMIN-05: configured AI route priorities; no live health/cost promises.
     Route::get('/admin/ai/routes', [AdminAiRouteController::class, 'index'])
         ->name('api.admin.ai.routes')->middleware('throttle:60,1');
+    Route::put('/admin/ai/routes/{provider}', [AdminAiRouteController::class, 'update'])
+        ->whereUuid('provider')->name('api.admin.ai.routes.update')
+        ->middleware('throttle:20,1');
 
     // ADMIN-02: edit queue metadata only, never expose raw drafts or citations.
     Route::get('/admin/articles', [AdminArticleController::class, 'index'])
