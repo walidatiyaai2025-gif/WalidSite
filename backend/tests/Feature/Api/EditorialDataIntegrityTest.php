@@ -117,6 +117,16 @@ class EditorialDataIntegrityTest extends TestCase
             'https://docs.example.org:8443/source',
             'https://docs.example.org/source?api_key=private',
             'https://service.local/resource',
+            'https://docs.example.org/source?token=capability-secret',
+            'https://docs.example.org/source?sig=signed-link',
+            'https://docs.example.org/source?key=api-secret',
+            'https://docs.example.org/source?jwt=bearer-secret',
+            'https://docs.example.org/source?code=oauth-authorization-code',
+            'https://docs.example.org/source?X-Amz-Signature=private-signature',
+            'https://docs.example.org/source?X-Goog-Credential=private-credential',
+            'https://docs.example.org/source?lang=en&%74oken=encoded-secret',
+            'https://docs.example.org/source#access_token=fragment-secret',
+            'https://docs.example.org/source#chapter?token=fragment-secret',
         ];
 
         foreach ($unsafe as $index => $url) {
@@ -137,6 +147,26 @@ class EditorialDataIntegrityTest extends TestCase
             $this->assertFalse($article->isReadyToPublish());
             $this->getJson('/api/v1/public/articles/'.$article->slug)->assertNotFound();
         }
+    }
+
+    public function test_public_documentation_query_and_anchor_without_secrets_are_allowed(): void
+    {
+        $article = $this->article();
+        $revision = $article->revisions()->create([
+            'revision_no' => 1,
+            'body_md' => '# Referenced public documentation',
+            'citations_json' => [[
+                'source_url' => 'https://docs.example.org/guide?lang=en&version=3#installation',
+                'verified' => true,
+            ]],
+            'validation_json' => ['citations_passed' => true, 'technical_passed' => true],
+            'status' => 'validated',
+        ]);
+
+        $this->assertTrue($revision->hasVerifiedEvidence());
+        $article->publishVerified();
+        $this->getJson('/api/v1/public/articles/'.$article->slug)->assertOk()
+            ->assertJsonPath('data.citations.0', 'https://docs.example.org/guide?lang=en&version=3#installation');
     }
 
     public function test_revoked_source_safety_hides_previously_published_snapshot(): void
