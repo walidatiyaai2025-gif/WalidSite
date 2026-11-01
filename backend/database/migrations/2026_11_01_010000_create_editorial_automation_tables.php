@@ -33,7 +33,7 @@ return new class extends Migration {
         Schema::create('editorial_events', function (Blueprint $table): void {
             $table->uuid('id')->primary();
             $table->string('event_key', 180)->unique();
-            $table->foreignUuid('article_id')->nullable()->constrained('articles')->cascadeOnDelete();
+            $table->foreignUuid('article_id')->nullable()->constrained('articles')->nullOnDelete();
             $table->unsignedInteger('revision_no')->nullable();
             $table->foreignUuid('actor_id')->nullable()->constrained('users')->nullOnDelete();
             $table->string('action', 32);
