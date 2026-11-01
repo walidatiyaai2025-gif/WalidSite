@@ -140,7 +140,7 @@ class SiteMaintenanceTest extends TestCase
         $this->app->instance('env', 'production');
         // This regression targets the transport guard; CSRF is independently
         // enforced and must not intercept the request before the guard.
-        $this->withoutMiddleware(\Illuminate\Foundation\Http\Middleware\ValidateCsrfToken::class);
+        $this->withSession(['_token' => str_repeat('c', 40)]);
         $token = str_repeat('h', 40);
         config([
             'site.setup_enabled' => true,
@@ -151,16 +151,18 @@ class SiteMaintenanceTest extends TestCase
         try {
             $this->get('http://localhost/setup')->assertForbidden();
             $this->get('http://localhost/setup?lang=ar')->assertForbidden();
-            $this->post('http://localhost/setup/unlock', ['token' => $token])->assertForbidden();
+            $this->post('http://localhost/setup/unlock', ['_token' => session()->token(), 'token' => $token])->assertForbidden();
             $this->post('http://localhost/setup/configure', [
+                '_token' => session()->token(),
                 'db_host' => 'localhost',
                 'db_port' => 3306,
                 'db_database' => 'private_data',
                 'db_username' => 'private_writer',
                 'db_password' => 'do-not-log-this-secret',
             ])->assertForbidden();
-            $this->post('http://localhost/setup/database')->assertForbidden();
+            $this->post('http://localhost/setup/database', ['_token' => session()->token()])->assertForbidden();
             $this->post('http://localhost/setup/finish', [
+                '_token' => session()->token(),
                 'password' => 'Never-Accept-Over-Plain-HTTP!',
                 'password_confirmation' => 'Never-Accept-Over-Plain-HTTP!',
             ])->assertForbidden();
@@ -176,7 +178,7 @@ class SiteMaintenanceTest extends TestCase
     {
         $previousEnvironment = $this->app['env'];
         $this->app->instance('env', 'production');
-        $this->withoutMiddleware(\Illuminate\Foundation\Http\Middleware\ValidateCsrfToken::class);
+        $this->withSession(['_token' => str_repeat('c', 40)]);
         $token = str_repeat('s', 40);
         config([
             'site.setup_enabled' => true,
@@ -186,14 +188,15 @@ class SiteMaintenanceTest extends TestCase
 
         try {
             $this->get('https://localhost/setup')->assertOk()->assertSee('Server setup token');
-            $this->post('https://localhost/setup/unlock', ['token' => $token])->assertRedirect();
+            $this->post('https://localhost/setup/unlock', ['_token' => session()->token(), 'token' => $token])->assertRedirect();
             $this->get('https://localhost/setup')->assertOk()->assertSee('name="db_password"', false);
 
             // Successful HTTPS authorization does not permit HTTP downgrade.
             $this->get('http://localhost/setup')->assertForbidden();
-            $this->post('http://localhost/setup/unlock', ['token' => $token])->assertForbidden();
-            $this->post('http://localhost/setup/database')->assertForbidden();
+            $this->post('http://localhost/setup/unlock', ['_token' => session()->token(), 'token' => $token])->assertForbidden();
+            $this->post('http://localhost/setup/database', ['_token' => session()->token()])->assertForbidden();
             $this->post('http://localhost/setup/finish', [
+                '_token' => session()->token(),
                 'password' => 'Strong-Test-Owner-Password-123!',
                 'password_confirmation' => 'Strong-Test-Owner-Password-123!',
             ])->assertForbidden();
