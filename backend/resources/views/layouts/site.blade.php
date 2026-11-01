@@ -93,6 +93,10 @@
                 @if(request()->routeIs('public.search'))
                     @php($languageArgs['q'] = request()->query('q', ''))
                 @endif
+                @if(request()->routeIs('public.resume'))
+                    @php($resumeTrack = request()->query('track', 'all'))
+                    @php($languageArgs['track'] = is_string($resumeTrack) && in_array($resumeTrack, ['all', 'database', 'software', 'delivery'], true) ? $resumeTrack : 'all')
+                @endif
                 <a class="language-link" href="{{ route($languageRoute, $languageArgs) }}"
                    lang="{{ $locale === 'ar' ? 'en' : 'ar' }}"
                    hreflang="{{ $locale === 'ar' ? 'en' : 'ar' }}">
