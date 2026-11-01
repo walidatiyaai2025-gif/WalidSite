@@ -315,8 +315,8 @@ Route::middleware('auth:web')->group(function (): void {
         $checks = $revision?->validation_json ?? [];
         // High-risk and professional content must use an explicit, recorded
         // owner-only exception decision, never the generic publish action.
-        if (($checks['risk_level'] ?? null) === 'high'
-            || ($checks['contains_professional_claims'] ?? null) === true) {
+        if (($checks['risk_level'] ?? null) !== 'low'
+            || ($checks['contains_professional_claims'] ?? null) !== false) {
             return back()->withErrors(['publish' => 'Owner manual review and a reason are required.']);
         }
         try {
