@@ -85,6 +85,13 @@ class Article extends Model
 
     public function isReadyToPublish(): bool
     {
+        // Editorial approval belongs to the saved slug, language and titles.
+        // If any is dirty, publishVerified() must fail before its save can
+        // invalidate an earlier review and misleadingly report success.
+        if ($this->isDirty(self::REVIEWED_PUBLIC_FIELDS)) {
+            return false;
+        }
+
         if (trim($this->title_en ?? '') === '' || trim($this->title_ar ?? '') === ''
             || ! in_array($this->canonical_lang, ['ar', 'en'], true)) {
             return false;
