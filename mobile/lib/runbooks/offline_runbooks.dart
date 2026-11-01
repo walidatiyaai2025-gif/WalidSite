@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'signed_runbook_sync.dart';
+import 'offline_guide_text_search.dart';
 
 /// The bundled pack is an offline-first *safe fallback*, not a successful sync.
 /// T013 does not assert that the live runbook API or signature checks exist.
@@ -213,14 +214,10 @@ class _OfflineRunbookLibraryState extends State<OfflineRunbookLibrary> {
           // Match the locally bundled guidance, not just its heading.
           // Search only the currently selected language so hidden alternate
           // translations do not appear as misleading matches.
-          final needle = _query.toLowerCase();
-          final results = pack.items.where((item) {
-            if (needle.isEmpty) return true;
-            return item.title(arabic).toLowerCase().contains(needle) ||
-                item.steps(arabic).any(
-                  (step) => step.toLowerCase().contains(needle),
-                );
-          }).toList();
+          final results = pack.items.where((item) =>
+              OfflineGuideTextSearch.matches(
+                _query, [item.title(arabic), ...item.steps(arabic)],
+              )).toList();
           return ListView(
             padding: const EdgeInsets.all(20),
             children: [

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../runbooks/offline_runbooks.dart';
 import '../runbooks/signed_runbook_sync.dart';
+import '../runbooks/offline_guide_text_search.dart';
 
 /// Local, deterministic runbook discovery. It does not call an AI service,
 /// upload source code, infer a diagnosis, or claim the draft pack is current.
@@ -12,17 +13,17 @@ class OfflineSolutionSearch {
     String query, {
     required bool arabic,
   }) {
-    final term = query.trim().toLowerCase();
-    if (term.isEmpty) return const <OfflineRunbook>[];
+    // Unlike the library's browse-all state, a finder with no keywords
+    // must not suggest that a diagnosis has already been produced.
+    if (OfflineGuideTextSearch.normalize(query).isEmpty) {
+      return const <OfflineRunbook>[];
+    }
 
     return pack.items.where((item) {
-      // A hidden translation is not a visible answer for this locale.
-      // Match the active language just like the offline runbook library.
-      final searchable = <String>[
-        item.title(arabic),
-        ...item.steps(arabic),
-      ];
-      return searchable.any((entry) => entry.toLowerCase().contains(term));
+      // Never search hidden translations; only the selected locale's fields.
+      return OfflineGuideTextSearch.matches(
+        query, [item.title(arabic), ...item.steps(arabic)],
+      );
     }).take(20).toList(growable: false);
   }
 }
