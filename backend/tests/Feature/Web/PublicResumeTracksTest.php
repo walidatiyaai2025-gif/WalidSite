@@ -68,6 +68,10 @@ class PublicResumeTracksTest extends TestCase
             ->assertSee('Published Database Skill')
             ->assertSee('Published Delivery Skill')
             ->assertSee('value="all" selected', false);
+        $this->get('/resume?track[]=database')->assertOk()
+            ->assertSee('Published Database Skill')
+            ->assertSee('Published Delivery Skill')
+            ->assertSee('value="all" selected', false);
     }
 
     public function test_track_never_relabels_verified_employment_or_leaks_unapproved_positions(): void
