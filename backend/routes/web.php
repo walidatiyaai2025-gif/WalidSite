@@ -5,6 +5,22 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
 /*
+ * WEB-01: deliver the owner's approved real portrait from the release bundle,
+ * independent of GitHub raw CDN reachability or third-party image requests.
+ * This endpoint serves one fixed repository-controlled file; no path input.
+ */
+Route::get('/media/portrait-light.jpg', function () {
+    $path = base_path('../assets/portraits/portrait-light-derived.jpg');
+    abort_unless(is_file($path), 404);
+
+    return response()->file($path, [
+        'Content-Type' => 'image/jpeg',
+        'Cache-Control' => 'public, max-age=86400',
+        'X-Content-Type-Options' => 'nosniff',
+    ]);
+})->name('public.portrait');
+
+/*
  * WEB-01 public landing: do not turn mockup counts or CV draft rows into
  * published professional claims. Reuse the API's owner/URL approval policy.
  * Render only evidence-safe projects and publication-validated articles.
