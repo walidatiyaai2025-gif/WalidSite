@@ -56,7 +56,7 @@ button.secondary{background:var(--primary)}.muted{color:#55718B}.actions{display
 
 <section class="card" aria-labelledby="create-title">
 <h2 id="create-title">{{ $locale === 'ar' ? 'إضافة مزود جديد' : 'Add provider' }}</h2>
-<form method="post" action="{{ route('admin.providers.create') }}">@csrf
+<form method="post" action="{{ route('admin.providers.create', ['lang' => $locale]) }}">@csrf
 <div class="grid">
 <div class="field"><label for="name-new">{{ $locale === 'ar' ? 'اسم المزود' : 'Name' }}</label>
 <input id="name-new" name="display_name" maxlength="160" minlength="2" required value="{{ old('display_name') }}"></div>
@@ -96,7 +96,7 @@ button.secondary{background:var(--primary)}.muted{color:#55718B}.actions{display
 <p class="muted">{{ $provider->provider_type }} · {{ $provider->enabled ? 'Enabled' : 'Disabled' }} · {{ $provider->health_status }}</p>
 <p class="muted">{{ $locale === 'ar' ? 'المفتاح المحفوظ' : 'Saved credential' }}: {{ $provider->secret_ciphertext === null ? ($locale === 'ar' ? 'غير موجود' : 'Not saved') : ($locale === 'ar' ? 'محفوظ ومخفي' : 'Stored, hidden') }}</p>
 @if($provider->last_checked_at)<p class="muted">{{ $locale === 'ar' ? 'آخر فحص' : 'Last health check' }}: <time datetime="{{ $provider->last_checked_at->toIso8601String() }}">{{ $provider->last_checked_at->toIso8601String() }}</time></p>@endif
-<form method="post" action="{{ route('admin.providers.update', ['provider' => $provider->id]) }}">@csrf @method('PATCH')
+<form method="post" action="{{ route('admin.providers.update', ['provider' => $provider->id, 'lang' => $locale]) }}">@csrf @method('PATCH')
 <div class="field"><label for="name-{{ $provider->id }}">{{ $locale === 'ar' ? 'الاسم' : 'Name' }}</label>
 <input id="name-{{ $provider->id }}" name="display_name" value="{{ $provider->display_name }}" required maxlength="160"></div>
 <div class="field"><label for="type-{{ $provider->id }}">{{ $locale === 'ar' ? 'النوع' : 'Type' }}</label>
@@ -123,7 +123,7 @@ button.secondary{background:var(--primary)}.muted{color:#55718B}.actions{display
 <label><input type="checkbox" name="enabled" value="1" @checked($provider->enabled)> {{ $locale === 'ar' ? 'تفعيل المزود' : 'Enable provider' }}</label>
 <div style="margin-top:15px"><button type="submit">{{ $locale === 'ar' ? 'حفظ التعديلات' : 'Save changes' }}</button></div>
 </form>
-<form method="post" action="{{ route('admin.providers.test', ['provider' => $provider->id]) }}" style="margin-top:12px">@csrf
+<form method="post" action="{{ route('admin.providers.test', ['provider' => $provider->id, 'lang' => $locale]) }}" style="margin-top:12px">@csrf
 <button type="submit" class="secondary">{{ $locale === 'ar' ? 'اختبار الاتصال الآن' : 'Check connection now' }}</button></form>
 <details class="note" style="margin-bottom:0">
   <summary>{{ $locale === 'ar' ? 'أرشفة المزود وإبطال المفتاح' : 'Archive provider and revoke credential' }}</summary>
