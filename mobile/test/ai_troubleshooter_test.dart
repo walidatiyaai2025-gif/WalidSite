@@ -30,7 +30,15 @@ void main() {
 
   Future<void> reveal(WidgetTester tester, Key key) async {
     final finder = find.byKey(key);
-    await tester.scrollUntilVisible(finder, 220);
+    final mainScroll = find.descendant(
+      of: find.byType(ListView),
+      matching: find.byType(Scrollable),
+    ).first;
+    await tester.scrollUntilVisible(
+      finder,
+      220,
+      scrollable: mainScroll,
+    );
     await tester.ensureVisible(finder);
     await tester.pumpAndSettle();
   }
