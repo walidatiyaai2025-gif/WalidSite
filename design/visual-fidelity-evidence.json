@@ -1,0 +1,169 @@
+{
+  "policy_version": 1,
+  "owner_directive": "ADR-010: reproduce each supplied screenshot exactly; no visual redesigns",
+  "authority": "docs/VISUAL_FIDELITY_CONTRACT.md",
+  "source": "contracts/screens.json",
+  "pixel_comparison": "zero mismatching RGBA pixels at reference PNG dimensions",
+  "screens": {
+    "WEB-01": {
+      "reference_image": "assets/screen-reference/web_home.png",
+      "status": "pending"
+    },
+    "WEB-02": {
+      "reference_image": "assets/screen-reference/web_about.png",
+      "status": "pending"
+    },
+    "WEB-03": {
+      "reference_image": "assets/screen-reference/web_expertise.png",
+      "status": "pending"
+    },
+    "WEB-04": {
+      "reference_image": "assets/screen-reference/web_projects.png",
+      "status": "pending"
+    },
+    "WEB-05": {
+      "reference_image": "assets/screen-reference/web_case_study.png",
+      "status": "pending"
+    },
+    "WEB-06": {
+      "reference_image": "assets/screen-reference/web_ai_engineering.png",
+      "status": "pending"
+    },
+    "WEB-07": {
+      "reference_image": "assets/screen-reference/web_technical_blog.png",
+      "status": "pending"
+    },
+    "WEB-08": {
+      "reference_image": "assets/screen-reference/web_article_detail.png",
+      "status": "pending"
+    },
+    "WEB-09": {
+      "reference_image": "assets/screen-reference/web_tech_lab.png",
+      "status": "pending"
+    },
+    "WEB-10": {
+      "reference_image": "assets/screen-reference/web_github_showcase.png",
+      "status": "pending"
+    },
+    "WEB-11": {
+      "reference_image": "assets/screen-reference/web_resume.png",
+      "status": "pending"
+    },
+    "WEB-12": {
+      "reference_image": "assets/screen-reference/web_recruiter_mode.png",
+      "status": "pending"
+    },
+    "WEB-13": {
+      "reference_image": "assets/screen-reference/web_search_results.png",
+      "status": "pending"
+    },
+    "WEB-14": {
+      "reference_image": "assets/screen-reference/web_contact.png",
+      "status": "pending"
+    },
+    "ADMIN-01": {
+      "reference_image": "assets/screen-reference/admin_dashboard.png",
+      "status": "pending"
+    },
+    "ADMIN-02": {
+      "reference_image": "assets/screen-reference/admin_content_studio.png",
+      "status": "pending"
+    },
+    "ADMIN-03": {
+      "reference_image": "assets/screen-reference/admin_ai_providers.png",
+      "status": "pending"
+    },
+    "ADMIN-04": {
+      "reference_image": "assets/screen-reference/admin_provider_editor.png",
+      "status": "pending"
+    },
+    "ADMIN-05": {
+      "reference_image": "assets/screen-reference/admin_ai_routing.png",
+      "status": "pending"
+    },
+    "ADMIN-06": {
+      "reference_image": "assets/screen-reference/admin_image_studio.png",
+      "status": "pending"
+    },
+    "ADMIN-07": {
+      "reference_image": "assets/screen-reference/admin_quality_gates.png",
+      "status": "pending"
+    },
+    "ADMIN-08": {
+      "reference_image": "assets/screen-reference/admin_github_sync.png",
+      "status": "pending"
+    },
+    "ADMIN-09": {
+      "reference_image": "assets/screen-reference/admin_projects_&_cv.png",
+      "status": "pending"
+    },
+    "ADMIN-10": {
+      "reference_image": "assets/screen-reference/admin_audience___push.png",
+      "status": "pending"
+    },
+    "ADMIN-11": {
+      "reference_image": "assets/screen-reference/admin_analytics.png",
+      "status": "pending"
+    },
+    "ADMIN-12": {
+      "reference_image": "assets/screen-reference/admin_approvals.png",
+      "status": "pending"
+    },
+    "ADMIN-13": {
+      "reference_image": "assets/screen-reference/admin_audit_&_security.png",
+      "status": "pending"
+    },
+    "MOBILE-01": {
+      "reference_image": "assets/screen-reference/mobile_welcome.png",
+      "status": "pending"
+    },
+    "MOBILE-02": {
+      "reference_image": "assets/screen-reference/mobile_developer_home.png",
+      "status": "pending"
+    },
+    "MOBILE-03": {
+      "reference_image": "assets/screen-reference/mobile_ai_troubleshooter.png",
+      "status": "pending"
+    },
+    "MOBILE-04": {
+      "reference_image": "assets/screen-reference/mobile_solution_detail.png",
+      "status": "pending"
+    },
+    "MOBILE-05": {
+      "reference_image": "assets/screen-reference/mobile_runbook_library.png",
+      "status": "pending"
+    },
+    "MOBILE-06": {
+      "reference_image": "assets/screen-reference/mobile_offline_runbook.png",
+      "status": "pending"
+    },
+    "MOBILE-07": {
+      "reference_image": "assets/screen-reference/mobile_tech_articles.png",
+      "status": "pending"
+    },
+    "MOBILE-08": {
+      "reference_image": "assets/screen-reference/mobile_learning_paths.png",
+      "status": "pending"
+    },
+    "MOBILE-09": {
+      "reference_image": "assets/screen-reference/mobile_interview_trainer.png",
+      "status": "pending"
+    },
+    "MOBILE-10": {
+      "reference_image": "assets/screen-reference/mobile_my_github.png",
+      "status": "pending"
+    },
+    "MOBILE-11": {
+      "reference_image": "assets/screen-reference/mobile_saved_resources.png",
+      "status": "pending"
+    },
+    "MOBILE-12": {
+      "reference_image": "assets/screen-reference/mobile_personal_profile.png",
+      "status": "pending"
+    },
+    "MOBILE-13": {
+      "reference_image": "assets/screen-reference/mobile_preferences.png",
+      "status": "pending"
+    }
+  }
+}
