@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'theme/waleed_theme.dart';
 import 'runbooks/offline_runbooks.dart';
+import 'runbooks/verified_online_runbooks.dart';
 import 'articles/verified_articles.dart';
 import 'learning/verified_learning_paths.dart';
 import 'solutions/offline_solution_finder.dart';
@@ -117,6 +118,28 @@ class CompanionHome extends StatelessWidget {
                 trailing: Icon(arabic ? Icons.chevron_left : Icons.chevron_right),
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute<void>(builder: (_) => OfflineRunbookLibrary(arabic: arabic)),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Card(
+              child: ListTile(
+                key: const Key('online-runbooks-entry'),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16, vertical: 12,
+                ),
+                leading: const Icon(Icons.fact_check_outlined, size: 30),
+                title: Text(arabic ? 'الأدلة التقنية المنشورة'
+                    : 'Verified online runbooks'),
+                subtitle: Text(arabic
+                    ? 'تصفح الأدلة المعتمدة من الخادم وأعد التحقق منها عند الفتح'
+                    : 'Read reviewed server guides, rechecked when opened'),
+                trailing: Icon(arabic
+                    ? Icons.chevron_left : Icons.chevron_right),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => ReviewedRunbookLibrary(arabic: arabic),
+                  ),
                 ),
               ),
             ),
