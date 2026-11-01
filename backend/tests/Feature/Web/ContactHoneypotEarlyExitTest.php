@@ -33,6 +33,10 @@ class ContactHoneypotEarlyExitTest extends TestCase
     {
         config(['mail.contact_recipient' => 'contact@example.org', 'mail.default' => 'smtp']);
         Mail::fake();
+        // Six malformed payloads are deliberately tested in one method.
+        // Bypass only the unrelated 4/min request throttle for this test;
+        // keep the route's middleware and production rate limit unchanged.
+        $this->withoutMiddleware(\Illuminate\Routing\Middleware\ThrottleRequests::class);
 
         foreach (['en', 'ar'] as $locale) {
             foreach ([
