@@ -33,6 +33,26 @@ final class ProviderEndpoint
             throw new InvalidArgumentException('Unsafe provider URL.');
         }
 
+        // parse_url() retains square brackets for IPv6 literals. Strip them
+        // solely for IP classification so mapped private/metadata targets
+        // cannot masquerade as unclassified DNS hostnames.
+        if (str_starts_with($host, '[') && str_ends_with($host, ']')) {
+            $host = substr($host, 1, -1);
+            if (filter_var($host, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) === false) {
+                throw new InvalidArgumentException('Unsafe provider URL.');
+            }
+        } elseif (str_contains($host, '[') || str_contains($host, ']')) {
+            throw new InvalidArgumentException('Unsafe provider URL.');
+        }
+
+        // HTTP clients may resolve shorthand IPv4, octal or hexadecimal
+        // host forms as loopback/private IPs even if FILTER_VALIDATE_IP
+        // does not classify them. Never accept ambiguous numeric DNS names.
+        if (filter_var($host, FILTER_VALIDATE_IP) === false &&
+            preg_match('/^(?:0x[0-9a-f]+|[0-9]+)(?:\.(?:0x[0-9a-f]+|[0-9]+))*$/iD', $host) === 1) {
+            throw new InvalidArgumentException('Unsafe provider URL.');
+        }
+
         if ($scheme === 'http' && ! in_array($host, ['localhost', '127.0.0.1', '::1'], true)) {
             throw new InvalidArgumentException('Remote provider endpoints require HTTPS.');
         }
