@@ -7,8 +7,10 @@ use App\Models\Profile;
 use App\Models\Project;
 use App\Models\ProjectEvidence;
 use App\Models\Role;
+use App\Models\Skill;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Tests\TestCase;
 
@@ -112,6 +114,60 @@ class PublicPortfolioAndContactTest extends TestCase
         $this->get('/resume')->assertOk()
             ->assertSee('Unpublished Person')->assertSee('Private Employer')
             ->assertDontSee('Confidential CV details');
+    }
+
+    public function test_resume_lists_only_verified_skills_of_published_active_owner_in_both_languages(): void
+    {
+        $owner = User::create(['email' => 'cv-skills-owner@example.test', 'status' => 'active']);
+        $owner->roles()->attach(Role::firstOrCreate(['name' => 'owner'])->id);
+        $profile = Profile::create([
+            'user_id' => $owner->id,
+            'public_name' => 'Public CV Owner',
+            'publish_status' => 'published',
+        ]);
+
+        $verified = Skill::create([
+            'slug' => 'verified-db-skill', 'name_en' => 'Verified SQL Server Skill',
+            'name_ar' => 'مهارة SQL Server موثقة',
+            'category' => 'Database & Reliability', 'evidence_status' => 'verified',
+        ]);
+        $unverified = Skill::create([
+            'slug' => 'unverified-cv-skill', 'name_en' => 'Unreviewed CV Skill',
+            'name_ar' => 'مهارة غير معتمدة',
+            'category' => 'Database & Reliability', 'evidence_status' => 'owner_cv',
+        ]);
+        $unrelated = Skill::create([
+            'slug' => 'other-person-skill', 'name_en' => 'Other Person Secret Skill',
+            'name_ar' => 'مهارة شخص آخر',
+            'category' => 'Database & Reliability', 'evidence_status' => 'verified',
+        ]);
+        DB::table('profile_skill')->insert([
+            ['profile_id' => $profile->id, 'skill_id' => $verified->id],
+            ['profile_id' => $profile->id, 'skill_id' => $unverified->id],
+        ]);
+        $other = User::create(['email' => 'other-person@example.test', 'status' => 'active']);
+        $otherProfile = Profile::create([
+            'user_id' => $other->id,
+            'public_name' => 'Other Person', 'publish_status' => 'published',
+        ]);
+        DB::table('profile_skill')->insert([
+            ['profile_id' => $otherProfile->id, 'skill_id' => $unrelated->id],
+        ]);
+
+        $this->get('/resume')->assertOk()
+            ->assertSee('Verified skills')->assertSee('Verified SQL Server Skill')
+            ->assertDontSee('Unreviewed CV Skill')
+            ->assertDontSee('Other Person Secret Skill');
+        $this->get('/resume?lang=ar')->assertOk()
+            ->assertSee('المهارات الموثقة')
+            ->assertSee('مهارة SQL Server موثقة')
+            ->assertDontSee('مهارة غير معتمدة')
+            ->assertDontSee('مهارة شخص آخر');
+
+        $profile->update(['publish_status' => 'review']);
+        $this->get('/resume')->assertOk()
+            ->assertDontSee('Verified SQL Server Skill')
+            ->assertSee('Public CV review is pending');
     }
 
     public function test_contact_is_explicitly_unavailable_without_verified_delivery_configuration(): void
