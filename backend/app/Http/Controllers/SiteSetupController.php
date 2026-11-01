@@ -12,9 +12,13 @@ use Throwable;
 
 final class SiteSetupController extends Controller
 {
-    private function guard(SiteInstaller $installer): void
+    private function guard(Request $request, SiteInstaller $installer): void
     {
+        // Keep the 404 for disabled/finished installers, then reject plaintext
+        // transport before any token or owner password can be submitted.
         abort_unless($installer->allowed(), 404);
+        abort_if(app()->environment('production') && ! $request->isSecure(), 403,
+            'HTTPS is required for setup.');
     }
 
     private function unlocked(Request $request): void
@@ -24,7 +28,7 @@ final class SiteSetupController extends Controller
 
     public function show(Request $request, SiteInstaller $installer, SiteUpdater $updater, DatabaseConfiguration $database): View
     {
-        $this->guard($installer);
+        $this->guard($request, $installer);
         $unlocked = $request->session()->get('site_setup_authorized') === true;
         $configured = $unlocked && $database->isConfigured();
         $status = $configured ? $updater->inspect() : null;
@@ -42,7 +46,7 @@ final class SiteSetupController extends Controller
 
     public function unlock(Request $request, SiteInstaller $installer): RedirectResponse
     {
-        $this->guard($installer);
+        $this->guard($request, $installer);
         $data = $request->validate(['token' => ['required', 'string', 'max:256']]);
         if (! hash_equals((string) config('site.setup_token'), $data['token'])) {
             return back()->withErrors(['token' => 'Invalid setup token.']);
@@ -55,7 +59,7 @@ final class SiteSetupController extends Controller
 
     public function database(Request $request, SiteInstaller $installer, SiteUpdater $updater): RedirectResponse
     {
-        $this->guard($installer);
+        $this->guard($request, $installer);
         $this->unlocked($request);
         abort_unless(config('site.setup_database_ready'), 403);
 
@@ -76,7 +80,7 @@ final class SiteSetupController extends Controller
 
     public function finish(Request $request, SiteInstaller $installer, SiteUpdater $updater): RedirectResponse
     {
-        $this->guard($installer);
+        $this->guard($request, $installer);
         $this->unlocked($request);
         abort_unless($request->session()->get('site_setup_migrated') === true, 403);
         $data = $request->validate([
