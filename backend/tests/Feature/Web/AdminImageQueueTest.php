@@ -4,6 +4,7 @@ namespace Tests\Feature\Web;
 
 use App\Models\AiModel;
 use App\Models\AiProvider;
+use App\Models\Asset;
 use App\Models\Article;
 use App\Models\ArticleRevision;
 use App\Models\Role;
@@ -149,6 +150,62 @@ final class AdminImageQueueTest extends TestCase
             ->assertSee('dir="rtl"', false)
             ->assertSee('توليد صورة تقنية')
             ->assertSee('أضف مهمة توليد الصورة');
+    }
+
+    public function test_artwork_statuses_and_rights_are_localized_without_mutating_canonical_values(): void
+    {
+        Http::fake();
+        $this->actingAs($this->account('admin'), 'web');
+        [$article, $revision] = $this->draft('artwork-localized-status');
+        $model = $this->model($this->provider());
+        $asset = Asset::create([
+            'asset_key' => 'quality-artwork-unverified',
+            'mime_type' => 'image/png',
+            'storage_key' => 'private/INTERNAL-ARTWORK-PATH.png',
+            'sha256' => str_repeat('a', 64),
+            'origin' => 'ai-generated',
+            'rights_status' => 'unverified',
+            'publishable' => false,
+        ]);
+
+        $this->post('/admin/ai/images/queue?lang=en',
+            $this->queuePayload($revision, $model, 25))
+            ->assertRedirect()->assertSessionHasNoErrors();
+        $job = DB::table('ai_jobs')->where('job_type', 'editorial-art')->first();
+        $this->assertNotNull($job);
+
+        $this->get('/admin/ai/images?lang=en')->assertOk()
+            ->assertSee('id="content" tabindex="-1"', false)
+            ->assertSee('<td>queued</td>', false)
+            ->assertSee('Rights status')
+            ->assertSee('unverified')
+            ->assertSee('ai-generated')
+            ->assertDontSee('INTERNAL-ARTWORK-PATH')
+            ->assertDontSee('PRIVATE-IMAGE-PROVIDER-SECRET');
+
+        $this->get('/admin/ai/images?lang=ar')->assertOk()
+            ->assertSee('dir="rtl"', false)
+            ->assertSee('id="content" tabindex="-1"', false)
+            ->assertSee('href="#content"', false)
+            ->assertSee('<td>في الطابور</td>', false)
+            ->assertSee('مولدة بالذكاء الاصطناعي')
+            ->assertSee('غير متحقق منها')
+            ->assertSee('<code dir="ltr">'.$job->id.'</code>', false)
+            ->assertDontSee('INTERNAL-ARTWORK-PATH');
+
+        foreach (['retry' => 'بانتظار إعادة المحاولة', 'failed' => 'فشلت'] as $state => $label) {
+            DB::table('ai_jobs')->where('id', $job->id)
+                ->update(['status' => $state, 'last_error_code' => 'provider_unavailable']);
+            $this->get('/admin/ai/images?lang=ar')->assertOk()
+                ->assertSee('<td>'.$label.'</td>', false)
+                ->assertSee('<code dir="ltr">provider_unavailable</code>', false);
+            $this->assertSame($state,
+                DB::table('ai_jobs')->where('id', $job->id)->value('status'));
+        }
+
+        $this->assertSame('unverified', $asset->fresh()->rights_status);
+        $this->assertFalse($asset->fresh()->isPubliclyUsable());
+        Http::assertNothingSent();
     }
 
     public function test_artwork_queue_requires_explicit_cost_estimate_in_both_locales(): void
