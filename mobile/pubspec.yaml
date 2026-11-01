@@ -11,6 +11,8 @@ dependencies:
     sdk: flutter
   flutter_localizations:
     sdk: flutter
+  cryptography: ^2.9.0
+  path_provider: ^2.1.6
 
 dev_dependencies:
   flutter_test:
