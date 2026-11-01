@@ -75,7 +75,7 @@ final class DurableAiQueue
                 throw new InvalidArgumentException('Invalid registered job types.');
             }
             foreach ($jobTypes as $kind) {
-                if (! is_string($kind) || ! preg_match('/^[A-Za-z0-9_.:\\-]{1,80}$/D', $kind)) {
+                if (! is_string($kind) || ! preg_match('/^[A-Za-z0-9_.:\-]{1,80}$/D', $kind)) {
                     throw new InvalidArgumentException('Invalid registered job type.');
                 }
             }
