@@ -401,4 +401,34 @@ final class MobileAiDiagnoseTest extends TestCase
         $this->assertNull($request->fresh()->request_blob);
         $this->assertNull($request->fresh()->selected_runbook_id);
     }
+
+    public function test_expired_queued_diagnosis_clears_ciphertext_without_provider_call(): void
+    {
+        [$provider, $model] = $this->configure();
+        $user = $this->user();
+        $request = AiDiagnosisRequest::create([
+            'user_id' => $user->id,
+            'model_id' => $model->id,
+            'request_blob' => Crypt::encryptString('expired-private-input'),
+            'expires_at' => now()->subMinute(),
+        ]);
+        $request->forceFill(['job_id' => app(DurableAiQueue::class)->enqueue(
+            $provider, 'mobile-diagnosis', 'mobile-diagnosis:'.$request->id,
+            ['classify'], 0, 1
+        )])->save();
+        Http::fake();
+
+        try {
+            app(MobileDiagnosisDispatcher::class)->execute((object) [
+                'id' => $request->job_id,
+            ], 'classify', 'test-worker');
+            $this->fail('Expired diagnosis must not execute.');
+        } catch (\DomainException $exception) {
+            $this->assertSame('Mobile diagnosis request is unavailable.', $exception->getMessage());
+        }
+
+        Http::assertNothingSent();
+        $this->assertNull($request->fresh()->request_blob);
+        $this->assertNull($request->fresh()->selected_runbook_id);
+    }
 }
