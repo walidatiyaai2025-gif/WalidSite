@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\AI\MobileDiagnosisAdmission;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -33,7 +34,7 @@ final class MobileBootstrapController extends Controller
         return [$default, $input['lang'] ?? $default];
     }
 
-    public function bootstrap(Request $request): JsonResponse
+    public function bootstrap(Request $request, MobileDiagnosisAdmission $diagnosis): JsonResponse
     {
         [$default, $locale] = $this->locales($request);
 
@@ -52,14 +53,15 @@ final class MobileBootstrapController extends Controller
                     'articles' => route('api.mobile.articles', [], false),
                     'runbooks' => route('api.mobile.runbooks', [], false),
                     'learning_paths' => route('api.mobile.learn', [], false),
-                    // This is an authenticated endpoint, NOT a guest feed.
+                    // These are authenticated endpoints, NOT guest feeds.
                     'saved_resources' => route('api.mobile.saved', [], false),
+                    'ai_diagnosis' => route('api.mobile.ai.diagnose', [], false),
                 ],
                 'availability' => [
                     'guest_reading' => true,
                     'guest_runbooks' => true,
                     'guest_learning_paths' => true,
-                    'authenticated_ai_diagnosis' => false,
+                    'authenticated_ai_diagnosis' => $diagnosis->available(),
                     // The token-scoped saved CRUD is implemented; advertise
                     // its availability without exposing saved user data.
                     'server_saved_resources' => true,
