@@ -503,7 +503,7 @@ final class AdminImageQueueTest extends TestCase
             ->assertDontSee('PRIVATE-IMAGE-PROVIDER-SECRET')
             ->assertDontSee($provider->base_url)
             ->assertDontSee('idempotency_key');
-        $this->assertSame(20, substr_count($first->getContent(), '<td><code dir="ltr">'));
+        $this->assertSame(20, preg_match_all('~<td><code dir="ltr">[a-f0-9-]{36}</code></td>~', $first->getContent()));
 
         $second = $this->get('/admin/ai/images?lang=en&jobs_page=2&page=1')->assertOk()
             ->assertSee($jobIds[20])
@@ -512,7 +512,7 @@ final class AdminImageQueueTest extends TestCase
             ->assertDontSee($jobIds[40])
             ->assertSee('jobs_page=3', false)
             ->assertSee('page=2', false);
-        $this->assertSame(20, substr_count($second->getContent(), '<td><code dir="ltr">'));
+        $this->assertSame(20, preg_match_all('~<td><code dir="ltr">[a-f0-9-]{36}</code></td>~', $second->getContent()));
 
         $last = $this->get('/admin/ai/images?lang=ar&jobs_page=3&page=2')->assertOk()
             ->assertSee('dir="rtl"', false)
@@ -525,7 +525,7 @@ final class AdminImageQueueTest extends TestCase
             ->assertDontSee('media-history-0')
             ->assertSee('jobs_page=3', false)
             ->assertSee('page=1', false);
-        $this->assertSame(3, substr_count($last->getContent(), '<td><code dir="ltr">'));
+        $this->assertSame(3, preg_match_all('~<td><code dir="ltr">[a-f0-9-]{36}</code></td>~', $last->getContent()));
         Http::assertNothingSent();
 
         $this->actingAs($this->account('reader'), 'web')
