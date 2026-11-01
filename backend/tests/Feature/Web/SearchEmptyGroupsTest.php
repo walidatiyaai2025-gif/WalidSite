@@ -53,4 +53,29 @@ class SearchEmptyGroupsTest extends TestCase
             ->assertSee('dir="rtl"', false);
     }
 
+    public function test_two_verified_articles_use_arabic_dual_form(): void
+    {
+        foreach (['one', 'two'] as $suffix) {
+            $article = Article::create([
+                'slug' => 'dual-search-'.$suffix,
+                'title_en' => 'DualSearchKeyword '.$suffix,
+                'title_ar' => 'مقال بحث مثنى '.$suffix,
+                'canonical_lang' => 'en',
+            ]);
+            $article->revisions()->create([
+                'revision_no' => 1,
+                'status' => 'validated',
+                'body_md' => 'Verified source-backed guide',
+                'citations_json' => [['source_url' => 'https://example.org/source', 'verified' => true]],
+                'validation_json' => ['citations_passed' => true, 'technical_passed' => true],
+            ]);
+            $article->publishVerified();
+        }
+
+        $this->get('/search?lang=ar&q=DualSearchKeyword')->assertOk()
+            ->assertSee('نتائج موثقة: 2 مقالان، 0 مشاريع.');
+        $this->get('/search?lang=en&q=DualSearchKeyword')->assertOk()
+            ->assertSee('Verified results: 2 articles, 0 projects.');
+    }
+
 }
