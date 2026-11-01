@@ -225,6 +225,38 @@ class _MobilePreferencesScreenState extends State<MobilePreferencesScreen> {
         children: [
           Text(label('Profile', 'الحساب'), style: const TextStyle(
               color: WaleedPalette.accent, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 12),
+          if (!_configured)
+            Text(label('Server preferences unavailable; local controls still work.',
+                'إعدادات الخادم غير مهيأة؛ التحكم المحلي ما زال يعمل.'),
+                key: const Key('preferences-unconfigured'))
+          else if (_capabilities != null)
+            FutureBuilder<MobilePreferenceCapabilities>(
+              future: _capabilities,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState != ConnectionState.done) {
+                  return const Center(child: CircularProgressIndicator(
+                    key: Key('preferences-loading')));
+                }
+                if (snapshot.hasError) {
+                  return Column(children: [
+                    Text(label('Could not verify server preferences.',
+                        'تعذر التحقق من تفضيلات الخادم.'),
+                        key: const Key('preferences-error')),
+                    FilledButton(
+                      key: const Key('preferences-retry'),
+                      onPressed: _read,
+                      child: Text(label('Retry', 'إعادة المحاولة')),
+                    ),
+                  ]);
+                }
+                return Text(label('Server confirms English/Arabic and light theme only. '
+                    'Language is not saved on the server.',
+                    'الخادم يدعم العربية والإنجليزية والمظهر الفاتح فقط. '
+                    'اللغة لا تُحفظ على الخادم.'),
+                    key: const Key('preferences-verified'));
+              },
+            ),
           const SizedBox(height: 18),
           _panel('language', label('Language', 'اللغة'),
               label('Arabic / English · local to this session',
@@ -270,37 +302,7 @@ class _MobilePreferencesScreenState extends State<MobilePreferencesScreen> {
                   'تصدير بيانات الحساب أو حذفها على الخادم غير منفذ بعد. '
                   'حذف الدليل المحمّل لا يحذف بيانات الخادم.')),
           const SizedBox(height: 16),
-          if (!_configured)
-            Text(label('Server preferences unavailable; local controls still work.',
-                'إعدادات الخادم غير مهيأة؛ التحكم المحلي ما زال يعمل.'),
-                key: const Key('preferences-unconfigured'))
-          else if (_capabilities != null)
-            FutureBuilder<MobilePreferenceCapabilities>(
-              future: _capabilities,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState != ConnectionState.done) {
-                  return const Center(child: CircularProgressIndicator(
-                    key: Key('preferences-loading')));
-                }
-                if (snapshot.hasError) {
-                  return Column(children: [
-                    Text(label('Could not verify server preferences.',
-                        'تعذر التحقق من تفضيلات الخادم.'),
-                        key: const Key('preferences-error')),
-                    FilledButton(
-                      key: const Key('preferences-retry'),
-                      onPressed: _read,
-                      child: Text(label('Retry', 'إعادة المحاولة')),
-                    ),
-                  ]);
-                }
-                return Text(label('Server confirms English/Arabic and light theme only. '
-                    'Language is not saved on the server.',
-                    'الخادم يدعم العربية والإنجليزية والمظهر الفاتح فقط. '
-                    'اللغة لا تُحفظ على الخادم.'),
-                    key: const Key('preferences-verified'));
-              },
-            ),
+
         ],
       ),
     ),
