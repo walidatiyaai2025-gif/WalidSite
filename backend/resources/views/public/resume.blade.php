@@ -55,10 +55,18 @@
 <p>{{ $locale === 'ar' ? 'لا توجد شهادات مؤكدة للنشر حاليًا.' : 'No approved credential evidence is available yet.' }}</p>
 @endforelse
 </section>
+{{-- Render canonical persisted categories in the selected locale without
+     changing verification, ownership or track-filter semantics. --}}
+@php($categoryLabelsAr = [
+    'Database & Reliability' => 'قواعد البيانات والموثوقية',
+    'Software & Integration' => 'البرمجيات والتكامل',
+    'Infrastructure & Security' => 'البنية التحتية والأمن',
+    'Project Delivery' => 'إدارة وتسليم المشاريع',
+])
 <section><h2>{{ $locale === 'ar' ? 'المهارات المهنية الموثقة' : 'Verified professional skills' }}</h2>
 @forelse($skills as $skill)
 <article><h3>{{ $locale === 'ar' ? $skill->name_ar : $skill->name_en }}</h3>
-<p>{{ $skill->category }}</p></article>
+<p>{{ $locale === 'ar' ? ($categoryLabelsAr[$skill->category] ?? $skill->category) : $skill->category }}</p></article>
 @empty
 <p>{{ $locale === 'ar' ? 'لا توجد مهارات موثقة منشورة لهذا المسار بعد.' : 'No verified published skills for this track yet.' }}</p>
 @endforelse
