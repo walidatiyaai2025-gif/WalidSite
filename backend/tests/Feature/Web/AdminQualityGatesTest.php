@@ -195,8 +195,10 @@ final class AdminQualityGatesTest extends TestCase
             'title_en' => 'Do not inspect as a draft',
             'title_ar' => 'ليست مسودة',
             'canonical_lang' => 'en',
-            'status' => 'published',
         ]);
+        // Status is deliberately guarded against mass assignment in the
+        // domain model; use a controlled fixture to prove excluded rows.
+        $published->forceFill(['status' => 'published'])->save();
 
         foreach (['en', 'ar'] as $locale) {
             $title = $locale === 'ar' ? $draft->title_ar : $draft->title_en;
