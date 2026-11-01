@@ -102,6 +102,38 @@ class AdminAiProviderConsoleTest extends TestCase
         $this->assertNull($provider->fresh()->secret_ciphertext);
     }
 
+    public function test_admin_can_change_routing_priority_but_invalid_values_are_rejected(): void
+    {
+        $this->actingAs($this->account(), 'web');
+
+        $form = $this->providerForm();
+        $form['routing_priority'] = 12;
+        $this->post('/admin/ai/providers', $form)
+            ->assertRedirect('/admin/ai/providers');
+
+        $provider = AiProvider::firstOrFail();
+        $this->assertSame(12, $provider->routing_priority);
+        $this->get('/admin/ai/providers')->assertOk()
+            ->assertSee('Routing priority (lower first)')
+            ->assertSee('name="routing_priority"', false)
+            ->assertSee('value="12"', false)
+            ->assertDontSee('super-private-test-credential');
+
+        $this->get('/admin/ai/providers?lang=ar')->assertOk()
+            ->assertSee('dir="rtl"', false)
+            ->assertSee('أولوية التوجيه');
+
+        $this->patch('/admin/ai/providers/'.$provider->id, [
+            'routing_priority' => 5,
+        ])->assertRedirect('/admin/ai/providers');
+        $this->assertSame(5, $provider->fresh()->routing_priority);
+
+        $this->patch('/admin/ai/providers/'.$provider->id, [
+            'routing_priority' => 1000,
+        ])->assertSessionHasErrors('routing_priority');
+        $this->assertSame(5, $provider->fresh()->routing_priority);
+    }
+
     public function test_explicit_health_check_uses_provider_adapter_only_on_click(): void
     {
         $this->actingAs($this->account(), 'web');
