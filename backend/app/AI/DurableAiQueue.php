@@ -144,8 +144,16 @@ final class DurableAiQueue
                 if ($running >= max(1, (int) $provider->concurrent_limit)) {
                     return null;
                 }
-                $spent = (int) DB::table('ai_usage')->where('provider_id', $provider->id)
-                    ->where('created_at', '>=', now()->startOfDay())->sum('cost_minor');
+                $todayReceipts = DB::table('ai_usage')->where('provider_id', $provider->id)
+                    ->where('created_at', '>=', now('UTC')->startOfDay());
+                // Never sum different currency minor units into one budget.
+                // A stored legacy receipt may be malformed even though new
+                // receipts are now checked by recordUsage().
+                if ((clone $todayReceipts)
+                    ->where('cost_currency', '!=', $provider->currency)->exists()) {
+                    return null;
+                }
+                $spent = (int) $todayReceipts->sum('cost_minor');
                 // A running job's reservation includes amounts it has already
                 // reported. Daily spend accounts for those receipts, so adding
                 // the full reservation again would double-count paid usage and
@@ -156,8 +164,13 @@ final class DurableAiQueue
                     ->where('status', 'running')->get(['id', 'reserved_budget_minor']);
                 $outstanding = 0;
                 foreach ($runningJobs as $runningJob) {
-                    $recorded = (int) DB::table('ai_usage')
-                        ->where('job_id', $runningJob->id)->sum('cost_minor');
+                    $jobReceipts = DB::table('ai_usage')
+                        ->where('job_id', $runningJob->id);
+                    if ((clone $jobReceipts)
+                        ->where('cost_currency', '!=', $provider->currency)->exists()) {
+                        return null;
+                    }
+                    $recorded = (int) $jobReceipts->sum('cost_minor');
                     $outstanding += max(0, (int) $runningJob->reserved_budget_minor - $recorded);
                 }
                 $remainingToday = (int) $provider->daily_budget_minor - $spent;
@@ -329,8 +342,13 @@ final class DurableAiQueue
                 }
                 return false;
             }
-            $spent = (int) DB::table('ai_usage')->where('provider_id', $provider->id)
-                ->where('created_at', '>=', now()->startOfDay())->sum('cost_minor');
+            $todayReceipts = DB::table('ai_usage')->where('provider_id', $provider->id)
+                ->where('created_at', '>=', now('UTC')->startOfDay());
+            if ((clone $todayReceipts)
+                ->where('cost_currency', '!=', $provider->currency)->exists()) {
+                throw new DomainException('Mixed-currency provider receipts cannot be budgeted.');
+            }
+            $spent = (int) $todayReceipts->sum('cost_minor');
             if ($spent + $costMinor > (int) $provider->daily_budget_minor) {
                 throw new DomainException('Daily provider spending cap reached.');
             }
@@ -341,8 +359,12 @@ final class DurableAiQueue
             // Check the job's entire receipt history (including past days)
             // under its locked lease; identical receipts were handled above.
             $reservedForJob = (int) $job->reserved_budget_minor;
-            $jobRecordedCost = (int) DB::table('ai_usage')
-                ->where('job_id', $jobId)->sum('cost_minor');
+            $jobReceipts = DB::table('ai_usage')->where('job_id', $jobId);
+            if ((clone $jobReceipts)
+                ->where('cost_currency', '!=', $provider->currency)->exists()) {
+                throw new DomainException('Mixed-currency job receipts cannot be budgeted.');
+            }
+            $jobRecordedCost = (int) $jobReceipts->sum('cost_minor');
             if ($costMinor > $reservedForJob ||
                 $jobRecordedCost > $reservedForJob - $costMinor) {
                 throw new DomainException('AI job usage exceeds reserved cost.');
