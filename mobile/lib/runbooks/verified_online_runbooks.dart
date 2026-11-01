@@ -809,6 +809,21 @@ class _RunbookLoginDialogState extends State<_RunbookLoginDialog> {
       final session = await widget.loginAction(email, password);
       _password.clear();
       if (!mounted) return;
+      // Do not pass an expired or malformed bearer to the save action.
+      // The backend remains the authority for any subsequent revocation.
+      final expired = session.expiresAt != null &&
+          !session.expiresAt!.isAfter(DateTime.now().toUtc());
+      if (expired || session.token.trim().isEmpty ||
+          session.token.length > 8192) {
+        setState(() => _error = expired
+            ? (widget.arabic
+                ? 'انتهت صلاحية الجلسة. سجّل الدخول مرة أخرى.'
+                : 'Your session expired. Sign in again.')
+            : (widget.arabic
+                ? 'تعذر تسجيل الدخول بأمان. حاول مرة أخرى.'
+                : 'Could not sign in safely. Try again.'));
+        return;
+      }
       Navigator.of(context).pop(session.token);
     } catch (error) {
       _password.clear();
