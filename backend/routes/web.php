@@ -364,7 +364,9 @@ Route::middleware('auth:web')->group(function (): void {
         ])->with('status', 'Article unpublished.');
     })->middleware('throttle:10,1')->name('admin.content.unpublish');
 
-    // T020: rights revocation is available before a licensed approval flow.
+    // T020: generated artwork approval delegates to the existing domain
+    // verifier. The web layer only captures an explicit human attestation;
+    // it never reads private storage paths, prompts or provider metadata.
     Route::get('/admin/ai/images', function (Request $request) {
         abort_unless($request->user()?->canAccessAdmin(), 403);
         $request->validate([
@@ -377,6 +379,49 @@ Route::middleware('auth:web')->group(function (): void {
         ]);
     })->name('admin.media.index');
 
+    Route::post('/admin/ai/images/{asset}/approve', function (
+        Request $request, \App\Models\Asset $asset
+    ) {
+        abort_unless($request->user()?->canAccessAdmin(), 403);
+        $request->validate([
+            'confirm_asset_key' => [
+                'required', 'string', 'max:180',
+                \Illuminate\Validation\Rule::in([$asset->asset_key]),
+            ],
+            'licensed_for_publication' => ['accepted'],
+            'no_owner_impersonation' => ['accepted'],
+        ]);
+
+        try {
+            $approved = app(\App\AI\EditorialArtworkRights::class)->approve(
+                $asset,
+                $request->user(),
+                $request->boolean('licensed_for_publication'),
+                $request->boolean('no_owner_impersonation')
+            );
+        } catch (\DomainException|\RuntimeException $exception) {
+            return back()->withErrors([
+                'approval' => $request->query('lang') === 'ar'
+                    ? 'تعذر التحقق من أصل الصورة وحقوقها بأمان. بقيت الصورة خاصة وغير قابلة للنشر.'
+                    : 'Artwork provenance and rights could not be verified safely. The asset remains private and unpublished.',
+            ]);
+        }
+
+        if (! $approved) {
+            return back()->withErrors([
+                'approval' => $request->query('lang') === 'ar'
+                    ? 'يلزم تأكيد الترخيص وعدم انتحال هوية المالك قبل النشر.'
+                    : 'Publication licensing and no-owner-impersonation attestations are required.',
+            ]);
+        }
+
+        return redirect()->route('admin.media.index', [
+            'lang' => $request->query('lang') === 'ar' ? 'ar' : 'en',
+        ])->with('status', $request->query('lang') === 'ar'
+            ? 'تم التحقق من الأصل واعتماد حقوق النشر للصورة.'
+            : 'Artwork provenance verified and publication rights approved.');
+    })->middleware('throttle:5,1')->name('admin.media.approve');
+
     Route::post('/admin/ai/images/{asset}/revoke', function (
         Request $request, \App\Models\Asset $asset
     ) {
@@ -387,7 +432,9 @@ Route::middleware('auth:web')->group(function (): void {
 
         return redirect()->route('admin.media.index', [
             'lang' => $request->query('lang') === 'ar' ? 'ar' : 'en',
-        ])->with('status', 'Media rights revoked; public eligibility removed.');
+        ])->with('status', $request->query('lang') === 'ar'
+            ? 'تم إلغاء حقوق النشر العام؛ أزيلت أهلية الصورة للنشر.'
+            : 'Media rights revoked; public eligibility removed.');
     })->middleware('throttle:10,1')->name('admin.media.revoke');
 });
 
