@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -202,4 +203,192 @@ void main() {
     expect(find.text('لا توجد مقالات موثقة تطابق البحث.'), findsOneWidget);
     expect(Directionality.of(tester.element(search)), TextDirection.rtl);
   });
+  test('verified article pages reject forged or inconsistent pagination metadata', () {
+    final pageJson = safeJson.replaceFirst(
+      '"data":',
+      '"meta":{"current_page":1,"has_more_pages":true},"data":',
+    );
+    final page = VerifiedArticlePage.parse(pageJson, 1);
+    expect(page.currentPage, 1);
+    expect(page.hasMorePages, isTrue);
+    expect(page.articles.single.slug, 'database-recovery');
+
+    expect(() => VerifiedArticlePage.parse(pageJson, 2), throwsFormatException);
+    expect(
+      () => VerifiedArticlePage.parse(
+        pageJson.replaceFirst('"has_more_pages":true',
+            '"has_more_pages":"yes"'), 1),
+      throwsFormatException,
+    );
+    expect(
+      () => VerifiedArticlePage.parse(
+        pageJson.replaceFirst('"data":[{', '"data":[{')
+            .replaceFirst('"meta":', '"other":'),
+        1,
+      ),
+      throwsFormatException,
+    );
+    expect(() => VerifiedArticlePage.parse(pageJson, 0), throwsFormatException);
+    expect(() => VerifiedArticlePage.parse(pageJson, 10001), throwsFormatException);
+    expect(
+      () => VerifiedArticlePage.parse(
+        '{"meta":{"current_page":1,"has_more_pages":true},"data":[]}', 1),
+      throwsFormatException,
+    );
+    expect(
+      () => VerifiedArticlePage.parse(
+        pageJson.replaceFirst(
+          'https://docs.example.org/recovery',
+          'https://docs.example.org/recovery?token=secret',
+        ), 1,
+      ),
+      throwsFormatException,
+    );
+
+    final tooMany = List.generate(13, (index) => {
+      'slug': 'guide-$index',
+      'title': 'Verified $index',
+      'body_markdown': 'Published with safe sources',
+      'citations': ['https://docs.example.org/verified'],
+      'tested_status': 'documented',
+      'published_at': '2026-10-31T18:00:00Z',
+    });
+    expect(
+      () => VerifiedArticlePage.parse(
+        jsonEncode({'meta': {'current_page': 1, 'has_more_pages': false},
+            'data': tooMany}), 1),
+      throwsFormatException,
+    );
+  });
+
+  testWidgets('load more reveals the next verified publications only on demand',
+      (tester) async {
+    const first = VerifiedArticle(
+      slug: 'first-guide',
+      title: 'First verified guide',
+      body: 'Safe published first page',
+      citations: ['https://docs.example.org/first'],
+    );
+    const second = VerifiedArticle(
+      slug: 'later-guide',
+      title: 'Later verified guide',
+      body: 'Safe published second page',
+      citations: ['https://docs.example.org/later'],
+    );
+    final calls = <int>[];
+    await tester.pumpWidget(MaterialApp(
+      home: VerifiedArticleLibrary(
+        arabic: false,
+        pageLoader: (page) {
+          calls.add(page);
+          return SynchronousFuture(VerifiedArticlePage(
+            articles: page == 1 ? [first] : [second],
+            currentPage: page,
+            hasMorePages: page == 1,
+          ));
+        },
+      ),
+    ));
+    await tester.pumpAndSettle();
+    expect(calls, [1], reason: 'No speculative or background page downloads');
+    expect(find.byKey(const Key('article-first-guide')), findsOneWidget);
+    expect(find.byKey(const Key('article-later-guide')), findsNothing);
+    expect(find.text('Searches loaded articles on this device only'),
+        findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('article-load-more')));
+    await tester.pumpAndSettle();
+    expect(calls, [1, 2]);
+    expect(find.byKey(const Key('article-first-guide')), findsOneWidget);
+    expect(find.byKey(const Key('article-later-guide')), findsOneWidget);
+    expect(find.byKey(const Key('article-load-more')), findsNothing);
+    await tester.enterText(
+        find.byKey(const Key('article-search-input')), 'LATER');
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('article-later-guide')), findsOneWidget);
+    expect(find.byKey(const Key('article-first-guide')), findsNothing);
+    expect(calls, [1, 2],
+        reason: 'The user search is local, never sent to the server');
+  });
+
+  testWidgets('failed next page retains trusted items and retries same page',
+      (tester) async {
+    const first = VerifiedArticle(
+      slug: 'safe-guide',
+      title: 'Safe guide',
+      body: 'Readable after a network failure',
+      citations: ['https://docs.example.org/guide'],
+    );
+    const second = VerifiedArticle(
+      slug: 'restored-guide',
+      title: 'Restored guide',
+      body: 'New content after retry',
+      citations: ['https://docs.example.org/restored'],
+    );
+    final requests = <int>[];
+    var fail = true;
+    await tester.pumpWidget(MaterialApp(
+      home: VerifiedArticleLibrary(
+        arabic: true,
+        pageLoader: (page) {
+          requests.add(page);
+          if (page == 1) {
+            return SynchronousFuture(const VerifiedArticlePage(
+              articles: [first], currentPage: 1, hasMorePages: true,
+            ));
+          }
+          if (fail) {
+            fail = false;
+            return Future.error(const FormatException('Do not leak transport URL'));
+          }
+          return SynchronousFuture(const VerifiedArticlePage(
+            articles: [second], currentPage: 2, hasMorePages: false,
+          ));
+        },
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('article-load-more')));
+    await tester.pumpAndSettle();
+    expect(requests, [1, 2]);
+    expect(find.byKey(const Key('article-safe-guide')), findsOneWidget);
+    expect(find.byKey(const Key('article-restored-guide')), findsNothing);
+    expect(find.byKey(const Key('article-load-more-error')), findsOneWidget);
+    expect(find.textContaining('Do not leak transport URL'), findsNothing);
+
+    await tester.tap(find.byKey(const Key('article-load-more')));
+    await tester.pumpAndSettle();
+    expect(requests, [1, 2, 2],
+        reason: 'Retry must not skip a failed page');
+    expect(find.byKey(const Key('article-safe-guide')), findsOneWidget);
+    expect(find.byKey(const Key('article-restored-guide')), findsOneWidget);
+    expect(find.byKey(const Key('article-load-more-error')), findsNothing);
+  });
+
+  testWidgets('duplicate next-page article cannot overwrite verified content',
+      (tester) async {
+    const article = VerifiedArticle(
+      slug: 'same-guide',
+      title: 'One approved guide',
+      body: 'Approved original content',
+      citations: ['https://docs.example.org/approved'],
+    );
+    await tester.pumpWidget(MaterialApp(
+      home: VerifiedArticleLibrary(
+        arabic: false,
+        pageLoader: (page) => SynchronousFuture(VerifiedArticlePage(
+          articles: [article],
+          currentPage: page,
+          hasMorePages: page == 1,
+        )),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('article-load-more')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('article-load-more-error')), findsOneWidget);
+    expect(find.byKey(const Key('article-same-guide')), findsOneWidget);
+    expect(find.text('One approved guide'), findsOneWidget);
+  });
+
 }
