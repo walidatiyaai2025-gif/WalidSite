@@ -3,6 +3,8 @@
 namespace Tests\Feature\Web;
 
 use Tests\TestCase;
+use Illuminate\Support\MessageBag;
+use Illuminate\Support\ViewErrorBag;
 
 class ContactValidationSummaryTest extends TestCase
 {
@@ -12,11 +14,15 @@ class ContactValidationSummaryTest extends TestCase
 
         foreach (['en' => 'Please correct the following fields', 'ar' => 'يرجى تصحيح الحقول التالية'] as $locale => $heading) {
             $this->app['request']->query->set('lang', $locale);
-            $view = $this->view('public.contact', ['available' => true])
-                ->withErrors([
-                    'email' => 'Invalid email',
-                    'privacy_consent' => 'Consent required',
-                ]);
+            $errors = new ViewErrorBag;
+            $errors->put('default', new MessageBag([
+                'email' => ['Invalid email'],
+                'privacy_consent' => ['Consent required'],
+            ]));
+            $view = $this->view('public.contact', [
+                'available' => true,
+                'errors' => $errors,
+            ]);
             $view
                 ->assertSee($heading)
                 ->assertSee('role="alert"', false)
