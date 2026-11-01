@@ -35,7 +35,8 @@ final class PublicRunbookController extends Controller
             ->where('r.version', '>', 0)
             ->select(
                 'r.id', 'r.slug', 'r.title', 'r.body_md', 'r.version',
-                'r.validated_at', 'v.body_md as reviewed_body_md', 'v.checksum'
+                'r.validated_at', 'v.body_md as reviewed_body_md',
+                'v.reviewed_title', 'v.checksum'
             );
     }
 
@@ -47,6 +48,11 @@ final class PublicRunbookController extends Controller
             || trim($row->body_md) === ''
             || ! is_string($row->title)
             || trim($row->title) === ''
+            // Live titles are mutable. The reviewed version must approve the
+            // title too; no fallback to unsnapshotted legacy metadata.
+            || ! is_string($row->reviewed_title)
+            || trim($row->reviewed_title) === ''
+            || ! hash_equals($row->reviewed_title, $row->title)
             || ! is_string($row->reviewed_body_md)
             || ! is_string($row->checksum)
             || ! preg_match('/^[a-f0-9]{64}$/D', $row->checksum)
@@ -61,9 +67,9 @@ final class PublicRunbookController extends Controller
     {
         return [
             'id' => $row->id,
-            // The schema stores the reviewed title in its original language.
-            // Never manufacture a translation based on an untrusted locale.
-            'title' => $row->title,
+            // Never publish unsnapshotted mutable metadata as a verified
+            // title or invent a translation for the requested locale.
+            'title' => $row->reviewed_title,
             'markdown' => $row->body_md,
             'version' => (int) $row->version,
             'validated_at' => \Illuminate\Support\Carbon::parse(
