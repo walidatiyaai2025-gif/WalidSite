@@ -30,6 +30,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('SQL Server, reliability and performance'), findsOneWidget);
+    // Extra real navigation cards on Home must not make this older detail
+    // assertion depend on a stale scroll offset or lazy ListView viewport.
+    await tester.scrollUntilVisible(find.textContaining('Verified guides'), 120);
     expect(find.textContaining('Verified guides'), findsOneWidget);
 
     await tester.pageBack();
