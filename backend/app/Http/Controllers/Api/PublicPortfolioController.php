@@ -182,6 +182,17 @@ class PublicPortfolioController extends Controller
             ->filter(fn ($url) => $this->safeEvidenceUrl($url))
             ->unique()->values()->all();
 
+        // A published record is not discoverable if no real WEB-05 route can
+        // open it. The browser case-study route permits ASCII alphanumerics
+        // and dashes only; an imported underscore/space slug would otherwise
+        // occupy a real API/web result slot and lead directly to a 404.
+        // Keep this test in the shared serializer (not just the homepage)
+        // so public API, project cards, pagination and detail all agree.
+        if (! is_string($project->slug)
+            || preg_match('/\\A[A-Za-z0-9-]+\\z/D', $project->slug) !== 1) {
+            $urls = [];
+        }
+
         return [
             'id' => $project->id,
             'slug' => $project->slug,
