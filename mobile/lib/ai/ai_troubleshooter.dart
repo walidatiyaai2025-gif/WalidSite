@@ -501,6 +501,8 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
         id: id,
         arabic: widget.arabic,
         loader: widget.detailLoader,
+        initialBearer: _token,
+        saveAction: (token, runbookId) => _save(token, runbookId),
       ),
     ));
   }

@@ -4,9 +4,11 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../articles/verified_articles.dart';
 import 'offline_guide_text_search.dart';
+import 'reviewed_runbook_actions.dart';
 
 /// This is the live public *reviewed* catalog. It is not a cryptographically
 /// signed offline download; the independent Ed25519 pack has its own UI.
@@ -401,17 +403,38 @@ class _ReviewedRunbookLibraryState extends State<ReviewedRunbookLibrary> {
 
 /// MOBILE-04: never display previously listed body as verified detail.
 /// Always fetch a fresh UUID-pinned public response before rendering.
+typedef ReviewedRunbookLoginAction = Future<RunbookSession> Function(
+  String email,
+  String password,
+);
+typedef ReviewedRunbookSaveAction = Future<void> Function(
+  String token,
+  String runbookId,
+);
+typedef ReviewedRunbookShareAction = Future<bool> Function(
+  String text,
+  String title,
+);
+
 class ReviewedRunbookDetail extends StatefulWidget {
   const ReviewedRunbookDetail({
     required this.id,
     required this.arabic,
     this.loader,
+    this.initialBearer,
+    this.loginAction,
+    this.saveAction,
+    this.shareAction,
     super.key,
   });
 
   final String id;
   final bool arabic;
   final Future<ReviewedRunbook> Function(String id)? loader;
+  final String? initialBearer;
+  final ReviewedRunbookLoginAction? loginAction;
+  final ReviewedRunbookSaveAction? saveAction;
+  final ReviewedRunbookShareAction? shareAction;
 
   @override
   State<ReviewedRunbookDetail> createState() => _ReviewedRunbookDetailState();
@@ -419,10 +442,19 @@ class ReviewedRunbookDetail extends StatefulWidget {
 
 class _ReviewedRunbookDetailState extends State<ReviewedRunbookDetail> {
   late Future<ReviewedRunbook> _future;
+  String? _bearer;
+  bool _saving = false;
+  bool _sharing = false;
+  bool _saved = false;
+  String? _actionMessage;
 
   @override
   void initState() {
     super.initState();
+    final token = widget.initialBearer;
+    _bearer = token != null && token.isNotEmpty && token.length <= 8192
+        ? token
+        : null;
     _refresh();
   }
 
@@ -431,73 +463,408 @@ class _ReviewedRunbookDetailState extends State<ReviewedRunbookDetail> {
         const ReviewedRunbookReader().loadDetail(widget.id);
   }
 
+  ReviewedRunbookLoginAction get _login => widget.loginAction ??
+      (String email, String password) =>
+          const ReviewedRunbookActionsClient().login(email, password);
+
+  ReviewedRunbookSaveAction get _save => widget.saveAction ??
+      (String token, String id) =>
+          const ReviewedRunbookActionsClient().saveRunbook(token, id);
+
+  String _actionFailure(Object error, {required bool login}) {
+    final ar = widget.arabic;
+    if (error is RunbookActionHttpException) {
+      return switch (error.statusCode) {
+        401 || 403 => login
+            ? (ar
+                ? 'تعذر تسجيل الدخول بهذه البيانات.'
+                : 'Could not sign in with those credentials.')
+            : (ar
+                ? 'انتهت الجلسة. سجّل الدخول مرة أخرى للحفظ.'
+                : 'Your session expired. Sign in again to save.'),
+        429 => ar
+            ? 'تم بلوغ حد المحاولات. حاول لاحقًا.'
+            : 'Too many attempts. Try again later.',
+        422 => ar
+            ? 'تعذر حفظ هذا الدليل بالحالة الحالية.'
+            : 'This reviewed guide could not be saved in its current state.',
+        _ => ar
+            ? 'تعذر إكمال الطلب بأمان.'
+            : 'Could not complete the request safely.',
+      };
+    }
+    return ar
+        ? 'تعذر الوصول إلى خدمة الحساب بأمان.'
+        : 'Could not reach the account service safely.';
+  }
+
+  Future<String?> _promptForBearer() {
+    return showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _RunbookLoginDialog(
+        arabic: widget.arabic,
+        loginAction: _login,
+      ),
+    );
+  }
+
+  Future<void> _saveReviewed(ReviewedRunbook item) async {
+    if (_saving || _saved) return;
+
+    var bearer = _bearer;
+    if (bearer == null) {
+      bearer = await _promptForBearer();
+      if (!mounted || bearer == null) return;
+      _bearer = bearer;
+    }
+
+    setState(() {
+      _saving = true;
+      _actionMessage = null;
+    });
+    try {
+      await _save(bearer, item.id);
+      if (!mounted) return;
+      setState(() {
+        _saved = true;
+        // Do not retain a bearer after its only required action.
+        _bearer = null;
+        _actionMessage = widget.arabic
+            ? 'تم حفظ الدليل المراجع في حسابك.'
+            : 'The reviewed guide was saved to your account.';
+      });
+    } catch (error) {
+      if (!mounted) return;
+      if (error is RunbookActionHttpException &&
+          (error.statusCode == 401 || error.statusCode == 403)) {
+        _bearer = null;
+      }
+      setState(() => _actionMessage =
+          _actionFailure(error, login: false));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  String _shareText(ReviewedRunbook item) {
+    final versionLabel = widget.arabic
+        ? 'إصدار مراجع: ${item.version}'
+        : 'Reviewed version: ${item.version}';
+    return '${item.title}\n\n${item.markdown}\n\n$versionLabel';
+  }
+
+  Future<void> _shareReviewed(
+    ReviewedRunbook item,
+    BuildContext buttonContext,
+  ) async {
+    if (_sharing) return;
+    setState(() {
+      _sharing = true;
+      _actionMessage = null;
+    });
+    try {
+      final text = _shareText(item);
+      final custom = widget.shareAction;
+      final opened = custom != null
+          ? await custom(text, item.title)
+          : await _platformShare(text, item.title, buttonContext);
+      if (!mounted) return;
+      setState(() {
+        _actionMessage = opened
+            ? (widget.arabic
+                ? 'تم فتح خيارات المشاركة.'
+                : 'Share options opened.')
+            : (widget.arabic
+                ? 'المشاركة غير متاحة على هذا الجهاز.'
+                : 'Sharing is unavailable on this device.');
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _actionMessage = widget.arabic
+            ? 'تعذر فتح المشاركة بأمان.'
+            : 'Could not open sharing safely.';
+      });
+    } finally {
+      if (mounted) setState(() => _sharing = false);
+    }
+  }
+
+  Future<bool> _platformShare(
+    String text,
+    String title,
+    BuildContext buttonContext,
+  ) async {
+    final box = buttonContext.findRenderObject() as RenderBox?;
+    final origin = box == null
+        ? null
+        : box.localToGlobal(Offset.zero) & box.size;
+    final result = await SharePlus.instance.share(ShareParams(
+      text: text,
+      title: title,
+      subject: title,
+      sharePositionOrigin: origin,
+    ));
+    return result.status != ShareResultStatus.unavailable;
+  }
+
   @override
   Widget build(BuildContext context) {
     final ar = widget.arabic;
-    return Scaffold(
-      appBar: AppBar(title: Text(ar ? 'تفاصيل الحل' : 'Solution detail')),
-      body: SafeArea(
-        child: FutureBuilder<ReviewedRunbook>(
-          future: _future,
-          builder: (context, snapshot) {
-            if (snapshot.connectionState != ConnectionState.done) {
-              return const Center(child: CircularProgressIndicator(
-                key: Key('online-runbook-detail-loading'),
-              ));
-            }
-            if (snapshot.hasError || snapshot.data?.id.toLowerCase() != widget.id.toLowerCase()) {
-              return Center(child: Column(
-                mainAxisSize: MainAxisSize.min,
+    return Directionality(
+      textDirection: ar ? TextDirection.rtl : TextDirection.ltr,
+      child: Scaffold(
+        appBar: AppBar(title: Text(ar ? 'تفاصيل الحل' : 'Solution detail')),
+        body: SafeArea(
+          child: FutureBuilder<ReviewedRunbook>(
+            future: _future,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState != ConnectionState.done) {
+                return const Center(child: CircularProgressIndicator(
+                  key: Key('online-runbook-detail-loading'),
+                ));
+              }
+              if (snapshot.hasError ||
+                  snapshot.data?.id.toLowerCase() != widget.id.toLowerCase()) {
+                return Center(child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      ar
+                          ? 'هذا الدليل غير متاح أو سُحب اعتماده.'
+                          : 'This runbook is unavailable or its approval was withdrawn.',
+                      key: const Key('online-runbook-detail-unavailable'),
+                    ),
+                    const SizedBox(height: 12),
+                    FilledButton(
+                      key: const Key('online-runbook-detail-retry'),
+                      onPressed: () => setState(_refresh),
+                      child: Text(ar ? 'إعادة المحاولة' : 'Retry'),
+                    ),
+                  ],
+                ));
+              }
+              final item = snapshot.data!;
+              return ListView(
+                padding: const EdgeInsets.all(20),
                 children: [
-                  Text(ar ? 'هذا الدليل غير متاح أو سُحب اعتماده.'
-                      : 'This runbook is unavailable or its approval was withdrawn.',
-                    key: const Key('online-runbook-detail-unavailable')),
-                  const SizedBox(height: 12),
-                  FilledButton(
-                    key: const Key('online-runbook-detail-retry'),
-                    onPressed: () => setState(_refresh),
-                    child: Text(ar ? 'إعادة المحاولة' : 'Retry'),
+                  Text(
+                    item.title,
+                    style: Theme.of(context).textTheme.headlineSmall,
                   ),
+                  const SizedBox(height: 10),
+                  Text(
+                    (ar ? 'إصدار تمت مراجعته: ' : 'Reviewed version: ') +
+                        item.version.toString(),
+                    key: const Key('online-runbook-review-version'),
+                  ),
+                  Text(
+                    (ar ? 'تاريخ الاعتماد (UTC): ' : 'Approved at (UTC): ') +
+                        item.validatedAt.toIso8601String(),
+                  ),
+                  const SizedBox(height: 18),
+                  SelectableText(
+                    item.markdown,
+                    key: const Key('online-runbook-body'),
+                  ),
+                  const SizedBox(height: 16),
+                  FilledButton.icon(
+                    key: const Key('online-runbook-copy'),
+                    onPressed: () async {
+                      await Clipboard.setData(
+                        ClipboardData(text: item.markdown),
+                      );
+                      if (!mounted) return;
+                      setState(() {
+                        _actionMessage = ar
+                            ? 'تم نسخ الخطوات المراجعة.'
+                            : 'Reviewed steps copied.';
+                      });
+                    },
+                    icon: const Icon(Icons.copy_outlined),
+                    label: Text(ar ? 'نسخ الخطوات' : 'Copy steps'),
+                  ),
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    key: const Key('online-runbook-save'),
+                    onPressed: _saving || _saved
+                        ? null
+                        : () => _saveReviewed(item),
+                    icon: Icon(_saved
+                        ? Icons.bookmark_added_outlined
+                        : Icons.bookmark_add_outlined),
+                    label: Text(_saved
+                        ? (ar ? 'تم الحفظ' : 'Saved')
+                        : _saving
+                            ? (ar ? 'جارٍ الحفظ...' : 'Saving...')
+                            : (ar ? 'حفظ' : 'Save')),
+                  ),
+                  const SizedBox(height: 8),
+                  Builder(builder: (buttonContext) => OutlinedButton.icon(
+                    key: const Key('online-runbook-share'),
+                    onPressed: _sharing
+                        ? null
+                        : () => _shareReviewed(item, buttonContext),
+                    icon: const Icon(Icons.share_outlined),
+                    label: Text(_sharing
+                        ? (ar ? 'جارٍ فتح المشاركة...' : 'Opening share...')
+                        : (ar ? 'مشاركة' : 'Share')),
+                  )),
+                  if (_actionMessage != null) ...[
+                    const SizedBox(height: 10),
+                    Semantics(
+                      liveRegion: true,
+                      child: Text(
+                        _actionMessage!,
+                        key: const Key('online-runbook-action-message'),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 8),
+                  Text(ar
+                      ? 'المصدر: نسخة عامة مُعتمدة من الخادم، وليست حزمة دون إنترنت موقّعة.'
+                      : 'Source: server-reviewed public edition, not a signed offline package.'),
                 ],
-              ));
-            }
-            final item = snapshot.data!;
-            return ListView(
-              padding: const EdgeInsets.all(20),
-              children: [
-                Text(item.title, style: Theme.of(context).textTheme.headlineSmall),
-                const SizedBox(height: 10),
-                Text(
-                  (ar ? 'إصدار تمت مراجعته: ' : 'Reviewed version: ') +
-                      item.version.toString(),
-                  key: const Key('online-runbook-review-version'),
-                ),
-                Text(
-                  (ar ? 'تاريخ الاعتماد (UTC): ' : 'Approved at (UTC): ') +
-                      item.validatedAt.toIso8601String(),
-                ),
-                const SizedBox(height: 18),
-                SelectableText(
-                  item.markdown,
-                  key: const Key('online-runbook-body'),
-                ),
-                const SizedBox(height: 16),
-                FilledButton.icon(
-                  key: const Key('online-runbook-copy'),
-                  onPressed: () async {
-                    await Clipboard.setData(ClipboardData(text: item.markdown));
-                  },
-                  icon: const Icon(Icons.copy_outlined),
-                  label: Text(ar ? 'نسخ الخطوات' : 'Copy steps'),
-                ),
-                const SizedBox(height: 8),
-                Text(ar
-                    ? 'المصدر: نسخة عامة مُعتمدة من الخادم، وليست حزمة دون إنترنت موقّعة.'
-                    : 'Source: server-reviewed public edition, not a signed offline package.'),
-              ],
-            );
-          },
+              );
+            },
+          ),
         ),
+      ),
+    );
+  }
+}
+
+class _RunbookLoginDialog extends StatefulWidget {
+  const _RunbookLoginDialog({
+    required this.arabic,
+    required this.loginAction,
+  });
+
+  final bool arabic;
+  final ReviewedRunbookLoginAction loginAction;
+
+  @override
+  State<_RunbookLoginDialog> createState() => _RunbookLoginDialogState();
+}
+
+class _RunbookLoginDialogState extends State<_RunbookLoginDialog> {
+  final _email = TextEditingController();
+  final _password = TextEditingController();
+  bool _busy = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _email.dispose();
+    _password.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (_busy) return;
+    final email = _email.text.trim();
+    final password = _password.text;
+    if (email.isEmpty || password.isEmpty) {
+      setState(() => _error = widget.arabic
+          ? 'أدخل البريد الإلكتروني وكلمة المرور.'
+          : 'Enter email and password.');
+      return;
+    }
+
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      final session = await widget.loginAction(email, password);
+      _password.clear();
+      if (!mounted) return;
+      Navigator.of(context).pop(session.token);
+    } catch (error) {
+      _password.clear();
+      if (!mounted) return;
+      setState(() {
+        _error = error is RunbookActionHttpException
+            ? switch (error.statusCode) {
+                401 || 403 => widget.arabic
+                    ? 'تعذر تسجيل الدخول بهذه البيانات.'
+                    : 'Could not sign in with those credentials.',
+                429 => widget.arabic
+                    ? 'تم بلوغ حد المحاولات. حاول لاحقًا.'
+                    : 'Too many attempts. Try again later.',
+                _ => widget.arabic
+                    ? 'تعذر تسجيل الدخول بأمان.'
+                    : 'Could not sign in safely.',
+              }
+            : widget.arabic
+                ? 'تعذر الوصول إلى خدمة تسجيل الدخول بأمان.'
+                : 'Could not reach the sign-in service safely.';
+      });
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ar = widget.arabic;
+    return Directionality(
+      textDirection: ar ? TextDirection.rtl : TextDirection.ltr,
+      child: AlertDialog(
+        title: Text(ar ? 'تسجيل الدخول للحفظ' : 'Sign in to save'),
+        content: SingleChildScrollView(child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(ar
+                ? 'الحفظ مرتبط بحسابك. لن يتم حفظ كلمة المرور على الجهاز.'
+                : 'Saving is tied to your account. Your password is not stored on this device.'),
+            const SizedBox(height: 12),
+            TextField(
+              key: const Key('online-runbook-login-email'),
+              controller: _email,
+              keyboardType: TextInputType.emailAddress,
+              autofillHints: const [AutofillHints.email],
+              decoration: InputDecoration(
+                labelText: ar ? 'البريد الإلكتروني' : 'Email',
+                border: const OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              key: const Key('online-runbook-login-password'),
+              controller: _password,
+              obscureText: true,
+              enableSuggestions: false,
+              autocorrect: false,
+              decoration: InputDecoration(
+                labelText: ar ? 'كلمة المرور' : 'Password',
+                border: const OutlineInputBorder(),
+              ),
+            ),
+            if (_error != null) ...[
+              const SizedBox(height: 10),
+              Text(
+                _error!,
+                key: const Key('online-runbook-login-error'),
+              ),
+            ],
+          ],
+        )),
+        actions: [
+          TextButton(
+            key: const Key('online-runbook-login-cancel'),
+            onPressed: _busy ? null : () => Navigator.of(context).pop(),
+            child: Text(ar ? 'إلغاء' : 'Cancel'),
+          ),
+          FilledButton(
+            key: const Key('online-runbook-login-submit'),
+            onPressed: _busy ? null : _submit,
+            child: Text(_busy
+                ? (ar ? 'جارٍ تسجيل الدخول...' : 'Signing in...')
+                : (ar ? 'تسجيل الدخول والحفظ' : 'Sign in and save')),
+          ),
+        ],
       ),
     );
   }
