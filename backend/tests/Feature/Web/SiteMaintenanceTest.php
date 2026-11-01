@@ -4,8 +4,10 @@ namespace Tests\Feature\Web;
 
 use App\Models\Role;
 use App\Models\User;
+use App\Support\Deployment\SiteInstaller;
 use App\Support\Deployment\SiteUpdater;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
 
 class SiteMaintenanceTest extends TestCase
@@ -38,6 +40,40 @@ class SiteMaintenanceTest extends TestCase
         $this->get('/setup')->assertOk()->assertSee('Pending migrations');
         $this->post('/setup/database')->assertRedirect('/setup');
         $this->get('/setup')->assertOk()->assertSee('Activate owner account');
+    }
+
+
+    public function test_full_install_activates_only_canonical_cv_owner_and_permanently_locks_setup(): void
+    {
+        $token = str_repeat('s', 40);
+        $path = storage_path('app/site-install-test-'.bin2hex(random_bytes(8)).'.lock');
+        config([
+            'site.setup_enabled' => true,
+            'site.setup_token' => $token,
+            'site.install_lock_path' => $path,
+        ]);
+
+        try {
+            $this->post('/setup/unlock', ['token' => $token])->assertRedirect('/setup');
+            $this->post('/setup/database')->assertRedirect('/setup');
+
+            $password = 'An-Independent-Test-Password-123!';
+            $this->post('/setup/finish', [
+                'password' => $password,
+                'password_confirmation' => $password,
+            ])->assertRedirect('/admin/login');
+
+            $ownerEmail = app(SiteInstaller::class)->ownerEmail();
+            $owner = User::where('email', $ownerEmail)->firstOrFail();
+            $this->assertSame('active', $owner->status);
+            $this->assertTrue($owner->hasRole('owner'));
+            $this->assertTrue(Hash::check($password, $owner->password_hash));
+            $this->assertFileExists($path);
+            $this->get('/setup')->assertNotFound();
+            $this->get('/')->assertOk();
+        } finally {
+            @unlink($path);
+        }
     }
 
     public function test_setup_is_locked_when_an_owner_already_exists_even_without_marker(): void
