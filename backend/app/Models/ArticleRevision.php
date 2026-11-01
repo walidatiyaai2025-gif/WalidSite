@@ -128,7 +128,7 @@ class ArticleRevision extends Model
             .'&'.(string) ($parts['fragment'] ?? '');
         for ($depth = 0; $depth < 4; $depth++) {
             if (preg_match(
-                '/(?:^|[?#&;])(?:access[_-]?token|refresh[_-]?token|id[_-]?token|token|api[_-]?key|key|auth(?:orization)?|password|passwd|secret|signature|sig|session(?:id)?|jwt|bearer|client[_-]?secret|private[_-]?key|code|ticket|awsaccesskeyid|x[-_]amz[-_][a-z0-9_-]+|x[-_]goog[-_][a-z0-9_-]+)=/i',
+                '/(?:^|[?#&;])(?:access[_-]?token|refresh[_-]?token|id[_-]?token|token|api[_-]?key|key|auth(?:orization)?|password|passwd|secret|signature|sig|session(?:id)?|jwt|bearer|client[_-]?secret|private[_-]?key|code|ticket|awsaccesskeyid|x[-_]amz[-_][a-z0-9_-]+|x[-_]goog[-_][a-z0-9_-]+)(?:\\[[^\\]&#;=?]*\\])*=|(?:\\[[^\\]&#;=?]*\\])*(?:\\[(?:access[_-]?token|refresh[_-]?token|id[_-]?token|token|api[_-]?key|key|auth(?:orization)?|password|passwd|secret|signature|sig|session(?:id)?|jwt|bearer|client[_-]?secret|private[_-]?key|code|ticket|awsaccesskeyid|x[-_]amz[-_][a-z0-9_-]+|x[-_]goog[-_][a-z0-9_-]+)\\])(?:\\[[^\\]&#;=?]*\\])*=/i',
                 $parameters
             ) === 1) {
                 return false;
