@@ -78,6 +78,12 @@ final class DurableAiQueue
         // provider row lock below, so a concurrent admin change stays safe.
         $ids = DB::table('ai_jobs')
             ->join('ai_providers', 'ai_providers.id', '=', 'ai_jobs.provider_id')
+            // An open provider circuit cannot admit work until cooldown.
+            // Excluding it before LIMIT prevents a large frozen backlog from
+            // starving eligible providers; lock-time verification stays below.
+            ->leftJoin('ai_provider_circuits as circuit', 'circuit.provider_id', '=', 'ai_providers.id')
+            ->where(fn ($q) => $q->whereNull('circuit.opened_until')
+                ->orWhere('circuit.opened_until', '<=', now()))
             ->whereNull('ai_providers.deleted_at')
             ->where('ai_providers.enabled', true)
             ->where('ai_providers.health_status', 'healthy')
