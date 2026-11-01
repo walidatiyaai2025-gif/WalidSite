@@ -60,6 +60,54 @@ void main() {
         'Check documented backups');
   });
 
+  test('parser rejects repeated slug even when track IDs differ', () {
+    final duplicate = response(1, [
+      track(id: idOne, slug: 'database-recovery'),
+      track(id: idTwo, slug: 'database-recovery'),
+    ]);
+    expect(() => VerifiedLearningPage.parse(duplicate, 1),
+        throwsFormatException);
+
+    final valid = VerifiedLearningPage.parse(response(1, [
+      track(id: idOne, slug: 'database-recovery'),
+      track(id: idTwo, slug: 'verified-devops'),
+    ]), 1);
+    expect(valid.tracks.map((item) => item.slug).toList(),
+        ['database-recovery', 'verified-devops']);
+  });
+
+  testWidgets('malformed first page shows generic bilingual error and retries',
+      (tester) async {
+    for (final arabic in [false, true]) {
+      var attempts = 0;
+      await tester.pumpWidget(MaterialApp(
+        key: ValueKey(arabic),
+        home: VerifiedLearningLibrary(
+          arabic: arabic,
+          pageLoader: (_) async {
+            attempts++;
+            return VerifiedLearningPage.parse(response(1, attempts == 1
+                ? [
+                    track(id: idOne, slug: 'duplicate'),
+                    track(id: idTwo, slug: 'duplicate'),
+                  ]
+                : [track()]), 1);
+          },
+        ),
+      ));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('learning-retry')), findsOneWidget);
+      expect(find.textContaining('duplicate'), findsNothing);
+      expect(find.text(arabic ? 'تعذر تحميل المسارات.' :
+          'Could not load learning paths.'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('learning-retry')));
+      await tester.pumpAndSettle();
+      expect(attempts, 2);
+      expect(find.byKey(const Key('learning-track-database-recovery')),
+          findsOneWidget);
+    }
+  });
+
   test('parser fails closed on malformed, oversized and private records', () {
     final cases = <String>[
       '{}',
