@@ -77,6 +77,7 @@ class SiteMaintenanceTest extends TestCase
             $this->get('/')->assertOk();
         } finally {
             @unlink($path);
+            @unlink((string) config('site.environment_path'));
         }
     }
 
