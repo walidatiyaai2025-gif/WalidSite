@@ -162,7 +162,6 @@ class EditorialPipelineTest extends TestCase
             Http::assertNothingSent();
         }
 
-        $this->claimedJob($provider, 'draft', 50); // Existing queued job may be claimed first.
         try {
             app(EditorialAiGenerator::class)->draft($article, $provider, 'model',
                 ['http://127.0.0.1/private'], 'Research backup', $jobId, 'review-worker', 50);
