@@ -152,6 +152,9 @@ void main() {
       'https://docs.example.org/guide?page=2&lang=ar',
       'https://docs.example.org/guide?q=cache%20miss',
       'https://docs.example.org/guide?q=50%25',
+      'https://docs.example.org/guide?filter[lang]=ar',
+      'https://docs.example.org/guide?source[page]=2',
+      'https://docs.example.org/guide?filter%5Blang%5D=ar',
       'https://myhome.example.org/guide?lang=ar',
       'https://lantern.example.org/guide?page=2',
       'https://svc-tools.example.org/guide?q=cache',
@@ -167,6 +170,16 @@ void main() {
 
     // Encoding a credential key or using a signed URL must never bypass.
     for (final forbidden in <String>[
+      'https://docs.example.org/guide?token[0]=private',
+      'https://docs.example.org/guide?token[0][part]=private',
+      'https://docs.example.org/guide?source[api_key]=private',
+      'https://docs.example.org/guide?source[auth][0]=private',
+      'https://docs.example.org/guide?source[settings][client_secret]=private',
+      'https://docs.example.org/guide?token%5B0%5D=private',
+      'https://docs.example.org/guide?source%5Baccess_token%5D=private',
+      'https://docs.example.org/guide?source%255Baccess_token%255D=private',
+      'https://docs.example.org/guide?X-Amz-Signature[0]=private',
+      'https://docs.example.org/guide?meta[X-Goog-Credential]=private',
       'https://docs.example.org/guide?token=private',
       'https://docs.example.org/guide?api_key=private',
       'https://docs.example.org/guide?X-Goog-Signature=private',

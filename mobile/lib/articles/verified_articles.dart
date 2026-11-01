@@ -25,12 +25,16 @@ class VerifiedArticle {
   // Keep benign public citation query parameters; never show signed links.
   // Match Laravel's reviewed-source parameter filter at each encoding depth.
   static bool _hasSafeCitationQuery(String rawQuery) {
+    // A source can include PHP-style array keys: token[0], source[api_key],
+    // or settings[auth][0]. These are credentials too, even if the signed
+    // query key was percent-encoded several times. Do not display them.
     final credentialKey = RegExp(
-      r'(?:^|[?&#;])(?:access[_-]?token|refresh[_-]?token|id[_-]?token|'
+      r'(?:^|[?&#;\[])(?:access[_-]?token|refresh[_-]?token|id[_-]?token|'
       r'token|api[_-]?key|key|auth(?:orization)?|password|passwd|secret|'
       r'signature|sig|session(?:id)?|jwt|bearer|client[_-]?secret|'
       r'private[_-]?key|code|ticket|awsaccesskeyid|'
-      r'x[-_]amz[-_][a-z0-9_-]+|x[-_]goog[-_][a-z0-9_-]+)=',
+      r'x[-_]amz[-_][a-z0-9_-]+|x[-_]goog[-_][a-z0-9_-]+)'
+      r'\]?(?:\[[^\]\r\n]*\])*=' ,
       caseSensitive: false,
     );
     var query = rawQuery;
