@@ -108,10 +108,23 @@ final class DurableAiQueue
                 }
                 $spent = (int) DB::table('ai_usage')->where('provider_id', $provider->id)
                     ->where('created_at', '>=', now()->startOfDay())->sum('cost_minor');
-                $reserved = (int) DB::table('ai_jobs')->where('provider_id', $provider->id)
-                    ->where('status', 'running')->sum('reserved_budget_minor');
-                if ($spent + $reserved + (int) $job->reserved_budget_minor >
-                    (int) $provider->daily_budget_minor) {
+                // A running job's reservation includes amounts it has already
+                // reported. Daily spend accounts for those receipts, so adding
+                // the full reservation again would double-count paid usage and
+                // unnecessarily starve the provider when concurrency > 1.
+                // Keep lifetime receipts when calculating remaining liability:
+                // retries and jobs crossing UTC days must not earn a new cap.
+                $runningJobs = DB::table('ai_jobs')->where('provider_id', $provider->id)
+                    ->where('status', 'running')->get(['id', 'reserved_budget_minor']);
+                $outstanding = 0;
+                foreach ($runningJobs as $runningJob) {
+                    $recorded = (int) DB::table('ai_usage')
+                        ->where('job_id', $runningJob->id)->sum('cost_minor');
+                    $outstanding += max(0, (int) $runningJob->reserved_budget_minor - $recorded);
+                }
+                $remainingToday = (int) $provider->daily_budget_minor - $spent;
+                if ($outstanding > $remainingToday ||
+                    (int) $job->reserved_budget_minor > $remainingToday - $outstanding) {
                     return null;
                 }
                 // Paid compatible providers require a positive cost reservation.
