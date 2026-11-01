@@ -25,6 +25,7 @@ class SiteMaintenanceTest extends TestCase
         config([
             'site.setup_enabled' => true,
             'site.setup_token' => str_repeat('x', 40),
+            'site.setup_database_ready' => true,
         ]);
 
         $this->get('/')->assertRedirect('/setup');
