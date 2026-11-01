@@ -423,4 +423,93 @@ class EditorialPipelineTest extends TestCase
         $this->assertFalse($draft->hasVerifiedEvidence());
         $this->assertSame(0, (int) DB::table('ai_usage')->where('job_id', $jobId)->sum('cost_minor'));
     }
+
+    public function test_rights_review_rejects_artwork_larger_than_generator_quarantine_limit(): void
+    {
+        Storage::fake('local');
+        $bytes = str_repeat('P', 4 * 1024 * 1024 + 1);
+        $sha = hash('sha256', $bytes);
+        $key = 'ai-artwork/oversized-review.png';
+        $asset = \App\Models\Asset::create([
+            'asset_key' => 'oversized-artwork-review',
+            'mime_type' => 'image/png',
+            'storage_key' => $key,
+            'sha256' => $sha,
+            'origin' => 'ai-generated',
+            'rights_status' => 'unverified',
+            'publishable' => false,
+        ]);
+        Storage::disk('local')->put($key, $bytes);
+        Storage::disk('local')->put($key.'.provenance.json', json_encode([
+            'asset_id' => $asset->id,
+            'sha256' => $sha,
+            'provider_id' => 'reviewed-provider',
+            'model' => 'illustration-model',
+            'prompt_sha256' => hash('sha256', 'test image'),
+        ], JSON_THROW_ON_ERROR));
+
+        try {
+            app(\App\AI\EditorialArtworkRights::class)->approve(
+                $asset, $this->owner(), true, true
+            );
+            $this->fail('Oversized quarantined artwork must not reach rights approval.');
+        } catch (DomainException $exception) {
+            $this->assertSame(
+                'Artwork provenance or content verification failed.',
+                $exception->getMessage()
+            );
+        }
+        $this->assertSame('unverified', $asset->fresh()->rights_status);
+        $this->assertFalse($asset->fresh()->publishable);
+        $this->assertFalse($asset->fresh()->isPubliclyUsable());
+        Storage::disk('local')->assertMissing($key.'.rights.json');
+    }
+
+    public function test_rights_review_rejects_oversized_provenance_before_decoding_it(): void
+    {
+        Storage::fake('local');
+        $bytes = base64_decode(
+            'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFklEQVR4nGMUSdnCwMDAxMDAwMDAAAANmgEwmATK1AAAAABJRU5ErkJggg==',
+            true
+        );
+        $this->assertIsString($bytes);
+        $sha = hash('sha256', $bytes);
+        $key = 'ai-artwork/oversized-manifest.png';
+        $asset = \App\Models\Asset::create([
+            'asset_key' => 'oversized-provenance-review',
+            'mime_type' => 'image/png',
+            'storage_key' => $key,
+            'sha256' => $sha,
+            'origin' => 'ai-generated',
+            'rights_status' => 'unverified',
+            'publishable' => false,
+        ]);
+        Storage::disk('local')->put($key, $bytes);
+        // The JSON is otherwise valid and matches the asset, but includes
+        // an unexpectedly large amount of injected metadata.
+        Storage::disk('local')->put($key.'.provenance.json', json_encode([
+            'asset_id' => $asset->id,
+            'sha256' => $sha,
+            'provider_id' => 'reviewed-provider',
+            'model' => 'illustration-model',
+            'prompt_sha256' => hash('sha256', 'test image'),
+            'unexpected_padding' => str_repeat('X', 16 * 1024),
+        ], JSON_THROW_ON_ERROR));
+
+        try {
+            app(\App\AI\EditorialArtworkRights::class)->approve(
+                $asset, $this->owner(), true, true
+            );
+            $this->fail('Oversized private provenance must not reach JSON decoding or approval.');
+        } catch (DomainException $exception) {
+            $this->assertSame(
+                'Artwork provenance or content verification failed.',
+                $exception->getMessage()
+            );
+        }
+        $this->assertSame('unverified', $asset->fresh()->rights_status);
+        $this->assertFalse($asset->fresh()->publishable);
+        Storage::disk('local')->assertMissing($key.'.rights.json');
+    }
+
 }
