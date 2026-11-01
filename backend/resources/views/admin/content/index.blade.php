@@ -58,23 +58,18 @@ table{width:100%;border-collapse:collapse}td,th{text-align:start;border-bottom:1
 <p><strong>{{ $locale === 'ar' ? 'جاهز للنشر' : 'Publication ready' }}:</strong> {{ $selected->isReadyToPublish() ? ($locale === 'ar' ? 'نعم' : 'Yes') : ($locale === 'ar' ? 'لا' : 'No') }}</p>
 <p><strong>{{ $locale === 'ar' ? 'حقوق الصورة الرئيسية' : 'Hero image rights' }}:</strong>
 {{ $selected->hero_asset_id ? ($selected->heroAsset?->isPubliclyUsable() ? ($locale === 'ar' ? 'مجازة' : 'Cleared') : ($locale === 'ar' ? 'غير مجازة' : 'Not cleared')) : ($locale === 'ar' ? 'لا توجد صورة' : 'No image') }}</p>
-@php
-$latestRevision = $revisions->first();
-$latestChecks = is_array($latestRevision?->validation_json) ? $latestRevision->validation_json : [];
-$requiresExceptionReview = $latestRevision !== null
-    && (($latestChecks['risk_level'] ?? null) !== 'low'
-        || ($latestChecks['contains_professional_claims'] ?? null) !== false);
-@endphp
 @if($selected->status === 'published')
 <form method="post" action="{{ route('admin.content.unpublish', ['article'=>$selected->id,'lang'=>$locale]) }}">@csrf
 <button type="submit" class="secondary">{{ $locale === 'ar' ? 'إلغاء النشر' : 'Unpublish article' }}</button></form>
-@elseif($selected->isReadyToPublish() && $requiresExceptionReview)
+@endif
+
+@if($selected->status !== 'published' && $selected->isReadyToPublish() && $requiresExceptionReview)
 <div class="exception" role="region" aria-labelledby="exception-review-title">
 <h3 id="exception-review-title">{{ $locale === 'ar' ? 'مراجعة استثنائية مطلوبة' : 'Exceptional owner review required' }}</h3>
 <p class="muted">{{ $locale === 'ar'
     ? 'هذا الإصدار لا يطابق سياسة النشر العادي. لا يمكن نشره إلا بقرار صريح من المالك مع سبب مراجعة مسجل، وبعد بقاء جميع بوابات الأدلة وحقوق الصور ناجحة.'
     : 'This revision does not qualify for ordinary publishing. It requires an explicit owner decision with a recorded review reason, while all evidence and image-rights gates must remain valid.' }}</p>
-@if(auth()->user()?->hasRole('owner'))
+@if(auth()->user()->hasRole('owner'))
 <form method="post" action="{{ route('admin.editorial.manual', ['article'=>$selected->id,'lang'=>$locale]) }}">@csrf
 <div class="field"><label for="exception-reason">{{ $locale === 'ar' ? 'سبب القرار' : 'Decision reason' }}</label>
 <select id="exception-reason" name="reason" required>
@@ -93,10 +88,14 @@ $requiresExceptionReview = $latestRevision !== null
 <p role="status"><strong>{{ $locale === 'ar' ? 'يتطلب موافقة المالك.' : 'Owner approval is required.' }}</strong></p>
 @endif
 </div>
-@elseif($selected->isReadyToPublish())
+@endif
+
+@if($selected->status !== 'published' && $selected->isReadyToPublish() && ! $requiresExceptionReview)
 <form method="post" action="{{ route('admin.content.publish', ['article'=>$selected->id,'lang'=>$locale]) }}">@csrf
 <button type="submit">{{ $locale === 'ar' ? 'اعتماد ونشر الإصدار الموثّق' : 'Approve and publish verified revision' }}</button></form>
-@else
+@endif
+
+@if($selected->status !== 'published' && ! $selected->isReadyToPublish())
 <p role="status">{{ $locale === 'ar' ? 'النشر محجوب حتى اجتياز فحوص المصادر والمحتوى وحقوق الصور.' : 'Publishing blocked until citation, technical and image-rights gates pass.' }}</p>
 @endif
 <h3>{{ $locale === 'ar' ? 'سجل الإصدارات' : 'Revision history' }}</h3>
