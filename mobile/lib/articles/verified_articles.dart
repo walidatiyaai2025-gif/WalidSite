@@ -150,15 +150,38 @@ class VerifiedArticleReader {
   static const apiOrigin = String.fromEnvironment('WALIDSITE_API_ORIGIN');
   static const _limit = 2 * 1024 * 1024;
 
-  static Uri? configuredOrigin() {
-    final uri = Uri.tryParse(apiOrigin);
+  static Uri? configuredOrigin() => validatedOrigin(apiOrigin);
+
+  /// Validate the supplied build configuration before ever creating a
+  /// network client. Public reading must not silently contact a loopback,
+  /// literal-IP or private intranet destination on a user's device.
+  /// This is deliberately pure so releases can test the boundary without
+  /// requiring an actual remote service or an injected production URL.
+  static Uri? validatedOrigin(String candidate) {
+    final uri = Uri.tryParse(candidate);
     if (uri == null ||
         uri.scheme != 'https' ||
-        uri.host.isEmpty ||
         uri.userInfo.isNotEmpty ||
         uri.hasQuery ||
         uri.hasFragment ||
-        (uri.path.isNotEmpty && uri.path != '/')) {
+        (uri.path.isNotEmpty && uri.path != '/') ||
+        (uri.hasPort && uri.port != 443)) {
+      return null;
+    }
+
+    final host = uri.host.toLowerCase();
+    const privateSuffixes = [
+      'localhost', 'local', 'internal', 'test', 'invalid', 'onion',
+    ];
+    // Require a complete public FQDN; reject internal-only suffixes.
+    final publicHostPattern = RegExp(
+      r'^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}',
+    );
+    if (InternetAddress.tryParse(host) != null ||
+        publicHostPattern.stringMatch(host) != host ||
+        privateSuffixes.any(
+          (suffix) => host == suffix || host.endsWith('.' + suffix),
+        )) {
       return null;
     }
     return uri;
