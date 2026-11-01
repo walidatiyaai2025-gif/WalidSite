@@ -61,7 +61,14 @@ a{color:var(--link)}a:focus-visible,button:focus-visible{outline:3px solid #00A9
 <tr>
 <td><a href="{{ route('admin.content.index', ['article' => $row['article_id'], 'lang' => $locale]) }}">{{ $locale === 'ar' ? $row['title_ar'] : $row['title_en'] }}</a></td>
 <td>r{{ $row['revision_no'] }}</td>
-<td>{{ $row['revision_status'] }}</td>
+<td>{{ $locale === 'ar'
+    ? match($row['revision_status']) {
+        'draft' => 'مسودة',
+        'validated' => 'تم التحقق',
+        'rejected' => 'مرفوض',
+        default => $row['revision_status'],
+    }
+    : $row['revision_status'] }}</td>
 <td class="{{ $row['citations_passed'] ? 'pass' : 'block' }}">{{ $pass($row['citations_passed']) }}</td>
 <td class="{{ $row['technical_passed'] ? 'pass' : 'block' }}">{{ $pass($row['technical_passed']) }}</td>
 <td class="{{ $row['evidence_passed'] ? 'pass' : 'block' }}">{{ $pass($row['evidence_passed']) }}</td>
@@ -97,13 +104,21 @@ a{color:var(--link)}a:focus-visible,button:focus-visible{outline:3px solid #00A9
 </tr></thead><tbody>
 @foreach($failedJobs as $job)
 <tr>
-<td><code>{{ $job->id }}</code></td><td>{{ $job->job_type }}</td><td>{{ $job->provider_name }}</td>
-<td>{{ $job->status }}</td><td>{{ $job->attempt_count }}/{{ $job->max_attempts }}</td>
-<td>{{ $job->next_attempt_at ?? '—' }}</td><td>{{ $job->last_error_code ?? '—' }}</td>
+<td><code dir="ltr">{{ $job->id }}</code></td><td>{{ $job->job_type }}</td><td>{{ $job->provider_name }}</td>
+<td>{{ $locale === 'ar'
+    ? match($job->status) {
+        'retry' => 'بانتظار إعادة المحاولة',
+        'failed' => 'فشلت',
+        default => $job->status,
+    }
+    : $job->status }}</td><td>{{ $job->attempt_count }}/{{ $job->max_attempts }}</td>
+<td>{{ $job->next_attempt_at ?? '—' }}</td><td><code dir="ltr">{{ $job->last_error_code ?? '—' }}</code></td>
 <td>
 @if($job->status === 'retry' && $job->attempt_count < $job->max_attempts)
 <form method="post" action="{{ route('admin.quality.retry', ['job'=>$job->id,'lang'=>$locale]) }}">@csrf
-<button type="submit">{{ $locale === 'ar' ? 'أعد المحاولة الآن' : 'Retry now' }}</button></form>
+<button type="submit" aria-label="{{ $locale === 'ar'
+    ? 'إعادة محاولة المهمة '.$job->id
+    : 'Retry job '.$job->id.' now' }}">{{ $locale === 'ar' ? 'أعد المحاولة الآن' : 'Retry now' }}</button></form>
 @else
 <span class="muted">{{ $locale === 'ar' ? 'نهائي / غير قابل للإعادة' : 'Terminal / not retryable' }}</span>
 @endif
