@@ -318,4 +318,76 @@ final class AdminImageQueueTest extends TestCase
         $this->assertDatabaseCount('ai_jobs', 1);
         Http::assertNothingSent();
     }
+
+    public function test_competing_image_drafts_cannot_reserve_more_than_the_daily_provider_cap(): void
+    {
+        Http::fake();
+        $this->actingAs($this->account('owner'), 'web');
+        [$firstArticle, $firstRevision] = $this->draft('first-image-request');
+        [$secondArticle, $secondRevision] = $this->draft('second-image-request');
+        $provider = $this->provider('Shared Budget Provider', true, 'healthy', 100);
+        $model = $this->model($provider);
+
+        // Verify the production MariaDB lock used to serialize competing
+        // requests, not just sequential balance arithmetic in the fixture.
+        $providerQueries = [];
+        DB::listen(static function (\Illuminate\Database\Events\QueryExecuted $query) use (&$providerQueries): void {
+            if (str_contains(strtolower($query->sql), 'ai_providers')) {
+                $providerQueries[] = strtolower($query->sql);
+            }
+        });
+
+        $this->post('/admin/ai/images/queue?lang=en',
+            $this->queuePayload($firstRevision, $model, 65))
+            ->assertRedirect(route('admin.media.index', ['lang' => 'en']))
+            ->assertSessionHas('status');
+
+        $this->post('/admin/ai/images/queue?lang=ar',
+            $this->queuePayload($secondRevision, $model, 36))
+            ->assertRedirect()->assertSessionHasErrors('estimated_cost_minor');
+        $this->assertDatabaseCount('ai_jobs', 1);
+
+        $this->post('/admin/ai/images/queue?lang=en',
+            $this->queuePayload($secondRevision, $model, 35))
+            ->assertRedirect(route('admin.media.index', ['lang' => 'en']))
+            ->assertSessionHas('status');
+
+        $this->assertDatabaseCount('ai_jobs', 2);
+        $this->assertSame(100, (int) DB::table('ai_jobs')
+            ->where('provider_id', $provider->id)
+            ->whereIn('status', ['queued', 'retry', 'running'])
+            ->sum('reserved_budget_minor'));
+        $this->assertDatabaseCount('ai_job_steps', 2);
+        if (in_array(DB::getDriverName(), ['mysql', 'mariadb'], true)) {
+            $this->assertTrue(collect($providerQueries)->contains(
+                static fn (string $sql): bool => str_contains($sql, 'for update')
+            ), 'Image budget admission must lock the provider row on MariaDB.');
+        }
+        Http::assertNothingSent();
+    }
+
+    public function test_image_queue_rejects_provider_and_model_disabled_after_the_form_was_loaded(): void
+    {
+        Http::fake();
+        $this->actingAs($this->account('owner'), 'web');
+        [$article, $revision] = $this->draft('model-health-downgrade');
+        $provider = $this->provider();
+        $model = $this->model($provider);
+        $this->get('/admin/ai/images?lang=ar')->assertOk()
+            ->assertSee($model->id);
+
+        $model->forceFill(['enabled' => false])->save();
+        $this->post('/admin/ai/images/queue?lang=ar',
+            $this->queuePayload($revision, $model, 20))
+            ->assertRedirect()->assertSessionHasErrors('model_id');
+        $model->forceFill(['enabled' => true])->save();
+
+        $provider->forceFill(['health_status' => 'unhealthy'])->save();
+        $this->post('/admin/ai/images/queue?lang=en',
+            $this->queuePayload($revision, $model, 20))
+            ->assertRedirect()->assertSessionHasErrors('model_id');
+
+        $this->assertDatabaseCount('ai_jobs', 0);
+        Http::assertNothingSent();
+    }
 }
