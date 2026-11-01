@@ -376,8 +376,13 @@ Route::middleware('auth:web')->group(function (): void {
 
 Route::get('/github', function (Request $request, \App\Integrations\GitHub\PublicRepositoryDirectory $directory) {
     $repositories = $directory->repositories();
-    $search = mb_substr(trim((string) $request->query('q', '')), 0, 80);
-    $language = mb_substr(trim((string) $request->query('language', '')), 0, 60);
+    // Query strings may be array-valued (q[]=... / language[]=...).
+    // Casting those arrays raises a PHP warning and may turn a public GET
+    // into a server error. Unknown shapes are neutral empty filters.
+    $rawSearch = $request->query('q', '');
+    $rawLanguage = $request->query('language', '');
+    $search = is_string($rawSearch) ? mb_substr(trim($rawSearch), 0, 80) : '';
+    $language = is_string($rawLanguage) ? mb_substr(trim($rawLanguage), 0, 60) : '';
 
     $languages = collect($repositories)
         ->filter(fn (array $repo) => ($repo['status'] ?? null) === 'verified' && ! empty($repo['language']))
