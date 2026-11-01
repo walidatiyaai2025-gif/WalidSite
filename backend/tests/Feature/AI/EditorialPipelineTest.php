@@ -264,17 +264,17 @@ class EditorialPipelineTest extends TestCase
             'response' => '# Model-generated unreviewed technical draft',
         ], 200)]);
         $article = $this->article();
-        $source = app(\\App\\AI\\ResearchDraftComposer::class)->saveDraft(
+        $source = app(\App\AI\ResearchDraftComposer::class)->saveDraft(
             $article, 'Produce a cautious technical backup guide',
             ['https://docs.example.org/backup']
         );
         $provider = $this->provider('ollama-compatible');
-        $dispatcher = app(\\App\\AI\\EditorialJobDispatcher::class);
+        $dispatcher = app(\App\AI\EditorialJobDispatcher::class);
         $jobId = $dispatcher->enqueue($source, $provider, 'local-model');
-        $dispatcher->registerHandlers(app(\\App\\AI\\AiStepHandlerRegistry::class));
+        $dispatcher->registerHandlers(app(\App\AI\AiStepHandlerRegistry::class));
 
-        $result = app(\\App\\AI\\BoundedAiWorker::class)->tick(
-            'editorial-worker', app(\\App\\AI\\AiStepHandlerRegistry::class)->handlers()
+        $result = app(\App\AI\BoundedAiWorker::class)->tick(
+            'editorial-worker', app(\App\AI\AiStepHandlerRegistry::class)->handlers()
         );
         $this->assertSame(['state' => 'completed', 'job_id' => $jobId], $result);
         $this->assertSame('completed', DB::table('ai_jobs')->where('id', $jobId)->value('status'));
@@ -288,12 +288,12 @@ class EditorialPipelineTest extends TestCase
     public function test_registered_artwork_job_fails_closed_without_compatible_generator(): void
     {
         $article = $this->article();
-        $source = app(\\App\\AI\\ResearchDraftComposer::class)->saveDraft(
+        $source = app(\App\AI\ResearchDraftComposer::class)->saveDraft(
             $article, 'A documented technical backup diagram',
             ['https://docs.example.org/backup']
         );
         $this->expectException(DomainException::class);
-        app(\\App\\AI\\EditorialJobDispatcher::class)->enqueue(
+        app(\App\AI\EditorialJobDispatcher::class)->enqueue(
             $source, $this->provider('ollama-compatible'), 'local-model', true
         );
     }
