@@ -272,7 +272,7 @@ class OfflineRunbookDetail extends StatelessWidget {
                         ? 'غير موثق حديثًا — لا تستخدمه كإجراء تشغيلي معتمد.'
                         : 'Stale / unverified: not approved for production operations.',
                   for (var i = 0; i < steps.length; i++) '${i + 1}. ${steps[i]}',
-                ].join('\\n');
+                ].join('\n');
                 await Clipboard.setData(ClipboardData(text: copyText));
                 if (!context.mounted) return;
                 ScaffoldMessenger.of(context).showSnackBar(SnackBar(
