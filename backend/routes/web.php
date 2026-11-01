@@ -377,6 +377,33 @@ Route::middleware('auth:web')->group(function (): void {
         ]);
     })->name('admin.media.index');
 
+    Route::post('/admin/ai/images/{asset}/approve', function (
+        Request $request, \App\Models\Asset $asset
+    ) {
+        abort_unless($request->user()?->canAccessAdmin(), 403);
+        $validated = $request->validate([
+            'confirm_asset_key' => ['required', 'string', 'max:255'],
+            'licensed_for_publication' => ['required', 'accepted'],
+            'no_owner_impersonation' => ['required', 'accepted'],
+        ]);
+        if (! hash_equals($asset->asset_key, $validated['confirm_asset_key'])) {
+            return back()->withErrors(['confirm_asset_key' => 'Asset confirmation does not match.']);
+        }
+        try {
+            $approved = app(\App\AI\EditorialArtworkRights::class)->approve(
+                $asset, $request->user(), true, true
+            );
+        } catch (\DomainException|\RuntimeException $exception) {
+            $approved = false;
+        }
+        if (! $approved) {
+            return back()->withErrors(['approval' => 'Artwork rights could not be verified.']);
+        }
+        return redirect()->route('admin.media.index', [
+            'lang' => $request->query('lang') === 'ar' ? 'ar' : 'en',
+        ])->with('status', 'Artwork rights verified and approved.');
+    })->middleware('throttle:10,1')->name('admin.media.approve');
+
     Route::post('/admin/ai/images/{asset}/revoke', function (
         Request $request, \App\Models\Asset $asset
     ) {
