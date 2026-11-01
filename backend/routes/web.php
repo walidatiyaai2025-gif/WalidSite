@@ -286,7 +286,16 @@ Route::get('/resume', function () {
             ->where('profile_id', $profile->id)->orderBy('title')->get()
         : collect();
 
-    return view('public.resume', compact('profile', 'positions', 'certifications'));
+    // A CV skill must belong to the currently published owner profile AND
+    // have explicitly verified evidence; the owner CV seed alone is not proof.
+    $skills = $profile
+        ? \App\Models\Skill::query()->withVerifiedEvidence()
+            ->whereIn('id', \Illuminate\Support\Facades\DB::table('profile_skill')
+                ->where('profile_id', $profile->id)->select('skill_id'))
+            ->orderBy('category')->orderBy('name_en')->get()
+        : collect();
+
+    return view('public.resume', compact('profile', 'positions', 'certifications', 'skills'));
 })->name('public.resume');
 
 /*
