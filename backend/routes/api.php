@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\PublicPortfolioController;
 use App\Http\Controllers\Api\PublicArticleController;
 use App\Http\Controllers\Api\PublicRunbookController;
 use App\Http\Controllers\Api\PublicSearchController;
+use App\Http\Controllers\Api\PublicResumeController;
 use App\Http\Middleware\RequireSecureApiTransport;
 use Illuminate\Support\Facades\Route;
 
@@ -39,6 +40,8 @@ Route::get('/public/profile', [PublicPortfolioController::class, 'profile'])
     ->name('api.public.profile')->middleware('throttle:60,1');
 Route::get('/public/expertise', [PublicPortfolioController::class, 'expertise'])
     ->name('api.public.expertise')->middleware('throttle:60,1');
+Route::get('/public/resume', [PublicResumeController::class, 'index'])
+    ->name('api.public.resume')->middleware('throttle:60,1');
 Route::get('/public/search', [PublicSearchController::class, 'index'])
     ->name('api.public.search')->middleware('throttle:60,1');
 
