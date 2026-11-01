@@ -91,6 +91,9 @@ class ProviderAdaptersTest extends TestCase
             'https://admin.localhost/v1',
             'https://example.invalid/v1',
             'https://gateway.onion/v1',
+            'https://router.home.arpa/v1',
+            'https://service.localdomain/v1',
+            'https://9.2.0.192.in-addr.arpa/v1',
             'HTTPS://SERVICE.INTERNAL./v1',
             'https://localhost.evil.internal/v1',
             'https://model', // Single-label destinations can resolve privately.
