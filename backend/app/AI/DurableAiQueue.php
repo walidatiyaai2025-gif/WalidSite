@@ -53,10 +53,11 @@ final class DurableAiQueue
                 throw new DomainException('Idempotency key already belongs to different work.');
             }
             if ($inserted) {
-                foreach ($steps as $step) {
+                foreach ($steps as $position => $step) {
                     DB::table('ai_job_steps')->insert([
                         'id' => (string) Str::uuid(), 'job_id' => $id,
-                        'step_key' => $step, 'status' => 'pending',
+                        'step_key' => $step, 'position' => $position,
+                        'status' => 'pending',
                         'attempt_no' => 0, 'created_at' => now(), 'updated_at' => now(),
                     ]);
                 }
@@ -66,9 +67,22 @@ final class DurableAiQueue
     }
 
     /** Returns a single leased job, never more than one per call. */
-    public function claimNext(string $owner, int $ttlSeconds = 60): ?stdClass
+    public function claimNext(string $owner, int $ttlSeconds = 60, ?array $jobTypes = null): ?stdClass
     {
         $this->validateOwner($owner, $ttlSeconds);
+        if ($jobTypes !== null) {
+            if (count($jobTypes) > 20 || count($jobTypes) !== count(array_unique($jobTypes))) {
+                throw new InvalidArgumentException('Invalid registered job types.');
+            }
+            foreach ($jobTypes as $kind) {
+                if (! is_string($kind) || ! preg_match('/^[A-Za-z0-9_.:\\-]{1,80}$/D', $kind)) {
+                    throw new InvalidArgumentException('Invalid registered job type.');
+                }
+            }
+            if ($jobTypes === []) {
+                return null;
+            }
+        }
         $this->recoverExpired(5);
 
         // The scan is intentionally bounded for shared hosting. Filter out
@@ -94,6 +108,7 @@ final class DurableAiQueue
             ->where(fn ($q) => $q->where('ai_providers.provider_type', '!=', 'openai-compatible')
                 ->orWhere('ai_jobs.reserved_budget_minor', '>', 0))
             ->whereColumn('ai_jobs.reserved_budget_minor', '<=', 'ai_providers.daily_budget_minor')
+            ->when($jobTypes !== null, fn ($query) => $query->whereIn('ai_jobs.job_type', $jobTypes))
             ->whereIn('ai_jobs.status', ['queued', 'retry'])
             ->where(fn ($q) => $q->whereNull('ai_jobs.next_attempt_at')
                 ->orWhere('ai_jobs.next_attempt_at', '<=', now()))
@@ -209,6 +224,32 @@ final class DurableAiQueue
                 'lease_version' => (int) $lease->lease_version + 1,
                 'updated_at' => now(),
             ]);
+        }, 3);
+    }
+
+    /**
+     * Return a successfully checkpointed partial job to the ready queue.
+     * This is a planned yield, not an error: do not consume its retry budget
+     * or open a provider circuit on shared hosting cron ticks.
+     */
+    public function yieldCheckpointedJob(string $jobId, string $owner): void
+    {
+        DB::transaction(function () use ($jobId, $owner): void {
+            $job = $this->requireLease($jobId, $owner);
+            $steps = DB::table('ai_job_steps')->where('job_id', $jobId);
+            if (! (clone $steps)->where('status', 'pending')->exists() ||
+                ! (clone $steps)->where('status', 'completed')
+                    ->where('attempt_no', $job->attempt_count)->exists()) {
+                throw new DomainException('Only freshly checkpointed partial work may yield.');
+            }
+
+            DB::table('ai_jobs')->where('id', $jobId)->update([
+                'status' => 'queued',
+                'attempt_count' => max(0, (int) $job->attempt_count - 1),
+                'next_attempt_at' => null,
+                'updated_at' => now(),
+            ]);
+            DB::table('job_leases')->where('job_id', $jobId)->delete();
         }, 3);
     }
 
