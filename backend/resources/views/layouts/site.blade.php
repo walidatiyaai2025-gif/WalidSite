@@ -94,7 +94,8 @@
                     @php($languageArgs['q'] = request()->query('q', ''))
                 @endif
                 @if(request()->routeIs('public.resume', 'public.hire'))
-                    @php($resumeTrack = request()->query('track', 'all'))
+                    @php($trackParams = request()->query())
+                    @php($resumeTrack = $trackParams['track'] ?? 'all')
                     @php($languageArgs['track'] = is_string($resumeTrack) && in_array($resumeTrack, ['all', 'database', 'software', 'delivery'], true) ? $resumeTrack : 'all')
                 @endif
                 <a class="language-link" href="{{ route($languageRoute, $languageArgs) }}"
