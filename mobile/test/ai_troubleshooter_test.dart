@@ -343,6 +343,7 @@ void main() {
     await reveal(tester, const Key('ai-diagnose-submit'));
     await tester.tap(find.byKey(const Key('ai-diagnose-submit')));
     await tester.pumpAndSettle();
+    await reveal(tester, const Key('ai-message'));
     expect(find.text('The diagnosis could not complete safely.'), findsOneWidget);
     expect(find.byKey(const Key('ai-open-solution')), findsNothing);
   });
