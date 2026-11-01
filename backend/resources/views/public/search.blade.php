@@ -14,6 +14,7 @@
 .ed-form input,.ed-form select{font:inherit;padding:10px;border:1px solid #97B4C8;border-radius:10px;min-height:44px;min-width:190px}
 .ed-form .ed-clear{display:inline-flex;align-items:center;min-height:44px;padding:10px 12px;font-weight:700;text-decoration:underline;text-underline-offset:3px}.ed-form .ed-clear:focus-visible{outline:3px solid var(--wa-primary);outline-offset:3px}.ed-form button{min-height:44px;background:var(--wa-cta);color:#fff;border:0;border-radius:10px;padding:10px 18px;font:inherit;font-weight:700}
 .article-content{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.9;color:var(--wa-body)}
+.ed-more{display:inline-flex;align-items:center;min-height:44px;margin-top:12px;font-weight:800;text-underline-offset:3px}.ed-preview-note{display:block;color:var(--wa-body);font-size:14px;margin-top:6px}
 </style>
 @endpush
 @section('content')
@@ -33,16 +34,24 @@
 @elseif($articles->isEmpty() && $projects->isEmpty())
 <div class="ed-card" role="status">{{ $locale === 'ar' ? 'لا توجد نتائج عامة موثقة.' : 'No verified public matches.' }}</div>
 @else
-<p class="ed-card" role="status" aria-live="polite" data-testid="verified-search-summary">{{ $locale === 'ar' ? 'نتائج موثقة: ' : 'Verified results: ' }}{{ $articles->count() }} {{ $locale === 'ar' ? ($articles->count() === 1 ? 'مقال،' : ($articles->count() === 2 ? 'مقالان،' : 'مقالات،')) : ($articles->count() === 1 ? 'article,' : 'articles,') }} {{ $projects->count() }} {{ $locale === 'ar' ? ($projects->count() === 1 ? 'مشروع.' : ($projects->count() === 2 ? 'مشروعان.' : 'مشاريع.')) : ($projects->count() === 1 ? 'project.' : 'projects.') }}</p>
+<p class="ed-card" role="status" aria-live="polite" data-testid="verified-search-summary">{{ $locale === 'ar' ? 'نتائج موثقة: ' : 'Verified results: ' }}{{ $articles->count() }} {{ $locale === 'ar' ? ($articles->count() === 1 ? 'مقال،' : ($articles->count() === 2 ? 'مقالان،' : 'مقالات،')) : ($articles->count() === 1 ? 'article,' : 'articles,') }} {{ $projects->count() }} {{ $locale === 'ar' ? ($projects->count() === 1 ? 'مشروع.' : ($projects->count() === 2 ? 'مشروعان.' : 'مشاريع.')) : ($projects->count() === 1 ? 'project.' : 'projects.') }}
+@if($articles->count() === 10 || $projects->count() === 10)
+<span class="ed-preview-note">{{ $locale === 'ar' ? 'تُعرض أول 10 نتائج موثقة من كل نوع كحد أقصى؛ استخدم روابط جميع النتائج لاستكشاف الباقي.' : 'Showing at most 10 verified matches per type. Use the full-results links to explore further.' }}</span>
+@endif
+</p>
 @if($articles->isNotEmpty())
 <section class="ed-card" aria-labelledby="articles-h"><h2 id="articles-h">{{ $locale === 'ar' ? 'المقالات' : 'Articles' }}</h2><ul>
 @foreach($articles as $a)<li><a href="{{ route('public.article', ['slug'=>$a->slug,'lang'=>$locale]) }}">{{ $locale === 'ar' ? $a->title_ar : $a->title_en }}</a></li>@endforeach
-</ul></section>
+</ul>
+<a class="ed-more" href="{{ route('public.blog', ['lang' => $locale, 'q' => $search]) }}">{{ $locale === 'ar' ? 'استعراض جميع المقالات المطابقة' : 'Browse all matching articles' }}</a>
+</section>
 @endif
 @if($projects->isNotEmpty())
 <section class="ed-card" aria-labelledby="projects-h"><h2 id="projects-h">{{ $locale === 'ar' ? 'المشاريع' : 'Projects' }}</h2><ul>
 @foreach($projects as $p)<li><a href="{{ route('public.project', ['slug'=>$p['slug'],'lang'=>$locale]) }}">{{ $p['name'] }}</a></li>@endforeach
-</ul></section>
+</ul>
+<a class="ed-more" href="{{ route('public.projects', ['lang' => $locale, 'q' => $search]) }}">{{ $locale === 'ar' ? 'استعراض جميع المشاريع المطابقة' : 'Browse all matching projects' }}</a>
+</section>
 @endif
 @endif
 </section>
