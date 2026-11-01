@@ -79,7 +79,13 @@
         <div class="portfolio-grid">
             @foreach ($filtered as $repo)
                 <article class="repo-card">
-                    <h2>{{ $repo['full_name'] }}</h2>
+                    @if (($repo['status'] ?? null) === 'verified' && isset($repo['url']))
+                        <h2>{{ $repo['full_name'] }}</h2>
+                    @else
+                        {{-- An unverified allowlist entry could be private or
+                             deleted; never disclose its configured slug. --}}
+                        <h2>{{ $locale === 'ar' ? 'مستودع غير متاح' : 'Repository unavailable' }}</h2>
+                    @endif
                     @if (($repo['status'] ?? null) === 'verified' && isset($repo['url']))
                         <div class="repo-status verified">{{ $locale === 'ar' ? 'تم التحقق من ظهوره العام' : 'Public visibility verified' }}</div>
                         @if (! empty($repo['description']))

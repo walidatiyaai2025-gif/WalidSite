@@ -67,7 +67,44 @@ class GithubPortfolioTest extends TestCase
         Http::fake(['api.github.com/repos/*' => Http::response(array_merge($this->verifiedRepo(), ['private' => true, 'visibility' => 'private']), 200)]);
         $this->get('/github')->assertOk()
             ->assertSee('Verification unavailable')
+            ->assertSee('Repository unavailable')
+            ->assertDontSee('owner/public-repo')
+            ->assertDontSee('Real open source work')
             ->assertDontSee('href="https://github.com/owner/public-repo"', false);
+        $this->get('/github?lang=ar')->assertOk()
+            ->assertSee('مستودع غير متاح')
+            ->assertDontSee('owner/public-repo');
+    }
+
+    public function test_unverified_or_deleted_allowlist_names_cannot_be_discovered_by_search(): void
+    {
+        config(['portfolio.github_public_repos' => ['internal-owner/private-project']]);
+        Http::fake(['api.github.com/repos/*' => Http::response([], 404)]);
+
+        // An allowlisted slug is not verified public content. An unavailable
+        // card can explain the failed verification without disclosing the
+        // private or deleted repository identifier.
+        $this->get('/github')->assertOk()
+            ->assertSee('Repository unavailable')
+            ->assertSee('Verification unavailable')
+            ->assertDontSee('internal-owner/private-project')
+            ->assertDontSee('https://github.com/internal-owner/private-project');
+
+        $this->get('/github?lang=ar')->assertOk()
+            ->assertSee('مستودع غير متاح')
+            ->assertDontSee('internal-owner/private-project');
+
+        // Searching for a known/guessed private name must return the same
+        // empty result as an unrelated term, not confirm the allowlist entry.
+        $this->get('/github?q=private-project')->assertOk()
+            ->assertSee('No repositories match')
+            ->assertDontSee('Repository unavailable');
+        $this->get('/github?q=internal-owner')->assertOk()
+            ->assertSee('No repositories match')
+            ->assertDontSee('Repository unavailable');
+
+        // No unavailable record is cached as if it had been verified.
+        Http::assertSentCount(4);
     }
 
     public function test_array_valued_github_filters_fail_to_neutral_filters_without_warning(): void
