@@ -168,6 +168,59 @@ final class AdminQualityGatesTest extends TestCase
             ->assertSee('أعد المحاولة الآن');
     }
 
+    public function test_quality_draft_titles_open_the_exact_authorized_editor_in_both_locales(): void
+    {
+        $this->actingAs($this->account('admin'), 'web');
+        $draft = Article::create([
+            'slug' => 'quality-inspection-link',
+            'title_en' => 'Inspect this draft',
+            'title_ar' => 'مراجعة هذه المسودة',
+            'canonical_lang' => 'en',
+        ]);
+        $draft->revisions()->create([
+            'revision_no' => 1,
+            'status' => 'draft',
+            'body_md' => 'PRIVATE-DRAFT-CONTENT',
+            'citations_json' => [[
+                'source_url' => 'https://example.test/PRIVATE-CITATION',
+                'verified' => false,
+            ]],
+            'validation_json' => [
+                'citations_passed' => false,
+                'technical_passed' => false,
+            ],
+        ]);
+        $published = Article::create([
+            'slug' => 'quality-published-exclusion',
+            'title_en' => 'Do not inspect as a draft',
+            'title_ar' => 'ليست مسودة',
+            'canonical_lang' => 'en',
+            'status' => 'published',
+        ]);
+
+        foreach (['en', 'ar'] as $locale) {
+            $title = $locale === 'ar' ? $draft->title_ar : $draft->title_en;
+            $url = route('admin.content.index', [
+                'article' => $draft->id,
+                'lang' => $locale,
+            ]);
+            $response = $this->get('/admin/quality?lang='.$locale)->assertOk()
+                ->assertSee('href="#content"', false)
+                ->assertSee('id="content" tabindex="-1"', false)
+                ->assertSee('href="'.e($url).'">'.$title.'</a>', false)
+                ->assertDontSee('PRIVATE-DRAFT-CONTENT')
+                ->assertDontSee('PRIVATE-CITATION')
+                ->assertDontSee($published->title_en);
+
+            if ($locale === 'ar') {
+                $response->assertSee('dir="rtl"', false);
+            } else {
+                $response->assertSee('dir="ltr"', false);
+            }
+            $this->get($url)->assertOk()->assertSee($title);
+        }
+    }
+
     public function test_retry_now_only_clears_backoff_and_preserves_attempt_limits_without_http(): void
     {
         Http::fake();
