@@ -117,6 +117,46 @@ final class MobileDiagnosisQueuedPolicyTest extends TestCase
         $this->assertDatabaseMissing('ai_usage', ['job_id' => $job->id]);
     }
 
+    public function test_inactive_account_cannot_transmit_already_queued_private_diagnosis(): void
+    {
+        [, , , $diagnosis, $job] = $this->queuedPaidDiagnosis();
+        User::query()->findOrFail($diagnosis->user_id)->update([
+            'status' => 'pending_activation',
+        ]);
+
+        $this->rejectWithoutProviderCall($diagnosis, $job);
+    }
+
+    public function test_account_disabled_while_loading_reviewed_catalog_never_reaches_provider(): void
+    {
+        [, , , $diagnosis, $job] = $this->queuedPaidDiagnosis();
+        $this->reviewedCatalog();
+        Http::fake();
+        $changed = false;
+
+        DB::listen(function ($query) use (&$changed, $diagnosis): void {
+            if (! $changed && str_contains(strtolower($query->sql), 'runbooks')) {
+                $changed = true;
+                User::query()->findOrFail($diagnosis->user_id)->update([
+                    'status' => 'pending_activation',
+                ]);
+            }
+        });
+
+        try {
+            app(MobileDiagnosisDispatcher::class)->execute($job, 'classify', 'test-worker');
+            $this->fail('Account deactivation during catalog load must block private inference.');
+        } catch (RuntimeException $exception) {
+            $this->assertSame('Mobile diagnosis failed safely.', $exception->getMessage());
+        }
+
+        $this->assertTrue($changed, 'The reviewed catalog must have been read.');
+        Http::assertNothingSent();
+        $this->assertNull($diagnosis->fresh()->request_blob);
+        $this->assertNull($diagnosis->fresh()->selected_runbook_id);
+        $this->assertDatabaseMissing('ai_usage', ['job_id' => $job->id]);
+    }
+
     public function test_paid_model_currency_changed_after_queueing_fails_before_private_input_leaves(): void
     {
         [, $model, , $diagnosis, $job] = $this->queuedPaidDiagnosis();
