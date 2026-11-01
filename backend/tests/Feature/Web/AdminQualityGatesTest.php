@@ -223,6 +223,53 @@ final class AdminQualityGatesTest extends TestCase
         }
     }
 
+    public function test_ai_failure_backlog_is_paginated_without_losing_old_recoverable_jobs(): void
+    {
+        $this->actingAs($this->account('owner'), 'web');
+        $provider = $this->provider();
+        $ids = [];
+        for ($index = 0; $index < 53; $index++) {
+            $id = $this->job($provider, 'retry');
+            DB::table('ai_jobs')->where('id', $id)
+                ->update(['updated_at' => now()->subMinutes($index)]);
+            $ids[] = $id;
+        }
+        $terminal = $this->job($provider, 'failed', 3, 3);
+        DB::table('ai_jobs')->where('id', $terminal)
+            ->update(['updated_at' => now()->subMinutes(53)]);
+        $ids[] = $terminal;
+
+        $first = $this->get('/admin/quality?lang=en')->assertOk()
+            ->assertSee('AI failures and retries (54)')
+            ->assertSee('AI failure pages')
+            ->assertSee('jobs_page=2', false)
+            ->assertSee($ids[0])->assertSee($ids[24])
+            ->assertDontSee($ids[25])->assertDontSee($ids[50]);
+        $this->assertSame(25, substr_count($first->getContent(), 'step_failed'));
+
+        $second = $this->get('/admin/quality?lang=ar&jobs_page=2')->assertOk()
+            ->assertSee('dir="rtl"', false)
+            ->assertSee('صفحات مهام AI الفاشلة')
+            ->assertSee($ids[25])->assertSee($ids[49])
+            ->assertDontSee($ids[0])->assertDontSee($ids[50])
+            ->assertSee('jobs_page=3', false);
+        $this->assertSame(25, substr_count($second->getContent(), 'step_failed'));
+
+        $third = $this->get('/admin/quality?lang=ar&jobs_page=3')->assertOk()
+            ->assertSee($ids[50])->assertSee($ids[52])->assertSee($terminal)
+            ->assertDontSee($ids[0])
+            ->assertSee('نهائي / غير قابل للإعادة');
+        $this->assertSame(4, substr_count($third->getContent(), 'step_failed'));
+        // Page links retain the selected locale, not the default language.
+        $this->assertStringContainsString('lang=ar', $second->getContent());
+
+        foreach (['jobs_page[]=2', 'jobs_page=0', 'jobs_page=-2',
+                  'jobs_page=10001', 'jobs_page=not-a-number'] as $query) {
+            $this->get('/admin/quality?'.$query)
+                ->assertRedirect()->assertSessionHasErrors('jobs_page');
+        }
+    }
+
     public function test_retry_now_only_clears_backoff_and_preserves_attempt_limits_without_http(): void
     {
         Http::fake();
