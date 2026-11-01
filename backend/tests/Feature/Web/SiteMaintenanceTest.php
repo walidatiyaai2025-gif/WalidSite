@@ -140,7 +140,7 @@ class SiteMaintenanceTest extends TestCase
         $this->app->instance('env', 'production');
         // This regression targets the transport guard; CSRF is independently
         // enforced and must not intercept the request before the guard.
-        $this->withoutMiddleware(\\Illuminate\\Foundation\\Http\\Middleware\\ValidateCsrfToken::class);
+        $this->withoutMiddleware(\Illuminate\Foundation\Http\Middleware\ValidateCsrfToken::class);
         $token = str_repeat('h', 40);
         config([
             'site.setup_enabled' => true,
@@ -176,7 +176,7 @@ class SiteMaintenanceTest extends TestCase
     {
         $previousEnvironment = $this->app['env'];
         $this->app->instance('env', 'production');
-        $this->withoutMiddleware(\\Illuminate\\Foundation\\Http\\Middleware\\ValidateCsrfToken::class);
+        $this->withoutMiddleware(\Illuminate\Foundation\Http\Middleware\ValidateCsrfToken::class);
         $token = str_repeat('s', 40);
         config([
             'site.setup_enabled' => true,
