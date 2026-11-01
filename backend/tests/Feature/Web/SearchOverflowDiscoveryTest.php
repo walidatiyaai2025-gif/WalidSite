@@ -37,6 +37,12 @@ final class SearchOverflowDiscoveryTest extends TestCase
                 ],
             ]);
             $article->publishVerified();
+            // The blog orders by published_at DESC then UUID. Publishing
+            // eleven fixtures within one clock second gives them random UUID
+            // tie order, making "article-11 on page 2" intermittent.
+            $article->forceFill([
+                'published_at' => now()->subMinutes($number),
+            ])->save();
 
             $project = Project::create([
                 'slug' => 'overflow-project-'.$number,
@@ -47,7 +53,9 @@ final class SearchOverflowDiscoveryTest extends TestCase
                 'role_ar' => 'مهندس',
                 'status' => 'completed',
                 'visibility' => 'public',
-                'published_at' => now()->subDay(),
+                // Deterministic newest-first ordering also matters for
+                // the projects overflow assertion with UUID tie-breakers.
+                'published_at' => now()->subDay()->subMinutes($number),
             ]);
             ProjectEvidence::create([
                 'project_id' => $project->id,
