@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../runbooks/offline_runbooks.dart';
+import '../runbooks/signed_runbook_sync.dart';
 
 /// Local, deterministic runbook discovery. It does not call an AI service,
 /// upload source code, infer a diagnosis, or claim the draft pack is current.
@@ -30,20 +31,33 @@ class OfflineSolutionFinder extends StatefulWidget {
   const OfflineSolutionFinder({
     required this.arabic,
     this.bundledPack,
+    this.repository,
     super.key,
   });
 
   final bool arabic;
+  // Deterministic test fixture; normal operation uses the same verified
+  // offline snapshot selection as the runbook library, including at restart.
   final Future<OfflineRunbookPack>? bundledPack;
+  final OfflineRunbookRepository? repository;
 
   @override
   State<OfflineSolutionFinder> createState() => _OfflineSolutionFinderState();
 }
 
 class _OfflineSolutionFinderState extends State<OfflineSolutionFinder> {
-  late final Future<OfflineRunbookPack> _pack =
-      widget.bundledPack ?? OfflineRunbookPack.loadBundled();
+  late final Future<OfflineRunbookPack> _pack;
   String _query = '';
+
+  @override
+  void initState() {
+    super.initState();
+    // This read never initiates a network call. The repository verifies the
+    // persisted Ed25519 signature with the pinned publisher key on EVERY load
+    // and safely falls back to the bundled educational pack on failure.
+    _pack = widget.bundledPack ??
+        (widget.repository ?? OfflineRunbookRepository()).load();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -81,8 +95,8 @@ class _OfflineSolutionFinderState extends State<OfflineSolutionFinder> {
               children: [
                 Text(
                   arabic
-                      ? 'ابحث داخل عناوين وخطوات الأدلة المرفقة؛ هذه مطابقة نصية وليست تشخيصًا بالذكاء الاصطناعي.'
-                      : 'Search titles and steps in bundled guides. Matches are not AI diagnoses.',
+                      ? 'ابحث داخل عناوين وخطوات الأدلة المحلية المتاحة؛ هذه مطابقة نصية وليست تشخيصًا بالذكاء الاصطناعي.'
+                      : 'Search titles and steps in offline guides. Matches are not AI diagnoses.',
                   style: Theme.of(context).textTheme.bodyLarge,
                 ),
                 const SizedBox(height: 12),
@@ -98,7 +112,17 @@ class _OfflineSolutionFinderState extends State<OfflineSolutionFinder> {
                         Text(arabic
                             ? 'المصدر: ${pack.source}'
                             : 'Source: ${pack.source}'),
-                        if (pack.isStale)
+                        Text(
+                          pack.signedVerified
+                              ? (arabic
+                                  ? 'نسخة محلية موقّعة تم التحقق منها'
+                                  : 'Verified signed offline snapshot')
+                              : (arabic
+                                  ? 'حزمة تعليمية مرفقة غير معتمدة'
+                                  : 'Bundled educational copy — unverified'),
+                          key: const Key('solution-pack-provenance'),
+                        ),
+                        if (!pack.signedVerified || pack.isStale)
                           Text(
                             arabic
                                 ? 'تنبيه: الأدلة غير موثقة حديثًا؛ لا تعتمد عليها كتعليمات تشغيل نهائية.'
