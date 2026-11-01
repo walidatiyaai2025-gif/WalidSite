@@ -155,8 +155,16 @@ class PublicPortfolioController extends Controller
         // List results use the bounded eager-loaded evidence for their chunk.
         // Detail requests are not eager loaded and retain the original guarded
         // 50-row query. Both paths apply the same URL safety policy below.
+        // An eager-loaded relationship is not proof of permission to disclose.
+        // Other callers may have loaded *all* evidence (including private,
+        // revoked or future-dated records). Apply the same publication gate
+        // before exposing URLs, even when no further SQL query is required.
         $evidenceUrls = $project->relationLoaded('evidence')
-            ? $project->evidence->pluck('url')
+            ? $project->evidence
+                ->filter(static fn ($evidence) => $evidence->visibility === 'public'
+                    && $evidence->verified_at !== null
+                    && $evidence->verified_at->lessThanOrEqualTo(now()))
+                ->sortBy('id')->take(50)->pluck('url')
             : $project->evidence()
                 ->where('visibility', 'public')
                 ->whereNotNull('verified_at')
