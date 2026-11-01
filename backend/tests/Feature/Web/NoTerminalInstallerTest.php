@@ -53,7 +53,8 @@ class NoTerminalInstallerTest extends TestCase
         $this->post('/setup/unlock', ['token' => str_repeat('v', 40)])->assertRedirect('/setup');
         $this->get('/setup?lang=ar')->assertOk()
             ->assertSee('name="db_database"', false)
-            ->assertSee('name="db_password"', false);
+            ->assertSee('name="db_password"', false)
+            ->assertSee('name="site_url"', false);
         $this->post('/setup/database')->assertForbidden();
 
         $database = Mockery::mock(DatabaseConfiguration::class)->makePartial();
@@ -61,7 +62,9 @@ class NoTerminalInstallerTest extends TestCase
         $this->app->instance(DatabaseConfiguration::class, $database);
 
         try {
-            $this->post('/setup/configure', [
+            $this->withHeader('Host', 'untrusted-preview.example.test')
+                ->post('/setup/configure', [
+                'site_url' => 'https://walid.example.test',
                 'db_host' => 'localhost',
                 'db_port' => 3306,
                 'db_database' => 'walidatiya_site',
@@ -69,6 +72,8 @@ class NoTerminalInstallerTest extends TestCase
                 'db_password' => 'a-unique-db-password',
             ])->assertRedirect('/setup');
             $contents = file_get_contents($path);
+            $this->assertStringContainsString('APP_URL="https://walid.example.test"', $contents);
+            $this->assertStringNotContainsString('untrusted-preview.example.test', $contents);
             $this->assertStringContainsString('DB_DATABASE="walidatiya_site"', $contents);
             $this->assertStringContainsString('SITE_SETUP_DATABASE_READY=true', $contents);
             $this->assertStringContainsString('APP_DEBUG=false', $contents);
@@ -79,6 +84,32 @@ class NoTerminalInstallerTest extends TestCase
         }
     }
 
+    public function test_unsafe_site_url_is_rejected_before_database_probe_or_env_write(): void
+    {
+        $path = storage_path('app/site-invalid-url-'.bin2hex(random_bytes(6)));
+        config([
+            'site.setup_enabled' => true,
+            'site.setup_token' => str_repeat('u', 40),
+            'site.setup_database_ready' => false,
+            'site.environment_path' => $path,
+        ]);
+        $this->post('/setup/unlock', ['token' => str_repeat('u', 40)])->assertRedirect('/setup');
+
+        $database = Mockery::mock(DatabaseConfiguration::class)->makePartial();
+        $database->shouldNotReceive('probe');
+        $this->app->instance(DatabaseConfiguration::class, $database);
+        try {
+            $this->post('/setup/configure', [
+                'site_url' => 'https://trusted.example.test/?next=https://spoofed.test',
+                'db_host' => 'localhost', 'db_port' => 3306,
+                'db_database' => 'site', 'db_username' => 'writer',
+                'db_password' => 'private-password',
+            ])->assertSessionHasErrors('site_url');
+            $this->assertFileDoesNotExist($path);
+        } finally {
+            @unlink($path);
+        }
+    }
 
     public function test_unreachable_saved_database_can_be_reconfigured_from_wizard_without_terminal(): void
     {
@@ -107,6 +138,7 @@ class NoTerminalInstallerTest extends TestCase
                 ->assertDontSee('old-private-database-password');
 
             $this->post('/setup/configure', [
+                'site_url' => 'https://recovered.example.test',
                 'db_host' => 'localhost',
                 'db_port' => 3306,
                 'db_database' => 'recovered_site',

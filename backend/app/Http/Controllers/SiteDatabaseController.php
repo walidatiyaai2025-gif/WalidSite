@@ -15,9 +15,9 @@ final class SiteDatabaseController extends Controller
     {
         abort_unless($installer->allowed(), 404);
         abort_unless($request->session()->get('site_setup_authorized') === true, 403);
-        // Recover from a saved, unreachable database during initial setup.
-        // Never allow switching a healthy database or bypassing the install
-        // lock, token/session authorization, HTTPS, or the empty-DB probe.
+        // Credential recovery is allowed only if the saved connection fails.
+        // Keep a healthy database pinned; the destination must still pass the
+        // empty-database probe and all original setup protections.
         if ($database->isConfigured()) {
             abort_if($updater->inspect()['ready'], 403);
         }
@@ -26,6 +26,7 @@ final class SiteDatabaseController extends Controller
         }
 
         $data = $request->validate([
+            'site_url' => ['required', 'string', 'max:255'],
             'db_host' => ['required', 'string', 'max:253'],
             'db_port' => ['required', 'integer', 'between:1,65535'],
             'db_database' => ['required', 'string', 'max:64'],
@@ -37,11 +38,21 @@ final class SiteDatabaseController extends Controller
                 return back()->withErrors(['database' => 'Invalid database identifier or host.']);
             }
         }
+        // Never persist APP_URL from the request Host header: it may be a
+        // temporary cPanel domain or a spoofed reverse-proxy header.
+        $siteUrl = $database->canonicalSiteUrl($data['site_url']);
+        if ($siteUrl === null) {
+            return back()->withErrors([
+                'site_url' => 'Enter a valid root HTTPS site URL (e.g. https://example.com).',
+            ]);
+        }
+        unset($data['site_url']);
+
         if (! $database->probe($data)) {
             return back()->withErrors(['database' => 'Database connection failed or is not empty. Check the cPanel database and credentials.']);
         }
         try {
-            $database->save($data, $request->getSchemeAndHttpHost());
+            $database->save($data, $siteUrl);
         } catch (Throwable $exception) {
             report($exception);
             return back()->withErrors(['database' => 'Could not save private settings. Check application folder permissions.']);
