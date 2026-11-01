@@ -113,6 +113,6 @@ final class PublicLearningPathController extends Controller
                 'current_page' => $page,
                 'has_more_pages' => $hasMore,
             ],
-        ]);
+        ])->header('Cache-Control', 'no-store');
     }
 }
