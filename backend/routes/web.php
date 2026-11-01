@@ -696,13 +696,21 @@ Route::get('/blog/{slug}', function (Request $request, string $slug) {
     $related = collect();
     $categoryIds = $article->categories()->pluck('categories.id')->all();
     if ($categoryIds !== []) {
-        $related = \App\Models\Article::query()->publiclyVisible()
+        // Keep scanning bounded SQL chunks until three *actually verified*
+        // neighbours are found. A revoked prefix must not starve later links.
+        foreach (\App\Models\Article::query()->publiclyVisible()
             ->where('articles.id', '!=', $article->id)
             ->whereHas('categories', fn ($query) => $query->whereIn('categories.id', $categoryIds))
             ->orderByDesc('articles.published_at')->orderBy('articles.id')
-            ->limit(24)->get()
-            ->filter(fn (\App\Models\Article $candidate) => $candidate->publicRevision() !== null)
-            ->take(3)->values();
+            ->lazy(100) as $candidate) {
+            if ($candidate->publicRevision() === null) {
+                continue;
+            }
+            $related->push($candidate);
+            if ($related->count() === 3) {
+                break;
+            }
+        }
     }
 
     return view('public.article', compact('article', 'revision', 'related'));
@@ -710,9 +718,19 @@ Route::get('/blog/{slug}', function (Request $request, string $slug) {
 
 /* T012 additive LAB + SEARCH: never show unreviewed or private data. */
 Route::get('/lab', function () {
-    $articles = \App\Models\Article::query()->publiclyVisible()
-        ->orderByDesc('published_at')->orderBy('id')->limit(15)->get()
-        ->filter(fn ($article) => $article->publicRevision() !== null);
+    $articles = collect();
+    // SQL publication flags are not sufficient: revoked references and media
+    // must be filtered before applying the 15-link lab display limit.
+    foreach (\App\Models\Article::query()->publiclyVisible()
+        ->orderByDesc('published_at')->orderBy('id')->lazy(100) as $article) {
+        if ($article->publicRevision() === null) {
+            continue;
+        }
+        $articles->push($article);
+        if ($articles->count() === 15) {
+            break;
+        }
+    }
     return view('public.lab', compact('articles'));
 })->name('public.lab')->middleware('throttle:60,1');
 
@@ -724,7 +742,10 @@ Route::get('/search', function (Request $request) {
 
     if ($search !== '') {
         $term = '%'.addcslashes($search, '%_\\').'%';
-        $articles = \App\Models\Article::query()->publiclyVisible()
+        // Filter the pinned published revision's live evidence before
+        // consuming one of ten search slots. Chunked DB iteration avoids
+        // large in-memory lists even with long revoked prefixes.
+        foreach (\App\Models\Article::query()->publiclyVisible()
             ->where(fn ($builder) => $builder
                 ->where('title_en', 'like', $term)
                 ->orWhere('title_ar', 'like', $term)
@@ -732,16 +753,30 @@ Route::get('/search', function (Request $request) {
                     ->where('status', 'validated')
                     ->whereColumn('article_revisions.revision_no', 'articles.published_revision_no')
                     ->where('body_md', 'like', $term)))
-            ->orderBy('id')->limit(10)->get()
-            ->filter(fn ($article) => $article->publicRevision() !== null)->values();
+            ->orderBy('id')->lazy(100) as $article) {
+            if ($article->publicRevision() === null) {
+                continue;
+            }
+            $articles->push($article);
+            if ($articles->count() === 10) {
+                break;
+            }
+        }
 
         $api = app(\App\Http\Controllers\Api\PublicPortfolioController::class);
-        $projects = \App\Models\Project::query()->publiclyVerified()
+        foreach (\App\Models\Project::query()->publiclyVerified()
             ->where(fn ($builder) => $builder->where('title', 'like', $term)
                 ->orWhere('summary_en', 'like', $term)->orWhere('summary_ar', 'like', $term))
-            ->orderBy('id')->limit(10)->get()
-            ->map(fn ($project) => $api->publicProjectData($project, $request))
-            ->filter(fn (array $project) => ! empty($project['evidence_urls']))->values();
+            ->orderBy('id')->lazy(100) as $record) {
+            $project = $api->publicProjectData($record, $request);
+            if (empty($project['evidence_urls'])) {
+                continue;
+            }
+            $projects->push($project);
+            if ($projects->count() === 10) {
+                break;
+            }
+        }
     }
     return view('public.search', compact('search', 'articles', 'projects'));
 })->name('public.search')->middleware('throttle:60,1');
