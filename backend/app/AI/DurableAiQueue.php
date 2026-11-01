@@ -71,10 +71,20 @@ final class DurableAiQueue
         $this->validateOwner($owner, $ttlSeconds);
         $this->recoverExpired(5);
 
-        $ids = DB::table('ai_jobs')->whereIn('status', ['queued', 'retry'])
-            ->where(fn ($q) => $q->whereNull('next_attempt_at')
-                ->orWhere('next_attempt_at', '<=', now()))
-            ->orderBy('created_at')->limit(20)->pluck('id');
+        // The scan is intentionally bounded for shared hosting. Filter out
+        // permanently ineligible providers before the limit; otherwise 20
+        // queued jobs for disabled/failed/archived providers can starve all
+        // healthy work indefinitely. Admission is still rechecked under the
+        // provider row lock below, so a concurrent admin change stays safe.
+        $ids = DB::table('ai_jobs')
+            ->join('ai_providers', 'ai_providers.id', '=', 'ai_jobs.provider_id')
+            ->whereNull('ai_providers.deleted_at')
+            ->where('ai_providers.enabled', true)
+            ->where('ai_providers.health_status', 'healthy')
+            ->whereIn('ai_jobs.status', ['queued', 'retry'])
+            ->where(fn ($q) => $q->whereNull('ai_jobs.next_attempt_at')
+                ->orWhere('ai_jobs.next_attempt_at', '<=', now()))
+            ->orderBy('ai_jobs.created_at')->limit(20)->pluck('ai_jobs.id');
 
         foreach ($ids as $id) {
             $claimed = DB::transaction(function () use ($id, $owner, $ttlSeconds) {
