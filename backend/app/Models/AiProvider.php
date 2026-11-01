@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class AiProvider extends Model
@@ -30,6 +31,11 @@ class AiProvider extends Model
             'routing_priority' => 'integer',
             'last_checked_at' => 'datetime',
         ];
+    }
+
+    public function aiModels(): HasMany
+    {
+        return $this->hasMany(AiModel::class, 'provider_id');
     }
 
     /** No mass serialization or accidental credential disclosure. */
