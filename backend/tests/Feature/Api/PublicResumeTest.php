@@ -56,7 +56,7 @@ class PublicResumeTest extends TestCase
             'org_name' => 'Approved Employer',
             'role_en' => 'Verified Engineer',
             'role_ar' => 'مهندس معتمد',
-            'started_on' => '2022-01-01',
+            'started_on' => $verified ? '2022-01-01' : '2021-01-01',
             'ended_on' => null,
             'verified' => $verified,
             'publishable' => $publishable,
