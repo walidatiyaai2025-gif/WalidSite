@@ -2,8 +2,6 @@
 
 namespace Tests\Feature\Web;
 
-use Illuminate\Support\ViewErrorBag;
-use Illuminate\Support\MessageBag;
 use Tests\TestCase;
 
 class ContactValidationSummaryTest extends TestCase
@@ -13,14 +11,17 @@ class ContactValidationSummaryTest extends TestCase
         config(['mail.contact_recipient' => 'contact@example.org', 'mail.default' => 'smtp']);
 
         foreach (['en' => 'Please correct the following fields', 'ar' => 'يرجى تصحيح الحقول التالية'] as $locale => $heading) {
-            $errors = new ViewErrorBag;
-            $errors->put('default', new MessageBag([
-                'email' => ['Invalid email'],
-                'privacy_consent' => ['Consent required'],
-            ]));
+            $this->from('/contact?lang='.$locale)
+                ->post('/contact?lang='.$locale, [
+                    'name' => 'Valid Sender',
+                    'email' => 'invalid-email',
+                    'subject' => 'Valid inquiry',
+                    'message' => 'A valid inquiry message long enough.',
+                    'privacy_consent' => '0',
+                ])->assertRedirect('/contact?lang='.$locale)
+                ->assertSessionHasErrors(['email', 'privacy_consent']);
 
-            $this->withSession(['errors' => $errors])
-                ->get('/contact?lang='.$locale)->assertOk()
+            $this->get('/contact?lang='.$locale)->assertOk()
                 ->assertSee($heading)
                 ->assertSee('role="alert"', false)
                 ->assertSee('href="#contact-email"', false)
