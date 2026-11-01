@@ -42,12 +42,12 @@
 <div class="ed-card" role="status">{{ $locale === 'ar' ? 'لا توجد نتائج عامة موثقة.' : 'No verified public matches.' }}</div>
 @else
 <p class="ed-card" role="status" aria-live="polite" data-testid="verified-search-summary">
-{{ $locale === 'ar' ? 'نتائج موثقة: ' : 'Verified results: ' }}
-@if($type !== 'projects')
-{{ $articles->count() }} {{ $locale === 'ar' ? ($articles->count() === 1 ? 'مقال' : ($articles->count() === 2 ? 'مقالان' : 'مقالات')) : ($articles->count() === 1 ? 'article' : 'articles') }}{{ $type === 'all' ? ($locale === 'ar' ? '،' : ',') : '' }}
-@endif
-@if($type !== 'articles')
-{{ $projects->count() }} {{ $locale === 'ar' ? ($projects->count() === 1 ? 'مشروع.' : ($projects->count() === 2 ? 'مشروعان.' : 'مشاريع.')) : ($projects->count() === 1 ? 'project.' : 'projects.') }}
+@if($type === 'all')
+{{ $locale === 'ar' ? 'نتائج موثقة: ' : 'Verified results: ' }}{{ $articles->count() }} {{ $locale === 'ar' ? ($articles->count() === 1 ? 'مقال،' : ($articles->count() === 2 ? 'مقالان،' : 'مقالات،')) : ($articles->count() === 1 ? 'article,' : 'articles,') }} {{ $projects->count() }} {{ $locale === 'ar' ? ($projects->count() === 1 ? 'مشروع.' : ($projects->count() === 2 ? 'مشروعان.' : 'مشاريع.')) : ($projects->count() === 1 ? 'project.' : 'projects.') }}
+@elseif($type === 'articles')
+{{ $locale === 'ar' ? 'نتائج موثقة: ' : 'Verified results: ' }}{{ $articles->count() }} {{ $locale === 'ar' ? ($articles->count() === 1 ? 'مقال.' : ($articles->count() === 2 ? 'مقالان.' : 'مقالات.')) : ($articles->count() === 1 ? 'article.' : 'articles.') }}
+@else
+{{ $locale === 'ar' ? 'نتائج موثقة: ' : 'Verified results: ' }}{{ $projects->count() }} {{ $locale === 'ar' ? ($projects->count() === 1 ? 'مشروع.' : ($projects->count() === 2 ? 'مشروعان.' : 'مشاريع.')) : ($projects->count() === 1 ? 'project.' : 'projects.') }}
 @endif
 @if($articles->count() === 10 || $projects->count() === 10)
 <span class="ed-preview-note">{{ $locale === 'ar' ? 'تُعرض أول 10 نتائج موثقة من كل نوع كحد أقصى؛ استخدم روابط جميع النتائج لاستكشاف الباقي.' : 'Showing at most 10 verified matches per type. Use the full-results links to explore further.' }}</span>
