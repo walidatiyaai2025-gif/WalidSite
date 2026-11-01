@@ -266,6 +266,169 @@ Route::middleware('auth:web')->group(function (): void {
             ->header('Cache-Control', 'no-store');
     })->name('admin.routing.index');
 
+    // ADMIN-04/05: browser journey to register actual AI models and configure
+    // the single implemented diagnosis task. These are persisted settings,
+    // not a live provider test or an assertion that paid inference will run.
+    Route::get('/admin/ai/model-routes', function (Request $request) {
+        abort_unless($request->user()?->canAccessAdmin(), 403);
+        $request->validate([
+            'lang' => ['sometimes', 'in:ar,en'],
+            'page' => ['sometimes', 'integer', 'between:1,10000'],
+        ]);
+        $locale = $request->query('lang') === 'ar' ? 'ar' : 'en';
+        $providersForModels = \App\Models\AiProvider::query()
+            ->select(['id', 'display_name', 'provider_type', 'currency', 'enabled'])
+            ->orderBy('display_name')->get();
+        $models = \App\Models\AiModel::query()->whereHas('provider')
+            ->with('provider:id,display_name,provider_type,currency,enabled')
+            ->orderBy('provider_id')->orderBy('provider_model_id')
+            ->paginate(25)->appends(['lang' => $locale]);
+        // Bounded route choices; never silently imply that the entire
+        // registry has loaded once the safety limit is exceeded.
+        $candidateQuery = \App\Models\AiModel::query()->whereHas('provider')
+            ->where('enabled', true)
+            ->whereJsonContains('capabilities_json', 'text')
+            ->with('provider:id,display_name,provider_type,currency,enabled')
+            ->orderBy('provider_id')->orderBy('provider_model_id');
+        $candidates = $candidateQuery->limit(201)->get();
+        $choicesTruncated = $candidates->count() > 200;
+        $candidates = $candidates->take(200);
+        $taskRoute = \App\Models\AiRoute::query()
+            ->where('task_type', \App\AI\MobileDiagnosisAdmission::TASK_TYPE)->first();
+        // The same fail-closed selector used by mobile: read-only DB checks,
+        // no outbound provider call, no generated answer or billing.
+        $selected = app(\App\AI\MobileDiagnosisAdmission::class)->select();
+
+        return response()->view('admin.ai.model-routes', compact(
+            'locale', 'providersForModels', 'models', 'candidates',
+            'choicesTruncated', 'taskRoute', 'selected'
+        ))->header('Cache-Control', 'no-store');
+    })->name('admin.models.index');
+
+    Route::post('/admin/ai/models', function (Request $request) {
+        abort_unless($request->user()?->canAccessAdmin(), 403);
+        $request->validate(['lang' => ['sometimes', 'in:ar,en']]);
+        $input = $request->validate([
+            'provider_id' => ['required', 'uuid',
+                \Illuminate\Validation\Rule::exists('ai_providers', 'id')->whereNull('deleted_at')],
+            'provider_model_id' => ['required', 'string', 'regex:/\A[A-Za-z0-9_.:\-]{1,90}\z/D'],
+            'enabled' => ['required', 'boolean'],
+            'supports_text' => ['required', 'boolean'],
+        ]);
+        if (array_diff(array_keys($request->except('_token', '_method')), array_keys($input)) !== []) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'model' => 'Only model registration fields are supported.',
+            ]);
+        }
+        $provider = \App\Models\AiProvider::query()->findOrFail($input['provider_id']);
+        $request->validate(['provider_model_id' => [
+            \Illuminate\Validation\Rule::unique('ai_models', 'provider_model_id')
+                ->where('provider_id', $provider->id),
+        ]]);
+        \App\Models\AiModel::create([
+            'provider_id' => $provider->id,
+            'provider_model_id' => $input['provider_model_id'],
+            'enabled' => (bool) $input['enabled'],
+            'capabilities_json' => $input['supports_text'] ? ['text'] : [],
+            'cost_policy_json' => $provider->provider_type === 'openai-compatible'
+                ? ['currency' => $provider->currency] : [],
+        ]);
+        $ar = $request->query('lang') === 'ar';
+        return redirect()->route('admin.models.index', $ar ? ['lang' => 'ar'] : [])
+            ->with('status', $ar ? 'تم تسجيل النموذج.' : 'Model registered.');
+    })->middleware('throttle:20,1')->name('admin.models.create');
+
+    Route::patch('/admin/ai/models/{model}', function (
+        Request $request, \App\Models\AiModel $model
+    ) {
+        abort_unless($request->user()?->canAccessAdmin(), 403);
+        $request->validate(['lang' => ['sometimes', 'in:ar,en']]);
+        $fields = $request->validate(['enabled' => ['required', 'boolean']]);
+        if (array_diff(array_keys($request->except('_token', '_method')), ['enabled']) !== []) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'model' => 'Only the enablement state can be changed here.',
+            ]);
+        }
+        abort_if($model->provider === null, 404); // archived provider
+        $model->forceFill(['enabled' => (bool) $fields['enabled']])->save();
+        $ar = $request->query('lang') === 'ar';
+        return redirect()->route('admin.models.index', $ar ? ['lang' => 'ar'] : [])
+            ->with('status', $ar ? 'تم تحديث حالة النموذج.' : 'Model state updated.');
+    })->whereUuid('model')->middleware('throttle:20,1')->name('admin.models.update');
+
+    Route::put('/admin/ai/task-routes/mobile-ai-diagnose', function (Request $request) {
+        abort_unless($request->user()?->canAccessAdmin(), 403);
+        $request->validate(['lang' => ['sometimes', 'in:ar,en']]);
+        $input = $request->validate([
+            'primary_model_id' => ['required', 'uuid'],
+            'fallback_model_ids' => ['sometimes', 'array', 'max:8'],
+            'fallback_model_ids.*' => ['required', 'uuid', 'distinct'],
+            'currency' => ['required', 'in:USD,KWD,EUR'],
+            'reservation_minor' => ['required', 'integer', 'between:0,100000000'],
+            'per_minute' => ['required', 'integer', 'between:1,60'],
+            'per_day' => ['required', 'integer', 'between:1,10000'],
+        ]);
+        if (array_diff(array_keys($request->except('_token', '_method')), array_keys($input)) !== []) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'route' => 'Only task routing fields are supported.',
+            ]);
+        }
+        if ($input['per_day'] < $input['per_minute']) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'per_day' => 'Daily limit must be at least the minute limit.',
+            ]);
+        }
+        $fallbacks = $input['fallback_model_ids'] ?? [];
+        $ids = [$input['primary_model_id'], ...$fallbacks];
+        if (count($ids) !== count(array_unique($ids))) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'fallback_model_ids' => 'Primary and fallback models must be distinct.',
+            ]);
+        }
+        $registry = \App\Models\AiModel::query()->with('provider')
+            ->whereIn('id', $ids)->get()->keyBy('id');
+        foreach ($ids as $id) {
+            $model = $registry->get($id);
+            $provider = $model?->provider;
+            if (! $model || ! $provider || ! $model->enabled
+                || ! in_array('text', $model->capabilities_json ?? [], true)) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'primary_model_id' => 'Choose existing, enabled text-capable models on active providers.',
+                ]);
+            }
+            if ($provider->provider_type === 'openai-compatible'
+                && ($input['reservation_minor'] < 1
+                    || $input['currency'] !== $provider->currency
+                    || ($model->cost_policy_json['currency'] ?? null) !== $provider->currency)) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'currency' => 'Paid model, provider and route reservation currencies must match and reserve a positive amount.',
+                ]);
+            }
+        }
+        \Illuminate\Support\Facades\DB::transaction(static function () use ($input, $fallbacks): void {
+            $route = \App\Models\AiRoute::query()
+                ->where('task_type', \App\AI\MobileDiagnosisAdmission::TASK_TYPE)
+                ->lockForUpdate()->first() ?? new \App\Models\AiRoute([
+                    'task_type' => \App\AI\MobileDiagnosisAdmission::TASK_TYPE,
+                ]);
+            $route->fill([
+                'primary_model_id' => $input['primary_model_id'],
+                'fallback_model_ids_json' => array_values($fallbacks),
+                'budget_json' => [
+                    'currency' => $input['currency'],
+                    'reservation_minor' => (int) $input['reservation_minor'],
+                ],
+                'rate_limits_json' => [
+                    'per_minute' => (int) $input['per_minute'],
+                    'per_day' => (int) $input['per_day'],
+                ],
+            ])->save();
+        }, 3);
+        $ar = $request->query('lang') === 'ar';
+        return redirect()->route('admin.models.index', $ar ? ['lang' => 'ar'] : [])
+            ->with('status', $ar ? 'تم حفظ مسار التشخيص وحدوده.' : 'Diagnosis route and limits saved.');
+    })->middleware('throttle:20,1')->name('admin.task-routes.save');
+
     // T016: bounded, read-only provider billing audit. Saved daily budgets
     // are displayed as settings, not claimed as enforced spend limits.
     // Keep receipts partitioned by their *actual* currency and provider.
