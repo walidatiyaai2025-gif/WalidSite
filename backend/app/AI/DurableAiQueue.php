@@ -214,6 +214,20 @@ final class DurableAiQueue
                 }
                 return false;
             }
+            // An admission reservation is the maximum aggregate charge for
+            // this job, not an allowance per receipt or per retry. Without
+            // this check, multiple smaller receipts can overshoot the job
+            // estimate while remaining under the provider's daily cap.
+            // Check the job's entire receipt history (including past days)
+            // under its locked lease; identical receipts were handled above.
+            $reservedForJob = (int) $job->reserved_budget_minor;
+            $jobRecordedCost = (int) DB::table('ai_usage')
+                ->where('job_id', $jobId)->sum('cost_minor');
+            if ($costMinor > $reservedForJob ||
+                $jobRecordedCost > $reservedForJob - $costMinor) {
+                throw new DomainException('AI job usage exceeds reserved cost.');
+            }
+
             $spent = (int) DB::table('ai_usage')->where('provider_id', $provider->id)
                 ->where('created_at', '>=', now()->startOfDay())->sum('cost_minor');
             if ($spent + $costMinor > (int) $provider->daily_budget_minor) {
