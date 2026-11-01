@@ -74,7 +74,7 @@ class PublicHomeTest extends TestCase
                 ->assertJsonCount(0, 'data.featured_projects')
                 ->assertJsonCount(0, 'data.latest_articles')
                 ->assertJsonPath('meta.lang', $lang)
-                ->assertHeader('Cache-Control', 'no-store');
+                ->assertHeader('Cache-Control', 'no-store, private');
         }
         $this->getJson('/api/v1/public/home?lang=fr')->assertUnprocessable();
         $this->getJson('/api/v1/public/home?lang[]=ar')->assertUnprocessable();
