@@ -78,4 +78,17 @@ class SearchEmptyGroupsTest extends TestCase
             ->assertSee('Verified results: 2 articles, 0 projects.');
     }
 
+    public function test_search_reset_preserves_locale_without_carrying_query(): void
+    {
+        foreach (['en' => 'Clear search', 'ar' => 'مسح البحث'] as $locale => $label) {
+            $this->get('/search?lang='.$locale.'&q=unmatched-unique-query-399')->assertOk()
+                ->assertSee($label)
+                ->assertSee('href="'.route('public.search', ['lang' => $locale]).'"', false)
+                ->assertDontSee('href="'.route('public.search', ['lang' => $locale, 'q' => 'unmatched-unique-query-399']).'"', false);
+
+            $this->get('/search?lang='.$locale)->assertOk()
+                ->assertDontSee('class="ed-clear"', false);
+        }
+    }
+
 }
