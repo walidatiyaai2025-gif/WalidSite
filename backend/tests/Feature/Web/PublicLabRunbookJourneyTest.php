@@ -90,6 +90,42 @@ final class PublicLabRunbookJourneyTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_only_version_reviewed_runbooks_offer_accessible_bilingual_code_copy_actions(): void
+    {
+        Http::fake();
+        $id = $this->guide('copy-example', true,
+            "# Reviewed recovery steps\n\nRun this after validating the environment:\n\n"
+            ."~~~bash\nprintf 'verified source only'\n~~~\n\n"
+            ."<script>alert('not executable')</script>");
+        $draft = $this->guide('private-copy-example', false,
+            "~~~bash\nprintf 'unapproved'\n~~~");
+
+        foreach (['en', 'ar'] as $locale) {
+            $response = $this->get(route('public.lab.runbook', [
+                'id' => $id, 'lang' => $locale,
+            ]))->assertOk()
+                ->assertSee('id="runbook-copy-feedback"', false)
+                ->assertSee('role="status" aria-live="polite" aria-atomic="true"', false)
+                ->assertSee('class="runbook-copy-action"', false)
+                ->assertSee('min-height:44px', false)
+                ->assertSee('navigator.clipboard.writeText(code.textContent ||', false)
+                ->assertSee("printf 'verified source only'")
+                ->assertDontSee('<script>alert(', false)
+                ->assertDontSee('unapproved');
+            $this->assertStringContainsString('no-store', $response->headers->get('Cache-Control'));
+            $response->assertSee($locale === 'ar' ? 'نسخ الكود' : 'Copy code')
+                ->assertSee($locale === 'ar' ? 'تعذر نسخ الكود' : 'Could not copy code')
+                ->assertSee($locale === 'ar' ? 'تم نسخ الكود' : 'Code copied');
+        }
+
+        $this->get('/lab/runbooks/'.$draft)->assertNotFound();
+        DB::table('runbook_versions')->where('runbook_id', $id)
+            ->update(['checksum' => str_repeat('f', 64)]);
+        $this->get('/lab/runbooks/'.$id.'?lang=en')->assertNotFound();
+        $this->get('/lab/runbooks/'.$id.'?lang=ar')->assertNotFound();
+        Http::assertNothingSent();
+    }
+
     public function test_revoked_or_modified_guide_disappears_and_detail_fails_closed(): void
     {
         Http::fake();
