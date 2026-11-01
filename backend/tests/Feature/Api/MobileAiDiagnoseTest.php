@@ -390,7 +390,7 @@ final class MobileAiDiagnoseTest extends TestCase
                 'provider_id' => $provider->id,
             ], 'classify', 'test-worker');
             $this->fail('A revoked provider must not process a queued diagnosis.');
-        } catch (\\RuntimeException $exception) {
+        } catch (\RuntimeException $exception) {
             $this->assertSame('Mobile diagnosis failed safely.', $exception->getMessage());
         }
 
