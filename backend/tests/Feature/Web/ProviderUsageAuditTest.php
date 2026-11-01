@@ -192,4 +192,32 @@ class ProviderUsageAuditTest extends TestCase
             ->assertSee('0 KWD')
             ->assertSee('>0</td>', false);
     }
+    public function test_pagination_preserves_arabic_locale_without_reflecting_untrusted_parameters(): void
+    {
+        $this->actingAs($this->userWithRole('admin'), 'web');
+        for ($i = 1; $i <= 22; $i++) {
+            AiProvider::create([
+                'display_name' => 'Paging Provider '.str_pad((string) $i, 2, '0', STR_PAD_LEFT),
+                'provider_type' => 'ollama-compatible',
+                'base_url' => 'http://127.0.0.1:11434',
+                'enabled' => false,
+                'health_status' => 'unverified',
+                'daily_budget_minor' => 0,
+                'currency' => 'USD',
+            ]);
+        }
+
+        $this->get('/admin/ai/usage?lang=ar&injected=should-not-echo')
+            ->assertOk()
+            ->assertSee('dir="rtl"', false)
+            ->assertSee('lang=ar&amp;page=2', false)
+            ->assertDontSee('should-not-echo');
+
+        $this->get('/admin/ai/usage?lang=ar&page=2')
+            ->assertOk()
+            ->assertSee('dir="rtl"', false)
+            ->assertSee('Paging Provider 21')
+            ->assertDontSee('Paging Provider 01');
+    }
+
 }
