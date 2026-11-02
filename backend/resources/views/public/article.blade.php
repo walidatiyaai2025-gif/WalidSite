@@ -293,6 +293,23 @@
             feedback.textContent = words.cleared;
         }
     });
+    // Keep simultaneous tabs consistent without writing on passive storage events.
+    // A removed entry must not be resurrected by an older tab's next click.
+    window.addEventListener('storage', event => {
+        if (event.key !== storageKey && event.key !== null) return;
+        try {
+            saved = load();
+            feedback.textContent = '';
+            render();
+        } catch (_) {
+            saved = [];
+            toggle.disabled = true;
+            clear.disabled = true;
+            links.replaceChildren();
+            empty.hidden = false;
+            feedback.textContent = words.unavailable;
+        }
+    });
     feedback.textContent = '';
     render();
 })();
