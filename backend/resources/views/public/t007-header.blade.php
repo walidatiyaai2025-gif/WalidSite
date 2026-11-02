@@ -21,6 +21,11 @@
         @php($t007RawTrack = request()->query()['track'] ?? 'all')
         @php($t007SwitchArgs['track'] = is_string($t007RawTrack) && in_array($t007RawTrack, ['all', 'database', 'software', 'delivery'], true) ? $t007RawTrack : 'all')
     @endif
+    @if($t007Current === 'public.expertise')
+        {{-- Keep a valid expertise category across locales; discard arrays and unknown values. --}}
+        @php($t007RawCategory = request()->query()['category'] ?? 'all')
+        @php($t007SwitchArgs['category'] = is_string($t007RawCategory) && in_array($t007RawCategory, ['all', 'database', 'software', 'ai', 'leadership'], true) ? $t007RawCategory : 'all')
+    @endif
     {{-- Language selection must be visible and keyboard-operable, not screen-reader-only.
          Preserve the recruiter track only after validating its public allowlist. --}}
     <a class="t007-contact t007-language-switch" lang="{{ $t007Locale === 'ar' ? 'en' : 'ar' }}" hreflang="{{ $t007Locale === 'ar' ? 'en' : 'ar' }}" aria-label="{{ $t007Locale === 'ar' ? 'Switch to English' : 'التبديل إلى العربية' }}" href="{{ route($t007SwitchRoute, $t007SwitchArgs) }}">
