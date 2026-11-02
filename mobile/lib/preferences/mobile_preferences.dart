@@ -278,10 +278,27 @@ class _MobilePreferencesScreenState extends State<MobilePreferencesScreen> {
             label('Light theme is the only verified theme in this build.',
                 'المظهر الفاتح هو المظهر الوحيد المتحقق منه في هذا الإصدار.'),
             action: OutlinedButton.icon(
-              key: const Key('preferences-change-theme-unavailable'),
-              onPressed: null,
+              key: const Key('preferences-change-theme'),
+              onPressed: () => showDialog<void>(
+                context: context,
+                builder: (dialogContext) => AlertDialog(
+                  key: const Key('preferences-theme-unavailable'),
+                  title: Text(label('Light theme only', 'المظهر الفاتح فقط')),
+                  content: Text(label(
+                    'No second theme is verified in this build. Nothing will be changed.',
+                    'لا يوجد مظهر ثانٍ متحقق منه في هذا الإصدار، ولن يتم تغيير أي إعداد.',
+                  )),
+                  actions: [
+                    TextButton(
+                      key: const Key('preferences-theme-dismiss'),
+                      onPressed: () => Navigator.pop(dialogContext),
+                      child: Text(label('OK', 'حسنًا')),
+                    ),
+                  ],
+                ),
+              ),
               icon: const Icon(Icons.light_mode_outlined),
-              label: Text(label('Light theme only', 'المظهر الفاتح فقط')),
+              label: Text(label('Theme availability', 'حالة المظهر')),
             )),
           const SizedBox(height: 12),
           _panel('offline', label('Offline mode', 'وضع عدم الاتصال'),
