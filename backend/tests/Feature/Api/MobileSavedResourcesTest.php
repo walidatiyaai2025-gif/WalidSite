@@ -336,6 +336,49 @@ final class MobileSavedResourcesTest extends TestCase
         $this->assertDatabaseCount('saved_resources', 0);
     }
 
+    public function test_quota_check_and_insert_share_a_nested_admission_transaction(): void
+    {
+        $owner = $this->user('transaction-owner');
+        $article = $this->article('transaction-guide');
+        $this->withToken($this->token($owner));
+
+        // RefreshDatabase already starts an outer test transaction. Ensure
+        // admission opens an additional transaction around BOTH count and
+        // insert instead of relying on sequential requests to mimic a race.
+        $baseline = DB::transactionLevel();
+        $counts = [];
+        $inserts = [];
+        $locks = [];
+        DB::listen(function ($event) use (&$counts, &$inserts, &$locks): void {
+            $sql = strtolower($event->sql);
+            $level = DB::transactionLevel();
+            if (str_contains($sql, 'saved_resources') && str_contains($sql, 'count(')) {
+                $counts[] = $level;
+            }
+            if (str_contains($sql, 'saved_resources') && str_contains($sql, 'insert')) {
+                $inserts[] = $level;
+            }
+            if (str_contains($sql, 'users') && str_contains($sql, 'status') &&
+                str_contains($sql, 'select')) {
+                $locks[] = $level;
+            }
+        });
+
+        $this->postJson('/api/v1/mobile/saved', [
+            'resource_type' => 'article', 'resource_id' => $article->id,
+        ])->assertOk()->assertJsonPath('data.saved', true);
+
+        $this->assertNotEmpty($locks, 'Account must be read under the admission lock.');
+        $this->assertNotEmpty($counts, 'Quota check must run inside admission.');
+        $this->assertNotEmpty($inserts, 'Bookmark insert must run inside admission.');
+        foreach ([$locks, $counts, $inserts] as $levels) {
+            $this->assertGreaterThan($baseline, min($levels),
+                'Account lock, quota check and insert must all run in one nested transaction.');
+        }
+        $this->assertSame($baseline, DB::transactionLevel());
+        $this->assertDatabaseCount('saved_resources', 1);
+    }
+
     public function test_production_plaintext_denied_before_processing_bearer_credentials(): void
     {
         $user = $this->user('secure-reader');
