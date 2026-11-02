@@ -323,6 +323,19 @@ final class MobileSavedResourcesTest extends TestCase
         $this->assertSame(1, DB::table('saved_resources')->where('user_id', $second->id)->count());
     }
 
+    public function test_inactive_account_is_denied_without_creating_bookmark(): void
+    {
+        $user = $this->user('quota-inactive');
+        $article = $this->article('quota-inactive-public');
+        $token = $this->token($user);
+        DB::table('users')->where('id', $user->id)->update(['status' => 'inactive']);
+
+        $this->withToken($token)->postJson('/api/v1/mobile/saved', [
+            'resource_type' => 'article', 'resource_id' => $article->id,
+        ])->assertForbidden();
+        $this->assertDatabaseCount('saved_resources', 0);
+    }
+
     public function test_production_plaintext_denied_before_processing_bearer_credentials(): void
     {
         $user = $this->user('secure-reader');
