@@ -327,7 +327,7 @@ final class T012ReferenceStageTest extends TestCase
                 route('public.search', ['lang' => $lang, 'q' => 'reviewed', 'type' => 'articles']),
             ];
             $labLink = 'href="'.e(route('public.lab', ['lang' => $lang])).'">'
-                .($lang === 'ar' ? 'المختبر التقني' : 'Tech Lab').'</a>';
+                .($lang === 'ar' ? 'مختبر AI' : 'AI Lab').'</a>';
 
             foreach ($pages as $url) {
                 $response = $this->get($url)->assertOk()
