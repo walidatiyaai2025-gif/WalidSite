@@ -47,6 +47,8 @@ def capture(root: Path, screen_id: str, *, commit: str, locale: str,
         raise CaptureError("Invalid locale or device pixel ratio")
     if not command or any("assets/screen-reference" in part for part in command):
         raise CaptureError("Supply a runtime renderer command, not an original reference")
+    if timeout <= 0 or timeout > 3600:
+        raise CaptureError("Capture timeout must be between 1 and 3600 seconds")
     if any("\n" in arg or "\r" in arg for arg in command):
         raise CaptureError("Multiline capture commands are not auditable")
     errors, _, _ = audit(root)
