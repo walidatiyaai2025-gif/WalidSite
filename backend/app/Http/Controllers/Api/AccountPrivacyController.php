@@ -142,7 +142,14 @@ final class AccountPrivacyController extends Controller
 
                 $enable = (bool) $inputPreference['enabled'];
                 if ($enable) {
-                    if (! $preference->exists || $preference->enabled !== true) {
+                    // The user is actively opting in here. Imported or
+                    // corrupted future timestamps are not valid prior consent;
+                    // replace them with the verified current opt-in time.
+                    if (! $preference->exists
+                        || $preference->enabled !== true
+                        || $preference->consented_at === null
+                        || $preference->consented_at->isFuture()
+                        || $preference->revoked_at !== null) {
                         $preference->consented_at = now('UTC');
                     }
                     $preference->enabled = true;
@@ -303,7 +310,10 @@ final class AccountPrivacyController extends Controller
                 $result[] = [
                     'purpose' => $purpose,
                     'channel' => $channel,
-                    'enabled' => $preference?->enabled === true,
+                    'enabled' => $preference?->enabled === true
+                        && $preference->consented_at !== null
+                        && ! $preference->consented_at->isFuture()
+                        && $preference->revoked_at === null,
                     'consented_at' => $preference?->consented_at?->toIso8601String(),
                     'revoked_at' => $preference?->revoked_at?->toIso8601String(),
                 ];
