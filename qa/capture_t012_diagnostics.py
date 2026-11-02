@@ -195,8 +195,16 @@ def main() -> int:
                             checks = page.evaluate("""() => {
                                 const localeLink = document.querySelector(
                                     '.t012-nav-shell > a.t012-locale-switch');
-                                const labLink = document.querySelector(
-                                    '.t012-nav-links a[href^="/lab"]');
+                                const labLink = Array.from(document.querySelectorAll(
+                                    '.t012-nav-links a')).find(node => {
+                                    try {
+                                        const url = new URL(node.href, location.href);
+                                        return url.origin === location.origin
+                                            && url.pathname === '/lab';
+                                    } catch (_) {
+                                        return false;
+                                    }
+                                });
                                 const box = localeLink?.getBoundingClientRect();
                                 return {
                                     viewport_width: innerWidth,
