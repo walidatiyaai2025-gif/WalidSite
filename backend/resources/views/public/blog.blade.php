@@ -26,6 +26,13 @@
 .blog-pages{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:28px}
 .blog-pages :is(a,span){min-height:44px;display:inline-flex;align-items:center;padding:8px 15px;border:1px solid var(--wa-soft-border);border-radius:10px;background:#fff}
 .blog-pages a{color:var(--wa-cta);font-weight:700}
+
+.blog-saved{margin-block:28px;background:#fff;border:1px solid var(--wa-soft-border);border-radius:18px;padding:24px}
+.blog-saved h2{color:var(--wa-primary);margin-top:0}
+.blog-saved p{overflow-wrap:anywhere}.blog-saved ul{padding-inline-start:24px}
+.blog-saved li{margin-block:8px;overflow-wrap:anywhere}
+.blog-saved a{color:var(--wa-cta);display:inline-flex;align-items:center;min-height:44px;font-weight:700}
+.blog-saved a:focus-visible{outline:3px solid var(--wa-cta);outline-offset:3px}
 </style>
 @endpush
 @section('content')
@@ -94,5 +101,105 @@
             @endif
         </nav>
     @endif
+
+    <section class="blog-saved" aria-labelledby="blog-saved-heading" id="blog-saved-links">
+        <h2 id="blog-saved-heading">{{ $locale === 'ar' ? 'روابط القراءة المحفوظة على هذا الجهاز' : 'Reading links saved on this device' }}</h2>
+        <p>{{ $locale === 'ar'
+            ? 'هذه روابط عامة حفظتها بنفسك في هذا المتصفح، وليست قائمة مرتبطة بالحساب. تتحقق صفحة المقال من حالة النشر والمصادر مجددًا عند فتح كل رابط؛ قد لا يعود المحتوى متاحًا بعد سحب اعتماده.'
+            : 'These are public links you explicitly saved in this browser, not an account reading history. Every linked article is rechecked for publication and evidence when opened, and revoked content may no longer be available.' }}</p>
+        <p id="blog-saved-status" role="status" aria-live="polite" aria-atomic="true">{{ $locale === 'ar' ? 'يتطلب عرض المحفوظات تشغيل JavaScript وإتاحة تخزين المتصفح.' : 'Showing local saved links requires JavaScript and browser storage.' }}</p>
+        <button id="blog-clear-saved" type="button" hidden>{{ $locale === 'ar' ? 'مسح كل الروابط المحفوظة' : 'Clear all saved links' }}</button>
+        <ul id="blog-saved-items" aria-label="{{ $locale === 'ar' ? 'روابط محفوظة محليًا' : 'Locally saved links' }}"></ul>
+    </section>
 </section>
+
+<script>
+(() => {
+    'use strict';
+    const locale = @json($locale);
+    const storageKey = 'walidsite:public-reading-list:v1';
+    @php($localArticlePath = route('public.article', ['slug' => 'reading-list-placeholder', 'lang' => $locale], false))
+    const articlePath = @json($localArticlePath);
+    const status = document.getElementById('blog-saved-status');
+    const list = document.getElementById('blog-saved-items');
+    const clearButton = document.getElementById('blog-clear-saved');
+    if (!status || !list || !clearButton) return;
+    const validSlug = slug => typeof slug === 'string'
+        && /^[A-Za-z0-9-]{1,220}$/.test(slug);
+    function render() {
+        let parsed;
+        try {
+            const raw = window.localStorage.getItem(storageKey);
+            parsed = raw === null ? [] : JSON.parse(raw);
+            if (!Array.isArray(parsed)) throw new Error('Unexpected saved links');
+        } catch (_) {
+            list.replaceChildren();
+            clearButton.hidden = true;
+            status.textContent = locale === 'ar'
+                ? 'تعذر قراءة روابط الحفظ المحلي من هذا المتصفح.'
+                : 'Browser local saved links are unavailable.';
+            return;
+        }
+        const seen = new Set();
+        list.replaceChildren();
+        parsed.filter(entry => {
+            if (!entry || typeof entry !== 'object'
+                || !validSlug(entry.slug)
+                || typeof entry.en !== 'string' || entry.en.length < 1 || entry.en.length > 500
+                || typeof entry.ar !== 'string' || entry.ar.length < 1 || entry.ar.length > 500
+                || seen.has(entry.slug)) return false;
+            seen.add(entry.slug);
+            return true;
+        }).slice(0, 30).forEach(entry => {
+            const item = document.createElement('li');
+            const link = document.createElement('a');
+            // Local storage is never a trusted URL or safe HTML source.
+            link.href = articlePath.replace('reading-list-placeholder', encodeURIComponent(entry.slug));
+            link.textContent = locale === 'ar' ? entry.ar : entry.en;
+            item.appendChild(link);
+            const remove = document.createElement('button');
+            remove.type = 'button';
+            remove.textContent = locale === 'ar' ? 'إزالة من المحفوظات' : 'Remove saved link';
+            remove.setAttribute('aria-label', (locale === 'ar' ? 'إزالة: ' : 'Remove: ') + (locale === 'ar' ? entry.ar : entry.en));
+            remove.addEventListener('click', () => {
+                try {
+                    // Re-read immediately to avoid overwriting changes from another tab.
+                    const latest = window.localStorage.getItem(storageKey);
+                    const current = latest === null ? [] : JSON.parse(latest);
+                    if (!Array.isArray(current)) throw new Error('Invalid reading list');
+                    const remaining = current.filter(value => value && typeof value === 'object' && value.slug !== entry.slug);
+                    window.localStorage.setItem(storageKey, JSON.stringify(remaining));
+                    render();
+                } catch (_) {
+                    status.textContent = locale === 'ar'
+                        ? 'تعذر تعديل روابط الحفظ المحلي.' : 'Could not update locally saved links.';
+                }
+            });
+            item.appendChild(remove);
+            list.appendChild(item);
+        });
+        clearButton.hidden = list.children.length === 0;
+        status.textContent = list.children.length === 0
+            ? (locale === 'ar' ? 'لا توجد روابط محفوظة بعد.' : 'No links have been saved yet.')
+            : (locale === 'ar' ? 'روابط محفوظة محليًا فقط، وقد يُلغى نشرها لاحقًا.' : 'Locally saved links only; availability is rechecked on open.');
+    }
+    clearButton.addEventListener('click', () => {
+        try {
+            // Clearing removes only this browser's reading-list key.
+            window.localStorage.removeItem(storageKey);
+            render();
+            status.textContent = locale === 'ar'
+                ? 'تم مسح جميع الروابط المحفوظة محليًا.' : 'All locally saved links were cleared.';
+        } catch (_) {
+            status.textContent = locale === 'ar'
+                ? 'تعذر مسح روابط الحفظ المحلي.' : 'Could not clear locally saved links.';
+        }
+    });
+    // Changes made in another tab must immediately update this public list.
+    window.addEventListener('storage', event => {
+        if (event.key === storageKey || event.key === null) render();
+    });
+    render();
+})();
+</script>
 @endsection

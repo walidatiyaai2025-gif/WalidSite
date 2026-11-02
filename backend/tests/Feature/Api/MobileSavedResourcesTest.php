@@ -262,6 +262,123 @@ final class MobileSavedResourcesTest extends TestCase
         $this->assertSame($ids, $got);
     }
 
+    public function test_saved_quota_counts_hidden_items_and_duplicate_at_capacity_is_idempotent(): void
+    {
+        $user = $this->user('quota');
+        $article = $this->article('quota-public');
+        $this->withToken($this->token($user));
+        for ($i = 0; $i < 199; $i++) {
+            DB::table('saved_resources')->insert([
+                'id' => (string) Str::uuid(), 'user_id' => $user->id,
+                'resource_type' => 'article', 'resource_id' => (string) Str::uuid(),
+                'saved_at' => now(),
+            ]);
+        }
+        $payload = ['resource_type' => 'article', 'resource_id' => $article->id];
+        $this->postJson('/api/v1/mobile/saved', $payload)->assertOk();
+        $this->assertSame(200, DB::table('saved_resources')->where('user_id', $user->id)->count());
+        $this->postJson('/api/v1/mobile/saved', $payload)->assertOk();
+        $this->assertDatabaseCount('saved_resources', 200);
+
+        $second = $this->article('quota-second');
+        $this->postJson('/api/v1/mobile/saved', [
+            'resource_type' => 'article', 'resource_id' => $second->id,
+        ])->assertUnprocessable();
+        $this->assertDatabaseCount('saved_resources', 200);
+
+        $this->deleteJson('/api/v1/mobile/saved/article/'.$article->id)
+            ->assertOk()->assertJsonPath('data.removed', true);
+        $this->postJson('/api/v1/mobile/saved', [
+            'resource_type' => 'article', 'resource_id' => $second->id,
+        ])->assertOk();
+        $this->assertDatabaseCount('saved_resources', 200);
+    }
+
+    public function test_saved_quota_is_isolated_per_account(): void
+    {
+        $first = $this->user('quota-first');
+        $second = $this->user('quota-second');
+        $article = $this->article('quota-shared-public');
+
+        for ($i = 0; $i < 200; $i++) {
+            DB::table('saved_resources')->insert([
+                'id' => (string) Str::uuid(), 'user_id' => $first->id,
+                'resource_type' => 'article', 'resource_id' => (string) Str::uuid(),
+                'saved_at' => now(),
+            ]);
+        }
+
+        $this->withToken($this->token($first))
+            ->postJson('/api/v1/mobile/saved', [
+                'resource_type' => 'article', 'resource_id' => $article->id,
+            ])->assertUnprocessable();
+
+        Auth::forgetGuards();
+        $this->withToken($this->token($second))
+            ->postJson('/api/v1/mobile/saved', [
+                'resource_type' => 'article', 'resource_id' => $article->id,
+            ])->assertOk();
+
+        $this->assertSame(200, DB::table('saved_resources')->where('user_id', $first->id)->count());
+        $this->assertSame(1, DB::table('saved_resources')->where('user_id', $second->id)->count());
+    }
+
+    public function test_inactive_account_is_denied_without_creating_bookmark(): void
+    {
+        $user = $this->user('quota-inactive');
+        $article = $this->article('quota-inactive-public');
+        $token = $this->token($user);
+        DB::table('users')->where('id', $user->id)->update(['status' => 'inactive']);
+
+        $this->withToken($token)->postJson('/api/v1/mobile/saved', [
+            'resource_type' => 'article', 'resource_id' => $article->id,
+        ])->assertForbidden();
+        $this->assertDatabaseCount('saved_resources', 0);
+    }
+
+    public function test_quota_check_and_insert_share_a_nested_admission_transaction(): void
+    {
+        $owner = $this->user('transaction-owner');
+        $article = $this->article('transaction-guide');
+        $this->withToken($this->token($owner));
+
+        // RefreshDatabase already starts an outer test transaction. Ensure
+        // admission opens an additional transaction around BOTH count and
+        // insert instead of relying on sequential requests to mimic a race.
+        $baseline = DB::transactionLevel();
+        $counts = [];
+        $inserts = [];
+        $locks = [];
+        DB::listen(function ($event) use (&$counts, &$inserts, &$locks): void {
+            $sql = strtolower($event->sql);
+            $level = DB::transactionLevel();
+            if (str_contains($sql, 'saved_resources') && str_contains($sql, 'count(')) {
+                $counts[] = $level;
+            }
+            if (str_contains($sql, 'saved_resources') && str_contains($sql, 'insert')) {
+                $inserts[] = $level;
+            }
+            if (str_contains($sql, 'users') && str_contains($sql, 'status') &&
+                str_contains($sql, 'select')) {
+                $locks[] = $level;
+            }
+        });
+
+        $this->postJson('/api/v1/mobile/saved', [
+            'resource_type' => 'article', 'resource_id' => $article->id,
+        ])->assertOk()->assertJsonPath('data.saved', true);
+
+        $this->assertNotEmpty($locks, 'Account must be read under the admission lock.');
+        $this->assertNotEmpty($counts, 'Quota check must run inside admission.');
+        $this->assertNotEmpty($inserts, 'Bookmark insert must run inside admission.');
+        foreach ([$locks, $counts, $inserts] as $levels) {
+            $this->assertGreaterThan($baseline, min($levels),
+                'Account lock, quota check and insert must all run in one nested transaction.');
+        }
+        $this->assertSame($baseline, DB::transactionLevel());
+        $this->assertDatabaseCount('saved_resources', 1);
+    }
+
     public function test_production_plaintext_denied_before_processing_bearer_credentials(): void
     {
         $user = $this->user('secure-reader');

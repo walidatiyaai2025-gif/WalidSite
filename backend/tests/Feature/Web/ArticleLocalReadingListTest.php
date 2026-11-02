@@ -1,0 +1,212 @@
+<?php
+
+namespace Tests\Feature\Web;
+
+use App\Models\Article;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TestCase;
+
+final class ArticleLocalReadingListTest extends TestCase
+{
+    use RefreshDatabase;
+
+    private function approvedArticle(string $englishTitle = 'Reviewed failover guide'): Article
+    {
+        $article = Article::create([
+            'slug' => 'reviewed-local-reading-guide',
+            'title_en' => $englishTitle,
+            'title_ar' => 'دليل تقني موثق للحفظ المحلي',
+            'canonical_lang' => 'en',
+        ]);
+        $article->revisions()->create([
+            'revision_no' => 1,
+            'body_md' => "# Reviewed failover procedure\n\nA cited technical step.",
+            'status' => 'validated',
+            'citations_json' => [[
+                'source_url' => 'https://docs.example.org/verified-failover',
+                'verified' => true,
+            ]],
+            'validation_json' => [
+                'citations_passed' => true,
+                'technical_passed' => true,
+            ],
+        ]);
+        $article->publishVerified();
+
+        return $article;
+    }
+
+    public function test_bilingual_approved_article_has_explicit_local_only_save_revisit_remove_and_clear_controls(): void
+    {
+        $article = $this->approvedArticle();
+        foreach (['en', 'ar'] as $locale) {
+            $page = $this->get(route('public.article', [
+                'slug' => $article->slug, 'lang' => $locale,
+            ]))->assertOk()
+                ->assertSee('id="reading-list-heading"', false)
+                ->assertSee('id="article-save-toggle" type="button" aria-pressed="false" disabled', false)
+                ->assertSee('id="article-reading-clear" type="button" disabled', false)
+                ->assertSee('id="article-reading-links"', false)
+                ->assertSee('id="article-reading-status"', false)
+                ->assertSee('role="status" aria-live="polite" aria-atomic="true"', false)
+                ->assertSee("const storageKey = 'walidsite:public-reading-list:v1'", false)
+                ->assertSee('window.localStorage.setItem(storageKey, JSON.stringify(next))', false)
+                ->assertSee("saved.some(item => item.slug === current.slug)", false)
+                ->assertSee("saved.filter(item => item.slug !== current.slug)", false)
+                ->assertSee('window.confirm(words.confirm)', false)
+                ->assertSee('const limit = 30', false)
+                ->assertSee('links.replaceChildren()', false)
+                ->assertSee('anchor.textContent =', false)
+                ->assertSee("articlePath.replace('reading-list-placeholder', encodeURIComponent(item.slug))", false)
+                ->assertSee("button:focus-visible", false)
+                ->assertSee('article-reading-list{display:none!important}', false);
+            if ($locale === 'ar') {
+                $page->assertSee('القراءة لاحقًا على هذا الجهاز')
+                    ->assertSee('لا يُرسل سجل القراءة إلى الخادم')
+                    ->assertSee('حفظ هذا المقال محليًا')
+                    ->assertSee('حذف كل الروابط المحفوظة')
+                    ->assertSee('dir="rtl"', false);
+            } else {
+                $page->assertSee('Read later on this device')
+                    ->assertSee('not uploaded or synced with an account')
+                    ->assertSee('Save this article locally')
+                    ->assertSee('Clear saved links')
+                    ->assertSee('dir="ltr"', false);
+            }
+            // The only target is the server-owned published article route.
+            $page->assertSee('reading-list-placeholder', false)
+                ->assertDontSee('localStorage.setItem("bearer"', false);
+            $this->assertStringNotContainsString('Set-Cookie: saved',
+                implode(' ', $page->headers->all('Set-Cookie')));
+        }
+    }
+
+    public function test_bilingual_blog_can_revisit_local_article_links_without_rendering_unapproved_server_content(): void
+    {
+        $this->approvedArticle();
+        Article::create([
+            'slug' => 'unreviewed-stored-candidate',
+            'title_en' => 'Private article not in verified blog',
+            'title_ar' => 'مقال خاص',
+            'canonical_lang' => 'en',
+        ]);
+
+        foreach (['en', 'ar'] as $locale) {
+            $response = $this->get(route('public.blog', ['lang' => $locale]))
+                ->assertOk()
+                ->assertSee('id="blog-saved-links"', false)
+                ->assertSee('id="blog-saved-items"', false)
+                ->assertSee('id="blog-saved-status" role="status" aria-live="polite" aria-atomic="true"', false)
+                ->assertSee("const storageKey = 'walidsite:public-reading-list:v1'", false)
+                ->assertSee("window.localStorage.getItem(storageKey)", false)
+                ->assertSee("validSlug(entry.slug)", false)
+                ->assertSee("encodeURIComponent(entry.slug)", false)
+                ->assertSee("link.textContent = locale === 'ar' ? entry.ar : entry.en", false)
+                ->assertSee("articlePath.replace('reading-list-placeholder', encodeURIComponent(entry.slug))", false)
+                ->assertDontSee('Private article not in verified blog');
+            if ($locale === 'ar') {
+                $response->assertSee('روابط القراءة المحفوظة على هذا الجهاز')
+                    ->assertSee('تتحقق صفحة المقال')
+                    ->assertSee('dir="rtl"', false);
+            } else {
+                $response->assertSee('Reading links saved on this device')
+                    ->assertSee('not an account reading history')
+                    ->assertSee('dir="ltr"', false);
+            }
+        }
+    }
+
+    public function test_unapproved_or_revoked_articles_never_become_public_through_local_saved_links(): void
+    {
+        $approved = $this->approvedArticle();
+        $draft = Article::create([
+            'slug' => 'private-draft-reading-link',
+            'title_en' => 'PRIVATE-ARTICLE-NOT-FOR-READING-LIST',
+            'title_ar' => 'مسودة لا تنشر',
+            'canonical_lang' => 'en',
+        ]);
+
+        $this->get('/blog/'.$draft->slug)->assertNotFound();
+        $this->get('/blog/'.$approved->slug.'?lang=en')->assertOk()
+            ->assertSee('Every visit rechecks publication and evidence');
+
+        // Even if a browser retained the slug, the next HTTP visit must
+        // refuse its revoked evidence rather than serving cached content.
+        $approved->revisions()->where('revision_no', 1)->firstOrFail()
+            ->update(['validation_json' => [
+                'citations_passed' => false,
+                'technical_passed' => true,
+            ]]);
+        $this->get('/blog/'.$approved->slug.'?lang=en')->assertNotFound();
+        $this->get('/blog/'.$approved->slug.'?lang=ar')->assertNotFound();
+    }
+
+    public function test_untrusted_published_titles_cannot_escape_json_script_or_saved_link_markup(): void
+    {
+        $article = $this->approvedArticle('Reviewed </script><script>alert("unsafe")</script> source');
+        $html = $this->get('/blog/'.$article->slug.'?lang=en')
+            ->assertOk()->getContent();
+
+        $this->assertStringNotContainsString('</script><script>alert', $html);
+        $this->assertStringContainsString('\\u003C/script\\u003E', $html);
+        $this->assertStringContainsString('anchor.textContent =', $html);
+        $this->assertStringContainsString("validSlug(value.slug)", $html);
+        $this->assertStringContainsString("validTitle(value.en)", $html);
+        $this->assertStringContainsString("validTitle(value.ar)", $html);
+        $this->assertStringNotContainsString('anchor.innerHTML', $html);
+    }
+    public function test_article_reading_list_reconciles_other_tab_changes_without_persisting_them(): void
+    {
+        $article = $this->approvedArticle();
+        $html = $this->get('/blog/'.$article->slug.'?lang=en')
+            ->assertOk()->getContent();
+
+        $this->assertStringContainsString("window.addEventListener('storage', event => {", $html);
+        $this->assertStringContainsString('if (event.key !== storageKey && event.key !== null) return;', $html);
+        $this->assertStringContainsString('saved = load();', $html);
+        $this->assertStringContainsString('toggle.disabled = true;', $html);
+        $this->assertStringContainsString('links.replaceChildren();', $html);
+        $this->assertStringContainsString('feedback.textContent = words.unavailable;', $html);
+    }
+
+    public function test_blog_saved_links_reconcile_other_tab_edits_and_fail_closed_on_storage_error(): void
+    {
+        $this->approvedArticle();
+        foreach (['en', 'ar'] as $locale) {
+            $html = $this->get('/blog?lang='.$locale)->assertOk()->getContent();
+            $this->assertStringContainsString("window.addEventListener('storage', event => {", $html);
+            $this->assertStringContainsString('event.key === storageKey || event.key === null', $html);
+            $this->assertStringContainsString('list.replaceChildren();', $html);
+            $this->assertStringContainsString('function render() {', $html);
+            $this->assertStringContainsString('render();', $html);
+            $this->assertStringContainsString('link.textContent = locale ===', $html);
+        }
+    }
+
+    public function test_blog_reading_list_offers_accessible_local_removal_without_server_mutation(): void
+    {
+        $this->approvedArticle();
+        foreach (['en', 'ar'] as $locale) {
+            $html = $this->get('/blog?lang='.$locale)->assertOk()->getContent();
+            $this->assertStringContainsString("remove.type = 'button';", $html);
+            $this->assertStringContainsString("remove.addEventListener('click', () => {", $html);
+            $this->assertStringContainsString("remove.setAttribute('aria-label',", $html);
+            $this->assertStringContainsString('window.localStorage.getItem(storageKey)', $html);
+            $this->assertStringContainsString('window.localStorage.setItem(storageKey, JSON.stringify(remaining))', $html);
+            $this->assertStringContainsString('value.slug !== entry.slug', $html);
+            $this->assertStringNotContainsString('fetch(', $html);
+        }
+    }
+
+    public function test_blog_can_clear_browser_only_saved_links_in_both_languages(): void
+    {
+        foreach (['en', 'ar'] as $locale) {
+            $this->get('/blog?lang='.$locale)->assertOk()
+                ->assertSee('id="blog-clear-saved"', false)
+                ->assertSee('window.localStorage.removeItem(storageKey)', false)
+                ->assertSee('clearButton.hidden = list.children.length === 0', false)
+                ->assertSee('clearButton.addEventListener(\'click\'', false);
+        }
+    }
+
+}

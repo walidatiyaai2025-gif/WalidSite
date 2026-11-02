@@ -73,6 +73,17 @@
 .article-nav{display:flex;flex-wrap:wrap;gap:18px;margin-bottom:18px}.article-nav a{min-height:44px;display:inline-flex;align-items:center;color:var(--wa-cta);font-weight:700}
 .copy-action{margin-top:16px;margin-bottom:5px;background:var(--wa-cta);border:0;border-radius:8px;color:#fff;padding:9px 14px;min-height:44px;cursor:pointer;font:inherit;font-weight:700}
 .article-note{font-size:13px;color:var(--wa-muted-text)}
+
+.article-reading-list{margin-block:26px;background:#fff;border:1px solid var(--wa-soft-border);border-radius:18px;padding:24px}
+.article-reading-list h2{color:var(--wa-primary);margin-top:0}
+.reading-list-actions{display:flex;flex-wrap:wrap;gap:12px;margin-block:14px}
+.reading-list-actions button{font:inherit;font-weight:700;min-height:44px;border-radius:10px;padding:10px 16px;border:1px solid var(--wa-cta);color:var(--wa-primary);background:#fff;cursor:pointer}
+.reading-list-actions button[aria-pressed="true"]{background:var(--wa-cta);color:#fff}
+.reading-list-actions button:disabled{opacity:.6;cursor:not-allowed}
+.reading-list-actions button:focus-visible,.article-reading-list a:focus-visible{outline:3px solid var(--wa-cta);outline-offset:3px}
+.article-reading-list ul{padding-inline-start:24px}.article-reading-list li{margin-block:8px;overflow-wrap:anywhere}
+.article-reading-list a{color:var(--wa-cta);min-height:44px;display:inline-flex;align-items:center}
+@media print{.article-reading-list{display:none!important}}
 .article-related{margin-block:26px;background:#fff;border:1px solid var(--wa-soft-border);border-radius:18px;padding:24px}
 .article-related h2{color:var(--wa-primary);margin-top:0}
 .article-related-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));gap:12px;list-style:none;padding:0}
@@ -106,6 +117,20 @@
         <p class="article-note">{{ $locale === 'ar'
             ? 'التحقق من المصادر لا يعني إثبات تجربة تشغيل فعلية. حفظ المقال للحسابات سيُفعّل بعد اكتمال الميزة.'
             : 'Source validation does not prove runtime execution. Account-based article saving is not yet available.' }}</p>
+    </section>
+
+    <section class="article-reading-list" aria-labelledby="reading-list-heading">
+        <h2 id="reading-list-heading">{{ $locale === 'ar' ? 'القراءة لاحقًا على هذا الجهاز' : 'Read later on this device' }}</h2>
+        <p class="article-note">{{ $locale === 'ar'
+            ? 'احفظ رابط المقال العام على هذا المتصفح فقط. لا يُرسل سجل القراءة إلى الخادم ولا يتزامن مع الحساب أو الأجهزة الأخرى. يخضع كل فتح جديد لفحص النشر والمصادر؛ قد يتعذر فتح مقال سُحبت الموافقة عليه.'
+            : 'Save public article links only in this browser. Your reading list is not uploaded or synced with an account or another device. Every visit rechecks publication and evidence, so revoked articles can become unavailable.' }}</p>
+        <div class="reading-list-actions">
+            <button id="article-save-toggle" type="button" aria-pressed="false" disabled>{{ $locale === 'ar' ? 'حفظ هذا المقال محليًا' : 'Save this article locally' }}</button>
+            <button id="article-reading-clear" type="button" disabled>{{ $locale === 'ar' ? 'حذف كل الروابط المحفوظة' : 'Clear saved links' }}</button>
+        </div>
+        <p id="article-reading-empty" class="article-note">{{ $locale === 'ar' ? 'لا توجد روابط محفوظة.' : 'No saved links yet.' }}</p>
+        <ul id="article-reading-links" aria-label="{{ $locale === 'ar' ? 'روابط المقالات المحفوظة محليًا' : 'Locally saved article links' }}"></ul>
+        <p id="article-reading-status" class="article-note" role="status" aria-live="polite" aria-atomic="true">{{ $locale === 'ar' ? 'يتطلب الحفظ تشغيل JavaScript وتفعيل التخزين المحلي للمتصفح.' : 'Saving requires JavaScript and browser local storage.' }}</p>
     </section>
     @if($related->isNotEmpty())
     <section class="article-related" aria-labelledby="related-articles-title">
@@ -146,6 +171,147 @@
         });
         pre.parentNode.insertBefore(button, pre);
     });
+})();
+</script>
+
+<script>
+(() => {
+    'use strict';
+    const locale = @json($locale);
+    const current = {
+        slug: @json($article->slug),
+        en: @json($article->title_en),
+        ar: @json($article->title_ar),
+    };
+    // The route template comes from Laravel, not a stored or third-party URL.
+    @php($localArticlePath = route('public.article', ['slug' => 'reading-list-placeholder', 'lang' => $locale], false))
+    const articlePath = @json($localArticlePath);
+    const storageKey = 'walidsite:public-reading-list:v1';
+    const limit = 30;
+    const toggle = document.getElementById('article-save-toggle');
+    const clear = document.getElementById('article-reading-clear');
+    const links = document.getElementById('article-reading-links');
+    const empty = document.getElementById('article-reading-empty');
+    const feedback = document.getElementById('article-reading-status');
+    if (!toggle || !clear || !links || !empty || !feedback) return;
+
+    const words = locale === 'ar' ? {
+        save: 'حفظ هذا المقال محليًا',
+        remove: 'إزالة هذا المقال من المحفوظات',
+        saved: 'حُفظ رابط المقال على هذا الجهاز.',
+        removed: 'حُذف رابط المقال من هذا الجهاز.',
+        cleared: 'حُذفت الروابط المحفوظة من هذا الجهاز.',
+        unavailable: 'تعذر استخدام التخزين المحلي؛ لم يُحفظ شيء.',
+        full: 'قائمة القراءة ممتلئة (30 مقالًا). احذف رابطًا قبل إضافة آخر.',
+        confirm: 'هل تريد حذف جميع روابط القراءة المحفوظة على هذا الجهاز؟',
+    } : {
+        save: 'Save this article locally',
+        remove: 'Remove this locally saved article',
+        saved: 'Article link saved on this device.',
+        removed: 'Article link removed from this device.',
+        cleared: 'Locally saved links cleared from this device.',
+        unavailable: 'Browser local storage is unavailable; nothing was saved.',
+        full: 'Reading list is full (30 articles). Remove a link before adding another.',
+        confirm: 'Clear every locally saved article link from this device?',
+    };
+
+    const validSlug = value => typeof value === 'string'
+        && /^[A-Za-z0-9-]{1,220}$/.test(value);
+    const validTitle = value => typeof value === 'string'
+        && value.length > 0 && value.length <= 500;
+    const validEntry = value => value && typeof value === 'object'
+        && validSlug(value.slug) && validTitle(value.en) && validTitle(value.ar);
+
+    function load() {
+        const raw = window.localStorage.getItem(storageKey);
+        if (raw === null) return [];
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) throw new Error('Invalid local reading list');
+        const unique = new Set();
+        return parsed.filter(value => {
+            if (!validEntry(value) || unique.has(value.slug)) return false;
+            unique.add(value.slug);
+            return true;
+        }).slice(0, limit);
+    }
+
+    let saved;
+    try {
+        saved = load();
+    } catch (_) {
+        feedback.textContent = words.unavailable;
+        return;
+    }
+
+    function render() {
+        const hasCurrent = saved.some(item => item.slug === current.slug);
+        toggle.textContent = hasCurrent ? words.remove : words.save;
+        toggle.setAttribute('aria-pressed', hasCurrent ? 'true' : 'false');
+        toggle.disabled = false;
+        clear.disabled = saved.length === 0;
+        empty.hidden = saved.length !== 0;
+        links.replaceChildren();
+        saved.forEach(item => {
+            const row = document.createElement('li');
+            const anchor = document.createElement('a');
+            // Never trust a saved URL or insert stored text as HTML.
+            anchor.href = articlePath.replace('reading-list-placeholder', encodeURIComponent(item.slug));
+            anchor.textContent = locale === 'ar' ? item.ar : item.en;
+            row.appendChild(anchor);
+            links.appendChild(row);
+        });
+    }
+
+    function persist(next) {
+        try {
+            window.localStorage.setItem(storageKey, JSON.stringify(next));
+            saved = next;
+            render();
+            return true;
+        } catch (_) {
+            feedback.textContent = words.unavailable;
+            return false;
+        }
+    }
+
+    toggle.addEventListener('click', () => {
+        const alreadySaved = saved.some(item => item.slug === current.slug);
+        if (alreadySaved) {
+            if (persist(saved.filter(item => item.slug !== current.slug))) {
+                feedback.textContent = words.removed;
+            }
+        } else {
+            if (!validEntry(current) || saved.length >= limit) {
+                feedback.textContent = words.full;
+                return;
+            }
+            if (persist([current, ...saved])) feedback.textContent = words.saved;
+        }
+    });
+    clear.addEventListener('click', () => {
+        if (saved.length && window.confirm(words.confirm) && persist([])) {
+            feedback.textContent = words.cleared;
+        }
+    });
+    // Keep simultaneous tabs consistent without writing on passive storage events.
+    // A removed entry must not be resurrected by an older tab's next click.
+    window.addEventListener('storage', event => {
+        if (event.key !== storageKey && event.key !== null) return;
+        try {
+            saved = load();
+            feedback.textContent = '';
+            render();
+        } catch (_) {
+            saved = [];
+            toggle.disabled = true;
+            clear.disabled = true;
+            links.replaceChildren();
+            empty.hidden = false;
+            feedback.textContent = words.unavailable;
+        }
+    });
+    feedback.textContent = '';
+    render();
 })();
 </script>
 @endsection

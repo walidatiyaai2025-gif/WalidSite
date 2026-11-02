@@ -356,4 +356,31 @@ final class PublicLabRunbookJourneyTest extends TestCase
         $this->getJson('/lab/runbooks/'.$id.'?lang[]=ar')->assertUnprocessable();
         $this->get('/lab/runbooks/not-a-uuid')->assertNotFound();
     }
+
+    public function test_lab_contract_actions_fail_closed_until_verified_tool_and_app_release_exist(): void
+    {
+        Http::fake();
+
+        foreach (['en', 'ar'] as $locale) {
+            $response = $this->get('/lab?lang='.$locale)->assertOk()
+                ->assertSee('data-action="open_tool" aria-disabled="true" disabled', false)
+                ->assertSee('data-action="open_app" aria-disabled="true" disabled', false)
+                ->assertDontSee('href="javascript:', false);
+
+            if ($locale === 'ar') {
+                $response
+                    ->assertSee('فتح الأداة — غير متاح حاليًا')
+                    ->assertSee('فتح التطبيق — بانتظار الإصدار الموثق')
+                    ->assertSee('لم تُنشر بعد حزمة تطبيق موقعة ومعتمدة للتوزيع');
+            } else {
+                $response
+                    ->assertSee('Open tool — currently unavailable')
+                    ->assertSee('Open app — awaiting verified release')
+                    ->assertSee('No signed, approved distribution build is published yet');
+            }
+        }
+
+        Http::assertNothingSent();
+    }
+
 }

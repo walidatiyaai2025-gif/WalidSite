@@ -17,25 +17,64 @@ from pathlib import Path
 from PIL import Image, UnidentifiedImageError
 
 try:
-    from qa.validate_visual_fidelity import audit
+    from qa.validate_visual_fidelity import audit, _route_matches
 except ModuleNotFoundError as exc:
     # python3 qa/capture_visual_evidence.py puts qa/ first on sys.path.
     # The module form (python3 -m qa.capture_visual_evidence) uses qa.*.
     if exc.name != "qa":
         raise
-    from validate_visual_fidelity import audit
+    from validate_visual_fidelity import audit, _route_matches
 
 
 class CaptureError(ValueError):
     pass
 
 
-def _route_matches(contract_route: str, actual: str) -> bool:
-    if not isinstance(actual, str) or not actual.startswith("/") or "?" in actual or "#" in actual:
+
+def verified_source_checkout(root: Path, commit: str) -> bool:
+    """Bind capture provenance to the REAL Git tree, not a supplied SHA alone.
+
+    Resumable evidence may dirty only the evidence ledger and already-captured
+    canonical PNGs. An altered or untracked renderer, Blade/Flutter source,
+    contract, script, or fixture invalidates the claimed Git commit.
+    """
+    if not isinstance(commit, str) or re.fullmatch(r"[0-9a-f]{40}", commit) is None:
         return False
-    pattern = re.escape(contract_route)
-    pattern = re.sub(r"\\\{[^{}]+\\\}", r"[^/]+", pattern)
-    return re.fullmatch(pattern, actual) is not None
+    root = root.resolve()
+    try:
+        head = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=root, check=True,
+            capture_output=True, text=True, timeout=10,
+        ).stdout.strip()
+        if head != commit:
+            return False
+        status = subprocess.run(
+            ["git", "status", "--porcelain=v1", "-z", "--untracked-files=all"],
+            cwd=root, check=True, capture_output=True, timeout=10,
+        ).stdout.decode("utf-8", errors="strict")
+    except (OSError, UnicodeError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        return False
+
+    entries = status.split("\0")
+    if entries[-1] != "":
+        return False
+    for item in entries[:-1]:
+        if len(item) < 4 or item[2] != " ":
+            return False
+        code, path = item[:2], item[3:]
+        # A rename/copy has extra porcelain path records and can hide source
+        # changes; never treat it as an authorized screenshot-only update.
+        if any(flag in code for flag in "RC") or code == "!!":
+            return False
+        if path == "design/visual-fidelity-evidence.json":
+            if code == "??":
+                return False
+        elif re.fullmatch(
+            r"qa/visual-captures/(?:WEB-(?:0[1-9]|1[0-4])|ADMIN-(?:0[1-9]|1[0-3])|MOBILE-(?:0[1-9]|1[0-3]))\.png",
+            path,
+        ) is None:
+            return False
+    return True
 
 
 def capture(root: Path, screen_id: str, *, commit: str, locale: str,
@@ -43,12 +82,15 @@ def capture(root: Path, screen_id: str, *, commit: str, locale: str,
     root = root.resolve()
     if not re.fullmatch(r"[0-9a-f]{40}", commit):
         raise CaptureError("Renderer commit must be a full lowercase SHA")
-    if locale not in ("ar", "en") or not isinstance(dpr, (int, float)) or not 0 < dpr <= 8:
+    if locale not in ("ar", "en") or type(dpr) not in (int, float) or not 0.5 <= dpr <= 8:
         raise CaptureError("Invalid locale or device pixel ratio")
     if not command or any("assets/screen-reference" in part for part in command):
         raise CaptureError("Supply a runtime renderer command, not an original reference")
     if not isinstance(timeout, int) or isinstance(timeout, bool) or timeout <= 0 or timeout > 3600:
         raise CaptureError("Capture timeout must be between 1 and 3600 seconds")
+    if not verified_source_checkout(root, commit):
+        raise CaptureError("Renderer checkout SHA differs or source tree is modified; capture not verifiable")
+
     if any("\n" in arg or "\r" in arg for arg in command):
         raise CaptureError("Multiline capture commands are not auditable")
     errors, _, _ = audit(root)
@@ -71,6 +113,8 @@ def capture(root: Path, screen_id: str, *, commit: str, locale: str,
     with Image.open(approved) as reference:
         expected = reference.convert("RGBA")
         width, height = expected.size
+    if any(size / dpr != int(size / dpr) for size in (width, height)):
+        raise CaptureError("Reference physical width and height must be divisible by DPR")
 
     # Only the renderer writes the temporary output. No pre-existing screenshot
     # is trusted, and the immutable approved image is never an input to it.
@@ -112,11 +156,18 @@ def capture(root: Path, screen_id: str, *, commit: str, locale: str,
         if incoming.read_bytes() == approved.read_bytes():
             raise CaptureError("Capture bytes are identical to the immutable source artwork")
 
+
         relative = f"qa/visual-captures/{screen_id}.png"
         destination = root / relative
         if destination.exists() or destination.is_symlink():
             raise CaptureError("Refusing to overwrite an existing screenshot")
         destination.write_bytes(incoming.read_bytes())
+
+    # The private temp renderer output is removed before inspecting Git status;
+    # only the canonical screen PNG is allowed to be untracked at this point.
+    if not verified_source_checkout(root, commit):
+        destination.unlink(missing_ok=True)
+        raise CaptureError("Renderer changed Git source or checkout during capture")
 
     old_ledger = ledger_path.read_bytes()
     reproducible = [

@@ -18,6 +18,21 @@ def _json(path):
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def _route_matches(contract_route: str, actual: str) -> bool:
+    """Bind evidence to the exact canonical screen, not merely a path prefix."""
+    if (
+        not isinstance(contract_route, str) or not isinstance(actual, str)
+        or not actual.startswith("/") or actual.startswith("//")
+        or any(c in actual for c in ("?", "#", "\\", "%"))
+        or any(ord(c) < 32 or ord(c) == 127 for c in actual)
+        or any(part in (".", "..") for part in actual.split("/"))
+    ):
+        return False
+    pattern = re.escape(contract_route)
+    pattern = re.sub(r"\\\{[^{}]+\\\}", r"[^/]+", pattern)
+    return re.fullmatch(pattern, actual) is not None
+
+
 def audit(root: Path, require_complete: bool = False):
     root = root.resolve()
     errors = []
@@ -102,8 +117,9 @@ def audit(root: Path, require_complete: bool = False):
 
         capture = record["capture"]
         capture_dir = (root / "qa/visual-captures").resolve()
-        if not isinstance(capture, str) or not capture.startswith("qa/visual-captures/") or not capture.endswith(".png"):
-            errors.append(f"{screen_id}: capture must be an independent PNG under qa/visual-captures")
+        if not isinstance(capture, str) or capture != f"qa/visual-captures/{screen_id}.png":
+            # Reject malformed ledger values before passing them to pathlib.
+            errors.append(f"{screen_id}: capture must use this exact canonical screen ID and PNG path")
             continue
         screenshot = (root / capture).resolve()
         if not screenshot.is_relative_to(capture_dir) or not screenshot.is_file():
@@ -111,15 +127,16 @@ def audit(root: Path, require_complete: bool = False):
             continue
         if (
             not isinstance(record["renderer_commit"], str)
-            or not re.fullmatch(r"[0-9a-fA-F]{40}", record["renderer_commit"])
+            or not re.fullmatch(r"[0-9a-f]{40}", record["renderer_commit"])
             or not isinstance(record["capture_command"], str)
             or len(record["capture_command"].strip()) < 12
             or "<" in record["capture_command"]
-            or not isinstance(record["route"], str)
-            or not record["route"].startswith("/")
+            or not _route_matches(screen.get("route"), record["route"])
+            or not isinstance(record["locale"], str)
             or record["locale"] not in ("ar", "en")
             or type(record["device_pixel_ratio"]) not in (int, float)
-            or record["device_pixel_ratio"] <= 0
+            or not 0.5 <= record["device_pixel_ratio"] <= 8
+            or any(size / record["device_pixel_ratio"] != int(size / record["device_pixel_ratio"]) for size in ref_size)
         ):
             errors.append(f"{screen_id}: invalid/placeholder screenshot provenance")
             continue

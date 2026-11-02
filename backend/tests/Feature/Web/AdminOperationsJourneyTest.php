@@ -276,6 +276,105 @@ final class AdminOperationsJourneyTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_historical_analytics_uses_only_real_utc_calendar_windows_and_exports_exact_period(): void
+    {
+        Http::fake();
+        $this->actingAs($this->account('owner'), 'web');
+        $provider = AiProvider::create([
+            'display_name' => 'Private provider identifier',
+            'provider_type' => 'ollama-compatible',
+            'base_url' => 'http://127.0.0.1:11434',
+            'secret_ciphertext' => 'NEVER-LEAK-SECRET',
+            'enabled' => false, 'health_status' => 'unverified',
+        ]);
+
+        $day = now('UTC')->toDateString();
+        $rows = [
+            [0, 'USD', 17],
+            [6, 'USD', 23],
+            [31, 'KWD', 700],
+        ];
+        foreach ($rows as [$daysAgo, $currency, $minor]) {
+            $when = now('UTC')->subDays($daysAgo)->startOfDay()->addHours(12);
+            $jobId = (string) Str::uuid();
+            DB::table('ai_jobs')->insert([
+                'id' => $jobId, 'provider_id' => $provider->id,
+                'job_type' => 'draft',
+                'idempotency_key' => 'historic-'.Str::uuid(),
+                'payload_hash' => str_repeat('b', 64), 'status' => 'completed',
+                'created_at' => $when, 'updated_at' => $when,
+            ]);
+            DB::table('ai_usage')->insert([
+                'id' => (string) Str::uuid(),
+                'usage_key' => 'historic-usage-'.Str::uuid(),
+                'job_id' => $jobId, 'provider_id' => $provider->id,
+                'cost_currency' => $currency, 'cost_minor' => $minor,
+                'created_at' => $when,
+            ]);
+        }
+
+        $one = $this->get('/admin/analytics?day='.$day)->assertOk()
+            ->assertSee('value="1" selected', false)
+            ->assertSee('>17</td>', false)
+            ->assertDontSee('>40</td>', false)
+            ->assertDontSee('KWD')
+            ->assertDontSee('NEVER-LEAK-SECRET');
+        $seven = $this->get('/admin/analytics?day='.$day.'&window=7&lang=ar')->assertOk()
+            ->assertSee('dir="rtl"', false)
+            ->assertSee('value="7" selected', false)
+            ->assertSee('>40</td>', false)
+            ->assertDontSee('KWD')
+            ->assertDontSee('Private provider identifier')
+            ->assertSee('الفترة الفعلية')
+            ->assertSee('name="window"', false);
+        $this->assertStringContainsString(
+            'window=7',
+            $seven->getContent()
+        );
+        $this->get('/admin/analytics?day='.$day.'&window=30&lang=en')
+            ->assertOk()->assertSee('>40</td>', false)->assertDontSee('KWD');
+
+        $csv = $this->get('/admin/analytics?day='.$day.'&window=7&format=csv')
+            ->assertOk()
+            ->assertHeader('Cache-Control', 'no-store, private')
+            ->assertHeader('X-Content-Type-Options', 'nosniff')
+            ->streamedContent();
+        $this->assertStringContainsString('"UTC period start","UTC period end",Currency,Receipts,"Cost (minor units)"', $csv);
+        $this->assertStringContainsString(now('UTC')->subDays(6)->toDateString().','.$day.',USD,2,40', $csv);
+        $this->assertStringNotContainsString('KWD', $csv);
+        $this->assertStringNotContainsString('Private provider identifier', $csv);
+
+        $old = now('UTC')->subDays(31)->toDateString();
+        $this->get('/admin/analytics?day='.$old.'&window=1&lang=en')->assertOk()
+            ->assertSee('KWD')->assertSee('>700</td>', false)
+            ->assertDontSee('USD');
+        Http::assertNothingSent();
+    }
+
+    public function test_analytics_period_rejects_bad_ranges_and_preserves_role_protection(): void
+    {
+        Http::fake();
+        $admin = $this->account('admin');
+        $this->actingAs($this->account('reader'), 'web')
+            ->get('/admin/analytics?window=7')->assertForbidden();
+        $this->actingAs($admin, 'web');
+        foreach ([
+            '/admin/analytics?window=0',
+            '/admin/analytics?window=2',
+            '/admin/analytics?window=31',
+            '/admin/analytics?window[]=7',
+            '/admin/analytics?day=2999-01-01&window=7',
+            '/admin/analytics?day='.now('UTC')->subDays(366)->toDateString(),
+        ] as $path) {
+            $this->get($path)->assertRedirect()->assertSessionHasErrors();
+        }
+        $this->get('/admin/analytics?window=30&lang=en')->assertOk()
+            ->assertSee('Actual window')
+            ->assertSee('name="window"', false)
+            ->assertHeader('Cache-Control', 'no-store, private');
+        Http::assertNothingSent();
+    }
+
     public function test_malformed_parameters_fail_safely_instead_of_reflecting_inputs(): void
     {
         Http::fake();
@@ -296,4 +395,31 @@ final class AdminOperationsJourneyTest extends TestCase
         }
         Http::assertNothingSent();
     }
+    public function test_admin_project_and_audience_filters_have_translated_labels_but_stable_values(): void
+    {
+        Http::fake();
+        $this->project();
+        $this->actingAs($this->account('owner'), 'web');
+
+        $this->get('/admin/projects?lang=ar&status=research&visibility=private')->assertOk()
+            ->assertSee('value="research"', false)
+            ->assertSee('بحث')
+            ->assertSee('خاص')
+            ->assertDontSee('>research</option>', false);
+        $this->get('/admin/projects?lang=en&status=research&visibility=private')->assertOk()
+            ->assertSee('Research')
+            ->assertSee('Private');
+
+        $this->get('/admin/audience?lang=ar&purpose=editorial_updates&channel=push')->assertOk()
+            ->assertSee('تحديثات المحتوى')
+            ->assertSee('إشعار فوري')
+            ->assertSee('value="editorial_updates"', false)
+            ->assertSee('value="push"', false);
+        $this->get('/admin/audience?lang=en&purpose=editorial_updates&channel=push')->assertOk()
+            ->assertSee('Editorial updates')
+            ->assertSee('Push notification');
+        Http::assertNothingSent();
+    }
+
+
 }

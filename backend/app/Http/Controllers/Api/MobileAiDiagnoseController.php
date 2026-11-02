@@ -66,7 +66,13 @@ final class MobileAiDiagnoseController extends Controller
         }
 
         $diagnosis = DB::transaction(function () use ($user, $input, $selected, $queue): AiDiagnosisRequest {
-            User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
+            // Route/provider admission and catalog verification happen after
+            // authentication and can be slow. Suspension or account deletion
+            // may complete in between. The locked row, not the stale bearer
+            // model, is authoritative before reserving any paid AI work.
+            $lockedAccount = User::query()->whereKey($user->id)
+                ->lockForUpdate()->first();
+            abort_unless($lockedAccount !== null && $lockedAccount->status === 'active', 403);
 
             $minuteCount = AiDiagnosisRequest::query()
                 ->where('user_id', $user->id)
@@ -128,9 +134,14 @@ final class MobileAiDiagnoseController extends Controller
             'running' => 50,
             default => 0,
         };
-        $resultUrl = $status === 'completed' && $diagnosis->selected_runbook_id !== null
-            ? route('api.mobile.solution', ['id' => $diagnosis->selected_runbook_id], false)
-            : null;
+        // A historical AI selection is not a publication grant. Re-run the
+        // exact current reviewed-runbook gate before advertising a destination:
+        // the source may have been withdrawn after worker selection.
+        $resultUrl = $status === 'completed'
+            && $diagnosis->selected_runbook_id !== null
+            && $runbooks->verifiedData((string) $diagnosis->selected_runbook_id) !== null
+                ? route('api.mobile.solution', ['id' => $diagnosis->selected_runbook_id], false)
+                : null;
 
         return response()->json([
             'data' => [

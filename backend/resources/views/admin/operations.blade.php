@@ -1,6 +1,10 @@
 @php($locale = request()->query('lang') === 'ar' ? 'ar' : 'en')
 @php($ar = $locale === 'ar')
 @php($titles = ['github' => ['GitHub Sync', 'مزامنة GitHub'], 'projects' => ['Projects & CV', 'المشاريع والسيرة المهنية'], 'audience' => ['Audience & consent', 'الجمهور والموافقة'], 'analytics' => ['Verified analytics', 'التحليلات المتحقّق منها']])
+@php($visibilityLabels = ['public' => ['Public', 'عام'], 'private' => ['Private', 'خاص']])
+@php($statusLabels = ['completed' => ['Completed', 'مكتمل'], 'in_progress' => ['In progress', 'قيد التنفيذ'], 'research' => ['Research', 'بحث'], 'archived' => ['Archived', 'مؤرشف']])
+@php($purposeLabels = ['account_activity' => ['Account activity', 'نشاط الحساب'], 'editorial_updates' => ['Editorial updates', 'تحديثات المحتوى'], 'product_updates' => ['Product updates', 'تحديثات المنتج']])
+@php($channelLabels = ['email' => ['Email', 'البريد الإلكتروني'], 'push' => ['Push notification', 'إشعار فوري']])
 @php($title = $titles[$section][$ar ? 1 : 0])
 <!doctype html>
 <html lang="{{ $locale }}" dir="{{ $ar ? 'rtl' : 'ltr' }}">
@@ -48,7 +52,7 @@ details{border:1px solid var(--edge);padding:10px;border-radius:8px}details[open
 </nav>
 <form method="post" action="{{ route('admin.logout') }}">@csrf<button type="submit">{{ $ar ? 'تسجيل الخروج' : 'Sign out' }}</button></form>
 </aside><main id="content" tabindex="-1">
-<div class="top"><h1>{{ $title }}</h1><a href="{{ route('admin.operations.'.$section, array_merge(['lang'=>$ar ? 'en' : 'ar'], $section==='projects' ? array_filter(['status'=>$statusFilter ?? null, 'visibility'=>$visibilityFilter ?? null]) : ($section==='audience' ? ['purpose'=>$purpose,'channel'=>$channel] : ($section==='analytics' ? ['day'=>$day] : [])))) }}" lang="{{ $ar ? 'en' : 'ar' }}" hreflang="{{ $ar ? 'en' : 'ar' }}">{{ $ar ? 'English' : 'العربية' }}</a></div>
+<div class="top"><h1>{{ $title }}</h1><a href="{{ route('admin.operations.'.$section, array_merge(['lang'=>$ar ? 'en' : 'ar'], $section==='projects' ? array_filter(['status'=>$statusFilter ?? null, 'visibility'=>$visibilityFilter ?? null]) : ($section==='audience' ? ['purpose'=>$purpose,'channel'=>$channel] : ($section==='analytics' ? ['day'=>$day,'window'=>$window] : [])))) }}" lang="{{ $ar ? 'en' : 'ar' }}" hreflang="{{ $ar ? 'en' : 'ar' }}">{{ $ar ? 'English' : 'العربية' }}</a></div>
 @if(session('status'))<div role="status" class="panel safe">{{ session('status') }}</div>@endif
 @if(session('warning'))<div role="alert" class="panel alert">{{ $ar ? 'تعذر التحقق من بيانات GitHub العامة.' : session('warning') }}</div>@endif
 @if($errors->any())<div role="alert" class="panel warn"><strong>{{ $ar ? 'تعذر حفظ العملية' : 'The operation was not saved' }}</strong><ul>@foreach($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></div>@endif
@@ -86,8 +90,8 @@ details{border:1px solid var(--edge);padding:10px;border-radius:8px}details[open
 <p class="muted">{{ $ar ? 'تعديل المسودات الخاصة فقط. لا يوجد زر نشر يتجاوز مراجعة الادعاءات والدليل.' : 'Only unpublished private drafts may be edited. Publication and professional claims require independent evidence review.' }}</p>
 <form method="get" action="{{ route('admin.operations.projects') }}" class="filters" role="search">
 <input type="hidden" name="lang" value="{{ $locale }}">
-<div><label for="visibility">{{ $ar ? 'الظهور' : 'Visibility' }}</label><select name="visibility" id="visibility"><option value="">{{ $ar ? 'الكل' : 'All' }}</option>@foreach(['public','private'] as $option)<option value="{{ $option }}" @selected($visibilityFilter===$option)>{{ $option }}</option>@endforeach</select></div>
-<div><label for="status">{{ $ar ? 'الحالة' : 'Status' }}</label><select name="status" id="status"><option value="">{{ $ar ? 'الكل' : 'All' }}</option>@foreach(['completed','in_progress','research','archived'] as $option)<option value="{{ $option }}" @selected($statusFilter===$option)>{{ $option }}</option>@endforeach</select></div>
+<div><label for="visibility">{{ $ar ? 'الظهور' : 'Visibility' }}</label><select name="visibility" id="visibility"><option value="">{{ $ar ? 'الكل' : 'All' }}</option>@foreach(['public','private'] as $option)<option value="{{ $option }}" @selected($visibilityFilter===$option)>{{ $visibilityLabels[$option][$ar ? 1 : 0] }}</option>@endforeach</select></div>
+<div><label for="status">{{ $ar ? 'الحالة' : 'Status' }}</label><select name="status" id="status"><option value="">{{ $ar ? 'الكل' : 'All' }}</option>@foreach(['completed','in_progress','research','archived'] as $option)<option value="{{ $option }}" @selected($statusFilter===$option)>{{ $statusLabels[$option][$ar ? 1 : 0] }}</option>@endforeach</select></div>
 <div><button type="submit">{{ $ar ? 'تطبيق المرشحات' : 'Apply filters' }}</button></div>
 </form>
 @if($projects->isEmpty())<p role="status">{{ $ar ? 'لا توجد مشاريع تطابق النتائج.' : 'No projects match these filters.' }}</p>@else
@@ -96,10 +100,11 @@ details{border:1px solid var(--edge);padding:10px;border-radius:8px}details[open
 </tr></thead><tbody>
 @foreach($projects as $project)
 <tr><td>{{ $project->title }}<p class="muted">{{ $project->slug }}</p></td>
-<td>{{ $project->status }}</td><td>{{ $project->visibility }}</td>
+<td>{{ $statusLabels[$project->status][$ar ? 1 : 0] ?? $project->status }}</td><td>{{ $visibilityLabels[$project->visibility][$ar ? 1 : 0] ?? $project->visibility }}</td>
 <td>{{ $project->verified_public_evidence_count }} / {{ $project->evidence_count }}</td>
 <td>
 @if(auth()->user()?->hasRole('owner') && $project->visibility==='private' && $project->published_at===null)
+<p><a href="{{ route('admin.operations.projects.evidence.review', ['project'=>$project->id,'lang'=>$locale]) }}">{{ $ar ? 'مراجعة جميع الأدلة الخاصة (صفحات)' : 'Review all private evidence (paginated)' }}</a></p>
 <details><summary>{{ $ar ? 'تحرير مسودة خاصة' : 'Edit private draft' }}</summary>
 <form method="post" action="{{ route('admin.operations.projects.update', ['project'=>$project->id,'lang'=>$locale]) }}">
 @csrf @method('PATCH')
@@ -111,6 +116,37 @@ details{border:1px solid var(--edge);padding:10px;border-radius:8px}details[open
 <div><label for="summary-ar-{{ $project->id }}">الملخص (AR)</label><textarea id="summary-ar-{{ $project->id }}" name="summary_ar" maxlength="5000" required>{{ $project->summary_ar }}</textarea></div>
 </div><button type="submit">{{ $ar ? 'حفظ المسودة الخاصة' : 'Save private draft' }}</button>
 </form></details>
+<details><summary>{{ $ar ? 'إضافة دليل خاص للمراجعة' : 'Add private evidence for review' }}</summary>
+<p class="muted">{{ $ar ? 'يُحفظ الرابط كدليل خاص غير معتمد، ولا يُنشر أو يُفتح تلقائيًا. استخدم رابط HTTPS عامًا مباشرًا دون رموز وصول.' : 'Evidence stays private and unverified. No URL is fetched or published. Provide a direct public HTTPS link without access tokens.' }}</p>
+<form method="post" action="{{ route('admin.operations.projects.evidence', ['project'=>$project->id,'lang'=>$locale]) }}">
+@csrf
+<div class="field-grid">
+<div><label for="evidence-type-{{ $project->id }}">{{ $ar ? 'نوع الدليل' : 'Evidence type' }}</label>
+<select id="evidence-type-{{ $project->id }}" name="evidence_type" required>
+<option value="document">{{ $ar ? 'مستند' : 'Document' }}</option>
+<option value="repository">{{ $ar ? 'مستودع' : 'Repository' }}</option>
+<option value="publication">{{ $ar ? 'منشور' : 'Publication' }}</option>
+</select></div>
+<div><label for="evidence-url-{{ $project->id }}">{{ $ar ? 'رابط الدليل العام' : 'Public evidence URL' }}</label>
+<input id="evidence-url-{{ $project->id }}" type="url" name="url" inputmode="url" maxlength="2048" placeholder="https://github.com/owner/repository" autocomplete="off" required></div>
+</div><button type="submit">{{ $ar ? 'إضافة دليل خاص للمراجعة' : 'Queue private evidence for review' }}</button>
+</form>
+</details>
+<details><summary>{{ $ar ? 'مراجعة الأدلة الخاصة المعلقة' : 'Review pending private evidence' }} ({{ $project->evidence->count() }})</summary>
+<p class="muted">{{ $ar ? 'الأدلة خاصة وغير معتمدة ولن يتم فتحها أو نشرها تلقائياً. الرفض يزيل الدليل دون الموافقة على أي ادعاء.' : 'Evidence URLs are private and unverified, never opened or published automatically. Discard removes a candidate without approving a claim.' }}</p>
+@if($project->evidence->isEmpty())<p role="status">{{ $ar ? 'لا يوجد دليل معلق.' : 'No pending evidence.' }}</p>@else
+<ul>
+@foreach($project->evidence as $candidate)
+<li><span>{{ $candidate->evidence_type }}</span> — <code style="overflow-wrap:anywhere">{{ $candidate->url }}</code>
+<form method="post" action="{{ route('admin.operations.projects.evidence.discard', ['project'=>$project->id,'evidence'=>$candidate->id,'lang'=>$locale]) }}">
+@csrf @method('DELETE')
+<button type="submit">{{ $ar ? 'رفض الدليل غير المعتمد' : 'Discard unverified evidence' }}</button>
+</form></li>
+@endforeach
+</ul>
+@if($project->evidence_count > $project->evidence->count())<p class="muted">{{ $ar ? 'تُعرض أحدث عشرة أدلة خاصة معلقة فقط.' : 'Only the ten newest pending private candidates are shown.' }}</p>@endif
+@endif
+</details>
 @else <span class="muted">{{ $ar ? 'مراجعة دليل مطلوبة' : 'Evidence review required' }}</span>
 @endif
 </td></tr>
@@ -126,8 +162,8 @@ details{border:1px solid var(--edge);padding:10px;border-radius:8px}details[open
 <p class="muted">{{ $ar ? 'العدد من تفضيلات الموافقة المحفوظة لمستخدمين نشطين فقط. المستلمون غير الموافقين أو الملغين غير محسوبين. لا توجد خدمة إرسال متاحة من هذه الشاشة.' : 'Only active accounts with unrevoked explicit consent count. No emails or identifiers are listed, and this screen cannot send a push notification.' }}</p>
 <form method="get" action="{{ route('admin.operations.audience') }}" class="filters" role="search">
 <input type="hidden" name="lang" value="{{ $locale }}">
-<div><label for="purpose">{{ $ar ? 'الغرض' : 'Purpose' }}</label><select id="purpose" name="purpose">@foreach(['account_activity','editorial_updates','product_updates'] as $option)<option value="{{ $option }}" @selected($purpose===$option)>{{ $option }}</option>@endforeach</select></div>
-<div><label for="channel">{{ $ar ? 'القناة' : 'Channel' }}</label><select id="channel" name="channel">@foreach(['email','push'] as $option)<option value="{{ $option }}" @selected($channel===$option)>{{ $option }}</option>@endforeach</select></div>
+<div><label for="purpose">{{ $ar ? 'الغرض' : 'Purpose' }}</label><select id="purpose" name="purpose">@foreach(['account_activity','editorial_updates','product_updates'] as $option)<option value="{{ $option }}" @selected($purpose===$option)>{{ $purposeLabels[$option][$ar ? 1 : 0] }}</option>@endforeach</select></div>
+<div><label for="channel">{{ $ar ? 'القناة' : 'Channel' }}</label><select id="channel" name="channel">@foreach(['email','push'] as $option)<option value="{{ $option }}" @selected($channel===$option)>{{ $channelLabels[$option][$ar ? 1 : 0] }}</option>@endforeach</select></div>
 <div><button type="submit">{{ $ar ? 'معاينة الموافقات' : 'Preview consented segment' }}</button></div>
 </form>
 <div class="cards" style="margin-top:20px">
@@ -144,22 +180,26 @@ details{border:1px solid var(--edge);padding:10px;border-radius:8px}details[open
 @if($section === 'analytics')
 <section class="panel" aria-labelledby="analytics-title">
 <h2 id="analytics-title">{{ $ar ? 'إحصاءات محفوظة وليست زيارات متخيلة' : 'Stored operational metrics — not estimated traffic' }}</h2>
-<p class="muted">{{ $ar ? 'المشاريع والمقالات المنشورة المعتمدة: أعداد حالية. المهام والتكاليف: تاريخ UTC المحدد فقط. لا تتوفر بيانات احتفاظ أو زيارات حقيقية بعد.' : 'Approved content totals are current. AI jobs and costs cover the selected UTC day. Real visit and retention measurement is not available yet.' }}</p>
+<p class="muted">{{ $ar ? 'المشاريع والمقالات المعتمدة: أعداد حالية. المهام والتكاليف: الفترة المحددة حسب أيام UTC كاملة فقط. لا تتوفر بيانات زيارات أو احتفاظ حقيقية بعد.' : 'Approved content totals are current. AI jobs and receipts cover the selected full UTC calendar-day period only. Real visits and retention are not measured yet.' }}</p>
 <form method="get" action="{{ route('admin.operations.analytics') }}" class="filters" role="search">
 <input type="hidden" name="lang" value="{{ $locale }}">
-<div><label for="day">{{ $ar ? 'يوم UTC' : 'UTC day' }}</label><input id="day" name="day" type="date" max="{{ now('UTC')->toDateString() }}" value="{{ $day }}" required></div>
+<div><label for="day">{{ $ar ? 'نهاية الفترة (UTC)' : 'Period end (UTC)' }}</label><input id="day" name="day" type="date" min="{{ now('UTC')->subDays(365)->toDateString() }}" max="{{ now('UTC')->toDateString() }}" value="{{ $day }}" required></div>
+<div><label for="window">{{ $ar ? 'عدد أيام التقويم (UTC)' : 'UTC calendar days' }}</label><select id="window" name="window">
+@foreach([1,7,30] as $days)<option value="{{ $days }}" @selected($window===$days)>{{ $days }} {{ $ar ? 'يوم' : ($days===1 ? 'day' : 'days') }}</option>@endforeach
+</select></div>
 <div><button type="submit">{{ $ar ? 'عرض التقرير' : 'View report' }}</button></div>
-<div><a class="button" href="{{ route('admin.operations.analytics', ['lang'=>$locale,'day'=>$day,'format'=>'csv']) }}">{{ $ar ? 'تصدير التكاليف CSV' : 'Export cost CSV' }}</a></div>
+<div><a class="button" href="{{ route('admin.operations.analytics', ['lang'=>$locale,'day'=>$day,'window'=>$window,'format'=>'csv']) }}">{{ $ar ? 'تصدير التكاليف CSV' : 'Export cost CSV' }}</a></div>
 </form>
+<p class="muted" role="status">{{ $ar ? 'الفترة الفعلية' : 'Actual window' }}: <time datetime="{{ $startDay }}">{{ $startDay }}</time> — <time datetime="{{ $day }}">{{ $day }}</time> (UTC, {{ $window }} {{ $ar ? 'يوم' : ($window===1 ? 'day' : 'days') }})</p>
 <div class="cards" style="margin-top:20px">
 <div class="card"><span>{{ $ar ? 'المشاريع المعتمدة' : 'Verified public projects' }}</span><strong>{{ $publicProjects }}</strong></div>
 <div class="card"><span>{{ $ar ? 'مقالات مرخصة منشورة' : 'Published articles (status)' }}</span><strong>{{ $publicArticles }}</strong></div>
 </div>
-<h3>{{ $ar ? 'مهام AI في اليوم' : 'AI jobs on UTC day' }}</h3>
-@if($jobs->isEmpty())<p role="status">{{ $ar ? 'لا توجد مهام مسجلة لهذا اليوم.' : 'No jobs recorded for this day.' }}</p>
+<h3>{{ $ar ? 'مهام AI في الفترة' : 'AI jobs in the UTC period' }}</h3>
+@if($jobs->isEmpty())<p role="status">{{ $ar ? 'لا توجد مهام مسجلة لهذه الفترة.' : 'No jobs recorded for this period.' }}</p>
 @else <div class="cards">@foreach($jobs as $job)<div class="card"><span>{{ $job->status }}</span><strong>{{ $job->total }}</strong></div>@endforeach</div>@endif
 <h3>{{ $ar ? 'إيصالات التكاليف حسب العملة (وحدات صغرى)' : 'Recorded cost receipts by currency (minor units)' }}</h3>
-@if($usage->isEmpty())<p role="status">{{ $ar ? 'لا توجد إيصالات تكاليف لهذا اليوم.' : 'No usage receipts recorded for this day.' }}</p>
+@if($usage->isEmpty())<p role="status">{{ $ar ? 'لا توجد إيصالات تكاليف لهذه الفترة.' : 'No usage receipts recorded for this period.' }}</p>
 @else <div class="scroll"><table><thead><tr><th>{{ $ar ? 'العملة' : 'Currency' }}</th><th>{{ $ar ? 'الإيصالات' : 'Receipts' }}</th><th>{{ $ar ? 'التكلفة بالوحدات الصغرى' : 'Cost minor units' }}</th></tr></thead><tbody>
 @foreach($usage as $line)<tr><td>{{ $line->cost_currency }}</td><td>{{ $line->receipts }}</td><td>{{ $line->cost_minor }}</td></tr>@endforeach
 </tbody></table></div>@endif

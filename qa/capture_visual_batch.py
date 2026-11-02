@@ -6,18 +6,16 @@ Each screen remains PENDING unless the real renderer produces an exact RGBA matc
 """
 import argparse
 import json
-import re
-import subprocess
 import sys
 from pathlib import Path
 
 try:
-    from qa.capture_visual_evidence import CaptureError, capture, _route_matches
+    from qa.capture_visual_evidence import CaptureError, capture, _route_matches, verified_source_checkout
     from qa.validate_visual_fidelity import audit
 except ModuleNotFoundError as exc:
     if exc.name != "qa":
         raise
-    from capture_visual_evidence import CaptureError, capture, _route_matches
+    from capture_visual_evidence import CaptureError, capture, _route_matches, verified_source_checkout
     from validate_visual_fidelity import audit
 
 
@@ -55,7 +53,7 @@ def validate_plan(root: Path, plan: object, require_all: bool = False) -> list[d
         command = item["renderer_command"]
         if (not isinstance(command, list) or not command or
                 any(not isinstance(arg, str) or not arg or
-                    "\n" in arg or "\r" in arg or "assets/screen-reference" in arg
+                    "\n" in arg or "\r" in arg or "\0" in arg or "assets/screen-reference" in arg
                     for arg in command)):
             raise CapturePlanError(f"{screen_id}: invalid renderer argv (no reference image inputs)")
         if type(item["timeout"]) is not int or not 1 <= item["timeout"] <= 3600:
@@ -68,16 +66,9 @@ def validate_plan(root: Path, plan: object, require_all: bool = False) -> list[d
 
 
 def verified_head(root: Path, commit: str) -> bool:
-    if not isinstance(commit, str) or not re.fullmatch(r"[0-9a-f]{40}", commit):
-        return False
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "HEAD"], cwd=root, check=True,
-            capture_output=True, text=True, timeout=10,
-        )
-    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
-        return False
-    return result.stdout.strip() == commit
+    # Keep compatibility with the batch API, but use the SAME strict
+    # checkout/worktree attestation as standalone screenshot capture.
+    return verified_source_checkout(root, commit)
 
 
 def execute(root: Path, plan: object, commit: str, *,
@@ -87,7 +78,7 @@ def execute(root: Path, plan: object, commit: str, *,
     # Validate the entire execution plan BEFORE the first renderer invocation.
     entries = validate_plan(root, plan, require_all=require_all)
     if not verified_head(root, commit):
-        raise CapturePlanError("Renderer commit must match the current checked-out Git HEAD")
+        raise CapturePlanError("Renderer commit must match an unmodified source checkout")
     problems, _, _ = audit(root)
     if problems:
         raise CapturePlanError("Existing evidence is invalid: " + "; ".join(problems))
@@ -106,6 +97,24 @@ def execute(root: Path, plan: object, commit: str, *,
                     locale=item["locale"], dpr=item["dpr"], route=item["route"],
                     command=item["renderer_command"], timeout=item["timeout"],
                 )
+                # A renderer return code is NOT a visual acceptance receipt.
+                # Re-open the canonical ledger and audit the admitted capture
+                # before recording success; this prevents false 40/40 reports
+                # when an adapter silently succeeds without admitting pixels.
+                if not verified_head(root, commit):
+                    raise CaptureError("Source checkout changed after capture")
+                try:
+                    confirmed = json.loads(
+                        (root / "design/visual-fidelity-evidence.json").read_text(encoding="utf-8")
+                    )
+                    matched = confirmed["screens"][screen_id]["status"] == "matched"
+                except (OSError, ValueError, KeyError, TypeError):
+                    matched = False
+                if not matched:
+                    raise CaptureError("Capture returned without matched evidence in canonical ledger")
+                post_errors, _, _ = audit(root)
+                if post_errors:
+                    raise CaptureError("Post-capture evidence audit failed: " + "; ".join(post_errors))
                 result["captured"].append(screen_id)
             except CaptureError as exc:
                 # Independent screens may continue; failures never get matched.
@@ -130,6 +139,12 @@ def main(argv=None):
         print("CAPTURE PLAN REJECTED: " + str(exc), file=sys.stderr)
         return 2
     print(json.dumps(result, ensure_ascii=False, sort_keys=True))
+    # A dry run is planning only; it cannot be mistaken for completed evidence.
+    if args.dry_run:
+        return 0
+    # A full batch succeeds only when all 40 screens have verified captures.
+    if args.require_all and len(result["captured"]) + len(result["already_matched"]) != 40:
+        return 1
     return 1 if result["failed"] else 0
 
 

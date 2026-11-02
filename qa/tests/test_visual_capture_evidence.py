@@ -59,6 +59,12 @@ class CaptureRunnerTest(unittest.TestCase):
             "screens": entries,
         }), encoding="utf-8")
         self.sha = "b" * 40
+        # Synthetic pixel fixtures have no Git repository. Provenance is
+        # tested separately against a real temporary Git checkout.
+        from unittest.mock import patch
+        guard = patch("qa.capture_visual_evidence.verified_source_checkout", return_value=True)
+        guard.start()
+        self.addCleanup(guard.stop)
 
     def renderer(self, rgb=(11, 22, 33, 255)):
         script = (
@@ -72,7 +78,7 @@ class CaptureRunnerTest(unittest.TestCase):
 
     def run_capture(self, screen="WEB-01", route="/", command=None):
         return capture(
-            self.root, screen, commit=self.sha, locale="ar", dpr=2,
+            self.root, screen, commit=self.sha, locale="ar", dpr=1,
             route=route, command=self.renderer() if command is None else command,
         )
 
@@ -85,6 +91,7 @@ class CaptureRunnerTest(unittest.TestCase):
         self.assertEqual(self.record()["status"], "matched")
         self.assertEqual(self.record()["renderer_commit"], self.sha)
         self.assertEqual(self.record()["locale"], "ar")
+        self.assertEqual(self.record()["device_pixel_ratio"], 1)
         self.assertIn("qa/capture_visual_evidence.py", self.record()["capture_command"])
         self.assertNotEqual(
             (self.root / location).read_bytes(),
@@ -96,7 +103,7 @@ class CaptureRunnerTest(unittest.TestCase):
 
     def test_custom_timeout_is_recorded_and_replayable(self):
         capture(self.root, "WEB-01", commit=self.sha, locale="ar",
-                dpr=2, route="/", command=self.renderer(), timeout=17)
+                dpr=1, route="/", command=self.renderer(), timeout=17)
         self.assertIn("--timeout 17", self.record()["capture_command"])
 
     def test_cli_timeout_reaches_capture_and_rejects_invalid_values(self):
@@ -117,6 +124,18 @@ class CaptureRunnerTest(unittest.TestCase):
         self.assertEqual(self.record()["status"], "pending")
         self.assertFalse((self.root / "qa/visual-captures/WEB-01.png").exists())
         self.assertEqual(audit(self.root), ([], 0, 40))
+
+    def test_renderer_mutating_source_cannot_advance_a_capture(self):
+        from unittest.mock import patch
+        # Initial source checkout attestation passes, but the renderer
+        # modifies tracked source before the post-capture second check.
+        with patch("qa.capture_visual_evidence.verified_source_checkout",
+                   side_effect=[True, False]) as verifier:
+            with self.assertRaisesRegex(CaptureError, "changed Git source"):
+                self.run_capture()
+            self.assertEqual(verifier.call_count, 2)
+        self.assertEqual(self.record()["status"], "pending")
+        self.assertFalse((self.root / "qa/visual-captures/WEB-01.png").exists())
 
     def test_renderer_failure_cannot_advance_ledger(self):
         with self.assertRaisesRegex(CaptureError, "Renderer failed"):
@@ -139,6 +158,12 @@ class CaptureRunnerTest(unittest.TestCase):
         with self.assertRaisesRegex(CaptureError, "not an original reference"):
             self.run_capture(command=["cp", "assets/screen-reference/ref_1.png",
                                       "qa/visual-captures/WEB-01.png"])
+        self.assertEqual(self.record()["status"], "pending")
+
+    def test_reference_dimensions_must_be_divisible_by_dpr(self):
+        with self.assertRaisesRegex(CaptureError, "divisible by DPR"):
+            capture(self.root, "WEB-01", commit=self.sha, locale="ar",
+                    dpr=2, route="/", command=self.renderer())
         self.assertEqual(self.record()["status"], "pending")
 
     def test_dpr_and_locale_invalid_fail_before_running(self):

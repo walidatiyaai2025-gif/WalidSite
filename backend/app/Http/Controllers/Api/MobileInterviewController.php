@@ -48,8 +48,11 @@ final class MobileInterviewController extends Controller
         $id = (string) Str::uuid();
 
         $allowed = DB::transaction(function () use ($ownerId, $input, $lesson, $locale, $id): bool {
-            // Serialize admission for this account, including concurrent devices.
-            DB::table('users')->where('id', $ownerId)->lockForUpdate()->first();
+            // The authenticated user object may be stale if deletion or
+            // suspension completed while we checked the published lesson.
+            // Match account-deletion lock order before admitting a write.
+            $account = DB::table('users')->where('id', $ownerId)->lockForUpdate()->first();
+            abort_unless($account !== null && $account->status === 'active', 403);
             if (DB::table('mobile_interview_sessions')->where('user_id', $ownerId)
                 ->where('created_at', '>=', now()->subDay())->count() >= 50) {
                 return false;
@@ -93,6 +96,11 @@ final class MobileInterviewController extends Controller
     private function answer(string $ownerId, array $input, PublicLearningPathController $learning): JsonResponse
     {
         $result = DB::transaction(function () use ($ownerId, $input, $learning): ?array {
+            // Always lock the account before its child session. Account
+            // deletion follows the same order, preventing resurrection or
+            // an answer being persisted after a successful erasure.
+            $account = DB::table('users')->where('id', $ownerId)->lockForUpdate()->first();
+            abort_unless($account !== null && $account->status === 'active', 403);
             $session = DB::table('mobile_interview_sessions')
                 ->where('id', $input['session_id'])->where('user_id', $ownerId)
                 ->lockForUpdate()->first();

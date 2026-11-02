@@ -8,7 +8,7 @@ from pathlib import Path
 from PIL import Image
 from PIL.PngImagePlugin import PngInfo
 
-from qa.validate_visual_fidelity import audit
+from qa.validate_visual_fidelity import audit, _route_matches
 
 
 class VisualFidelityGateTest(unittest.TestCase):
@@ -29,7 +29,7 @@ class VisualFidelityGateTest(unittest.TestCase):
             path = self.root / ref
             Image.new("RGBA", (3, 2), (number, 40, 80, 255)).save(path)
             data = path.read_bytes()
-            screens.append({"id": screen_id, "reference_image": ref})
+            screens.append({"id": screen_id, "reference_image": ref, "route": "/" if number == 1 else "/blog/{slug}"})
             entries[screen_id] = {"reference_image": ref, "status": "pending"}
             manifest.append({
                 "path": ref,
@@ -97,6 +97,16 @@ class VisualFidelityGateTest(unittest.TestCase):
         self.assertEqual(matched, 0)
         self.assertTrue(any("byte-for-byte copy" in error for error in errors))
 
+    def test_malformed_locale_metadata_fails_closed(self):
+        self._mark_matched()
+        for invalid_locale in (None, 42, [], {"locale": "en"}):
+            with self.subTest(locale=invalid_locale):
+                self.entries["WEB-01"]["locale"] = invalid_locale
+                self._write_ledger()
+                errors, matched, total = audit(self.root)
+                self.assertEqual((matched, total), (0, 40))
+                self.assertTrue(any("invalid/placeholder screenshot provenance" in error for error in errors))
+
     def test_final_release_gate_rejects_pending_evidence(self):
         errors, matched, total = audit(self.root, require_complete=True)
         self.assertEqual((matched, total), (0, 40))
@@ -134,6 +144,46 @@ class VisualFidelityGateTest(unittest.TestCase):
         self._write_ledger()
         errors, _, _ = audit(self.root)
         self.assertTrue(any("exactly all 40" in error for error in errors))
+
+
+    def test_evidence_bound_to_exact_screen_route_capture_path_and_provenance(self):
+        self._mark_matched()
+        self.assertEqual(audit(self.root)[0], [])
+
+        cases = [
+            ("capture", "qa/visual-captures/WEB-02.png", "canonical screen ID"),
+            ("capture", 7, "canonical screen ID"),
+            ("capture", ["qa/visual-captures/WEB-01.png"], "canonical screen ID"),
+            ("route", "/about", "invalid/placeholder screenshot provenance"),
+            ("route", "//outside.example.test", "invalid/placeholder screenshot provenance"),
+            ("route", "/blog/../admin", "invalid/placeholder screenshot provenance"),
+            ("renderer_commit", "A" * 40, "invalid/placeholder screenshot provenance"),
+            ("device_pixel_ratio", True, "invalid/placeholder screenshot provenance"),
+            ("device_pixel_ratio", 1.5, "invalid/placeholder screenshot provenance"),
+            ("device_pixel_ratio", 9, "invalid/placeholder screenshot provenance"),
+        ]
+        original = dict(self.entries["WEB-01"])
+        for field, invalid, expected in cases:
+            with self.subTest(field=field, invalid=invalid):
+                self.entries["WEB-01"] = {**original, field: invalid}
+                self._write_ledger()
+                errors, matched, _ = audit(self.root)
+                self.assertEqual(matched, 0)
+                self.assertTrue(any(expected in error for error in errors), errors)
+        self.entries["WEB-01"] = original
+        self._write_ledger()
+        self.assertEqual(audit(self.root)[0], [])
+
+    def test_canonical_dynamic_routes_allow_only_valid_path_segments(self):
+        self.assertTrue(_route_matches("/blog/{slug}", "/blog/verified-article"))
+        self.assertTrue(_route_matches("/runbooks/{id}/offline", "/runbooks/123/offline"))
+        for path in (
+            "/blog/", "/blog/one/two", "/blog/../admin", "/blog/./admin",
+            "/blog/story?token=x", "/blog/story#fragment", "//blog/story",
+            "/blog/a\bb", "/blog/a\nb", "/blog/a\\b",
+        ):
+            with self.subTest(path=repr(path)):
+                self.assertFalse(_route_matches("/blog/{slug}", path))
 
 
 if __name__ == "__main__":
