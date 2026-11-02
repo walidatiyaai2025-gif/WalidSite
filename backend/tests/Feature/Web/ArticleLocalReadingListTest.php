@@ -155,4 +155,18 @@ final class ArticleLocalReadingListTest extends TestCase
         $this->assertStringContainsString("validTitle(value.ar)", $html);
         $this->assertStringNotContainsString('anchor.innerHTML', $html);
     }
+    public function test_article_reading_list_reconciles_other_tab_changes_without_persisting_them(): void
+    {
+        $article = $this->approvedArticle();
+        $html = $this->get('/blog/'.$article->slug.'?lang=en')
+            ->assertOk()->getContent();
+
+        $this->assertStringContainsString("window.addEventListener('storage', event => {", $html);
+        $this->assertStringContainsString('if (event.key !== storageKey && event.key !== null) return;', $html);
+        $this->assertStringContainsString('saved = load();', $html);
+        $this->assertStringContainsString('toggle.disabled = true;', $html);
+        $this->assertStringContainsString('links.replaceChildren();', $html);
+        $this->assertStringContainsString('feedback.textContent = words.unavailable;', $html);
+    }
+
 }
