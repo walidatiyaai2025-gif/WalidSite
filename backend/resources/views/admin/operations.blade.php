@@ -1,6 +1,10 @@
 @php($locale = request()->query('lang') === 'ar' ? 'ar' : 'en')
 @php($ar = $locale === 'ar')
 @php($titles = ['github' => ['GitHub Sync', 'مزامنة GitHub'], 'projects' => ['Projects & CV', 'المشاريع والسيرة المهنية'], 'audience' => ['Audience & consent', 'الجمهور والموافقة'], 'analytics' => ['Verified analytics', 'التحليلات المتحقّق منها']])
+@php($visibilityLabels = ['public' => ['Public', 'عام'], 'private' => ['Private', 'خاص']])
+@php($statusLabels = ['completed' => ['Completed', 'مكتمل'], 'in_progress' => ['In progress', 'قيد التنفيذ'], 'research' => ['Research', 'بحث'], 'archived' => ['Archived', 'مؤرشف']])
+@php($purposeLabels = ['account_activity' => ['Account activity', 'نشاط الحساب'], 'editorial_updates' => ['Editorial updates', 'تحديثات المحتوى'], 'product_updates' => ['Product updates', 'تحديثات المنتج']])
+@php($channelLabels = ['email' => ['Email', 'البريد الإلكتروني'], 'push' => ['Push notification', 'إشعار فوري']])
 @php($title = $titles[$section][$ar ? 1 : 0])
 <!doctype html>
 <html lang="{{ $locale }}" dir="{{ $ar ? 'rtl' : 'ltr' }}">
@@ -86,8 +90,8 @@ details{border:1px solid var(--edge);padding:10px;border-radius:8px}details[open
 <p class="muted">{{ $ar ? 'تعديل المسودات الخاصة فقط. لا يوجد زر نشر يتجاوز مراجعة الادعاءات والدليل.' : 'Only unpublished private drafts may be edited. Publication and professional claims require independent evidence review.' }}</p>
 <form method="get" action="{{ route('admin.operations.projects') }}" class="filters" role="search">
 <input type="hidden" name="lang" value="{{ $locale }}">
-<div><label for="visibility">{{ $ar ? 'الظهور' : 'Visibility' }}</label><select name="visibility" id="visibility"><option value="">{{ $ar ? 'الكل' : 'All' }}</option>@foreach(['public','private'] as $option)<option value="{{ $option }}" @selected($visibilityFilter===$option)>{{ $option }}</option>@endforeach</select></div>
-<div><label for="status">{{ $ar ? 'الحالة' : 'Status' }}</label><select name="status" id="status"><option value="">{{ $ar ? 'الكل' : 'All' }}</option>@foreach(['completed','in_progress','research','archived'] as $option)<option value="{{ $option }}" @selected($statusFilter===$option)>{{ $option }}</option>@endforeach</select></div>
+<div><label for="visibility">{{ $ar ? 'الظهور' : 'Visibility' }}</label><select name="visibility" id="visibility"><option value="">{{ $ar ? 'الكل' : 'All' }}</option>@foreach(['public','private'] as $option)<option value="{{ $option }}" @selected($visibilityFilter===$option)>{{ $visibilityLabels[$option][$ar ? 1 : 0] }}</option>@endforeach</select></div>
+<div><label for="status">{{ $ar ? 'الحالة' : 'Status' }}</label><select name="status" id="status"><option value="">{{ $ar ? 'الكل' : 'All' }}</option>@foreach(['completed','in_progress','research','archived'] as $option)<option value="{{ $option }}" @selected($statusFilter===$option)>{{ $statusLabels[$option][$ar ? 1 : 0] }}</option>@endforeach</select></div>
 <div><button type="submit">{{ $ar ? 'تطبيق المرشحات' : 'Apply filters' }}</button></div>
 </form>
 @if($projects->isEmpty())<p role="status">{{ $ar ? 'لا توجد مشاريع تطابق النتائج.' : 'No projects match these filters.' }}</p>@else
@@ -96,7 +100,7 @@ details{border:1px solid var(--edge);padding:10px;border-radius:8px}details[open
 </tr></thead><tbody>
 @foreach($projects as $project)
 <tr><td>{{ $project->title }}<p class="muted">{{ $project->slug }}</p></td>
-<td>{{ $project->status }}</td><td>{{ $project->visibility }}</td>
+<td>{{ $statusLabels[$project->status][$ar ? 1 : 0] ?? $project->status }}</td><td>{{ $visibilityLabels[$project->visibility][$ar ? 1 : 0] ?? $project->visibility }}</td>
 <td>{{ $project->verified_public_evidence_count }} / {{ $project->evidence_count }}</td>
 <td>
 @if(auth()->user()?->hasRole('owner') && $project->visibility==='private' && $project->published_at===null)
@@ -126,8 +130,8 @@ details{border:1px solid var(--edge);padding:10px;border-radius:8px}details[open
 <p class="muted">{{ $ar ? 'العدد من تفضيلات الموافقة المحفوظة لمستخدمين نشطين فقط. المستلمون غير الموافقين أو الملغين غير محسوبين. لا توجد خدمة إرسال متاحة من هذه الشاشة.' : 'Only active accounts with unrevoked explicit consent count. No emails or identifiers are listed, and this screen cannot send a push notification.' }}</p>
 <form method="get" action="{{ route('admin.operations.audience') }}" class="filters" role="search">
 <input type="hidden" name="lang" value="{{ $locale }}">
-<div><label for="purpose">{{ $ar ? 'الغرض' : 'Purpose' }}</label><select id="purpose" name="purpose">@foreach(['account_activity','editorial_updates','product_updates'] as $option)<option value="{{ $option }}" @selected($purpose===$option)>{{ $option }}</option>@endforeach</select></div>
-<div><label for="channel">{{ $ar ? 'القناة' : 'Channel' }}</label><select id="channel" name="channel">@foreach(['email','push'] as $option)<option value="{{ $option }}" @selected($channel===$option)>{{ $option }}</option>@endforeach</select></div>
+<div><label for="purpose">{{ $ar ? 'الغرض' : 'Purpose' }}</label><select id="purpose" name="purpose">@foreach(['account_activity','editorial_updates','product_updates'] as $option)<option value="{{ $option }}" @selected($purpose===$option)>{{ $purposeLabels[$option][$ar ? 1 : 0] }}</option>@endforeach</select></div>
+<div><label for="channel">{{ $ar ? 'القناة' : 'Channel' }}</label><select id="channel" name="channel">@foreach(['email','push'] as $option)<option value="{{ $option }}" @selected($channel===$option)>{{ $channelLabels[$option][$ar ? 1 : 0] }}</option>@endforeach</select></div>
 <div><button type="submit">{{ $ar ? 'معاينة الموافقات' : 'Preview consented segment' }}</button></div>
 </form>
 <div class="cards" style="margin-top:20px">
