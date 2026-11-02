@@ -132,6 +132,7 @@ def audit(root: Path, require_complete: bool = False):
             or len(record["capture_command"].strip()) < 12
             or "<" in record["capture_command"]
             or not _route_matches(screen.get("route"), record["route"])
+            or not isinstance(record["locale"], str)
             or record["locale"] not in ("ar", "en")
             or type(record["device_pixel_ratio"]) not in (int, float)
             or not 0.5 <= record["device_pixel_ratio"] <= 8
