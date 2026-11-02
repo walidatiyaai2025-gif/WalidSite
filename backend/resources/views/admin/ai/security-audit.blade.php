@@ -1,7 +1,7 @@
 @php($locale = $locale ?? (request()->query('lang') === 'ar' ? 'ar' : 'en'))
 @php($ar = $locale === 'ar')
 @php($domain = $filters['domain'] ?? 'all')
-@php($allActions = array_values(array_unique(array_merge($providerActions ?? [], $editorialActions ?? [], $mediaActions ?? []))))
+@php($allActions = array_values(array_unique(array_merge($providerActions ?? [], $editorialActions ?? [], $mediaActions ?? [], $projectActions ?? []))))
 <!doctype html>
 <html lang="{{ $locale }}" dir="{{ $ar ? 'rtl' : 'ltr' }}">
 <head>
@@ -62,14 +62,14 @@ th,td{padding:11px;text-align:start;vertical-align:top;border-bottom:1px solid v
 </div>
 <p class="muted">{{ $ar
 ? 'هذه أحداث محفوظة وليست مراقبة أمنية لحظية. لا نعرض المفاتيح أو قيم الحقول القديمة والجديدة أو البريد الإلكتروني للمستخدم أو نصوص المسودات أو الطلبات الخاصة. الأوقات بتوقيت UTC.'
-: 'These are persisted events, not a live security monitor. Credentials, old/new values, user email, draft bodies and private request payloads are never shown. Times are UTC.' }}</p>
+: 'These are persisted events, not a live security monitor. Provider, editorial, media and project decisions exclude credentials, user emails, draft bodies, private URLs and request payloads. Times are UTC.' }}</p>
 
 <form class="panel" action="{{ route('admin.audit.index') }}" method="get" role="search" aria-label="{{ $ar ? 'تصفية سجل التدقيق' : 'Filter audit history' }}">
 <input type="hidden" name="lang" value="{{ $locale }}">
 <div class="fields">
 <div class="field"><label for="audit-domain">{{ $ar ? 'المجال' : 'Domain' }}</label>
 <select id="audit-domain" name="domain">
-@foreach(['all'=>($ar?'الكل':'All domains'),'provider'=>($ar?'إعدادات المزود':'Provider settings'),'editorial'=>($ar?'قرارات المحتوى':'Editorial decisions'),'media'=>($ar?'حقوق الوسائط':'Media rights')] as $key=>$label)
+@foreach(['all'=>($ar?'الكل':'All domains'),'provider'=>($ar?'إعدادات المزود':'Provider settings'),'editorial'=>($ar?'قرارات المحتوى':'Editorial decisions'),'media'=>($ar?'حقوق الوسائط':'Media rights'),'project'=>($ar?'قرارات المشاريع':'Project decisions')] as $key=>$label)
 <option value="{{ $key }}" @selected($domain===$key)>{{ $label }}</option>
 @endforeach
 </select></div>
@@ -94,7 +94,7 @@ th,td{padding:11px;text-align:start;vertical-align:top;border-bottom:1px solid v
 'action'=>$filters['action'],'day'=>$filters['day'],'format'=>'csv'
 ])) }}" aria-label="{{ $ar ? 'تصدير أحداث التدقيق المصفاة CSV' : 'Export filtered audit events as CSV' }}">{{ $ar ? 'تصدير CSV' : 'Export CSV' }}</a>
 </div>
-<p class="muted">{{ $ar ? 'التصدير محدود بأحدث 1000 حدث من كل مصدر ويعلن الاقتطاع في ترويسة الاستجابة.' : 'Export is bounded to the newest 1000 events per source and reports truncation in the response header.' }}</p>
+<p class="muted">{{ $ar ? 'التصدير محدود بأحدث 1000 حدث من كل مصدر ويعلن الاقتطاع في ترويسة الاستجابة.' : 'Export is bounded to 1000 events per source (provider, editorial, project) and reports truncation in response headers.' }}</p>
 </form>
 
 <section class="panel" aria-labelledby="provider-records">
@@ -139,6 +139,34 @@ th,td{padding:11px;text-align:start;vertical-align:top;border-bottom:1px solid v
 @endforeach
 </tbody></table></div>
 {{ $editorialEvents->links() }}
+@endif
+</section>
+
+
+<section class="panel" aria-labelledby="project-audit-records">
+<h2 id="project-audit-records">{{ $ar ? 'سجل قرارات المشاريع والأدلة' : 'Project & evidence decisions' }} ({{ $projectEvents->total() }})</h2>
+<p class="muted">{{ $ar ? 'السجل دائم ويحفظ معرفات العمليات فقط دون روابط الأدلة الخاصة أو تفاصيل المسودات أو معلومات المستخدمين.' : 'Persisted decision receipts contain identifiers only, never private evidence URLs, draft content or account details.' }}</p>
+@if($projectEvents->isEmpty())
+<p role="status">{{ $ar ? 'لا توجد قرارات مشاريع مطابقة للتصفية.' : 'No project decisions match these filters.' }}</p>
+@else
+<div class="scroll"><table>
+<caption class="muted">{{ $ar ? 'قرارات مراجعة أدلة المشاريع ونشرها بتوقيت UTC' : 'Project evidence and publication decisions, UTC' }}</caption>
+<thead><tr>
+<th scope="col">{{ $ar ? 'الوقت UTC' : 'UTC time' }}</th>
+<th scope="col">{{ $ar ? 'معرف المشروع' : 'Project ID' }}</th>
+<th scope="col">{{ $ar ? 'معرف الدليل' : 'Evidence ID' }}</th>
+<th scope="col">{{ $ar ? 'القرار' : 'Decision' }}</th>
+</tr></thead><tbody>
+@foreach($projectEvents as $event)
+<tr>
+<td><time datetime="{{ $event->created_at }}">{{ $event->created_at }}</time></td>
+<td><code dir="ltr">{{ $event->project_id }}</code></td>
+<td>@if($event->evidence_id)<code dir="ltr">{{ $event->evidence_id }}</code>@else<span class="muted">—</span>@endif</td>
+<td><code dir="ltr">{{ $event->action }}</code></td>
+</tr>
+@endforeach
+</tbody></table></div>
+{{ $projectEvents->links() }}
 @endif
 </section>
 
