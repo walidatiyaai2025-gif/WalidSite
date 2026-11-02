@@ -180,8 +180,13 @@
                             @php($languageArgs['track'] = $rawContactTrack)
                         @endif
                         @php($rawContactTopic = request()->query()['topic'] ?? null)
-                        @if(is_string($rawContactTopic) && $rawContactTopic === 'privacy')
-                            @php($languageArgs['topic'] = 'privacy')
+                        @if(is_string($rawContactTopic)
+                            && in_array($rawContactTopic, [
+                                'privacy', 'privacy-access', 'privacy-correction',
+                                'privacy-export', 'privacy-deletion', 'privacy-notifications',
+                            ], true))
+                            {{-- Copy only server-supported request topics across locales. --}}
+                            @php($languageArgs['topic'] = $rawContactTopic)
                         @endif
                     @endif
                 @endif
