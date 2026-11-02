@@ -142,6 +142,9 @@ final class AdminArticleCreateTest extends TestCase
 
     public function test_dto_rejects_missing_bad_types_unknown_and_unsafe_publication_fields(): void
     {
+        // Exercise every malformed DTO independently of the separate live
+        // throttle gate (10/min). Keep Sanctum and HTTPS middleware enabled.
+        $this->withoutMiddleware(\Illuminate\Routing\Middleware\ThrottleRequests::class);
         $this->withToken($this->token());
         $valid = $this->input();
         $invalid = [
