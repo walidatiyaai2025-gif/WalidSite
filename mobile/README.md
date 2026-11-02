@@ -150,8 +150,9 @@ Welcome reads the canonical `/api/v1/public/app-bootstrap?lang=en|ar` only when
 an approved HTTPS `WALIDSITE_API_ORIGIN` is configured. The response is
 bounded and fail-closed: the client requires the exact supported locales,
 Light-only theme declaration, implemented relative route map, guest capability
-flags, authenticated AI/saved-resource boundaries, and the real locale-matched
-`/privacy` path. Cross-origin or stale privacy metadata, extra private fields,
+flags and authenticated AI/saved-resource boundaries. A legacy truthful null
+privacy value is shown as unavailable; when a policy path is present it must be
+the locale-matched `/privacy` route. Cross-origin or stale privacy metadata, extra private fields,
 invented tools/routes, malformed locale state and oversized responses are
 rejected.
 
