@@ -2,11 +2,14 @@
 
 namespace Tests\Feature\Web;
 
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
 use Tests\TestCase;
 
 final class PrivacyPolicyJourneyTest extends TestCase
 {
+    use RefreshDatabase;
+
     public function test_bilingual_disclosure_pages_are_accessible_linked_and_not_legally_published(): void
     {
         foreach (['ar', 'en'] as $lang) {
