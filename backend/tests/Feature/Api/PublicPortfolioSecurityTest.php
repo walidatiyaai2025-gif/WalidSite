@@ -106,6 +106,11 @@ class PublicPortfolioSecurityTest extends TestCase
             'https://gateway.home/status',
             'https://router.home.arpa/private',
             'https://service.localdomain/internal',
+            'https://database.department.corp/private-topology',
+            'https://sso.office.intranet/admin',
+            'https://finance.corp.private/account',
+            'https://relay.ops.arpa/internal',
+            'https://SENSITIVE.ORG.CORP./secret',
             'https://ROUTER.HOME.ARPA./config',
             'https://docs.example.org:8443/private',
         ] as $url) {
@@ -115,6 +120,10 @@ class PublicPortfolioSecurityTest extends TestCase
         $safe = $this->project();
         $this->proof($safe, 'public', true, 'https://docs.example.test/public-proof');
         $this->proof($safe, 'public', true, 'https://10.1.2.3/internal');
+        $this->proof($safe, 'public', true, 'https://admin.branch.corp/records');
+        $this->proof($safe, 'public', true, 'https://internal.team.intranet/secret');
+        $this->proof($safe, 'public', true, 'https://gate.private/config');
+        $this->proof($safe, 'public', true, 'https://resolver.ops.arpa/debug');
 
         $this->getJson('/api/v1/public/projects')
             ->assertOk()->assertJsonCount(1, 'data')
@@ -124,9 +133,13 @@ class PublicPortfolioSecurityTest extends TestCase
             ->assertDontSee('10.1.2.3');
 
         $this->getJson('/api/v1/public/projects/'.$unproven->slug)->assertNotFound();
-        $this->getJson('/api/v1/public/projects/'.$safe->slug)
+        $this->getJson('/api/v1/public/projects/'.$safe->slug.'?lang=ar')
             ->assertOk()->assertJsonCount(1, 'data.evidence_urls')
-            ->assertJsonPath('data.evidence_urls.0', 'https://docs.example.test/public-proof');
+            ->assertJsonPath('data.evidence_urls.0', 'https://docs.example.test/public-proof')
+            ->assertDontSee('branch.corp')
+            ->assertDontSee('team.intranet')
+            ->assertDontSee('gate.private')
+            ->assertDontSee('ops.arpa');
     }
 
     public function test_private_dns_evidence_cannot_be_published_as_owner_claim_proof(): void
@@ -147,6 +160,10 @@ class PublicPortfolioSecurityTest extends TestCase
             'https://node.home/status',
             'https://gateway.home.arpa/private',
             'https://host.localdomain/diagnostic',
+            'https://hr.hr.corp/people',
+            'https://identity.campus.intranet/signin',
+            'https://internal.private/claims',
+            'https://NODE.COMPANY.ARPA./secrets',
         ] as $index => $unsafe) {
             ProfessionalClaim::create([
                 'profile_id' => $profile->id,
@@ -174,6 +191,10 @@ class PublicPortfolioSecurityTest extends TestCase
             ->assertDontSee('service.svc')
             ->assertDontSee('router.lan')
             ->assertDontSee('gateway.home.arpa')
+            ->assertDontSee('hr.hr.corp')
+            ->assertDontSee('campus.intranet')
+            ->assertDontSee('internal.private')
+            ->assertDontSee('COMPANY.ARPA')
             ->assertDontSee('Unusable private DNS claim');
     }
 
