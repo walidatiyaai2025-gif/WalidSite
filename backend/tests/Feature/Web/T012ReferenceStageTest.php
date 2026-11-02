@@ -367,4 +367,32 @@ final class T012ReferenceStageTest extends TestCase
                 ->assertSee('<html lang="'.$lang.'" dir="'.($lang === 'ar' ? 'rtl' : 'ltr').'">', false);
         }
     }
+
+    public function test_article_outline_progressively_links_only_real_rendered_sections_in_both_locales(): void
+    {
+        $article = $this->article(
+            'real-article-outline-navigation',
+            'Source-reviewed article outline',
+            "## Environment\n\nVerified first section.\n\n## Troubleshooting\n\nVerified second section."
+        );
+
+        foreach (['ar', 'en'] as $locale) {
+            $page = $this->get(route('public.article', [
+                'slug' => $article->slug, 'lang' => $locale,
+            ]))->assertOk()
+                ->assertSee('id="t012-article-outline"', false)
+                ->assertSee('<li>Environment</li>', false)
+                ->assertSee('<li>Troubleshooting</li>', false)
+                ->assertSee("body.querySelectorAll('h2')", false)
+                ->assertSee("document.createElement('a')", false)
+                ->assertSee("label.replaceChildren(link)", false)
+                ->assertSee('t012-outline-link:focus-visible', false);
+
+            // No unreviewed/caller-supplied href is written by the server;
+            // enhancement only links to an actual matching rendered heading.
+            $this->assertStringNotContainsString(
+                '<li><a href="#t012-section-1"', $page->getContent()
+            );
+        }
+    }
 }
