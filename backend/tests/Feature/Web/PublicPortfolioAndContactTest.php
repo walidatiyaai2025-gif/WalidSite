@@ -337,4 +337,12 @@ class PublicPortfolioAndContactTest extends TestCase
         }
     }
 
+    public function test_contact_message_does_not_request_browser_autofill_in_either_locale(): void
+    {
+        foreach (['en', 'ar'] as $locale) {
+            $this->get('/contact?lang='.$locale)->assertOk()
+                ->assertSee('id="contact-message" name="message" autocomplete="off"', false);
+        }
+    }
+
 }
