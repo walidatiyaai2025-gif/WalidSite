@@ -131,7 +131,7 @@ final class PublicLearningPathTest extends TestCase
                     ['title' => 'Valid lesson shape', 'description' => 'But invalid path ID'],
                 ], JSON_THROW_ON_ERROR),
             ]);
-            $this->assertNull(app(\\App\\Http\\Controllers\\Api\\PublicLearningPathController::class)
+            $this->assertNull(app(\App\Http\Controllers\Api\PublicLearningPathController::class)
                 ->verifiedTrack($id));
         }
 
