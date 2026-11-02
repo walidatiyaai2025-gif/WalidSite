@@ -137,8 +137,7 @@ class EditorialScheduleRunnerTest extends TestCase
             if (! $disabledDuringScan
                 && str_starts_with($sql, 'select')
                 && str_contains($sql, 'editorial_schedules')
-                && str_contains($sql, 'due_at')
-                && str_contains($sql, 'pending')) {
+                && str_contains($sql, 'due_at')) {
                 $disabledDuringScan = true;
                 DB::table('editorial_policies')->where('id', 1)->update([
                     'enabled' => false,
