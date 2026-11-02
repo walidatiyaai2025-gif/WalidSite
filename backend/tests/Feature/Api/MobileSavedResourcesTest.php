@@ -294,6 +294,35 @@ final class MobileSavedResourcesTest extends TestCase
         $this->assertDatabaseCount('saved_resources', 200);
     }
 
+    public function test_saved_quota_is_isolated_per_account(): void
+    {
+        $first = $this->user('quota-first');
+        $second = $this->user('quota-second');
+        $article = $this->article('quota-shared-public');
+
+        for ($i = 0; $i < 200; $i++) {
+            DB::table('saved_resources')->insert([
+                'id' => (string) Str::uuid(), 'user_id' => $first->id,
+                'resource_type' => 'article', 'resource_id' => (string) Str::uuid(),
+                'saved_at' => now(),
+            ]);
+        }
+
+        $this->withToken($this->token($first))
+            ->postJson('/api/v1/mobile/saved', [
+                'resource_type' => 'article', 'resource_id' => $article->id,
+            ])->assertUnprocessable();
+
+        Auth::forgetGuards();
+        $this->withToken($this->token($second))
+            ->postJson('/api/v1/mobile/saved', [
+                'resource_type' => 'article', 'resource_id' => $article->id,
+            ])->assertOk();
+
+        $this->assertSame(200, DB::table('saved_resources')->where('user_id', $first->id)->count());
+        $this->assertSame(1, DB::table('saved_resources')->where('user_id', $second->id)->count());
+    }
+
     public function test_production_plaintext_denied_before_processing_bearer_credentials(): void
     {
         $user = $this->user('secure-reader');
