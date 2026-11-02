@@ -45,9 +45,9 @@ final class PrivacyConsentRealJourneyTest extends TestCase
                 ->assertSee('<meta name="robots" content="noindex,follow">', false)
                 ->assertSee('id="account-controls"', false)
                 ->assertSee('dir="'.($ar ? 'rtl' : 'ltr').'"', false)
-                ->assertSee('href="'.route('public.contact', [
+                ->assertSee('href="'.e(route('public.contact', [
                     'lang' => $locale, 'topic' => 'privacy',
-                ]).'"', false)
+                ])).'"', false)
                 ->assertDontSee('name="privacy_consent" value="1" checked', false);
 
             $privacy->assertSee($ar ? 'الخصوصية والموافقات وبياناتي' : 'Privacy, consent and my data')
@@ -63,9 +63,9 @@ final class PrivacyConsentRealJourneyTest extends TestCase
                 ->assertSee('<meta name="robots" content="noindex,follow">', false);
 
             $this->get('/contact?lang='.$locale.'&topic=privacy')->assertOk()
-                ->assertSee('href="'.route('public.privacy', [
+                ->assertSee('href="'.e(route('public.privacy', [
                     'lang' => $locale,
-                ]).'#account-controls"', false)
+                ])).'#account-controls"', false)
                 ->assertSee($ar ? 'لا تشترك بك' : 'does not subscribe you')
                 ->assertSee('name="privacy_consent"', false)
                 ->assertDontSee('value="1" checked', false);
