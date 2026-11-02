@@ -151,11 +151,16 @@ class _MobilePreferencesScreenState extends State<MobilePreferencesScreen> {
     final parentLocaleChanged = widget.arabic != oldWidget.arabic;
     final sourceChanged = widget.fetch != oldWidget.fetch;
     if (parentLocaleChanged || sourceChanged) {
+      // The picker may already have loaded the requested locale before the
+      // parent's echo arrives. Don't launch a duplicate request in that case.
+      final needsRefresh = sourceChanged || _arabic != widget.arabic;
       if (parentLocaleChanged) _arabic = widget.arabic;
-      _clearMessage = null;
-      _capabilities = _configured
-          ? (widget.fetch ?? const MobilePreferenceReader().load)(_arabic)
-          : null;
+      if (needsRefresh) {
+        _clearMessage = null;
+        _capabilities = _configured
+            ? (widget.fetch ?? const MobilePreferenceReader().load)(_arabic)
+            : null;
+      }
     }
   }
 
