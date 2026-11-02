@@ -33,7 +33,7 @@ final class PrivacyPolicyJourneyTest extends TestCase
                     : ($isArabic ? 'مسودة وليست شروطًا قانونية نافذة' : 'not effective legal terms'));
             }
             $this->get('/privacy?lang='.$lang)->assertSee(
-                'href="'.route('public.contact', [
+                'href="'.e(route('public.contact', [
                     'lang' => $lang, 'topic' => 'privacy',
                 ]).'"', false
             );
@@ -49,8 +49,8 @@ final class PrivacyPolicyJourneyTest extends TestCase
 
     public function test_only_safe_known_locale_is_accepted_and_no_untrusted_parameters_are_reflected(): void
     {
-        $this->get('/privacy?lang=bad')->assertUnprocessable();
-        $this->get('/terms?lang%5B%5D=ar')->assertUnprocessable();
+        $this->withHeader('Accept', 'application/json')->get('/privacy?lang=bad')->assertUnprocessable();
+        $this->withHeader('Accept', 'application/json')->get('/terms?lang%5B%5D=ar')->assertUnprocessable();
         $this->get('/privacy?lang=en&secret=do-not-echo')->assertOk()
             ->assertDontSee('do-not-echo');
         $this->get('/terms?lang=ar&secret=do-not-echo')->assertOk()
@@ -67,12 +67,12 @@ final class PrivacyPolicyJourneyTest extends TestCase
             ->assertSee('name="privacy_consent"', false)
             ->assertDontSee('name="privacy_consent" value="1" checked', false)
             ->assertSee('Data handling details')
-            ->assertSee('href="'.route('public.contact', [
+            ->assertSee('href="'.e(route('public.contact', [
                 'lang' => 'ar', 'topic' => 'privacy',
             ]).'"', false);
         $this->get('/contact?lang=ar&topic=privacy')->assertOk()
             ->assertSee('طلب متعلق بالخصوصية أو البيانات')
-            ->assertSee('href="'.route('public.contact', [
+            ->assertSee('href="'.e(route('public.contact', [
                 'lang' => 'en', 'topic' => 'privacy',
             ]).'"', false);
         $this->get('/contact?lang=en&topic%5B%5D=privacy')->assertOk()
