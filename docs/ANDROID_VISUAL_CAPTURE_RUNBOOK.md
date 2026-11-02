@@ -31,12 +31,13 @@ or updates the visual ledger itself. Evidence is admitted only through
 
 ## Verified heading-supported screens
 
-The source-defined Flutter AppBar headings currently distinguish eight screens:
+The source-defined Flutter AppBar headings currently distinguish nine screens:
 
 | Contract | Route | English visible title |
 | --- | --- | --- |
 | MOBILE-02 | /home | Waleed Tech Companion |
 | MOBILE-03 | /tools/ai-troubleshooter | AI Troubleshooter |
+| MOBILE-04 | /solutions/{id} | Solution detail |
 | MOBILE-05 | /runbooks | Offline runbook library |
 | MOBILE-07 | /articles | Technical articles |
 | MOBILE-08 | /learn | Learning paths |
@@ -45,7 +46,7 @@ The source-defined Flutter AppBar headings currently distinguish eight screens:
 | MOBILE-13 | /settings | Preferences |
 
 Arabic titles are defined by the actual Flutter source and checked too.
-**MOBILE-01, 04, 06, 11, 12 are intentionally unsupported** by this adapter:
+**MOBILE-01, 06, 11, 12 are intentionally unsupported** by this adapter:
 the current UI does not expose an independently unique static AppBar screen
 identifier for their contract paths. A dynamic title, shared Saved/Profile tab
 heading, or home card is not sufficient evidence; leave them \`pending\` until
