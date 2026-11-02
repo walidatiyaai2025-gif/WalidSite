@@ -150,8 +150,7 @@ class VerifiedGithubPortfolioReader {
 }
 
 
-/// Device-local follow list. This does not star, watch or otherwise mutate
-/// the user's GitHub account; it stores only verified public repository names.
+/// Device-local follow list. It never mutates the user's GitHub account.
 abstract class GithubFollowStore {
   Future<Set<String>> load();
   Future<void> save(Set<String> repositories);
@@ -159,10 +158,71 @@ abstract class GithubFollowStore {
 
 class GithubFollowStoreCodec {
   GithubFollowStoreCodec._();
+  static final RegExp _name = RegExp(
+    r'^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?/[A-Za-z0-9_][A-Za-z0-9_.-]{0,99}$',
+  );
 
-  static final RegExp _repositoryName = RegExp(
-    r'^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?/[A-Za-z0-9_][A-Za-z0-9_.-]{0,99}
+  static Set<String> decode(String raw) {
+    if (raw.length > 16384) throw const FormatException('Follow list too large');
+    final value = jsonDecode(raw);
+    if (value is! Map<String, dynamic> || value.length != 2 ||
+        value['schema'] != 'walidsite.github-follows.v1' ||
+        value['repositories'] is! List) {
+      throw const FormatException('Invalid local follow list');
+    }
+    final entries = value['repositories'] as List<dynamic>;
+    if (entries.length > 100) throw const FormatException('Follow list limit exceeded');
+    final result = <String>{};
+    for (final entry in entries) {
+      if (entry is! String || !_name.hasMatch(entry) || entry.contains('..') ||
+          !result.add(entry.toLowerCase())) {
+        throw const FormatException('Invalid or duplicate followed repository');
+      }
+    }
+    return Set.unmodifiable(result);
+  }
 
+  static String encode(Set<String> repositories) {
+    if (repositories.length > 100 || repositories.any((name) =>
+        !_name.hasMatch(name) || name.contains('..'))) {
+      throw const FormatException('Invalid local follow selection');
+    }
+    final normalized = repositories.map((name) => name.toLowerCase()).toSet();
+    if (normalized.length != repositories.length) {
+      throw const FormatException('Duplicate local follow selection');
+    }
+    final sorted = normalized.toList()..sort();
+    return jsonEncode({'schema': 'walidsite.github-follows.v1', 'repositories': sorted});
+  }
+}
+
+class FileGithubFollowStore implements GithubFollowStore {
+  const FileGithubFollowStore();
+  Future<File> _file() async {
+    final directory = await getApplicationSupportDirectory();
+    return File('${directory.path}/github-followed-repositories.json');
+  }
+  @override
+  Future<Set<String>> load() async {
+    final file = await _file();
+    if (!await file.exists()) return const <String>{};
+    return GithubFollowStoreCodec.decode(await file.readAsString());
+  }
+  @override
+  Future<void> save(Set<String> repositories) async {
+    final encoded = GithubFollowStoreCodec.encode(repositories);
+    final file = await _file();
+    await file.parent.create(recursive: true);
+    final temporary = File('${file.path}.tmp');
+    try {
+      await temporary.writeAsString(encoded, flush: true);
+      await temporary.rename(file.path);
+    } catch (_) {
+      if (await temporary.exists()) await temporary.delete();
+      rethrow;
+    }
+  }
+}
 /// MOBILE-10: real public repository cards and links, with no made-up metrics.
 class VerifiedGithubPortfolioScreen extends StatefulWidget {
   const VerifiedGithubPortfolioScreen({
