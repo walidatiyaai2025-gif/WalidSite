@@ -30,14 +30,14 @@ final class LegacyContentIntake
         }
 
         if (! is_array($document) || array_keys($document) !== ['version', 'tables']
-            || $document['version'] !== 1 || ! is_array($document['tables'])) {
+            || $document['version'] !== 1 || ! is_array($document['tables']) || array_is_list($document['tables'])) {
             throw new InvalidArgumentException('Unsupported content export schema.');
         }
 
         $accepted = [];
         $rejected = [];
         foreach ($document['tables'] as $table => $rows) {
-            if (! isset(self::TABLES[$table]) || ! is_array($rows) || ! array_is_list($rows)) {
+            if (! is_string($table) || ! isset(self::TABLES[$table]) || ! is_array($rows) || ! array_is_list($rows)) {
                 $rejected[] = ['table' => (string) $table, 'reason' => 'table_not_allowlisted'];
                 continue;
             }
