@@ -280,4 +280,116 @@ final class MobileSavedResourcesTest extends TestCase
             $this->app->instance('env', $previous);
         }
     }
+
+    public function test_two_hundred_bookmark_limit_counts_hidden_records_and_duplicate_is_idempotent(): void
+    {
+        $owner = $this->user('limit-owner');
+        $other = $this->user('limit-other');
+        $first = $this->article('limit-first');
+        $second = $this->article('limit-second');
+        Http::fake();
+
+        // Withdrawn and unresolvable bookmarks still occupy a saved slot.
+        $hiddenId = (string) Str::uuid();
+        $records = [];
+        for ($i = 0; $i < 199; $i++) {
+            $records[] = [
+                'id' => (string) Str::uuid(),
+                'user_id' => $owner->id,
+                'resource_type' => 'article',
+                'resource_id' => $i === 0 ? $hiddenId : (string) Str::uuid(),
+                'saved_at' => now()->subMinutes($i + 1),
+            ];
+        }
+        DB::table('saved_resources')->insert($records);
+
+        $this->withToken($this->token($owner));
+        $this->postJson('/api/v1/mobile/saved', [
+            'resource_type' => 'article', 'resource_id' => $first->id,
+        ])->assertOk()->assertJsonPath('data.saved', true);
+        $this->assertSame(200, DB::table('saved_resources')
+            ->where('user_id', $owner->id)->count());
+
+        // Already-saved resources do not consume a slot or raise a quota error.
+        $this->postJson('/api/v1/mobile/saved', [
+            'resource_type' => 'article', 'resource_id' => $first->id,
+        ])->assertOk()->assertJsonPath('data.saved', true);
+        $this->postJson('/api/v1/mobile/saved', [
+            'resource_type' => 'article', 'resource_id' => $second->id,
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors('resource_id');
+        $this->assertDatabaseMissing('saved_resources', [
+            'user_id' => $owner->id, 'resource_id' => $second->id,
+        ]);
+        $this->assertSame(200, DB::table('saved_resources')
+            ->where('user_id', $owner->id)->count());
+
+        // Another account has its own independent quota, including when
+        // the first account has exhausted its quota.
+        Auth::forgetGuards();
+        $this->withToken($this->token($other))
+            ->postJson('/api/v1/mobile/saved', [
+                'resource_type' => 'article', 'resource_id' => $second->id,
+            ])->assertOk()->assertJsonPath('data.saved', true);
+        $this->assertDatabaseHas('saved_resources', [
+            'user_id' => $other->id, 'resource_id' => $second->id,
+        ]);
+
+        // Deleting a hidden bookmark frees exactly one slot for the owner.
+        Auth::forgetGuards();
+        $this->withToken($this->token($owner))
+            ->deleteJson('/api/v1/mobile/saved/article/'.$hiddenId)
+            ->assertOk()->assertJsonPath('data.removed', true);
+        $this->postJson('/api/v1/mobile/saved', [
+            'resource_type' => 'article', 'resource_id' => $second->id,
+        ])->assertOk()->assertJsonPath('data.saved', true);
+        $this->assertSame(200, DB::table('saved_resources')
+            ->where('user_id', $owner->id)->count());
+        $this->assertDatabaseCount('saved_resources', 201);
+        Http::assertNothingSent();
+    }
+
+    public function test_quota_check_and_insert_share_a_nested_admission_transaction(): void
+    {
+        $owner = $this->user('transaction-owner');
+        $article = $this->article('transaction-guide');
+        $this->withToken($this->token($owner));
+
+        // RefreshDatabase already starts an outer test transaction. Ensure
+        // admission opens an additional transaction around BOTH count and
+        // insert instead of relying on sequential requests to mimic a race.
+        $baseline = DB::transactionLevel();
+        $counts = [];
+        $inserts = [];
+        $locks = [];
+        DB::listen(function ($event) use (&$counts, &$inserts, &$locks): void {
+            $sql = strtolower($event->sql);
+            $level = DB::transactionLevel();
+            if (str_contains($sql, 'saved_resources') && str_contains($sql, 'count(')) {
+                $counts[] = $level;
+            }
+            if (str_contains($sql, 'saved_resources') && str_contains($sql, 'insert')) {
+                $inserts[] = $level;
+            }
+            if (str_contains($sql, 'users') && str_contains($sql, 'status') &&
+                str_contains($sql, 'select')) {
+                $locks[] = $level;
+            }
+        });
+
+        $this->postJson('/api/v1/mobile/saved', [
+            'resource_type' => 'article', 'resource_id' => $article->id,
+        ])->assertOk()->assertJsonPath('data.saved', true);
+
+        $this->assertNotEmpty($locks, 'Account must be read under the admission lock.');
+        $this->assertNotEmpty($counts, 'Quota check must run inside admission.');
+        $this->assertNotEmpty($inserts, 'Bookmark insert must run inside admission.');
+        foreach ([$locks, $counts, $inserts] as $levels) {
+            $this->assertGreaterThan($baseline, min($levels),
+                'Account lock, quota check and insert must all run in one nested transaction.');
+        }
+        $this->assertSame($baseline, DB::transactionLevel());
+        $this->assertDatabaseCount('saved_resources', 1);
+    }
+
 }
