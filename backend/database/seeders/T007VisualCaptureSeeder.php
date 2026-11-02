@@ -80,9 +80,13 @@ final class T007VisualCaptureSeeder extends Seeder
                 'skill_id' => $ai->id,
             ]);
 
-            $cvEvidence = 'https://github.com/'.self::REPOSITORY
-                .'/blob/'.$sha.'/contracts/owner-cv-baseline.json';
-            $repoEvidence = 'https://github.com/'.self::REPOSITORY.'/tree/'.$sha;
+            // PublicPortfolioController intentionally rejects github.com as a
+            // generic claim-evidence host. Pin raw source files to the exact
+            // checked-out SHA so the screenshot fixture passes the SAME public
+            // URL policy as production without weakening that policy.
+            $rawBase = 'https://raw.githubusercontent.com/'.self::REPOSITORY.'/'.$sha.'/';
+            $cvEvidence = $rawBase.'contracts/owner-cv-baseline.json';
+            $repoEvidence = $rawBase.'backend/app/AI/ProviderRouter.php';
 
             foreach ([
                 [
