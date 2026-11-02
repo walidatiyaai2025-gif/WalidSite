@@ -497,17 +497,19 @@ class DurableAiQueueTest extends TestCase
 
         foreach (['checkpoint', 'usage', 'complete'] as $operation) {
             try {
-                match ($operation) {
-                    'checkpoint' => $queue->completeStep(
+                if ($operation === 'checkpoint') {
+                    $queue->completeStep(
                         $id, 'worker-a', 'research', 'drafts/cancelled'
-                    ),
-                    'usage' => $queue->recordUsage(
+                    );
+                } elseif ($operation === 'usage') {
+                    $queue->recordUsage(
                         $id, 'worker-a', 'cancel:after', 1, 'USD'
-                    ),
-                    'complete' => $queue->completeJob(
+                    );
+                } else {
+                    $queue->completeJob(
                         $id, 'worker-a', 'drafts/cancelled'
-                    ),
-                };
+                    );
+                }
                 $this->fail('Cancelled job accepted '.$operation.'.');
             } catch (DomainException $exception) {
                 $this->assertSame(
