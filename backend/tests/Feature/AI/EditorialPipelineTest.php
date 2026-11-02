@@ -85,6 +85,9 @@ class EditorialPipelineTest extends TestCase
         $this->assertFalse($article->fresh()->isReadyToPublish());
         $this->assertSame(false, $draft->citations_json[0]['verified']);
         $this->assertSame(80, (int) DB::table('ai_usage')->where('job_id', $jobId)->sum('cost_minor'));
+        $this->assertSame(1, DB::table('ai_usage')->where('job_id', $jobId)->count());
+        $this->assertStringStartsWith('ai-draft-inference:',
+            (string) DB::table('ai_usage')->where('job_id', $jobId)->value('usage_key'));
         $this->assertSame(
             ['input_tokens' => 21, 'output_tokens' => 7],
             json_decode((string) DB::table('ai_usage')->where('job_id', $jobId)
@@ -94,6 +97,86 @@ class EditorialPipelineTest extends TestCase
             $request->url() === 'https://models.example.org/v1/chat/completions'
             && $request->hasHeader('Authorization', 'Bearer test-secret-never-log')
         );
+    }
+
+    public function test_paid_inference_receipt_survives_article_removal_during_provider_response(): void
+    {
+        $provider = $this->provider();
+        $article = $this->article();
+        $jobId = $this->claimedJob($provider, 'editorial-draft', 80);
+        $sent = 0;
+        Http::fake(function ($request) use ($article, &$sent) {
+            $sent++;
+            $this->assertSame('https://models.example.org/v1/chat/completions',
+                $request->url());
+            // The remote model has received the prompt. While it runs, an
+            // editor removes the target article before the draft can be saved.
+            DB::table('articles')->where('id', $article->id)->delete();
+            return Http::response([
+                'choices' => [['message' => ['content' => '# Generated private draft']]],
+                'usage' => ['prompt_tokens' => 14, 'completion_tokens' => 6],
+            ], 200);
+        });
+
+        try {
+            app(EditorialAiGenerator::class)->draft(
+                $article, $provider, 'chosen-model',
+                ['https://docs.example.org/backup'], 'Generate research notes',
+                $jobId, 'review-worker', 80
+            );
+            $this->fail('A deleted article cannot acquire an AI revision.');
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException) {
+            // Expected: the article disappeared while external inference ran.
+        }
+
+        $this->assertSame(1, $sent);
+        Http::assertSentCount(1);
+        $this->assertDatabaseMissing('articles', ['id' => $article->id]);
+        $this->assertDatabaseCount('article_revisions', 0);
+        // The paid provider was actually called. A storage failure must not
+        // erase its estimate or release daily spending capacity.
+        $this->assertDatabaseHas('ai_usage', [
+            'job_id' => $jobId, 'cost_minor' => 80, 'cost_currency' => 'USD',
+        ]);
+        $this->assertSame(80, (int) DB::table('ai_usage')
+            ->where('job_id', $jobId)->sum('cost_minor'));
+        $this->assertSame(
+            ['input_tokens' => 14, 'output_tokens' => 6],
+            json_decode((string) DB::table('ai_usage')
+                ->where('job_id', $jobId)->value('usage_json'), true)
+        );
+    }
+
+    public function test_failed_post_response_budget_receipt_cannot_leave_an_unreceipted_draft(): void
+    {
+        $provider = $this->provider();
+        $article = $this->article();
+        $jobId = $this->claimedJob($provider, 'editorial-draft', 80);
+        Http::fake(function () use ($provider) {
+            // Budget was reduced by an administrator while AI inference ran.
+            DB::table('ai_providers')->where('id', $provider->id)->update([
+                'daily_budget_minor' => 0,
+            ]);
+            return Http::response([
+                'choices' => [['message' => ['content' => '# Unreviewed generated draft']]],
+                'usage' => ['prompt_tokens' => 14, 'completion_tokens' => 6],
+            ], 200);
+        });
+
+        try {
+            app(EditorialAiGenerator::class)->draft(
+                $article, $provider, 'chosen-model',
+                ['https://docs.example.org/backup'], 'Generate research notes',
+                $jobId, 'review-worker', 80
+            );
+            $this->fail('A declined spend receipt cannot save an unreceipted AI draft.');
+        } catch (DomainException $exception) {
+            $this->assertSame('Daily provider spending cap reached.',
+                $exception->getMessage());
+        }
+        Http::assertSentCount(1);
+        $this->assertSame(0, $article->revisions()->count());
+        $this->assertDatabaseMissing('ai_usage', ['job_id' => $jobId]);
     }
 
     public function test_private_dns_research_candidates_never_reach_a_leased_paid_model(): void
