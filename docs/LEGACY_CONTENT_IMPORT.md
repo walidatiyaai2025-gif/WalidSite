@@ -13,6 +13,8 @@ php artisan legacy:import-content legacy-export.sql --apply
 
 The first command is always dry-run. `--apply` is an explicit mutation and still refuses the entire import when any statement or row is rejected. The command prints counts, bounded rejection codes and the source SHA-256 only; it never prints imported text, email addresses, secrets, SQL values or provider credentials.
 
+The approved staging SQL format is versioned. The **first line** of every source must be exactly `-- walidsite-legacy-schema: 1`. Missing or unsupported schema versions fail closed before statement parsing, so future source mappings cannot be interpreted accidentally by an older importer.
+
 The reader resolves the real path, forbids traversal/symlink sources, accepts only `.sql`, caps the file at 2,000,000 bytes and 500 parsed rows, and requires valid UTF-8. The parser never submits source SQL to MariaDB/SQLite/PDO. It recognizes only literal `INSERT INTO ... (...) VALUES (...);` statements and implements its own string/integer/NULL tokenizer. DDL, UPDATE/DELETE, comments attached to statements, functions/expressions, ambiguous backslash escaping and unterminated statements are rejected.
 
 ## Accepted staging schema
@@ -40,7 +42,7 @@ No import can overwrite an existing article, project or runbook slug. Project ev
 
 ## Dry-run, idempotency and provenance
 
-Each normalized row receives a deterministic SHA-256 content hash. Applied rows write a `legacy_import_receipts` record containing source filename, source SHA-256, record hash, source table/key, target type/id and import timestamp. Replaying the same normalized content is counted as a duplicate and creates no new target row, even when the source file is renamed.
+Each normalized row receives a deterministic SHA-256 content hash. Applied rows write a `legacy_import_receipts` record containing the accepted schema version, SHA-256 of the source file contents, deterministic record hash, source table, **SHA-256 hashes of the source filename and legacy key rather than their raw values**, target type/id and import timestamp. Replaying the same normalized content is counted as a duplicate and creates no new target row, even when the source file is renamed.
 
 If a provenance receipt points at a missing target, the importer rejects the row rather than silently recreating it. Conflicting rows that target the same slug but normalize to different hashes are rejected before writes.
 
