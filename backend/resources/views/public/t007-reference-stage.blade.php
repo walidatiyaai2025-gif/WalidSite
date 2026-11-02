@@ -264,6 +264,22 @@ body:has(.t007-reference-stage) .site-footer{margin-top:0}
     :lang(ar) .t007-contact{margin-right:auto}
 }
 
+/* Responsive keyboard navigation: at phone/tablet sizes, wrap all real links
+   rather than clip focused anchors in an overflowing horizontal rail. Desktop
+   1440px reference geometry is intentionally unchanged. */
+@media(max-width:900px){
+    .t007-nav-links{
+        flex:0 0 100%;height:auto;display:flex;flex-wrap:wrap;
+        align-items:stretch;gap:6px 14px;overflow:visible;
+        transform:none;min-width:0;max-width:100%;
+    }
+    .t007-nav-links a,.t007-nav-links a:nth-child(n){
+        margin:0;padding:8px 4px;min-height:44px;height:auto;
+        white-space:nowrap;flex:0 0 auto;
+    }
+    :lang(ar) .t007-nav-links a,:lang(ar) .t007-nav-links a:nth-child(n){margin:0}
+}
+
 </style>
 @endpush
 <section class="t007-reference-stage" aria-label="{{ $copy['title'] }}">
