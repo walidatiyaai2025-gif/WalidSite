@@ -50,7 +50,7 @@ final class PrivacyConsentRealJourneyTest extends TestCase
             $privacy = $this->get('/privacy?lang='.$locale)->assertOk()
                 ->assertHeader('Cache-Control', 'no-store, private')
                 ->assertSee('<meta name="robots" content="noindex,follow">', false)
-                ->assertSee('id="account-controls"', false)
+                ->assertSee('id="account-controls" tabindex="-1"', false)
                 ->assertSee('dir="'.($ar ? 'rtl' : 'ltr').'"', false)
                 ->assertSee('href="'.e(route('public.contact', [
                     'lang' => $locale, 'topic' => 'privacy',
