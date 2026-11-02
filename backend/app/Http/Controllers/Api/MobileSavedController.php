@@ -120,27 +120,33 @@ final class MobileSavedController extends Controller
         $id = $input['resource_id'];
         abort_unless($this->resource($type, $id, 'en') !== null, 404);
 
-        $existing = DB::table('saved_resources')->where('user_id', $owner)
-            ->where('resource_type', $type)->where('resource_id', $id)->first();
-        if ($existing !== null) {
-            return response()->json(['data' => [
-                'resource_type' => $type, 'resource_id' => $id, 'saved' => true,
-            ]])->header('Cache-Control', 'no-store');
-        }
+        // The account row is the shared serialization point for every device.
+        // Keep the duplicate check, quota admission and insert in one transaction.
+        DB::transaction(function () use ($owner, $type, $id): void {
+            $activeOwner = DB::table('users')->where('id', $owner)
+                ->lockForUpdate()->first(['id', 'status']);
+            abort_unless($activeOwner !== null && $activeOwner->status === 'active', 403);
 
-        if (DB::table('saved_resources')->where('user_id', $owner)->count() >= self::MAX_SAVES) {
-            throw ValidationException::withMessages([
-                'resource_id' => 'Saved-resource limit reached. Remove an item before saving another.',
+            $existing = DB::table('saved_resources')->where('user_id', $owner)
+                ->where('resource_type', $type)->where('resource_id', $id)->exists();
+            if ($existing) {
+                return;
+            }
+
+            if (DB::table('saved_resources')->where('user_id', $owner)->count() >= self::MAX_SAVES) {
+                throw ValidationException::withMessages([
+                    'resource_id' => 'Saved-resource limit reached. Remove an item before saving another.',
+                ]);
+            }
+
+            DB::table('saved_resources')->insertOrIgnore([
+                'id' => (string) Str::uuid(),
+                'user_id' => $owner,
+                'resource_type' => $type,
+                'resource_id' => $id,
+                'saved_at' => now(),
             ]);
-        }
-
-        DB::table('saved_resources')->insertOrIgnore([
-            'id' => (string) Str::uuid(),
-            'user_id' => $owner,
-            'resource_type' => $type,
-            'resource_id' => $id,
-            'saved_at' => now(),
-        ]);
+        }, 3);
 
         return response()->json(['data' => [
             'resource_type' => $type, 'resource_id' => $id, 'saved' => true,
