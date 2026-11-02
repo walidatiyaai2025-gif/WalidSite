@@ -16,7 +16,7 @@ final class PrivacyPolicyJourneyTest extends TestCase
             $isArabic = $lang === 'ar';
             foreach (['privacy', 'terms'] as $page) {
                 $response = $this->get('/'.$page.'?lang='.$lang)->assertOk()
-                    ->assertHeader('Cache-Control', 'no-store')
+                    ->assertHeader('Cache-Control', 'no-store, private')
                     ->assertHeader('X-Content-Type-Options', 'nosniff')
                     ->assertSee('lang="'.$lang.'"', false)
                     ->assertSee('dir="'.($isArabic ? 'rtl' : 'ltr').'"', false)
