@@ -183,14 +183,21 @@ final class AdminProjectDurableAuditTest extends TestCase
             'role_ar' => $project->role_ar,
         ])->assertRedirect();
 
+        // The filter <select> intentionally lists *all* valid action names
+        // even when there are zero matching rows. Assert on rendered table
+        // cells instead of mistaking a valid filter option for an audit leak.
+        $decisionCell = '<code dir="ltr">draft_updated</code>';
         $this->get('/admin/audit?domain=project&action=draft_updated')
-            ->assertOk()->assertSee('draft_updated');
+            ->assertOk()->assertSee($decisionCell, false);
         $this->get('/admin/audit?domain=editorial')
-            ->assertOk()->assertDontSee('draft_updated');
+            ->assertOk()->assertDontSee($decisionCell, false)
+            ->assertSee('No project decisions match these filters.');
         $this->get('/admin/audit?domain=project&action=media_rights_approved')
-            ->assertOk()->assertDontSee('draft_updated');
+            ->assertOk()->assertDontSee($decisionCell, false)
+            ->assertSee('No project decisions match these filters.');
         $this->get('/admin/audit?domain=project&day=2000-01-01')
-            ->assertOk()->assertDontSee('draft_updated');
+            ->assertOk()->assertDontSee($decisionCell, false)
+            ->assertSee('No project decisions match these filters.');
         foreach ([
             'domain=unknown', 'domain[]=project', 'project_page=0',
             'project_page[]=3', 'action[]=draft_updated', 'format=xlsx',
