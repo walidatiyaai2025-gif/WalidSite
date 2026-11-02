@@ -124,3 +124,21 @@ fixture; production `main()` never enables that fixture hook. The separate
 `welcome_journey_test.dart` verifies the real production default,
 language-before-start behavior, Arabic device locale, and Welcome → Home
 transition. Runtime pixel certification remains under #481/#25.
+
+
+## T021 MOBILE-02 verified home feed integration (2026-11-02)
+
+Developer Home now reads the canonical `/api/v1/mobile/home?lang=en|ar`
+contract when the same approved HTTPS `WALIDSITE_API_ORIGIN` used by the
+verified reading clients is configured. The client bounds the payload, requires
+the server's exact locale and guest-safety flags, rejects duplicate resources
+and any non-empty executable-tool catalog, and displays only reviewed project,
+article and runbook labels supplied by that endpoint.
+
+Without an approved origin, Home remains useful offline and states explicitly
+that the live verified feed is not configured; it never substitutes sample
+projects, article counts, saved-resource counts or invented tools. Network
+errors expose a generic retry state and never raw server diagnostics. Feed
+actions lead to the existing verified article/runbook destinations. This
+connects the existing server MOBILE-02 contract without weakening their own
+publication/evidence checks.
