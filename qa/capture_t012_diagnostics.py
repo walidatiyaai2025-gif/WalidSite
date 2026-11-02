@@ -164,6 +164,92 @@ def main() -> int:
                     "total_pixels": total,
                     "mismatch_ratio": mismatches / total,
                 }
+            # Mobile/tablet snapshots are genuine separate runtime captures;
+            # unlike the four fixed reference comparisons, they prove responsive
+            # behavior rather than claiming desktop PNG pixel parity.
+            report["responsive"] = []
+            for locale in ("en", "ar"):
+                for width, height in ((390, 812), (768, 900)):
+                    context = browser.new_context(
+                        viewport={"width": width, "height": height},
+                        device_scale_factor=1,
+                        locale="ar-KW" if locale == "ar" else "en-US",
+                        reduced_motion="reduce",
+                        color_scheme="light",
+                    )
+                    try:
+                        page = context.new_page()
+                        for screen_id in SCREEN_IDS:
+                            route = ROUTES[screen_id]
+                            suffix = "?lang=" + locale
+                            if screen_id == "WEB-13":
+                                suffix += "&q=visualsearch&type=articles"
+                            response = page.goto(
+                                args.base_url.rstrip("/") + route + suffix,
+                                wait_until="domcontentloaded", timeout=30000
+                            )
+                            page.evaluate("() => document.fonts.ready")
+                            page.locator(".t012-reference-stage").wait_for(
+                                state="visible", timeout=15000
+                            )
+                            checks = page.evaluate("""() => {
+                                const localeLink = document.querySelector(
+                                    '.t012-nav-shell > a.t012-locale-switch');
+                                const labLink = document.querySelector(
+                                    '.t012-nav-links a[href^="/lab"]');
+                                const box = localeLink?.getBoundingClientRect();
+                                return {
+                                    viewport_width: innerWidth,
+                                    document_width: document.documentElement.scrollWidth,
+                                    document_language: document.documentElement.lang,
+                                    document_direction: document.documentElement.dir,
+                                    locale_href: localeLink?.getAttribute('href') || null,
+                                    locale_touch_width: box?.width || 0,
+                                    locale_touch_height: box?.height || 0,
+                                    locale_within_viewport: !!box && box.left >= -1
+                                        && box.right <= innerWidth + 1,
+                                    locale_keyboard_accessible: !!localeLink
+                                        && localeLink.tabIndex >= 0,
+                                    lab_route_present: !!labLink,
+                                    search_field_present: !!document.querySelector(
+                                        '#t012-top-search'),
+                                };
+                            }""")
+                            passed = (
+                                response is not None and response.status == 200
+                                and checks["document_width"] <= width + 1
+                                and checks["document_language"] == locale
+                                and checks["document_direction"] == (
+                                    "rtl" if locale == "ar" else "ltr"
+                                )
+                                and checks["locale_touch_width"] >= 44
+                                and checks["locale_touch_height"] >= 44
+                                and checks["locale_within_viewport"]
+                                and checks["locale_keyboard_accessible"]
+                                and checks["lab_route_present"]
+                                and (screen_id != "WEB-13"
+                                     or checks["search_field_present"])
+                            )
+                            capture = (
+                                f"{screen_id}.{locale}.{width}x{height}.runtime.png"
+                            )
+                            page.screenshot(
+                                path=str(out / capture), full_page=False,
+                                animations="disabled", caret="hide", type="png"
+                            )
+                            report["responsive"].append({
+                                "screen": screen_id,
+                                "locale": locale,
+                                "viewport": [width, height],
+                                "route": route,
+                                "capture": capture,
+                                "http_status": None if response is None
+                                    else response.status,
+                                "checks": checks,
+                                "passed": passed,
+                            })
+                    finally:
+                        context.close()
         finally:
             browser.close()
 
@@ -177,6 +263,14 @@ def main() -> int:
         "mismatched_screens": sum(row["status"] == "mismatch" for row in report["screens"].values()),
         "font_probe_ok": font.get("inter_400") is True and font.get("inter_800") is True,
     }
+    report["summary"]["responsive_checks"] = len(report.get("responsive", []))
+    report["summary"]["responsive_passed"] = sum(
+        row["passed"] for row in report.get("responsive", [])
+    )
+    report["summary"]["responsive_complete"] = (
+        report["summary"]["responsive_checks"] == len(SCREEN_IDS) * 4
+        and report["summary"]["responsive_passed"] == len(SCREEN_IDS) * 4
+    )
     report["summary"]["pixel_parity_complete"] = (
         report["summary"]["exact_screens"] == len(SCREEN_IDS)
         and report["summary"]["font_probe_ok"]
@@ -189,6 +283,7 @@ def main() -> int:
         set(report["screens"]) == set(SCREEN_IDS)
         and all(row["status"] in ("exact", "mismatch") for row in report["screens"].values())
         and report["summary"]["font_probe_ok"]
+        and report["summary"]["responsive_complete"]
     )
     return 0 if healthy else 1
 
