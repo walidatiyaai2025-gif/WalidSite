@@ -154,6 +154,25 @@
             link.href = articlePath.replace('reading-list-placeholder', encodeURIComponent(entry.slug));
             link.textContent = locale === 'ar' ? entry.ar : entry.en;
             item.appendChild(link);
+            const remove = document.createElement('button');
+            remove.type = 'button';
+            remove.textContent = locale === 'ar' ? 'إزالة من المحفوظات' : 'Remove saved link';
+            remove.setAttribute('aria-label', (locale === 'ar' ? 'إزالة: ' : 'Remove: ') + (locale === 'ar' ? entry.ar : entry.en));
+            remove.addEventListener('click', () => {
+                try {
+                    // Re-read immediately to avoid overwriting changes from another tab.
+                    const latest = window.localStorage.getItem(storageKey);
+                    const current = latest === null ? [] : JSON.parse(latest);
+                    if (!Array.isArray(current)) throw new Error('Invalid reading list');
+                    const remaining = current.filter(value => value && typeof value === 'object' && value.slug !== entry.slug);
+                    window.localStorage.setItem(storageKey, JSON.stringify(remaining));
+                    render();
+                } catch (_) {
+                    status.textContent = locale === 'ar'
+                        ? 'تعذر تعديل روابط الحفظ المحلي.' : 'Could not update locally saved links.';
+                }
+            });
+            item.appendChild(remove);
             list.appendChild(item);
         });
         status.textContent = list.children.length === 0
