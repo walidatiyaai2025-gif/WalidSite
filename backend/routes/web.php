@@ -2302,31 +2302,40 @@ Route::middleware('auth:web')->prefix('admin')->group(function (): void {
 
     Route::get('/analytics', function (Request $request) {
         abort_unless($request->user()?->canAccessAdmin(), 403);
+        // Only bounded UTC calendar windows. Never infer a rolling local 24h
+        // interval, and never mix currencies across the selected period.
+        $utcToday = now('UTC')->toDateString();
+        $oldest = now('UTC')->subDays(365)->toDateString();
         $input = $request->validate([
             'lang' => ['sometimes', 'in:ar,en'],
-            'day' => ['sometimes', 'date_format:Y-m-d', 'before_or_equal:today'],
+            'day' => ['sometimes', 'date_format:Y-m-d',
+                'after_or_equal:'.$oldest, 'before_or_equal:'.$utcToday],
+            'window' => ['sometimes', 'integer', \Illuminate\Validation\Rule::in([1, 7, 30])],
             'format' => ['sometimes', 'in:csv'],
         ]);
-        $day = $input['day'] ?? now('UTC')->toDateString();
-        $from = \Illuminate\Support\Carbon::parse($day, 'UTC')->startOfDay();
-        $to = $from->copy()->addDay();
+        $day = $input['day'] ?? $utcToday;
+        $window = (int) ($input['window'] ?? 1);
+        $endDay = \Carbon\CarbonImmutable::parse($day, 'UTC')->startOfDay();
+        $from = $endDay->subDays($window - 1);
+        $to = $endDay->addDay();
+        $startDay = $from->toDateString();
         $usage = \Illuminate\Support\Facades\DB::table('ai_usage')
             ->where('created_at', '>=', $from)->where('created_at', '<', $to)
             ->select('cost_currency')->selectRaw('COUNT(*) AS receipts, SUM(cost_minor) AS cost_minor')
             ->groupBy('cost_currency')->orderBy('cost_currency')->get();
         if (($input['format'] ?? null) === 'csv') {
-            return response()->streamDownload(static function () use ($usage, $day): void {
+            return response()->streamDownload(static function () use ($usage, $startDay, $day): void {
                 $stream = fopen('php://output', 'wb');
                 fwrite($stream, "\xEF\xBB\xBF");
-                fputcsv($stream, ['UTC day', 'Currency', 'Receipts', 'Cost (minor units)']);
+                fputcsv($stream, ['UTC period start', 'UTC period end', 'Currency', 'Receipts', 'Cost (minor units)']);
                 foreach ($usage as $line) {
                     // An imported database currency is not trusted CSV code.
                     $currency = preg_match('/\A[A-Z]{3}\z/D', (string) $line->cost_currency)
                         ? $line->cost_currency : 'INVALID';
-                    fputcsv($stream, [$day, $currency, (int) $line->receipts, (int) $line->cost_minor]);
+                    fputcsv($stream, [$startDay, $day, $currency, (int) $line->receipts, (int) $line->cost_minor]);
                 }
                 fclose($stream);
-            }, 'ai-usage-'.$day.'.csv', [
+            }, 'ai-usage-'.$startDay.'-to-'.$day.'.csv', [
                 'Cache-Control' => 'no-store, private',
                 'X-Content-Type-Options' => 'nosniff',
             ]);
@@ -2336,7 +2345,8 @@ Route::middleware('auth:web')->prefix('admin')->group(function (): void {
             ->select('status')->selectRaw('COUNT(*) AS total')
             ->groupBy('status')->orderBy('status')->get();
         return response()->view('admin.operations', [
-            'section' => 'analytics', 'day' => $day, 'usage' => $usage,
+            'section' => 'analytics', 'day' => $day, 'startDay' => $startDay,
+            'window' => $window, 'usage' => $usage,
             'jobs' => $jobs,
             'publicProjects' => \App\Models\Project::query()->publiclyVerified()->count(),
             'publicArticles' => \App\Models\Article::query()->publiclyVisible()->count(),

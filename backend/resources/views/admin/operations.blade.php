@@ -52,7 +52,7 @@ details{border:1px solid var(--edge);padding:10px;border-radius:8px}details[open
 </nav>
 <form method="post" action="{{ route('admin.logout') }}">@csrf<button type="submit">{{ $ar ? 'تسجيل الخروج' : 'Sign out' }}</button></form>
 </aside><main id="content" tabindex="-1">
-<div class="top"><h1>{{ $title }}</h1><a href="{{ route('admin.operations.'.$section, array_merge(['lang'=>$ar ? 'en' : 'ar'], $section==='projects' ? array_filter(['status'=>$statusFilter ?? null, 'visibility'=>$visibilityFilter ?? null]) : ($section==='audience' ? ['purpose'=>$purpose,'channel'=>$channel] : ($section==='analytics' ? ['day'=>$day] : [])))) }}" lang="{{ $ar ? 'en' : 'ar' }}" hreflang="{{ $ar ? 'en' : 'ar' }}">{{ $ar ? 'English' : 'العربية' }}</a></div>
+<div class="top"><h1>{{ $title }}</h1><a href="{{ route('admin.operations.'.$section, array_merge(['lang'=>$ar ? 'en' : 'ar'], $section==='projects' ? array_filter(['status'=>$statusFilter ?? null, 'visibility'=>$visibilityFilter ?? null]) : ($section==='audience' ? ['purpose'=>$purpose,'channel'=>$channel] : ($section==='analytics' ? ['day'=>$day,'window'=>$window] : [])))) }}" lang="{{ $ar ? 'en' : 'ar' }}" hreflang="{{ $ar ? 'en' : 'ar' }}">{{ $ar ? 'English' : 'العربية' }}</a></div>
 @if(session('status'))<div role="status" class="panel safe">{{ session('status') }}</div>@endif
 @if(session('warning'))<div role="alert" class="panel alert">{{ $ar ? 'تعذر التحقق من بيانات GitHub العامة.' : session('warning') }}</div>@endif
 @if($errors->any())<div role="alert" class="panel warn"><strong>{{ $ar ? 'تعذر حفظ العملية' : 'The operation was not saved' }}</strong><ul>@foreach($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></div>@endif
@@ -180,22 +180,26 @@ details{border:1px solid var(--edge);padding:10px;border-radius:8px}details[open
 @if($section === 'analytics')
 <section class="panel" aria-labelledby="analytics-title">
 <h2 id="analytics-title">{{ $ar ? 'إحصاءات محفوظة وليست زيارات متخيلة' : 'Stored operational metrics — not estimated traffic' }}</h2>
-<p class="muted">{{ $ar ? 'المشاريع والمقالات المنشورة المعتمدة: أعداد حالية. المهام والتكاليف: تاريخ UTC المحدد فقط. لا تتوفر بيانات احتفاظ أو زيارات حقيقية بعد.' : 'Approved content totals are current. AI jobs and costs cover the selected UTC day. Real visit and retention measurement is not available yet.' }}</p>
+<p class="muted">{{ $ar ? 'المشاريع والمقالات المعتمدة: أعداد حالية. المهام والتكاليف: الفترة المحددة حسب أيام UTC كاملة فقط. لا تتوفر بيانات زيارات أو احتفاظ حقيقية بعد.' : 'Approved content totals are current. AI jobs and receipts cover the selected full UTC calendar-day period only. Real visits and retention are not measured yet.' }}</p>
 <form method="get" action="{{ route('admin.operations.analytics') }}" class="filters" role="search">
 <input type="hidden" name="lang" value="{{ $locale }}">
-<div><label for="day">{{ $ar ? 'يوم UTC' : 'UTC day' }}</label><input id="day" name="day" type="date" max="{{ now('UTC')->toDateString() }}" value="{{ $day }}" required></div>
+<div><label for="day">{{ $ar ? 'نهاية الفترة (UTC)' : 'Period end (UTC)' }}</label><input id="day" name="day" type="date" min="{{ now('UTC')->subDays(365)->toDateString() }}" max="{{ now('UTC')->toDateString() }}" value="{{ $day }}" required></div>
+<div><label for="window">{{ $ar ? 'عدد أيام التقويم (UTC)' : 'UTC calendar days' }}</label><select id="window" name="window">
+@foreach([1,7,30] as $days)<option value="{{ $days }}" @selected($window===$days)>{{ $days }} {{ $ar ? 'يوم' : ($days===1 ? 'day' : 'days') }}</option>@endforeach
+</select></div>
 <div><button type="submit">{{ $ar ? 'عرض التقرير' : 'View report' }}</button></div>
-<div><a class="button" href="{{ route('admin.operations.analytics', ['lang'=>$locale,'day'=>$day,'format'=>'csv']) }}">{{ $ar ? 'تصدير التكاليف CSV' : 'Export cost CSV' }}</a></div>
+<div><a class="button" href="{{ route('admin.operations.analytics', ['lang'=>$locale,'day'=>$day,'window'=>$window,'format'=>'csv']) }}">{{ $ar ? 'تصدير التكاليف CSV' : 'Export cost CSV' }}</a></div>
 </form>
+<p class="muted" role="status">{{ $ar ? 'الفترة الفعلية' : 'Actual window' }}: <time datetime="{{ $startDay }}">{{ $startDay }}</time> — <time datetime="{{ $day }}">{{ $day }}</time> (UTC, {{ $window }} {{ $ar ? 'يوم' : ($window===1 ? 'day' : 'days') }})</p>
 <div class="cards" style="margin-top:20px">
 <div class="card"><span>{{ $ar ? 'المشاريع المعتمدة' : 'Verified public projects' }}</span><strong>{{ $publicProjects }}</strong></div>
 <div class="card"><span>{{ $ar ? 'مقالات مرخصة منشورة' : 'Published articles (status)' }}</span><strong>{{ $publicArticles }}</strong></div>
 </div>
-<h3>{{ $ar ? 'مهام AI في اليوم' : 'AI jobs on UTC day' }}</h3>
-@if($jobs->isEmpty())<p role="status">{{ $ar ? 'لا توجد مهام مسجلة لهذا اليوم.' : 'No jobs recorded for this day.' }}</p>
+<h3>{{ $ar ? 'مهام AI في الفترة' : 'AI jobs in the UTC period' }}</h3>
+@if($jobs->isEmpty())<p role="status">{{ $ar ? 'لا توجد مهام مسجلة لهذه الفترة.' : 'No jobs recorded for this period.' }}</p>
 @else <div class="cards">@foreach($jobs as $job)<div class="card"><span>{{ $job->status }}</span><strong>{{ $job->total }}</strong></div>@endforeach</div>@endif
 <h3>{{ $ar ? 'إيصالات التكاليف حسب العملة (وحدات صغرى)' : 'Recorded cost receipts by currency (minor units)' }}</h3>
-@if($usage->isEmpty())<p role="status">{{ $ar ? 'لا توجد إيصالات تكاليف لهذا اليوم.' : 'No usage receipts recorded for this day.' }}</p>
+@if($usage->isEmpty())<p role="status">{{ $ar ? 'لا توجد إيصالات تكاليف لهذه الفترة.' : 'No usage receipts recorded for this period.' }}</p>
 @else <div class="scroll"><table><thead><tr><th>{{ $ar ? 'العملة' : 'Currency' }}</th><th>{{ $ar ? 'الإيصالات' : 'Receipts' }}</th><th>{{ $ar ? 'التكلفة بالوحدات الصغرى' : 'Cost minor units' }}</th></tr></thead><tbody>
 @foreach($usage as $line)<tr><td>{{ $line->cost_currency }}</td><td>{{ $line->receipts }}</td><td>{{ $line->cost_minor }}</td></tr>@endforeach
 </tbody></table></div>@endif
