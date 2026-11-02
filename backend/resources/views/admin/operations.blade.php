@@ -151,18 +151,8 @@ summary{cursor:pointer;min-height:44px;padding:8px}
      or self-reported claims from an unrelated/inactive account. The public
      preview and downloadable binary use the same evidence-gated routes as
      WEB-11; no second editable CV data store is invented here. --}}
-@php
-    $publicCvAvailable = \App\Models\Profile::query()->published()
-        ->whereHas('user', fn ($users) => $users->where('status', 'active')
-            ->whereHas('roles', fn ($roles) => $roles->where('name', 'owner')))
-        ->exists();
-    $cvFocusTracks = [
-        'all' => [$ar ? 'جميع المسارات' : 'All verified tracks'],
-        'database' => [$ar ? 'قواعد البيانات والموثوقية' : 'Database & reliability'],
-        'software' => [$ar ? 'البرمجيات والتكامل' : 'Software & integration'],
-        'delivery' => [$ar ? 'إدارة وتسليم المشاريع' : 'Project delivery'],
-    ];
-@endphp
+@php($cvPublicResponse = app(\App\Http\Controllers\Api\PublicPortfolioController::class)->profile(request())->getData(true))
+@php($publicCvAvailable = isset($cvPublicResponse['data']) && $cvPublicResponse['data'] !== null)
 <section class="panel" aria-labelledby="cv-review-title">
 <h3 id="cv-review-title">{{ $ar ? 'مراجعة السيرة المهنية المنشورة' : 'Published CV review' }}</h3>
 <p class="muted">{{ $ar
@@ -174,9 +164,14 @@ summary{cursor:pointer;min-height:44px;padding:8px}
     : 'No published CV for an active owner is available. Public previews show the pending state; PDF downloads are unavailable.' }}</p>
 @endif
 <div class="cards" role="list">
-@foreach($cvFocusTracks as $focus => $labels)
+@foreach([
+'all' => $ar ? 'جميع المسارات' : 'All verified tracks',
+'database' => $ar ? 'قواعد البيانات والموثوقية' : 'Database & reliability',
+'software' => $ar ? 'البرمجيات والتكامل' : 'Software & integration',
+'delivery' => $ar ? 'إدارة وتسليم المشاريع' : 'Project delivery',
+] as $focus => $cvLabel)
 <div class="card" role="listitem">
-<strong>{{ $labels[0] }}</strong>
+<strong>{{ $cvLabel }}</strong>
 <div class="inline-actions" style="margin-top:12px">
 <a class="button" href="{{ route('public.resume', ['lang' => $locale, 'track' => $focus]) }}">{{ $ar ? 'معاينة عامة' : 'Public preview' }}</a>
 @if($publicCvAvailable)
