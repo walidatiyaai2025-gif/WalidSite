@@ -18,6 +18,92 @@ from PIL import Image, ImageChops, ImageEnhance
 SCREEN_IDS = ("WEB-01", "WEB-02", "WEB-03", "WEB-06", "WEB-12")
 
 
+def responsive_browser_audit(base_url: str, screens: dict) -> dict:
+    """Real responsive/keyboard checks; separate from zero-pixel visual proof."""
+    from playwright.sync_api import sync_playwright
+
+    if not base_url.startswith(("https://", "http://127.0.0.1:", "http://localhost:")):
+        raise ValueError("Responsive audit needs an approved HTTPS or local origin")
+    results = {}
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        try:
+            for width, height in ((390, 844), (768, 1024)):
+                for lang in ("ar", "en"):
+                    context = browser.new_context(
+                        viewport={"width": width, "height": height},
+                        device_scale_factor=1,
+                        locale="ar-KW" if lang == "ar" else "en-US",
+                        reduced_motion="reduce",
+                    )
+                    try:
+                        for screen_id in SCREEN_IDS:
+                            page = context.new_page()
+                            key = f"{screen_id}:{lang}:{width}"
+                            try:
+                                route = screens[screen_id]["route"]
+                                url = base_url.rstrip("/") + route + (
+                                    "?lang=" + lang
+                                )
+                                response = page.goto(
+                                    url, wait_until="domcontentloaded", timeout=30000
+                                )
+                                if response is None or response.status != 200:
+                                    raise RuntimeError("Non-200 responsive route")
+                                page.evaluate("() => document.fonts.ready")
+                                checks = page.evaluate("""() => {
+                                    const main = document.querySelector('#main-content');
+                                    const hero = document.querySelector('.t007-reference-stage h1');
+                                    const target = document.querySelector('#t007-primary-content');
+                                    const nav = document.querySelector('.t007-nav-links');
+                                    return {
+                                        locale_ok: document.documentElement.lang ===
+                                            (location.search.includes('lang=ar') ? 'ar' : 'en'),
+                                        direction_ok: document.documentElement.dir ===
+                                            (location.search.includes('lang=ar') ? 'rtl' : 'ltr'),
+                                        no_horizontal_page_overflow:
+                                            document.documentElement.scrollWidth <=
+                                            window.innerWidth + 1,
+                                        main_and_hero: Boolean(main && hero &&
+                                            hero.getBoundingClientRect().height > 0),
+                                        jump_target_focusable: Boolean(target &&
+                                            target.tabIndex === -1),
+                                        nav_present: Boolean(nav && nav.querySelectorAll('a').length >= 8),
+                                    };
+                                }""")
+                                # Enter keyboard modality and focus the hidden
+                                # secondary navigation; its visible focus state
+                                # must not remain clipped from sight.
+                                page.keyboard.press("Tab")
+                                page.locator(".t007-sr-only").first.focus()
+                                checks["supplemental_keyboard_link_visible"] = page.evaluate(
+                                    """() => {
+                                        const link = document.activeElement;
+                                        const css = getComputedStyle(link);
+                                        const box = link.getBoundingClientRect();
+                                        return link.classList.contains('t007-sr-only') &&
+                                            css.position === 'fixed' && box.width >= 44 &&
+                                            box.height >= 40 && box.top >= 0 &&
+                                            box.left >= 0 && box.right <= innerWidth &&
+                                            box.bottom <= innerHeight;
+                                    }"""
+                                )
+                                results[key] = {
+                                    "passed": all(checks.values()), "checks": checks
+                                }
+                            except Exception as exc:
+                                results[key] = {
+                                    "passed": False, "error": type(exc).__name__
+                                }
+                            finally:
+                                page.close()
+                    finally:
+                        context.close()
+        finally:
+            browser.close()
+    return results
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--commit", required=True)
@@ -179,8 +265,22 @@ def main() -> int:
     except Exception as exc:
         report["font_probe"] = {"error": type(exc).__name__}
 
+    # Browser evidence is for responsive/keyboard behavior, not pixel-parity
+    # approval. Fail if an AR/EN mobile or tablet route is inaccessible.
+    try:
+        report["responsive_audit"] = responsive_browser_audit(
+            os.environ.get("WALIDSITE_RENDER_BASE_URL", ""), screens
+        )
+    except Exception as exc:
+        report["responsive_audit"] = {"setup": {
+            "passed": False, "error": type(exc).__name__
+        }}
+
     report["summary"] = {
         "expected_screens": len(SCREEN_IDS),
+        "responsive_checks": len(report["responsive_audit"]),
+        "responsive_ok": (len(report["responsive_audit"]) == 20 and
+            all(row["passed"] for row in report["responsive_audit"].values())),
         "captured_screens": sum(row["status"] in ("exact", "mismatch")
                                 for row in report["screens"].values()),
         "exact_screens": sum(row["status"] == "exact"
@@ -208,7 +308,8 @@ def main() -> int:
     return 1 if (set(report["screens"]) != set(SCREEN_IDS)
                  or any(row["status"] not in ("exact", "mismatch")
                         for row in report["screens"].values())
-                 or not report["summary"]["font_probe_ok"]) else 0
+                 or not report["summary"]["font_probe_ok"]
+                 or not report["summary"]["responsive_ok"]) else 0
 
 
 if __name__ == "__main__":
