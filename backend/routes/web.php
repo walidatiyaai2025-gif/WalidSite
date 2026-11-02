@@ -420,11 +420,11 @@ Route::middleware('auth:web')->group(function (): void {
         $jobs = \Illuminate\Support\Facades\DB::table('ai_jobs')
             ->when($from, fn ($q) => $q->where('created_at', '>=', $from))
             ->where('created_at', '<=', $utc)
-            ->where('created_at', '<=', $utc)
             ->select('status')->selectRaw('COUNT(*) AS total')
             ->groupBy('status')->orderBy('status')->get();
         $usage = \Illuminate\Support\Facades\DB::table('ai_usage')
             ->when($from, fn ($q) => $q->where('created_at', '>=', $from))
+            ->where('created_at', '<=', $utc)
             ->select('cost_currency')
             ->selectRaw('COUNT(*) AS receipts, SUM(cost_minor) AS cost_minor')
             ->groupBy('cost_currency')->orderBy('cost_currency')->limit(100)->get();
