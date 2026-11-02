@@ -67,44 +67,149 @@ class AccountConsentMatrix {
 }
 
 class AccountPortableExport {
-  const AccountPortableExport(this.raw, this.savedCount);
+  const AccountPortableExport(
+      this.raw, this.savedCount, this.interviewCount, this.answerCount);
   final String raw;
   final int savedCount;
+  final int interviewCount;
+  final int answerCount;
+
+  // Only the current account owner's documented, bounded JSON archive may
+  // reach the clipboard. Unknown fields can contain credentials or another
+  // person's data; never blindly copy them from an untrusted response.
+  static final _uuid = RegExp(
+    r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-'
+    r'[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
+  );
+
+  static bool _timestamp(Object? value) =>
+      value is String && value.length <= 60 &&
+      DateTime.tryParse(value) != null;
+
+  static bool _optionalTimestamp(Object? value) =>
+      value == null || _timestamp(value);
+
+  static bool _keys(Map<String, dynamic> row, Set<String> fields) =>
+      row.length == fields.length &&
+      row.keys.toSet().containsAll(fields);
 
   static AccountPortableExport parse(String raw) {
     if (raw.length > 2 * 1024 * 1024) {
       throw const FormatException('Export exceeds device safety limit');
     }
     final response = jsonDecode(raw);
-    if (response is! Map<String, dynamic> || response.length != 2 ||
+    if (response is! Map<String, dynamic> ||
+        !_keys(response, {'data', 'meta'}) ||
         response['data'] is! Map<String, dynamic> ||
         response['meta'] is! Map<String, dynamic>) {
       throw const FormatException('Invalid account export');
     }
+
     final data = response['data'] as Map<String, dynamic>;
     final meta = response['meta'] as Map<String, dynamic>;
-    if (data.length != 3 ||
-        data.keys.toSet().difference({
-          'profile', 'saved_resources', 'notification_preferences',
-        }).isNotEmpty ||
+    if (!_keys(data, {
+          'profile', 'saved_resources', 'private_interviews',
+          'notification_preferences',
+        }) ||
+        !_keys(meta, {
+          'exported_at', 'secrets_excluded',
+          'private_ai_prompts_excluded', 'private_interview_answers_included',
+          'foreign_user_data_excluded',
+        }) ||
         data['profile'] is! Map<String, dynamic> ||
         data['saved_resources'] is! List ||
+        data['private_interviews'] is! List ||
         data['notification_preferences'] is! List ||
+        !_timestamp(meta['exported_at']) ||
         meta['secrets_excluded'] != true ||
         meta['private_ai_prompts_excluded'] != true ||
+        meta['private_interview_answers_included'] != true ||
         meta['foreign_user_data_excluded'] != true) {
       throw const FormatException('Unsafe account export');
     }
+
     final profile = data['profile'] as Map<String, dynamic>;
     final saved = data['saved_resources'] as List<dynamic>;
+    final interviews = data['private_interviews'] as List<dynamic>;
     final prefs = data['notification_preferences'] as List<dynamic>;
-    if (profile['id'] is! String ||
-        !RegExp(r'^[0-9a-fA-F-]{36}$').hasMatch(profile['id'] as String) ||
+    if (!_keys(profile, {'id', 'email', 'status', 'created_at'}) ||
+        profile['id'] is! String ||
+        !_uuid.hasMatch(profile['id'] as String) ||
         profile['email'] is! String ||
-        saved.length > 10000 || prefs.length > 6) {
+        (profile['email'] as String).trim().isEmpty ||
+        (profile['email'] as String).length > 254 ||
+        profile['status'] != 'active' ||
+        !_timestamp(profile['created_at']) ||
+        saved.length > 10000 || interviews.length > 1000 ||
+        prefs.length > 6) {
       throw const FormatException('Invalid account export identity');
     }
-    return AccountPortableExport(raw, saved.length);
+
+    final savedKeys = <String>{};
+    for (final entry in saved) {
+      if (entry is! Map<String, dynamic> ||
+          !_keys(entry, {'resource_type', 'resource_id', 'saved_at'}) ||
+          !const ['article', 'runbook'].contains(entry['resource_type']) ||
+          entry['resource_id'] is! String ||
+          !_uuid.hasMatch(entry['resource_id'] as String) ||
+          !_timestamp(entry['saved_at']) ||
+          !savedKeys.add('${entry['resource_type']}:${entry['resource_id']}')) {
+        throw const FormatException('Unsafe saved-resource archive');
+      }
+    }
+
+    final interviewKeys = <String>{};
+    var answers = 0;
+    for (final entry in interviews) {
+      if (entry is! Map<String, dynamic> ||
+          !_keys(entry, {
+            'session_id', 'path_id', 'lesson_index', 'locale',
+            'answer_text', 'answered_at', 'created_at',
+          }) ||
+          entry['session_id'] is! String ||
+          !_uuid.hasMatch(entry['session_id'] as String) ||
+          !interviewKeys.add(entry['session_id'] as String) ||
+          entry['path_id'] is! String ||
+          !_uuid.hasMatch(entry['path_id'] as String) ||
+          entry['lesson_index'] is! int ||
+          (entry['lesson_index'] as int) < 0 ||
+          (entry['lesson_index'] as int) > 39 ||
+          !const ['ar', 'en'].contains(entry['locale']) ||
+          !_timestamp(entry['created_at']) ||
+          !_optionalTimestamp(entry['answered_at'])) {
+        throw const FormatException('Unsafe private interview archive');
+      }
+      final answer = entry['answer_text'];
+      if (answer != null) {
+        if (answer is! String || answer.length > 4000 ||
+            answer.trim().isEmpty || !_timestamp(entry['answered_at'])) {
+          throw const FormatException('Unsafe private interview answer');
+        }
+        answers++;
+      } else if (entry['answered_at'] != null) {
+        throw const FormatException('Unmatched private interview timestamp');
+      }
+    }
+
+    final preferenceKeys = <String>{};
+    for (final entry in prefs) {
+      if (entry is! Map<String, dynamic> ||
+          !_keys(entry, {
+            'purpose', 'channel', 'enabled', 'consented_at', 'revoked_at',
+          }) ||
+          !AccountConsentMatrix.purposes.contains(entry['purpose']) ||
+          !AccountConsentMatrix.channels.contains(entry['channel']) ||
+          entry['enabled'] is! bool ||
+          !_optionalTimestamp(entry['consented_at']) ||
+          !_optionalTimestamp(entry['revoked_at']) ||
+          (entry['enabled'] == true &&
+              (entry['consented_at'] == null ||
+               entry['revoked_at'] != null)) ||
+          !preferenceKeys.add('${entry['purpose']}:${entry['channel']}')) {
+        throw const FormatException('Unsafe notification preference archive');
+      }
+    }
+    return AccountPortableExport(raw, saved.length, interviews.length, answers);
   }
 }
 
@@ -289,10 +394,15 @@ class _MobileAccountPrivacyState extends State<MobileAccountPrivacyScreen> {
       final parsed = AccountPortableExport.parse(raw);
       if (mounted) setState(() {
         _portable = parsed.raw;
-        _notice = label('Export ready: ' + parsed.savedCount.toString() +
-            ' saved items. Copy on a private device only.',
-            'التصدير جاهز: ' + parsed.savedCount.toString() +
-            ' عنصر محفوظ. انسخه على جهاز خاص فقط.');
+        _notice = label(
+            'Export ready: ${parsed.savedCount} saved items, '
+            '${parsed.interviewCount} interview sessions '
+            '(${parsed.answerCount} private answers). '
+            'Copy only on a trusted device.',
+            'التصدير جاهز: ${parsed.savedCount} عنصر محفوظ، '
+            '${parsed.interviewCount} جلسة مقابلة '
+            '(${parsed.answerCount} إجابة خاصة). '
+            'انسخه على جهاز موثوق فقط.');
       });
     } catch (e) {
       if (mounted) setState(() => _handleError(e));
@@ -375,8 +485,13 @@ class _MobileAccountPrivacyState extends State<MobileAccountPrivacyScreen> {
           const Divider(),
           Text(label('Portable account data', 'بيانات الحساب القابلة للنقل'),
               style: Theme.of(context).textTheme.titleLarge),
-          Text(label('Personal export excludes private AI prompts and credentials.',
-              'يستبعد تصدير الحساب نصوص AI الخاصة والمفاتيح.')),
+          Text(label(
+              'Export includes your privately authored interview answers '
+              'and saved items. It excludes private AI prompts and credentials. '
+              'Copies and device clipboards can retain sensitive information.',
+              'يحتوي التصدير على إجابات المقابلات الخاصة التي كتبتها والعناصر '
+              'المحفوظة، ويستبعد نصوص AI الخاصة والمفاتيح. '
+              'قد تحتفظ النسخ وحافظة الجهاز بمعلومات حساسة.')),
           OutlinedButton(
             key: const Key('privacy-export'),
             onPressed: _busy || _unauthorized ? null : _export,
