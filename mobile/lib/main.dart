@@ -12,6 +12,7 @@ import 'ai/ai_troubleshooter.dart';
 import 'account/account_journey.dart';
 import 'preferences/mobile_preferences.dart';
 import 'home/mobile_home_feed.dart';
+import 'bootstrap/mobile_bootstrap.dart';
 
 void main() => runApp(const WaleedTechApp());
 
@@ -131,7 +132,9 @@ class CompanionWelcome extends StatelessWidget {
                       height: 1.55,
                     ),
                   ),
-                  const SizedBox(height: 32),
+                  const SizedBox(height: 24),
+                  MobileBootstrapPanel(arabic: arabic),
+                  const SizedBox(height: 24),
                   FilledButton.icon(
                     key: const Key('welcome-start'),
                     onPressed: onStart,
