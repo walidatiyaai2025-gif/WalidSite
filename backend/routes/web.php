@@ -354,6 +354,19 @@ Route::middleware('auth:web')->group(function (): void {
             ->when(isset($filters['visibility']), fn ($q) => $q->where('visibility', $filters['visibility']))
             ->orderByDesc('updated_at')->orderBy('id');
         $projects = $query->paginate(20)->appends(array_merge($filters, ['lang' => $locale]));
+        // A verified_at timestamp alone is not proof that a URL is safe or
+        // that the public case-study route exists. Reuse the public API's
+        // canonical sanitizer before linking to any reviewed case.
+        $portfolio = app(\App\Http\Controllers\Api\PublicPortfolioController::class);
+        foreach ($projects->getCollection() as $project) {
+            $eligible = $project->visibility === 'public'
+                && $project->published_at !== null
+                && $project->published_at->lessThanOrEqualTo(now())
+                && is_string($project->role_en) && $project->role_en !== ''
+                && (int) $project->verified_public_evidence_count > 0;
+            $project->setAttribute('verified_public_ready',
+                $eligible && $portfolio->publicProjectData($project, $request)['evidence_urls'] !== []);
+        }
 
         return response()->view('admin.product.workspace', ['section' => 'projects'] + compact(
             'locale', 'projects', 'filters'
