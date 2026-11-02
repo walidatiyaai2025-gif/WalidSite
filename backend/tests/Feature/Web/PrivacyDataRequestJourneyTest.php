@@ -28,6 +28,10 @@ final class PrivacyDataRequestJourneyTest extends TestCase
             'en' => 'Personal data deletion request',
             'ar' => 'طلب حذف بياناتي',
         ],
+        'revoke' => [
+            'en' => 'Notification consent revocation inquiry',
+            'ar' => 'طلب سحب الموافقة على الإشعارات',
+        ],
         'notifications' => [
             'en' => 'Privacy notification consent revocation request',
             'ar' => 'طلب إلغاء الموافقة على الإشعارات',
