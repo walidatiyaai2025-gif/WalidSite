@@ -1101,7 +1101,7 @@ void main() {
     expect(find.byType(OfflineSolutionFinder), findsOneWidget);
     expect(find.byKey(const Key('solution-pack-provenance')), findsOneWidget);
     expect(find.text('Bundled educational copy — unverified'), findsOneWidget);
-    expect(find.byKey(const Key('solution-search-empty')), findsOneWidget);
+    expect(find.byKey(const Key('solution-search-hint')), findsOneWidget);
 
     await tester.enterText(
         find.byKey(const Key('solution-search-input')), 'database backup');
@@ -1144,13 +1144,14 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(OfflineSolutionFinder), findsOneWidget);
-    expect(find.byKey(const Key('solution-search-empty')), findsOneWidget);
+    expect(find.byKey(const Key('solution-search-hint')), findsOneWidget);
     expect(find.text('PRIVATE_REQUEST_NEVER_AUTO_SEARCH'), findsNothing);
     expect(find.text('PRIVATE_CODE_NEVER_AUTO_SEARCH'), findsNothing);
     expect(find.text(token), findsNothing);
     expect(attempts, 1);
     await tester.pageBack();
     await tester.pumpAndSettle();
+    await revealAbove(tester, const Key('ai-diagnose-submit'));
     expect(find.byKey(const Key('ai-diagnose-submit')), findsOneWidget);
     expect(attempts, 1);
   });
