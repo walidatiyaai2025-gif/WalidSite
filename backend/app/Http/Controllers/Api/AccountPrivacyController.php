@@ -244,6 +244,11 @@ final class AccountPrivacyController extends Controller
             }
 
             AiDiagnosisRequest::query()->where('user_id', $locked->id)->delete();
+            // Private interview answers remain in a separate table. The user
+            // record is anonymized, not physically deleted, so its FK
+            // cascade cannot purge these answers. Delete under the same
+            // account lock and transaction as token revocation.
+            DB::table('mobile_interview_sessions')->where('user_id', $locked->id)->delete();
             DB::table('saved_resources')->where('user_id', $locked->id)->delete();
             NotificationPreference::query()->where('user_id', $locked->id)->delete();
             DB::table('role_user')->where('user_id', $locked->id)->delete();
