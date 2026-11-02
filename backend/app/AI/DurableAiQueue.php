@@ -100,10 +100,21 @@ final class DurableAiQueue
             ->where('active_jobs.status', 'running')
             ->groupBy('active_jobs.provider_id');
 
+        // Already reported costs consume today's UTC budget, even after the
+        // original paid job completes. Exclude obviously unaffordable jobs
+        // before LIMIT; reserve accounting is rechecked under lock below.
+        $todaySpend = DB::table('ai_usage as consumed_usage')
+            ->select('consumed_usage.provider_id')
+            ->selectRaw('SUM(consumed_usage.cost_minor) AS spent_today')
+            ->where('consumed_usage.created_at', '>=', now('UTC')->startOfDay())
+            ->groupBy('consumed_usage.provider_id');
+
         $ids = DB::table('ai_jobs')
             ->join('ai_providers', 'ai_providers.id', '=', 'ai_jobs.provider_id')
             ->leftJoinSub($runningCounts, 'provider_running',
                 fn ($join) => $join->on('provider_running.provider_id', '=', 'ai_providers.id'))
+            ->leftJoinSub($todaySpend, 'provider_spend',
+                fn ($join) => $join->on('provider_spend.provider_id', '=', 'ai_providers.id'))
             // An open provider circuit cannot admit work until cooldown.
             // Excluding it before LIMIT prevents a large frozen backlog from
             // starving eligible providers; lock-time verification stays below.
@@ -128,6 +139,11 @@ final class DurableAiQueue
             ->where(fn ($q) => $q->where('ai_providers.provider_type', '!=', 'openai-compatible')
                 ->orWhere('ai_jobs.reserved_budget_minor', '>', 0))
             ->whereColumn('ai_jobs.reserved_budget_minor', '<=', 'ai_providers.daily_budget_minor')
+            // An exhausted paid provider's 20+ queued jobs should not hide a
+            // zero-cost local job. This is a preliminary filter only:
+            // in-flight reservations and receipt currency are still checked
+            // transactionally under the provider lock.
+            ->whereRaw('COALESCE(provider_spend.spent_today, 0) + ai_jobs.reserved_budget_minor <= ai_providers.daily_budget_minor')
             ->when($jobTypes !== null, fn ($query) => $query->whereIn('ai_jobs.job_type', $jobTypes))
             ->whereIn('ai_jobs.status', ['queued', 'retry'])
             ->where(fn ($q) => $q->whereNull('ai_jobs.next_attempt_at')
