@@ -2464,7 +2464,7 @@ Route::middleware('auth:web')->prefix('admin')->group(function (): void {
             'day' => ['sometimes', 'date_format:Y-m-d',
                 'after_or_equal:'.$oldest, 'before_or_equal:'.$utcToday],
             'window' => ['sometimes', 'integer', \Illuminate\Validation\Rule::in([1, 7, 30])],
-            'format' => ['sometimes', 'in:csv'],
+            'format' => ['sometimes', 'in:csv,jobs-csv'],
         ]);
         $day = $input['day'] ?? $utcToday;
         $window = (int) ($input['window'] ?? 1);
@@ -2497,6 +2497,24 @@ Route::middleware('auth:web')->prefix('admin')->group(function (): void {
             ->where('created_at', '>=', $from)->where('created_at', '<', $to)
             ->select('status')->selectRaw('COUNT(*) AS total')
             ->groupBy('status')->orderBy('status')->get();
+        if (($input['format'] ?? null) === 'jobs-csv') {
+            return response()->streamDownload(static function () use ($jobs, $startDay, $day): void {
+                $stream = fopen('php://output', 'wb');
+                fwrite($stream, "\xEF\xBB\xBF");
+                fputcsv($stream, ['UTC period start', 'UTC period end', 'AI job status', 'Recorded jobs']);
+                foreach ($jobs as $job) {
+                    // Imported job-status values are not trusted spreadsheet code.
+                    $status = preg_match('/\A[a-z][a-z0-9_]{0,24}\z/D', (string) $job->status) === 1
+                        ? $job->status : 'INVALID';
+                    fputcsv($stream, [$startDay, $day, $status, (int) $job->total]);
+                }
+                fclose($stream);
+            }, 'ai-jobs-'.$startDay.'-to-'.$day.'.csv', [
+                'Content-Type' => 'text/csv; charset=UTF-8',
+                'Cache-Control' => 'no-store, private',
+                'X-Content-Type-Options' => 'nosniff',
+            ]);
+        }
         return response()->view('admin.operations', [
             'section' => 'analytics', 'day' => $day, 'startDay' => $startDay,
             'window' => $window, 'usage' => $usage,

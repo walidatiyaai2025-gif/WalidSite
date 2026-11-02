@@ -466,6 +466,81 @@ final class AdminOperationsJourneyTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_job_status_csv_honors_utc_windows_and_hides_private_credentials(): void
+    {
+        Http::fake();
+        $provider = AiProvider::create([
+            'display_name' => 'INTERNAL-PROVIDER-PRIVATE',
+            'provider_type' => 'ollama-compatible',
+            'base_url' => 'http://127.0.0.1:11434',
+            'secret_ciphertext' => 'DO-NOT-EXPORT-PROVIDER-TOKEN',
+            'enabled' => false, 'health_status' => 'unverified',
+        ]);
+        foreach ([
+            [0, 'completed'], [0, 'completed'], [6, 'queued'],
+            [31, 'failed'], [0, '=SUM(1,1)'],
+        ] as [$daysAgo, $status]) {
+            $when = now('UTC')->subDays($daysAgo)->startOfDay()->addHours(12);
+            DB::table('ai_jobs')->insert([
+                'id' => (string) Str::uuid(), 'provider_id' => $provider->id,
+                'job_type' => 'draft',
+                'idempotency_key' => 'status-export-'.Str::uuid(),
+                'payload_hash' => str_repeat('f', 64),
+                'status' => $status,
+                'created_at' => $when, 'updated_at' => $when,
+            ]);
+        }
+        $day = now('UTC')->toDateString();
+        $this->get('/admin/analytics?format=jobs-csv')->assertRedirect('/admin/login');
+        $this->actingAs($this->account('reader'), 'web')
+            ->get('/admin/analytics?format=jobs-csv')->assertForbidden();
+        $this->actingAs($this->account('owner'), 'web');
+        foreach (['ar', 'en'] as $lang) {
+            $this->get('/admin/analytics?window=7&lang='.$lang)->assertOk()
+                ->assertSee('format=jobs-csv', false)
+                ->assertSee('dir="'.($lang === 'ar' ? 'rtl' : 'ltr').'"', false)
+                ->assertSee($lang === 'ar'
+                    ? 'تصدير حالات مهام الذكاء الاصطناعي CSV'
+                    : 'Export AI job status CSV');
+        }
+        $response = $this->get('/admin/analytics?day='.$day.'&window=7&format=jobs-csv')
+            ->assertOk()
+            ->assertHeader('Content-Type', 'text/csv; charset=UTF-8')
+            ->assertHeader('Cache-Control', 'no-store, private')
+            ->assertHeader('X-Content-Type-Options', 'nosniff');
+        $csv = $response->streamedContent();
+        $start = now('UTC')->subDays(6)->toDateString();
+        $this->assertStringContainsString(
+            '"UTC period start","UTC period end","AI job status","Recorded jobs"', $csv);
+        $this->assertStringContainsString($start.','.$day.',completed,2', $csv);
+        $this->assertStringContainsString($start.','.$day.',queued,1', $csv);
+        $this->assertStringContainsString($start.','.$day.',INVALID,1', $csv);
+        $this->assertStringNotContainsString('failed,1', $csv);
+        foreach (['=SUM', 'INTERNAL-PROVIDER-PRIVATE', 'DO-NOT-EXPORT-PROVIDER-TOKEN', $provider->id] as $secret) {
+            $this->assertStringNotContainsString($secret, $csv);
+        }
+        $one = $this->get('/admin/analytics?day='.$day.'&window=1&format=jobs-csv')
+            ->assertOk()->streamedContent();
+        $this->assertStringContainsString($day.','.$day.',completed,2', $one);
+        $this->assertStringNotContainsString('queued,1', $one);
+        $this->assertStringNotContainsString('failed,1', $one);
+        $this->get('/admin/analytics?format=jobs-csv&window=2')
+            ->assertRedirect()->assertSessionHasErrors('window');
+        Http::assertNothingSent();
+    }
+
+    public function test_empty_job_status_csv_does_not_fabricate_operational_counts(): void
+    {
+        Http::fake();
+        $this->actingAs($this->account('admin'), 'web');
+        $csv = $this->get('/admin/analytics?format=jobs-csv')
+            ->assertOk()->streamedContent();
+        $this->assertStringContainsString('AI job status', $csv);
+        $this->assertStringNotContainsString('completed,', $csv);
+        $this->assertStringNotContainsString('queued,', $csv);
+        Http::assertNothingSent();
+    }
+
     public function test_analytics_period_rejects_bad_ranges_and_preserves_role_protection(): void
     {
         Http::fake();
