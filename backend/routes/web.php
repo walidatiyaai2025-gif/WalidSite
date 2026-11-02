@@ -1877,7 +1877,11 @@ Route::middleware('auth:web')->prefix('admin')->group(function (): void {
             ->join('users', 'users.id', '=', 'preference.user_id')
             ->where('users.status', 'active')->where('preference.purpose', $purpose)
             ->where('preference.channel', $channel)->where('preference.enabled', true)
-            ->whereNotNull('preference.consented_at')->whereNull('preference.revoked_at')
+            // A future-dated/imported grant is not affirmative consent yet.
+            // Match the API's fail-closed notification gate at UTC request time.
+            ->whereNotNull('preference.consented_at')
+            ->where('preference.consented_at', '<=', now('UTC'))
+            ->whereNull('preference.revoked_at')
             ->distinct()->count('preference.user_id');
         return response()->view('admin.operations', [
             'section' => 'audience',
