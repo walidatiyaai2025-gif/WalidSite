@@ -42,6 +42,9 @@ class MobileAiJob {
     r'^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$',
   );
 
+  /// Validate a user-held job reference before any authenticated status GET.
+  static bool isValidId(String value) => _uuid.hasMatch(value);
+
   static MobileAiJob parse(String raw) {
     if (raw.length > 128 * 1024) {
       throw const FormatException('Oversized diagnosis response');
@@ -224,7 +227,13 @@ class MobileAiClient {
     required String question,
     required String technology,
     required String codeSnippet,
+    required bool consentToProcess,
   }) async {
+    // Never assert consent in the HTTP adapter on a caller's behalf.
+    // A direct caller must supply affirmative per-request consent.
+    if (!consentToProcess) {
+      throw const FormatException('Explicit diagnosis consent required');
+    }
     if (token.isEmpty || token.length > 8192) {
       throw const FormatException('Invalid bearer token');
     }
@@ -236,7 +245,7 @@ class MobileAiClient {
         'question': question.trim(),
         'technology': technology.trim(),
         'code_snippet': codeSnippet,
-        'consent_to_process': true,
+        'consent_to_process': consentToProcess,
       },
     );
     if (response.key != HttpStatus.ok) {
@@ -249,7 +258,7 @@ class MobileAiClient {
   Future<MobileAiJob> readJob(String token, String jobId) async {
     if (token.isEmpty ||
         token.length > 8192 ||
-        !MobileAiJob._uuid.hasMatch(jobId)) {
+        !MobileAiJob.isValidId(jobId)) {
       throw const FormatException('Invalid diagnosis job identity');
     }
     final response = await _jsonRequest(
@@ -376,6 +385,7 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
   final _technology = TextEditingController();
   final _question = TextEditingController();
   final _code = TextEditingController();
+  final _resumeId = TextEditingController();
 
   String? _token;
   DateTime? _expiresAt;
@@ -399,6 +409,7 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
     _technology.dispose();
     _question.dispose();
     _code.dispose();
+    _resumeId.dispose();
     super.dispose();
   }
 
@@ -418,6 +429,7 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
       _resetPollCooldown();
       _saved = false;
       _consent = false;
+      _resumeId.clear();
       _message = _expiredSessionMessage;
     });
     return false;
@@ -490,6 +502,7 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
             question: question,
             technology: technology,
             codeSnippet: codeSnippet,
+            consentToProcess: _consent,
           );
 
   MobileJobStatusAction get _readStatus => widget.jobStatusAction ??
@@ -592,6 +605,7 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
       _technology.clear();
       _question.clear();
       _code.clear();
+      _resumeId.clear();
       _message = widget.arabic
           ? 'جارٍ إلغاء الجلسة على الخادم...'
           : 'Revoking the session on the server...';
@@ -715,6 +729,58 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
             ? (widget.arabic
                 ? 'لم تعد مهمة التشخيص متاحة. يمكنك بدء طلب جديد.'
                 : 'This diagnosis job is no longer available. You may start again.')
+            : _genericError(error);
+      });
+    } finally {
+      if (mounted) setState(() => _busyPoll = false);
+    }
+  }
+
+  /// Recover a previously issued job after navigation/network loss. The ID
+  /// alone conveys no access: the backend still checks the current bearer.
+  /// No prompt is replayed and no AI budget is reserved by this GET.
+  Future<void> _resumeExistingJob() async {
+    if (_busyDiagnosis || _busyPoll || _busySave || _job != null ||
+        !_requireActiveSession()) return;
+    final id = _resumeId.text.trim();
+    if (!MobileAiJob.isValidId(id)) {
+      setState(() => _message = widget.arabic
+          ? 'أدخل معرّف مهمة صالحًا من 36 حرفًا.'
+          : 'Enter a valid 36-character diagnosis job ID.');
+      return;
+    }
+    final token = _token!;
+    setState(() {
+      _busyPoll = true;
+      _message = null;
+    });
+    try {
+      final job = await _readStatus(token, id);
+      if (!mounted || _token != token || !_requireActiveSession()) return;
+      if (job.id.toLowerCase() != id.toLowerCase()) {
+        throw const FormatException('Mismatched diagnosis job identity');
+      }
+      setState(() {
+        _job = job;
+        _saved = false;
+        _resumeId.clear();
+        _respectPollDelay(job);
+        _message = _jobMessage(job);
+      });
+    } catch (error) {
+      if (!mounted || _token != token) return;
+      setState(() {
+        if (error is MobileAiHttpException &&
+            (error.statusCode == 401 || error.statusCode == 403)) {
+          _token = null;
+          _expiresAt = null;
+          _consent = false;
+          _resumeId.clear();
+        }
+        _message = error is MobileAiHttpException && error.statusCode == 404
+            ? (widget.arabic
+                ? 'المهمة غير متاحة أو انتهت صلاحيتها. ابدأ تشخيصًا جديدًا.'
+                : 'Job not available or expired. Start a new diagnosis.')
             : _genericError(error);
       });
     } finally {
@@ -965,6 +1031,31 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
                         label: Text(ar ? 'تسجيل الخروج' : 'Sign out'),
                       ),
                     ),
+                    const SizedBox(height: 12),
+                    Text(ar
+                        ? 'استرجاع تشخيص سابق (يتطلب صلاحية حسابك)'
+                        : 'Resume an earlier diagnosis (account access required)'),
+                    const SizedBox(height: 8),
+                    TextField(
+                      key: const Key('ai-resume-id'),
+                      controller: _resumeId,
+                      maxLength: 36,
+                      autocorrect: false,
+                      enableSuggestions: false,
+                      decoration: InputDecoration(
+                        labelText: ar ? 'معرّف مهمة التشخيص' : 'Diagnosis job ID',
+                        border: const OutlineInputBorder(),
+                      ),
+                    ),
+                    OutlinedButton.icon(
+                      key: const Key('ai-resume-submit'),
+                      onPressed: _busyDiagnosis || _busyPoll || _busySave ||
+                              _job != null ? null : _resumeExistingJob,
+                      icon: const Icon(Icons.history),
+                      label: Text(_busyPoll
+                          ? (ar ? 'جارٍ الاسترجاع...' : 'Restoring...')
+                          : (ar ? 'استرجاع الحالة' : 'Restore status')),
+                    ),
                     const SizedBox(height: 8),
                     TextField(
                       key: const Key('ai-technology'),
@@ -1067,6 +1158,13 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
                             Text(
                               '${_statusLabel(_job!.status)} · ${_job!.progressPercent}%',
                               key: const Key('ai-job-status'),
+                            ),
+                            Text(ar
+                                ? 'احتفظ بمعرّف المهمة لاسترجاعها بعد تسجيل الدخول مرة أخرى:'
+                                : 'Keep this ID to resume after signing in again:'),
+                            SelectableText(
+                              _job!.id,
+                              key: const Key('ai-job-reference'),
                             ),
                             if (_job!.retryAfterSeconds != null)
                               Text(ar
