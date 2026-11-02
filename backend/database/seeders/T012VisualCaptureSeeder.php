@@ -38,21 +38,21 @@ final class T012VisualCaptureSeeder extends Seeder
             'visual-blog-sql-alwayson',
             'SQL AlwaysOn',
             'SQL AlwaysOn',
-            "High availability troubleshooting\n\nVerified test-only technical fixture.",
+            "High availability troubleshooting",
             1
         );
         $this->article(
             'visual-blog-flutter-android',
             'Flutter & Android',
             'Flutter & Android',
-            "Build and integration guides\n\nVerified test-only technical fixture.",
+            "Build and integration guides",
             2
         );
         $this->article(
             'visual-blog-ai-agents',
             'AI Agents',
             'AI Agents',
-            "Safe software delivery workflows\n\nVerified test-only technical fixture.",
+            "Safe software delivery workflows",
             3
         );
 
