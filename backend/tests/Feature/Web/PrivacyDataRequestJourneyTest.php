@@ -13,20 +13,20 @@ final class PrivacyDataRequestJourneyTest extends TestCase
 
     private const SUBJECTS = [
         'access' => [
-            'en' => 'Privacy data access request',
-            'ar' => 'طلب الاطلاع على البيانات الشخصية',
+            'en' => 'Personal data access request',
+            'ar' => 'طلب الاطلاع على بياناتي',
         ],
         'correction' => [
-            'en' => 'Privacy data correction request',
-            'ar' => 'طلب تصحيح البيانات الشخصية',
+            'en' => 'Personal data correction request',
+            'ar' => 'طلب تصحيح بياناتي',
         ],
         'export' => [
-            'en' => 'Privacy data export request',
-            'ar' => 'طلب تصدير البيانات الشخصية',
+            'en' => 'Personal data export request',
+            'ar' => 'طلب تصدير بياناتي',
         ],
         'deletion' => [
-            'en' => 'Privacy account deletion request',
-            'ar' => 'طلب حذف الحساب والبيانات',
+            'en' => 'Personal data deletion request',
+            'ar' => 'طلب حذف بياناتي',
         ],
         'notifications' => [
             'en' => 'Privacy notification consent revocation request',
@@ -82,8 +82,8 @@ final class PrivacyDataRequestJourneyTest extends TestCase
             '/contact?lang=en&topic=other&request=export',
         ] as $uri) {
             $response = $this->get($uri)->assertOk()
-                ->assertDontSee('value="Privacy account deletion request"', false)
-                ->assertDontSee('value="Privacy data export request"', false)
+                ->assertDontSee('value="Personal data deletion request"', false)
+                ->assertDontSee('value="Personal data export request"', false)
                 ->assertDontSee('Data export inquiry')
                 ->assertDontSee('Account deletion inquiry')
                 ->assertDontSee('malicious-private-metadata');
@@ -105,7 +105,7 @@ final class PrivacyDataRequestJourneyTest extends TestCase
         $input = [
             'name' => 'Privacy Visitor',
             'email' => 'visitor@example.test',
-            'subject' => 'Privacy account deletion request',
+            'subject' => 'Personal data deletion request',
             'message' => 'Please tell me how to verify my identity and delete my account.',
             'website' => '',
         ];
