@@ -147,6 +147,45 @@ summary{cursor:pointer;min-height:44px;padding:8px}
 <section class="panel" aria-labelledby="projects-title">
 <h2 id="projects-title">{{ $ar ? 'سجل المشاريع والدليل' : 'Project & evidence register' }} ({{ $projects->total() }})</h2>
 <p class="muted">{{ $ar ? 'تعديل المسودات الخاصة فقط. لا يوجد زر نشر يتجاوز مراجعة الادعاءات والدليل.' : 'Only unpublished private drafts may be edited. Publication and professional claims require independent evidence review.' }}</p>
+{{-- ADMIN-09: review the exact published owner CV, never private drafts
+     or self-reported claims from an unrelated/inactive account. The public
+     preview and downloadable binary use the same evidence-gated routes as
+     WEB-11; no second editable CV data store is invented here. --}}
+@php($cvPublicResponse = app(\App\Http\Controllers\Api\PublicPortfolioController::class)->profile(request())->getData(true))
+@php($publicCvAvailable = isset($cvPublicResponse['data']) && $cvPublicResponse['data'] !== null)
+<section class="panel" aria-labelledby="cv-review-title">
+<h3 id="cv-review-title">{{ $ar ? 'مراجعة السيرة المهنية المنشورة' : 'Published CV review' }}</h3>
+<p class="muted">{{ $ar
+    ? 'تستخدم المعاينة والتنزيل مسارات السيرة العامة نفسها مع بوابة التحقق من الأدلة. لن تُعرض مسودات المالك أو بيانات حساب آخر أو أي شهادات غير معتمدة.'
+    : 'Preview and download use the same evidence-gated public CV endpoints. Owner drafts, other accounts and unverified credentials are never disclosed.' }}</p>
+@if(!$publicCvAvailable)
+<p role="status" class="muted">{{ $ar
+    ? 'لم تُنشر سيرة مهنية معتمدة لمالك نشط بعد. المعاينات العامة تظهر حالة المراجعة؛ تنزيل PDF غير متاح.'
+    : 'No published CV for an active owner is available. Public previews show the pending state; PDF downloads are unavailable.' }}</p>
+@endif
+<div class="cards" role="list">
+@foreach([
+'all' => $ar ? 'جميع المسارات' : 'All verified tracks',
+'database' => $ar ? 'قواعد البيانات والموثوقية' : 'Database & reliability',
+'software' => $ar ? 'البرمجيات والتكامل' : 'Software & integration',
+'delivery' => $ar ? 'إدارة وتسليم المشاريع' : 'Project delivery',
+] as $focus => $cvLabel)
+<div class="card" role="listitem">
+<strong>{{ $cvLabel }}</strong>
+<div class="inline-actions" style="margin-top:12px">
+<a class="button" href="{{ route('public.resume', ['lang' => $locale, 'track' => $focus]) }}">{{ $ar ? 'معاينة عامة' : 'Public preview' }}</a>
+@if($publicCvAvailable)
+<a class="button" href="{{ route('public.resume.pdf', ['lang' => $locale, 'track' => $focus]) }}">{{ $ar ? 'تنزيل PDF المعتمد' : 'Download verified PDF' }}</a>
+@endif
+</div>
+</div>
+@endforeach
+</div>
+<div class="inline-actions" style="margin-top:20px">
+<a href="{{ route('admin.approvals.index', ['lang' => $locale]) }}">{{ $ar ? 'مراجعة الموافقات الفعلية' : 'Review recorded approvals' }}</a>
+<a href="{{ route('admin.audit.index', ['lang' => $locale]) }}">{{ $ar ? 'فتح سجل التدقيق' : 'Open audit trail' }}</a>
+</div>
+</section>
 <form method="get" action="{{ route('admin.operations.projects') }}" class="filters" role="search">
 <input type="hidden" name="lang" value="{{ $locale }}">
 <div><label for="visibility">{{ $ar ? 'الظهور' : 'Visibility' }}</label><select name="visibility" id="visibility"><option value="">{{ $ar ? 'الكل' : 'All' }}</option>@foreach(['public','private'] as $option)<option value="{{ $option }}" @selected($visibilityFilter===$option)>{{ $visibilityLabels[$option][$ar ? 1 : 0] }}</option>@endforeach</select></div>

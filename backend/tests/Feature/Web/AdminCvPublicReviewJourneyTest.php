@@ -1,0 +1,138 @@
+<?php
+
+namespace Tests\Feature\Web;
+
+use App\Models\Profile;
+use App\Models\Role;
+use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
+use Tests\TestCase;
+
+/**
+ * ADMIN-09 CV controls must reuse the real evidence-gated WEB-11 endpoints.
+ *
+ * A visible public-preview link is not permission to download unapproved,
+ * unrelated or inactive profiles. These are HTTP feature tests, not visual
+ * pixel-parity attestation for the original ADMIN-09 or WEB-11 PNG.
+ */
+final class AdminCvPublicReviewJourneyTest extends TestCase
+{
+    use RefreshDatabase;
+
+    private function account(string $role, string $status = 'active'): User
+    {
+        $user = User::create([
+            'email' => Str::lower(Str::random(16)).'@example.test',
+            'status' => $status,
+            'password_hash' => null,
+        ]);
+        $user->roles()->attach(Role::firstOrCreate(['name' => $role])->id);
+
+        return $user;
+    }
+
+    private function cv(User $user, string $state = 'published'): Profile
+    {
+        return Profile::create([
+            'user_id' => $user->id,
+            'public_name' => 'PRIVATE_PROFILE_NAME_NOT_FOR_ADMIN_CV',
+            'bio_en' => 'CONFIDENTIAL_UNREVIEWED_BIO',
+            'bio_ar' => 'سيرة خاصة غير معتمدة',
+            'publish_status' => $state,
+        ]);
+    }
+
+    public function test_cv_review_requires_admin_session_and_never_discloses_private_profiles(): void
+    {
+        Http::fake();
+        $stranger = $this->account('reader');
+        $this->cv($stranger);
+        $owner = $this->account('owner');
+        $draft = $this->cv($owner, 'draft');
+
+        $this->get('/admin/projects?lang=en')->assertRedirect('/admin/login');
+        $this->actingAs($stranger, 'web')->get('/admin/projects?lang=en')
+            ->assertForbidden();
+
+        $this->actingAs($this->account('admin'), 'web');
+        foreach (['ar', 'en'] as $locale) {
+            $response = $this->get('/admin/projects?lang='.$locale)->assertOk()
+                ->assertHeader('Cache-Control', 'no-store, private')
+                ->assertSee('lang="'.$locale.'"', false)
+                ->assertSee('dir="'.($locale === 'ar' ? 'rtl' : 'ltr').'"', false)
+                ->assertSee('href="#content"', false)
+                ->assertSee('id="cv-review-title"', false)
+                ->assertSee('role="list"', false)
+                ->assertSee($locale === 'ar'
+                    ? 'لم تُنشر سيرة مهنية معتمدة' : 'No published CV for an active owner')
+                ->assertDontSee('Download verified PDF')
+                ->assertDontSee('تنزيل PDF المعتمد')
+                ->assertDontSee($draft->public_name)
+                ->assertDontSee('CONFIDENTIAL_UNREVIEWED_BIO');
+
+            foreach (['all', 'database', 'software', 'delivery'] as $track) {
+                $url = route('public.resume', ['lang' => $locale, 'track' => $track]);
+                $response->assertSee('href="'.e($url).'"', false);
+                $response->assertDontSee(
+                    'href="'.e(route('public.resume.pdf', [
+                        'lang' => $locale, 'track' => $track,
+                    ])).'"', false
+                );
+            }
+            $response->assertSee('href="'.e(route('admin.approvals.index', [
+                'lang' => $locale,
+            ])).'"', false)->assertSee('href="'.e(route('admin.audit.index', [
+                'lang' => $locale,
+            ])).'"', false);
+        }
+        $this->get('/resume/pdf?lang=en')->assertNotFound();
+        Http::assertNothingSent();
+    }
+
+    public function test_only_active_owner_published_profile_unlocks_real_bilingual_pdf_routes(): void
+    {
+        Http::fake();
+        $owner = $this->account('owner');
+        $profile = $this->cv($owner, 'draft');
+        $this->actingAs($this->account('admin'), 'web');
+
+        $this->get('/admin/projects?lang=en')->assertOk()
+            ->assertDontSee('Download verified PDF');
+        $profile->update(['publish_status' => 'published']);
+
+        foreach (['en', 'ar'] as $locale) {
+            $response = $this->get('/admin/projects?lang='.$locale)->assertOk()
+                ->assertDontSee('PRIVATE_PROFILE_NAME_NOT_FOR_ADMIN_CV')
+                ->assertDontSee('CONFIDENTIAL_UNREVIEWED_BIO')
+                ->assertDontSee($locale === 'ar'
+                    ? 'لم تُنشر سيرة مهنية معتمدة' : 'No published CV for an active owner');
+            foreach (['all', 'database', 'software', 'delivery'] as $track) {
+                $url = route('public.resume.pdf', [
+                    'lang' => $locale, 'track' => $track,
+                ]);
+                $response->assertSee('href="'.e($url).'"', false);
+            }
+            $this->get('/resume?lang='.$locale.'&track=database')->assertOk();
+        }
+
+        // Opening the ADMIN-09 download is a real PDF response generated by
+        // the existing WEB-11 service, not an inert or placeholder button.
+        $pdf = $this->get('/resume/pdf?lang=ar&track=database')
+            ->assertOk()
+            ->assertHeader('Content-Type', 'application/pdf')
+            ->assertHeader('X-Content-Type-Options', 'nosniff');
+        $this->assertStringStartsWith('%PDF-', $pdf->getContent());
+        $this->assertStringContainsString('%%EOF', $pdf->getContent());
+
+        // Revocation/inactivation must make every Admin PDF CTA disappear
+        // on the next request; the public endpoint itself denies disclosure.
+        $owner->update(['status' => 'inactive']);
+        $this->get('/admin/projects?lang=en')->assertOk()
+            ->assertDontSee('Download verified PDF');
+        $this->get('/resume/pdf?lang=en')->assertNotFound();
+
+        Http::assertNothingSent();
+    }
+}
