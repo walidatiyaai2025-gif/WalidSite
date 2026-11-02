@@ -20,7 +20,7 @@ except ModuleNotFoundError as exc:
 
 WEB_IDS = tuple("WEB-%02d" % number for number in range(1, 15))
 DYNAMIC_SLUGS = {"WEB-05": "project_slug", "WEB-08": "article_slug"}
-SAFE_SLUG = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9-]{0,199}\\Z")
+SAFE_SLUG = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9-]{0,199}\Z")
 RENDERER = ["python3", "qa/render_web_screenshot.py"]
 
 
