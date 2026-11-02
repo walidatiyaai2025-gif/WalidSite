@@ -68,9 +68,9 @@ final class ResumePdfDownloadTest extends TestCase
 
         $this->get('/resume?lang=ar&track=database')->assertOk()
             ->assertSee('تنزيل السيرة PDF')
-            ->assertSee('href="'.route('public.resume.pdf', [
+            ->assertSee('href="'.e(route('public.resume.pdf', [
                 'lang' => 'ar', 'track' => 'database',
-            ]).'"', false);
+            ])).'"', false);
 
         foreach (['ar', 'en'] as $locale) {
             $response = $this->get('/resume/pdf?lang='.$locale.'&track=database')
