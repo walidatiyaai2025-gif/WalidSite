@@ -54,7 +54,7 @@ final class PrivacyDataRequestJourneyTest extends TestCase
 
                 $response = $this->get($url)->assertOk()
                     ->assertSee('value="'.$subjects[$lang].'"', false)
-                    ->assertSee('name="privacy_consent" value="1"', false)
+                    ->assertSee('name="privacy_consent" value="1" required aria-required="true"', false)
                     ->assertSee($lang === 'ar' ? 'نموذج استفسار' : 'not an authenticated action')
                     ->assertSee('href="'.e(route('public.contact', [
                         'lang' => $lang === 'ar' ? 'en' : 'ar',
