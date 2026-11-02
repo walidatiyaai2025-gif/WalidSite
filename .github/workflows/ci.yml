@@ -166,19 +166,19 @@ jobs:
           php -r '
           require "vendor/autoload.php";
           $app = require "bootstrap/app.php";
-          $app->make(Illuminate\\Contracts\\Console\\Kernel::class)->bootstrap();
+          $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
           config([
               "site.setup_enabled" => true,
               "site.setup_token" => str_repeat("v", 40),
               "site.setup_database_ready" => false,
               "site.install_lock_path" => storage_path("app/site-installed.lock"),
           ]);
-          $ok = app(App\\Support\\Deployment\\SiteInstaller::class)->complete(
+          $ok = app(App\Support\Deployment\SiteInstaller::class)->complete(
               getenv("WALIDSITE_QA_ADMIN_PASSWORD"),
-              app(App\\Support\\Deployment\\SiteUpdater::class)
+              app(App\Support\Deployment\SiteUpdater::class)
           );
           if (! $ok) { fwrite(STDERR, "Visual QA owner activation was not completed\\n"); exit(2); }
-          $provider = App\\Models\\AiProvider::create([
+          $provider = App\Models\AiProvider::create([
               "display_name" => "Visual QA provider",
               "provider_type" => "ollama-compatible",
               "base_url" => "http://127.0.0.1:11434",
