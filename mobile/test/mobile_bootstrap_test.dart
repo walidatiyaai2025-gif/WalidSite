@@ -70,7 +70,10 @@ void main() {
 
   test('MOBILE-01 bootstrap parser rejects unsafe or stale capability claims', () {
     final invalid = <String>[
-      bootstrap(privacy: null),
+      bootstrap().replaceFirst(
+        '\"privacy_policy_url\":\"/privacy?lang=en\"',
+        '\"privacy_policy_url\":null',
+      ),
       bootstrap(privacy: 'https://evil.example/privacy?lang=en'),
       bootstrap(privacy: '/terms?lang=en'),
       bootstrap(privacy: '/privacy?lang=ar'),
