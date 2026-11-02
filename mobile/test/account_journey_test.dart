@@ -276,6 +276,64 @@ void main() {
     expect(find.byKey(const Key('account-login')), findsOneWidget);
   });
 
+  testWidgets('profile edit handles validation failure then unauthorized session safely',
+      (tester) async {
+    var attempts = 0;
+    await tester.pumpWidget(MaterialApp(
+      home: MobileAccountJourney(
+        arabic: false,
+        loginAction: (_, __) async =>
+            const MobileAiSession(token: bearer, expiresAt: null),
+        profileAction: (_) async => const MobileAccount(articleId, email),
+        profileUpdateAction: (_, __, ___) async {
+          attempts++;
+          if (attempts == 1) throw const MobileAiHttpException(422);
+          throw const MobileAiHttpException(403);
+        },
+        savedAction: (_, __, n) async =>
+            MobileSavedPage.parse(page(n, []), n),
+      ),
+    ));
+    await login(tester);
+    await tester.tap(find.byKey(const Key('account-profile-tab')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('account-edit-profile')));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byKey(const Key('account-edit-email')),
+      'candidate@example.org',
+    );
+    await tester.enterText(
+      find.byKey(const Key('account-edit-password')),
+      'wrong-current-password',
+    );
+    await tester.tap(find.byKey(const Key('account-edit-save')));
+    await tester.pumpAndSettle();
+
+    expect(attempts, 1);
+    expect(find.text('Check the email address and current password.'),
+        findsOneWidget);
+    expect(find.byKey(const Key('account-edit-email')), findsOneWidget);
+    expect(find.text('wrong-current-password'), findsNothing);
+    expect(find.text(email), findsOneWidget);
+
+    await tester.enterText(
+      find.byKey(const Key('account-edit-password')),
+      'current-password',
+    );
+    await tester.tap(find.byKey(const Key('account-edit-save')));
+    await tester.pumpAndSettle();
+
+    expect(attempts, 2);
+    expect(find.text('Session no longer authorized. Sign in again.'),
+        findsOneWidget);
+    expect(find.byKey(const Key('account-login')), findsOneWidget);
+    expect(find.byKey(const Key('account-profile-email')), findsNothing);
+    expect(find.text(bearer), findsNothing);
+    expect(find.text('current-password'), findsNothing);
+  });
+
   testWidgets('main app opens real account screen with truthful unavailable state',
       (tester) async {
     await tester.pumpWidget(const WaleedTechApp());
