@@ -55,6 +55,8 @@ class ProviderDailyBudgetFairnessTest extends TestCase
         $this->assertSame(90, (int) DB::table('ai_usage')
             ->where('provider_id', $paid->id)->sum('cost_minor'));
         Http::assertNothingSent();
+        $queue->completeStep($free, 'free-worker', 'write', 'drafts/local');
+        $queue->completeJob($free, 'free-worker');
 
         // The old receipt still exists; only the new UTC day's configured
         // allowance can make the queued paid provider eligible again.
