@@ -297,7 +297,8 @@ class EditorialPipelineTest extends TestCase
         $this->assertSame('unverified', $asset->rights_status);
         $this->assertFalse($asset->isPubliclyUsable());
         $this->assertSame('image/png', $asset->mime_type);
-        $variant = $asset->hasMany(\App\Models\AssetVariant::class, 'asset_id')
+        $variant = \App\Models\AssetVariant::query()
+            ->where('asset_id', $asset->id)
             ->where('size_key', 'source')->firstOrFail();
         $this->assertSame($asset->storage_key, $variant->storage_key);
         $this->assertSame(2, $variant->width);
