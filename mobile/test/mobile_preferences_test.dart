@@ -59,10 +59,16 @@ void main() {
       expect(find.byKey(const Key('preferences-verified')), findsOneWidget);
       expect(find.byKey(const Key('preferences-language')), findsOneWidget);
       expect(find.byKey(const Key('preferences-theme')), findsOneWidget);
-      expect(find.byKey(const Key('preferences-change-theme-unavailable')), findsOneWidget);
-      expect(tester.widget<OutlinedButton>(
-          find.byKey(const Key('preferences-change-theme-unavailable'))).onPressed, isNull);
+      expect(find.byKey(const Key('preferences-change-theme')), findsOneWidget);
+      await tester.ensureVisible(find.byKey(const Key('preferences-change-theme')));
+      await tester.tap(find.byKey(const Key('preferences-change-theme')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('preferences-theme-unavailable')), findsOneWidget);
       expect(find.text(arabic ? 'المظهر الفاتح فقط' : 'Light theme only'), findsOneWidget);
+      expect(find.textContaining(arabic ? 'لن يتم تغيير' : 'Nothing will be changed'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('preferences-theme-dismiss')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('preferences-theme-unavailable')), findsNothing);
       expect(find.byKey(const Key('preferences-offline')), findsOneWidget);
       expect(find.byKey(const Key('preferences-alerts')), findsOneWidget);
       expect(find.byKey(const Key('preferences-ai')), findsOneWidget);
