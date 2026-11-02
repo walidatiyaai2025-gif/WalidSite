@@ -380,19 +380,45 @@ class CompanionHome extends StatelessWidget {
             const SizedBox(height: 16),
             Card(
               child: ListTile(
-                key: const Key('account-saved-profile-entry'),
+                key: const Key('account-saved-entry'),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16, vertical: 12,
+                ),
+                leading: const Icon(Icons.bookmark_outline, size: 30),
+                title: Text(arabic ? 'المحفوظات' : 'Saved resources'),
+                subtitle: Text(arabic
+                    ? 'سجل الدخول لفتح محفوظاتك الموثقة وإدارتها'
+                    : 'Sign in to review and manage your verified saved items'),
+                trailing: Icon(arabic ? Icons.chevron_left : Icons.chevron_right),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => MobileAccountJourney(
+                      arabic: arabic,
+                      initialSection: MobileAccountSection.saved,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Card(
+              child: ListTile(
+                key: const Key('account-profile-entry'),
                 contentPadding: const EdgeInsets.symmetric(
                   horizontal: 16, vertical: 12,
                 ),
                 leading: const Icon(Icons.person_outline, size: 30),
-                title: Text(arabic ? 'المحفوظات وحسابي' : 'Saved resources & account'),
+                title: Text(arabic ? 'الملف الشخصي' : 'Personal profile'),
                 subtitle: Text(arabic
-                    ? 'سجل الدخول لقراءة محفوظاتك وإدارة جلسة الحساب'
-                    : 'Sign in to access verified saved resources and your session'),
+                    ? 'سجل الدخول لإدارة بريد الحساب والخصوصية والجلسة'
+                    : 'Sign in to manage account email, privacy and session controls'),
                 trailing: Icon(arabic ? Icons.chevron_left : Icons.chevron_right),
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute<void>(
-                    builder: (_) => MobileAccountJourney(arabic: arabic),
+                    builder: (_) => MobileAccountJourney(
+                      arabic: arabic,
+                      initialSection: MobileAccountSection.profile,
+                    ),
                   ),
                 ),
               ),

@@ -56,9 +56,14 @@ void main() {
       find.byKey(const Key('github-unconfigured')),
     );
     await openDestination(
-      'account',
-      const Key('account-saved-profile-entry'),
-      find.byKey(const Key('account-unconfigured')),
+      'saved',
+      const Key('account-saved-entry'),
+      find.text('Saved resources'),
+    );
+    await openDestination(
+      'profile',
+      const Key('account-profile-entry'),
+      find.text('Personal profile'),
     );
     await openDestination(
       'preferences',
