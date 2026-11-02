@@ -83,8 +83,11 @@ void main() {
       var pageCalls = 0;
       var removals = 0;
       var revocations = 0;
+      var profileUpdates = 0;
       var removed = false;
       var articleCalls = 0;
+      final updatedEmail =
+          arabic ? 'arabic.updated@example.org' : 'updated@example.org';
       await tester.pumpWidget(MaterialApp(
         home: MobileAccountJourney(
           arabic: arabic,
@@ -97,6 +100,13 @@ void main() {
           profileAction: (token) async {
             expect(token, bearer);
             return const MobileAccount(articleId, email);
+          },
+          profileUpdateAction: (token, address, currentPassword) async {
+            expect(token, bearer);
+            expect(address, updatedEmail);
+            expect(currentPassword, 'current-account-password');
+            profileUpdates++;
+            return MobileAccount(articleId, address);
           },
           savedAction: (token, locale, number) async {
             expect(token, bearer);
@@ -144,7 +154,28 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('account-profile-email')), findsOneWidget);
       expect(find.text(email), findsOneWidget);
-      expect(find.textContaining('not supported'), arabic ? findsNothing : findsOneWidget);
+      expect(find.byKey(const Key('account-edit-profile')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('account-edit-profile')));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('account-edit-email')),
+        updatedEmail,
+      );
+      await tester.enterText(
+        find.byKey(const Key('account-edit-password')),
+        'current-account-password',
+      );
+      await tester.tap(find.byKey(const Key('account-edit-save')));
+      await tester.pumpAndSettle();
+      expect(profileUpdates, 1);
+      expect(find.text(updatedEmail), findsOneWidget);
+      expect(find.text('current-account-password'), findsNothing);
+      expect(
+        find.text(arabic
+            ? 'تم تحديث بريد الحساب وإلغاء جلسات الأجهزة الأخرى.'
+            : 'Account email updated. Other bearer sessions were revoked.'),
+        findsOneWidget,
+      );
       await tester.tap(find.byKey(const Key('account-saved-tab')));
       await tester.pumpAndSettle();
 
