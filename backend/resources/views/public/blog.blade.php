@@ -36,7 +36,8 @@
 </style>
 @endpush
 @section('content')
-<section class="site-wrap blog-shell" aria-labelledby="blog-title">
+@include('public.t012-reference-stage', ['screen' => 'blog'])
+<section class="site-wrap blog-shell t012-functional" id="t012-functional" aria-labelledby="blog-title">
     <h1 id="blog-title">{{ $locale === 'ar' ? 'المدونة التقنية' : 'Technical blog' }}</h1>
     <p class="blog-intro">{{ $locale === 'ar'
         ? 'مقالات منشورة بعد مراجعة مصادرها وصحة محتواها. لا تعرض المسودات أو التجارب غير المثبتة.'

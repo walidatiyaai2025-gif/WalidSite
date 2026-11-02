@@ -26,7 +26,8 @@
 </style>
 @endpush
 @section('content')
-<section class="site-wrap editorial"><h1>{{ $locale === 'ar' ? 'المختبر التقني' : 'Technology lab' }}</h1>
+@include('public.t012-reference-stage', ['screen' => 'lab'])
+<section class="site-wrap editorial t012-functional" id="t012-functional"><h1>{{ $locale === 'ar' ? 'المختبر التقني' : 'Technology lab' }}</h1>
 <p>{{ $locale === 'ar' ? 'الأدوات التفاعلية غير مفعّلة حتى التحقق منها. المتاح أدلة منشورة ذات مصادر فقط.' : 'Interactive tools are not active until verified. Only published, evidence-reviewed guides can be opened.' }}</p>
 <div class="lab-actions" aria-label="{{ $locale === 'ar' ? 'إجراءات المختبر' : 'Lab actions' }}">
     <section class="lab-action-card" aria-labelledby="lab-tool-action-title">
