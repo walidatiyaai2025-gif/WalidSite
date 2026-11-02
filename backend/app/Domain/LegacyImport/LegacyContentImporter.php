@@ -12,6 +12,7 @@ use Throwable;
 
 final class LegacyContentImporter
 {
+    public const SCHEMA_VERSION = 1;
     public const MAX_BYTES = 2_000_000;
     public const MAX_ROWS = 500;
 
@@ -141,7 +142,7 @@ final class LegacyContentImporter
 
     /**
      * @return array{
-     * source_name:string,source_sha256:string,parsed_rows:int,rejected_count:int,
+     * schema_version:?int,source_name:string,source_sha256:string,parsed_rows:int,rejected_count:int,
      * duplicate_count:int,rejections:list<array{statement:int,row:int,table:string,reason:string}>,
      * pending:list<array<string,mixed>>,accepted:array<string,int>
      * }
@@ -151,6 +152,7 @@ final class LegacyContentImporter
         $sourceName = $this->safeSourceName($sourceName);
         $sourceSha = hash('sha256', $sql);
         $base = [
+            'schema_version' => null,
             'source_name' => $sourceName,
             'source_sha256' => $sourceSha,
             'parsed_rows' => 0,
@@ -174,6 +176,16 @@ final class LegacyContentImporter
         }
         if ($sql === '' || preg_match('//u', $sql) !== 1 || str_contains($sql, "\0")) {
             $base['rejections'][] = $this->rejection(0, 0, 'source', 'source_not_valid_utf8_text');
+            $base['rejected_count'] = 1;
+
+            return $base;
+        }
+
+        try {
+            $base['schema_version'] = $this->schemaVersion($sql);
+            $sql = $this->withoutSchemaHeader($sql);
+        } catch (DomainException $exception) {
+            $base['rejections'][] = $this->rejection(0, 0, 'source', $exception->getMessage());
             $base['rejected_count'] = 1;
 
             return $base;
@@ -325,6 +337,36 @@ final class LegacyContentImporter
         }
 
         return [$content, basename($file)];
+    }
+
+    private function schemaVersion(string $sql): int
+    {
+        if (preg_match(
+            '/\\A(?:\\xEF\\xBB\\xBF)?[ \\t]*--[ \\t]*walidsite-legacy-schema:[ \\t]*([0-9]+)[ \\t]*(?:\\r\\n|\\n|\\r)/',
+            $sql,
+            $matches
+        ) !== 1) {
+            throw new DomainException('schema_version_missing');
+        }
+
+        $version = (int) $matches[1];
+        if ($version !== self::SCHEMA_VERSION) {
+            throw new DomainException('schema_version_unsupported');
+        }
+
+        return $version;
+    }
+
+    private function withoutSchemaHeader(string $sql): string
+    {
+        $stripped = preg_replace(
+            '/\\A(?:\\xEF\\xBB\\xBF)?[ \\t]*--[ \\t]*walidsite-legacy-schema:[ \\t]*[0-9]+[ \\t]*(?:\\r\\n|\\n|\\r)/',
+            '',
+            $sql,
+            1
+        );
+
+        return is_string($stripped) ? $stripped : $sql;
     }
 
     /** @return list<string> */
@@ -950,11 +992,12 @@ final class LegacyContentImporter
     {
         DB::table('legacy_import_receipts')->insert([
             'id' => (string) Str::uuid(),
-            'source_name' => $plan['source_name'],
+            'source_schema_version' => $plan['schema_version'],
+            'source_name_hash' => hash('sha256', $plan['source_name']),
             'source_sha256' => $plan['source_sha256'],
             'record_hash' => $record['record_hash'],
             'source_table' => $record['source_table'],
-            'source_key' => $record['source_key'],
+            'source_key_hash' => hash('sha256', $record['source_key']),
             'target_type' => $record['target'],
             'target_id' => $targetId,
             'imported_at' => now('UTC'),
@@ -988,6 +1031,7 @@ final class LegacyContentImporter
     {
         return [
             'dry_run' => $dryRun,
+            'schema_version' => $plan['schema_version'],
             'source_name' => $plan['source_name'],
             'source_sha256' => $plan['source_sha256'],
             'parsed_rows' => $plan['parsed_rows'],
