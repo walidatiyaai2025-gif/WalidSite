@@ -76,7 +76,16 @@ Route::get('/', function (Request $request) {
         }
     }
 
-    return view('welcome', compact('publicProfile', 'featuredProjects', 'featuredArticles'));
+    $hasVerifiedAiCapability = false;
+    if ($publicProfile !== null) {
+        $ai = app(\App\Http\Controllers\Api\PublicAiExpertiseController::class)
+            ->index($request)->getData(true)['data']['skills'] ?? [];
+        $hasVerifiedAiCapability = is_array($ai) && $ai !== [];
+    }
+
+    return view('welcome', compact(
+        'publicProfile', 'featuredProjects', 'featuredArticles', 'hasVerifiedAiCapability'
+    ));
 })->name('home');
 
 /*
