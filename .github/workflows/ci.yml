@@ -146,7 +146,7 @@ jobs:
           touch backend/database/t007-visual.sqlite
           cd backend
           php artisan migrate:fresh --force
-          php artisan db:seed --class=OwnerCvBaselineSeeder --force
+          php artisan db:seed --class=T007VisualCaptureSeeder --force
           php artisan serve --host=127.0.0.1 --port=8000 > /tmp/walidsite-t007.log 2>&1 &
           server_pid=$!
           trap 'kill "$server_pid" 2>/dev/null || true' EXIT
