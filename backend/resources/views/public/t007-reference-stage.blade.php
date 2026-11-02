@@ -1,14 +1,13 @@
 @php($screen = $screen ?? 'home')
 @php($t007Ar = request()->query('lang') === 'ar')
+@php($t007HasAiSkill = isset($skills) && $skills->pluck('slug')->contains('ai-engineering'))
 @php($t007ReferenceReady = match ($screen) {
-    'home' => isset($publicProfile) && is_array($publicProfile)
-        && ! empty($publicProfile['claims'] ?? []),
-    'about' => isset($positions, $approvedClaims)
-        && $positions->count() >= 3 && ! empty($approvedClaims),
-    'expertise' => isset($skills) && $skills->contains(fn ($skill) =>\n        $skill->slug === 'ai-engineering'),
+    'home' => isset($publicProfile, $hasVerifiedAiCapability)
+        && is_array($publicProfile) && $hasVerifiedAiCapability === true,
+    'about' => isset($positions) && $positions->count() >= 3,
+    'expertise' => $t007HasAiSkill,
     'ai' => ! empty($aiData['skills'] ?? []),
-    'hire' => isset($skills, $approvedClaims)
-        && $skills->isNotEmpty() && ! empty($approvedClaims),
+    'hire' => $t007HasAiSkill,
     default => false,
 })
 @php($referenceCopy = [
