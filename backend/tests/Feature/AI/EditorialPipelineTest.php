@@ -125,7 +125,7 @@ class EditorialPipelineTest extends TestCase
                 $jobId, 'review-worker', 80
             );
             $this->fail('A deleted article cannot acquire an AI revision.');
-        } catch (\\Illuminate\\Database\\Eloquent\\ModelNotFoundException) {
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException) {
             // Expected: the article disappeared while external inference ran.
         }
 
