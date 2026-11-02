@@ -28,6 +28,17 @@ class T007LocaleNavigationTest extends TestCase
             ->assertSee('href="'.route('public.expertise', ['lang' => 'ar']).'"', false);
     }
 
+    public function test_expertise_filter_survives_switching_back_to_english(): void
+    {
+        $this->get('/expertise?lang=ar&category=security')
+            ->assertOk()
+            ->assertSee('href="'.route('public.expertise', ['lang' => 'en', 'category' => 'security']).'"', false);
+
+        $this->get('/expertise?lang=ar&category[]=security')
+            ->assertOk()
+            ->assertSee('href="'.route('public.expertise', ['lang' => 'en']).'"', false);
+    }
+
     public function test_recruiter_language_switch_preserves_only_safe_tracks(): void
     {
         foreach (['database', 'software', 'delivery'] as $track) {
