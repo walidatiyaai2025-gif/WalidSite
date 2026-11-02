@@ -283,4 +283,30 @@ final class T012ReferenceStageTest extends TestCase
         $page->assertSee('value="'.e($query).'"', false)
             ->assertDontSee('value="'.$query.'"', false);
     }
+
+    public function test_reference_stage_locale_switch_is_defined_on_each_screen(): void
+    {
+        $article = $this->article(
+            'locale-stage-verified-article',
+            'Locale switch verified article',
+            "## Validated section\n\nReviewed technical steps."
+        );
+
+        foreach (['en' => 'ar', 'ar' => 'en'] as $locale => $other) {
+            $scenarios = [
+                [route('public.blog', ['lang' => $locale]), route('public.blog', ['lang' => $other])],
+                [route('public.article', ['slug' => $article->slug, 'lang' => $locale]),
+                    route('public.article', ['slug' => $article->slug, 'lang' => $other])],
+                [route('public.lab', ['lang' => $locale]), route('public.lab', ['lang' => $other])],
+                [route('public.search', ['lang' => $locale, 'q' => 'locale-stage', 'type' => 'articles']),
+                    route('public.search', ['lang' => $other, 'q' => 'locale-stage', 'type' => 'articles'])],
+            ];
+
+            foreach ($scenarios as [$url, $switchUrl]) {
+                $this->get($url)
+                    ->assertOk()
+                    ->assertSee('href="'.e($switchUrl).'"', false);
+            }
+        }
+    }
 }
