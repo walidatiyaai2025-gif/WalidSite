@@ -350,10 +350,14 @@ def navigation_browser_audit(base_url: str, screens: dict) -> dict:
                                 fetched = context.request.get(
                                     urljoin(url, href), timeout=20000, max_redirects=0
                                 )
+                                # Disallow redirects and non-200 responses.
+                                # APIRequestContext may normalize its URL, so
+                                # do not compare the request object's string
+                                # to a browser-relative URL. The original
+                                # destination is already checked same-origin
+                                # and locale-preserving above.
                                 if fetched.status != 200:
                                     raise RuntimeError("Destination returned non-200")
-                                if urlsplit(fetched.url).path != destination.path:
-                                    raise RuntimeError("Destination changed route")
                             # Actually operate both hero CTAs with Chromium,
                             # not merely inspect their href strings.
                             page.locator(".t007-reference-action.primary").click()
