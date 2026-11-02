@@ -168,18 +168,7 @@ body:has(.t007-reference-stage) .site-footer{margin-top:0}
     <div class="t007-reference-body" id="t007-primary-content">
         @if($screen === 'about')
             <div class="t007-about-rows">
-                @if($t007ReferenceReady)
-                    @foreach([
-                        ['2024 - Now', 'Technology Leadership / SQL / AI'],
-                        ['2022 - 2024', 'Enterprise & Royal Authority Systems'],
-                        ['2009 - 2022', 'PAAET / Diyar - Delivery & Engineering'],
-                    ] as $row)
-                        <div class="t007-about-row">
-                            <span class="t007-about-period">{{ $row[0] }}</span>
-                            <strong>{{ $row[1] }}</strong>
-                        </div>
-                    @endforeach
-                @elseif(isset($positions) && $positions->isNotEmpty())
+                @if(isset($positions) && $positions->isNotEmpty())
                     @foreach($positions->take(3) as $position)
                         <div class="t007-about-row">
                             <span class="t007-about-period">{{ $position->started_on->format('Y') }} - {{ $position->ended_on ? $position->ended_on->format('Y') : ($t007Ar ? 'الحاضر' : 'Present') }}</span>
