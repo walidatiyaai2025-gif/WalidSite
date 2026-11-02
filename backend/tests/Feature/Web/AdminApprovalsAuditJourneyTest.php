@@ -1,0 +1,317 @@
+<?php
+
+namespace Tests\Feature\Web;
+
+use App\Models\Article;
+use App\Models\Asset;
+use App\Models\Role;
+use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
+use Tests\TestCase;
+
+final class AdminApprovalsAuditJourneyTest extends TestCase
+{
+    use RefreshDatabase;
+
+    private function user(string $role = 'admin'): User
+    {
+        $user = User::create([
+            'email' => Str::lower(Str::random(16)).'@example.test',
+            'status' => 'active',
+            'password_hash' => null,
+        ]);
+        $user->roles()->attach(Role::firstOrCreate(['name' => $role])->id);
+
+        return $user;
+    }
+
+    private function article(
+        string $risk = 'low',
+        bool $claims = false,
+        bool $verified = true
+    ): Article {
+        $article = Article::create([
+            'slug' => 'approval-'.Str::lower(Str::random(12)),
+            'title_en' => 'Evidence reviewed candidate',
+            'title_ar' => 'محتوى موثق للمراجعة',
+            'canonical_lang' => 'en',
+        ]);
+        $article->revisions()->create([
+            'revision_no' => 1,
+            'status' => $verified ? 'validated' : 'draft',
+            'body_md' => 'PRIVATE-DRAFT-BODY-NEVER-RENDER',
+            'citations_json' => [[
+                'source_url' => 'https://private.example.test/source?token=DO-NOT-LEAK',
+                'verified' => $verified,
+            ]],
+            'validation_json' => [
+                'citations_passed' => $verified,
+                'technical_passed' => $verified,
+                'risk_level' => $risk,
+                'contains_professional_claims' => $claims,
+            ],
+        ]);
+
+        return $article;
+    }
+
+    private function generatedAsset(): Asset
+    {
+        Storage::fake('local');
+        $bytes = 'private-generated-raster';
+        $asset = Asset::create([
+            'asset_key' => 'generated-'.Str::lower(Str::random(10)),
+            'mime_type' => 'image/png',
+            'storage_key' => 'placeholder.png',
+            'sha256' => hash('sha256', $bytes),
+            'origin' => 'ai-generated',
+            'rights_status' => 'unverified',
+            'publishable' => false,
+        ]);
+        $path = 'ai-artwork/'.$asset->id.'.png';
+        $asset->update(['storage_key' => $path]);
+        Storage::disk('local')->put($path, $bytes);
+        Storage::disk('local')->put($path.'.provenance.json', json_encode([
+            'asset_id' => $asset->id,
+            'sha256' => $asset->sha256,
+            'provider_id' => 'PRIVATE-PROVIDER-ID',
+            'model' => 'PRIVATE-MODEL-NAME',
+            'prompt_sha256' => hash('sha256', 'PRIVATE PROMPT'),
+        ], JSON_THROW_ON_ERROR));
+
+        return $asset->fresh();
+    }
+
+    public function test_approvals_are_admin_only_bilingual_and_reachable_without_private_draft_data(): void
+    {
+        $article = $this->article();
+
+        $this->get('/admin/approvals')->assertRedirect('/admin/login');
+        $this->post('/admin/approvals/'.$article->id.'/decision', [
+            'decision' => 'defer',
+            'reason' => 'source_reviewed',
+        ])->assertRedirect('/admin/login');
+
+        $this->actingAs($this->user('reader'), 'web');
+        $this->get('/admin/approvals')->assertForbidden();
+        $this->post('/admin/approvals/'.$article->id.'/decision', [
+            'decision' => 'defer',
+            'reason' => 'source_reviewed',
+        ])->assertForbidden();
+
+        $this->actingAs($this->user('admin'), 'web');
+        $this->get('/admin?lang=en')->assertOk()
+            ->assertSee('href="'.route('admin.approvals.index', ['lang' => 'en']).'"', false)
+            ->assertSee('Approvals');
+
+        $english = $this->get('/admin/approvals?lang=en')->assertOk()
+            ->assertHeader('X-Content-Type-Options', 'nosniff')
+            ->assertSee('Approvals and exception review')
+            ->assertSee('Pending reviews (1)')
+            ->assertSee('Approve & publish')
+            ->assertSee('Reject')
+            ->assertSee('Defer')
+            ->assertSee('id="content" tabindex="-1"', false)
+            ->assertSee('name="robots" content="noindex,nofollow"', false)
+            ->assertDontSee('PRIVATE-DRAFT-BODY-NEVER-RENDER')
+            ->assertDontSee('DO-NOT-LEAK');
+        $this->assertStringContainsString('no-store', $english->headers->get('Cache-Control'));
+
+        $this->get('/admin/approvals?lang=ar')->assertOk()
+            ->assertSee('dir="rtl"', false)
+            ->assertSee('الموافقات والمراجعة الاستثنائية')
+            ->assertSee('المراجعات المعلقة (1)')
+            ->assertSee('اعتماد ونشر')
+            ->assertDontSee('PRIVATE-DRAFT-BODY-NEVER-RENDER');
+
+        foreach (['lang=xx', 'page=0', 'page[]=1'] as $query) {
+            $this->get('/admin/approvals?'.$query)
+                ->assertRedirect()->assertSessionHasErrors();
+        }
+    }
+
+    public function test_defer_reject_and_low_risk_approve_are_durable_real_decisions(): void
+    {
+        $admin = $this->user('admin');
+        $this->actingAs($admin, 'web');
+
+        $deferred = $this->article();
+        $this->post('/admin/approvals/'.$deferred->id.'/decision?lang=en', [
+            'decision' => 'defer',
+            'reason' => 'source_reviewed',
+        ])->assertRedirect(route('admin.approvals.index', ['lang' => 'en']))
+            ->assertSessionHas('status', 'Decision deferred; nothing was published.');
+        $this->assertSame('draft', $deferred->fresh()->status);
+        $this->assertDatabaseHas('editorial_events', [
+            'article_id' => $deferred->id,
+            'revision_no' => 1,
+            'actor_id' => $admin->id,
+            'action' => 'requires_review',
+            'reason' => 'source_reviewed',
+        ]);
+
+        $rejected = $this->article();
+        $this->post('/admin/approvals/'.$rejected->id.'/decision?lang=en', [
+            'decision' => 'reject',
+            'reason' => 'technical_reviewed',
+        ])->assertRedirect()->assertSessionHas(
+            'status', 'Revision rejected and recorded for review.'
+        );
+        $this->assertSame('draft', $rejected->fresh()->status);
+        $this->assertDatabaseHas('editorial_events', [
+            'article_id' => $rejected->id,
+            'action' => 'manual_rejected',
+            'reason' => 'technical_reviewed',
+        ]);
+
+        $approved = $this->article();
+        $this->post('/admin/approvals/'.$approved->id.'/decision?lang=en', [
+            'decision' => 'approve',
+            'reason' => 'source_reviewed',
+        ])->assertRedirect()->assertSessionHas(
+            'status', 'Verified revision approved and published.'
+        );
+        $this->assertSame('published', $approved->fresh()->status);
+        $this->assertSame(1, $approved->fresh()->published_revision_no);
+        $this->assertDatabaseHas('editorial_events', [
+            'article_id' => $approved->id,
+            'action' => 'manual_published',
+            'reason' => 'source_reviewed',
+        ]);
+
+        foreach ([
+            ['decision' => 'skip', 'reason' => 'source_reviewed'],
+            ['decision' => 'defer', 'reason' => 'invented_reason'],
+            ['decision' => 'defer', 'reason' => 'source_reviewed', 'unsafe' => 'x'],
+        ] as $payload) {
+            $fresh = $this->article();
+            $this->post('/admin/approvals/'.$fresh->id.'/decision', $payload)
+                ->assertRedirect()->assertSessionHasErrors();
+            $this->assertSame('draft', $fresh->fresh()->status);
+        }
+    }
+
+    public function test_high_risk_or_professional_claim_approval_requires_owner_but_defer_does_not_publish(): void
+    {
+        $admin = $this->user('admin');
+        $highRisk = $this->article('high', true);
+        $this->actingAs($admin, 'web');
+
+        $this->get('/admin/approvals?lang=en')->assertOk()
+            ->assertSee('Owner approval required')
+            ->assertSee('value="approve" disabled', false);
+
+        $this->post('/admin/approvals/'.$highRisk->id.'/decision', [
+            'decision' => 'approve',
+            'reason' => 'legal_reviewed',
+        ])->assertForbidden();
+        $this->assertSame('draft', $highRisk->fresh()->status);
+
+        $this->post('/admin/approvals/'.$highRisk->id.'/decision', [
+            'decision' => 'defer',
+            'reason' => 'legal_reviewed',
+        ])->assertRedirect();
+        $this->assertSame('draft', $highRisk->fresh()->status);
+
+        $owner = $this->user('owner');
+        $this->actingAs($owner, 'web');
+        $this->post('/admin/approvals/'.$highRisk->id.'/decision', [
+            'decision' => 'approve',
+            'reason' => 'legal_reviewed',
+        ])->assertRedirect();
+        $this->assertSame('published', $highRisk->fresh()->status);
+        $this->assertDatabaseHas('editorial_events', [
+            'article_id' => $highRisk->id,
+            'actor_id' => $owner->id,
+            'action' => 'manual_published',
+            'reason' => 'legal_reviewed',
+        ]);
+    }
+
+    public function test_media_rights_approval_and_revoke_are_audited_once_without_private_provenance(): void
+    {
+        $admin = $this->user('admin');
+        $this->actingAs($admin, 'web');
+        $asset = $this->generatedAsset();
+
+        $this->post('/admin/ai/images/'.$asset->id.'/approve?lang=en', [
+            'confirm_asset_key' => $asset->asset_key,
+            'licensed_for_publication' => '1',
+            'no_owner_impersonation' => '1',
+        ])->assertRedirect();
+        $this->assertDatabaseHas('editorial_events', [
+            'actor_id' => $admin->id,
+            'action' => 'media_rights_approved',
+            'reason' => 'asset:'.$asset->id,
+        ]);
+
+        $this->post('/admin/ai/images/'.$asset->id.'/revoke?lang=en')
+            ->assertRedirect();
+        $this->post('/admin/ai/images/'.$asset->id.'/revoke?lang=en')
+            ->assertRedirect();
+        $this->assertSame(1, DB::table('editorial_events')
+            ->where('action', 'media_rights_revoked')
+            ->where('reason', 'asset:'.$asset->id)->count());
+
+        $audit = $this->get('/admin/audit?lang=en&domain=media')->assertOk()
+            ->assertSee('Audit & security')
+            ->assertSee('Editorial & media decisions (2)')
+            ->assertSee('media_rights_approved')
+            ->assertSee('media_rights_revoked')
+            ->assertSee('asset:'.$asset->id)
+            ->assertSee('Login and access history')
+            ->assertSee('Unavailable in the current data schema.')
+            ->assertDontSee($asset->storage_key)
+            ->assertDontSee('PRIVATE-PROVIDER-ID')
+            ->assertDontSee('PRIVATE-MODEL-NAME')
+            ->assertDontSee('PRIVATE PROMPT')
+            ->assertDontSee($admin->email);
+        $this->assertStringContainsString('no-store', $audit->headers->get('Cache-Control'));
+    }
+
+    public function test_cross_domain_audit_filters_and_exports_bounded_safe_events(): void
+    {
+        $admin = $this->user('admin');
+        $this->actingAs($admin, 'web');
+        $article = $this->article();
+
+        $this->post('/admin/approvals/'.$article->id.'/decision', [
+            'decision' => 'defer',
+            'reason' => 'technical_reviewed',
+        ])->assertRedirect();
+
+        $editorial = $this->get('/admin/audit?domain=editorial&action=requires_review')
+            ->assertOk()
+            ->assertSee('Editorial & media decisions (1)')
+            ->assertSee('requires_review')
+            ->assertSee('Evidence reviewed candidate')
+            ->assertDontSee('PRIVATE-DRAFT-BODY-NEVER-RENDER')
+            ->assertDontSee('DO-NOT-LEAK');
+
+        $csv = $this->get('/admin/audit?domain=editorial&format=csv&lang=en')
+            ->assertOk()
+            ->assertHeader('Content-Type', 'text/csv; charset=UTF-8')
+            ->assertHeader('X-Content-Type-Options', 'nosniff')
+            ->assertHeader('X-Export-Truncated', 'false');
+        $data = $csv->streamedContent();
+        $this->assertStringStartsWith("\xEF\xBB\xBF", $data);
+        $this->assertStringContainsString('"UTC time",Provider,Action,"Changed field names",Domain,Subject', $data);
+        $this->assertStringContainsString('requires_review', $data);
+        $this->assertStringContainsString('editorial', $data);
+        $this->assertStringContainsString('Evidence reviewed candidate', $data);
+        $this->assertStringNotContainsString('PRIVATE-DRAFT-BODY-NEVER-RENDER', $data);
+        $this->assertStringNotContainsString('DO-NOT-LEAK', $data);
+        $this->assertStringNotContainsString($admin->email, $data);
+
+        foreach ([
+            'domain=secret', 'domain[]=editorial', 'action=login_success',
+            'editorial_page=0', 'editorial_page[]=1',
+        ] as $query) {
+            $this->get('/admin/audit?'.$query)
+                ->assertRedirect()->assertSessionHasErrors();
+        }
+    }
+}
