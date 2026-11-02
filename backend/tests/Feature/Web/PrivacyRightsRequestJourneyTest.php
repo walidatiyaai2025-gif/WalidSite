@@ -49,6 +49,24 @@ final class PrivacyRightsRequestJourneyTest extends TestCase
         Mail::assertNothingSent();
     }
 
+    public function test_global_language_switch_preserves_only_allowlisted_privacy_request_intents(): void
+    {
+        config(['mail.contact_recipient' => 'legal-reviewed@example.test', 'mail.default' => 'smtp']);
+        foreach (['access', 'correction', 'export', 'deletion', 'revoke', 'notifications'] as $right) {
+            $this->get('/contact?lang=en&topic=privacy&request='.$right)->assertOk()
+                ->assertSee('lang=ar&amp;topic=privacy&amp;request='.$right, false);
+        }
+
+        foreach ([
+            '/contact?lang=en&topic=privacy&request=unsafe',
+            '/contact?lang=en&topic=privacy&request%5B%5D=deletion',
+            '/contact?lang=en&topic=privacy&request=deletion&article=missing',
+        ] as $uri) {
+            $this->get($uri)->assertOk()
+                ->assertDontSee('lang=ar&amp;topic=privacy&amp;request=', false);
+        }
+    }
+
     public function test_malicious_or_ambiguous_query_cannot_override_an_evidence_context(): void
     {
         config(['mail.contact_recipient' => 'legal-reviewed@example.test', 'mail.default' => 'smtp']);
