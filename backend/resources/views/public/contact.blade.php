@@ -22,6 +22,12 @@
     : ($contactTrack ? ($locale === 'ar' ? 'استفسار عن مجال: ' : 'Inquiry about: ')
         .$contactTrackLabels[$contactTrack] : ''))
 @section('title', $locale === 'ar' ? 'التواصل — وليد عطية' : 'Contact — Waleed Atiya')
+{{-- Contact topic/rights/project queries must not become search-indexable URLs. --}}
+@push('head')
+<link rel="canonical" href="{{ route('public.contact', ['lang' => $locale]) }}">
+<link rel="alternate" hreflang="ar" href="{{ route('public.contact', ['lang' => 'ar']) }}">
+<link rel="alternate" hreflang="en" href="{{ route('public.contact', ['lang' => 'en']) }}">
+@endpush
 @push('styles')
 <style>
 .contact{max-width:840px;padding-block:48px}.contact h1{font-size:clamp(32px,5vw,50px);color:var(--wa-primary)}
