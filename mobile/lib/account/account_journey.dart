@@ -648,8 +648,14 @@ class _MobileAccountJourneyState extends State<MobileAccountJourney> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text(_label('Saved & profile', 'المحفوظات والحساب'))),
+    return Semantics(
+      // No account-specific route may be attested before a real active
+      // authenticated profile is loaded; signed-out pages remain unidentifiable.
+      identifier: _validSession && _profile != null
+          ? (_showProfile ? 'walidsite.mobile.12' : 'walidsite.mobile.11')
+          : 'walidsite.mobile.account.locked',
+      child: Scaffold(
+        appBar: AppBar(title: Text(_label('Saved & profile', 'المحفوظات والحساب'))),
       body: SafeArea(child: !_configured
           ? Center(child: Padding(
               padding: const EdgeInsets.all(20),
@@ -817,6 +823,7 @@ class _MobileAccountJourneyState extends State<MobileAccountJourney> {
                 ],
               ],
             )),
+      ),
     );
   }
 }
