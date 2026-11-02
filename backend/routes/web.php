@@ -2382,13 +2382,14 @@ Route::middleware('auth:web')->prefix('admin')->group(function (): void {
                 }
             }
 
-            $hasVerifiedEvidence = \App\Models\ProjectEvidence::query()
-                ->where('project_id', $draft->id)
-                ->where('visibility', 'public')->whereNotNull('verified_at')
-                ->where('verified_at', '<=', now('UTC'))->exists();
-            if (! $hasVerifiedEvidence) {
+            // A review flag alone is not proof of a reachable public case study.
+            // Use the same live URL, GitHub and route-safe slug checks that
+            // public /projects and /projects/{slug} apply before publishing.
+            $publicProof = app(\App\Http\Controllers\Api\PublicPortfolioController::class)
+                ->publicProjectData($draft, $request);
+            if (empty($publicProof['evidence_urls'])) {
                 throw \Illuminate\Validation\ValidationException::withMessages([
-                    'project' => 'At least one independently reviewed public evidence source is required before publication.',
+                    'project' => 'A usable public evidence link and route-safe project slug are required before publication.',
                 ]);
             }
 

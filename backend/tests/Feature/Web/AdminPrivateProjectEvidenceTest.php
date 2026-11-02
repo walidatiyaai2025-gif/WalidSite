@@ -458,4 +458,49 @@ final class AdminPrivateProjectEvidenceTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_project_publish_requires_reachable_proof_not_merely_reviewed_database_flags(): void
+    {
+        $this->withoutMiddleware(\Illuminate\Routing\Middleware\ThrottleRequests::class);
+        Http::fake();
+        $project = $this->project();
+        $project->forceFill([
+            'role_en' => 'Engineer',
+            'role_ar' => 'مهندس',
+        ])->save();
+
+        // An approved GitHub URL alone has not passed the public repository
+        // allowlist, and is excluded by the public portfolio serializer.
+        $project->evidence()->create([
+            'evidence_type' => 'repository',
+            'url' => 'https://github.com/not-reviewed/private-repo',
+            'visibility' => 'public',
+            'verified_at' => now()->subMinute(),
+        ]);
+        $this->actingAs($this->account('owner'), 'web');
+        $path = '/admin/projects/'.$project->id.'/publish';
+        $confirm = ['publication_confirmed' => '1'];
+
+        $this->post($path, $confirm)->assertRedirect()->assertSessionHasErrors('project');
+        $this->assertSame('private', $project->fresh()->visibility);
+        $this->assertNull($project->fresh()->published_at);
+
+        $project->evidence()->create([
+            'evidence_type' => 'document',
+            'url' => 'https://docs.example.org/reviewed-project-proof',
+            'visibility' => 'public',
+            'verified_at' => now()->subMinute(),
+        ]);
+        $validSlug = $project->slug;
+        $project->update(['slug' => 'invalid_slug']);
+        $this->post($path, $confirm)->assertRedirect()->assertSessionHasErrors('project');
+        $this->assertSame('private', $project->fresh()->visibility);
+        $project->update(['slug' => $validSlug]);
+
+        $this->post($path, $confirm)->assertRedirect()->assertSessionHas('status');
+        $this->get('/projects/'.$validSlug)->assertOk()
+            ->assertSee('https://docs.example.org/reviewed-project-proof')
+            ->assertDontSee('not-reviewed/private-repo');
+        Http::assertNothingSent();
+    }
+
 }
