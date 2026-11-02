@@ -2446,7 +2446,8 @@ Route::middleware('auth:web')->prefix('admin')->group(function (): void {
         ->middleware('throttle:5,1');
 
     // ADMIN-09: immediate owner-controlled retraction of public claims.
-    // Keep manually reviewed evidence for a separate, evidence-gated republish.
+    // Keep manually reviewed evidence for a separate, evidence-gated republish;
+    // never retain the published flag after withdrawing visibility.
     Route::post('/projects/{project}/withdraw', function (Request $request, string $project) {
         abort_unless($request->user()?->canAccessAdmin() && $request->user()->hasRole('owner'), 403);
         $input = $request->validate([
@@ -2466,12 +2467,15 @@ Route::middleware('auth:web')->prefix('admin')->group(function (): void {
                 ->lockForUpdate()->firstOrFail();
             abort_unless($published->visibility === 'public'
                 && $published->published_at !== null, 409);
+
+            // Preserve proof records, but make all public portfolio scopes
+            // immediately exclude this project until a new explicit publish.
             $published->forceFill([
-                'visibility' => 'private', 'published_at' => null,
+                'visibility' => 'private',
+                'published_at' => null,
             ])->save();
 
-            // The durable receipt is part of the same transaction as the
-            // publication withdrawal; URLs and claim text are never logged.
+            // No claim, URL or evidence payload enters the security log.
             \Illuminate\Support\Facades\DB::table('project_audit_events')->insert([
                 'id' => (string) \Illuminate\Support\Str::uuid(),
                 'project_id' => $published->id, 'evidence_id' => null,

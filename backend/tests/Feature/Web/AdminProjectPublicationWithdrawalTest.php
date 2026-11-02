@@ -81,6 +81,16 @@ final class AdminProjectPublicationWithdrawalTest extends TestCase
         $this->assertDatabaseHas('projects', [
             'id' => $project->id, 'visibility' => 'private', 'published_at' => null,
         ]);
+        $this->assertDatabaseHas('project_audit_events', [
+            'project_id' => $project->id,
+            'actor_id' => $owner->id,
+            'action' => 'project_withdrawn',
+        ]);
+        $this->get('/admin/audit?domain=project&action=project_withdrawn&lang=ar')
+            ->assertOk()->assertSee('project_withdrawn');
+        $export = $this->get('/admin/audit?domain=project&action=project_withdrawn&format=csv');
+        $export->assertOk()->assertHeader('X-Content-Type-Options', 'nosniff');
+        $this->assertStringContainsString('project_withdrawn', $export->streamedContent());
         $this->assertSame(1, DB::table('project_evidence')
             ->where('project_id', $project->id)
             ->where('visibility', 'public')

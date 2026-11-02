@@ -40,6 +40,12 @@ DUPLICATES = (
     AbandonedDuplicate(170, "fix/168-setup-schema-mismatch-recovery-guard", "c7a19ce12cdf81e3f00b00ae42688f2b2dcf3f9a", 171),
     AbandonedDuplicate(172, "fix/169-schema-mismatch-recovery-guard", "a267bf9bf2d7f459ca16e0d8a87098292d37c717", 171),
     AbandonedDuplicate(337, "fix/332-mobile-learning-unique-page-slugs", "a23acce511542be2977082de530783a0201bcf97", 336),
+    # PR #525 was closed unmerged; #523 delivered the same serialized 200-item
+    # quota with stronger separate isolation/inactive-account regressions.
+    AbandonedDuplicate(525, "fix/521-serialize-mobile-bookmark-quota", "098659b1ebb390bdbb5652bb23c85c25392557f3", 523),
+    # Closed-unmerged privacy PR #502 was superseded by accepted bilingual
+    # account-controls and contact-rights journey in merged PR #506.
+    AbandonedDuplicate(502, "feat/480-account-privacy-journey-completion", "4eb0bf6d1f8399931d4e4f93efc15db5bb0fc836", 506),
 )
 
 
@@ -81,7 +87,7 @@ def reconcile_one(candidate: AbandonedDuplicate, api, repo: str) -> str:
     if (
         candidate not in DUPLICATES
         or not _sha(candidate.sha)
-        or not candidate.branch.startswith(("fix/", "chore/"))
+        or not candidate.branch.startswith(("feat/", "fix/", "chore/"))
         or not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo)
     ):
         return "preserved"
