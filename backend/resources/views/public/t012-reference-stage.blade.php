@@ -95,7 +95,7 @@ body:has(.t012-reference-stage) .site-footer{margin-top:0}
 .t012-search-grid{display:grid;grid-template-columns:repeat(3,411px);gap:27px}
 .t012-search-card{height:256px;border-radius:18px;background:#fff;padding:18px 25px;position:relative}
 .t012-search-badge{display:inline-flex;min-width:188px;height:33px;align-items:center;padding:0 14px;border-radius:15px;background:#e9f7f5;color:#0d8477;font-size:16px;font-weight:800;transform:translate(-5px,1px)}
-.t012-search-card h2{font-size:26px;margin:35px 0 31px;color:#184876;line-height:1.15;font-weight:800;letter-spacing:1.5px;transform:translateY(1px) scale(.982,.96);transform-origin:left top}
+.t012-search-card h2{font-size:26px;margin:35px 0 31px;color:#184876;line-height:1.15;font-weight:800;letter-spacing:1.5px;transform:translateY(1px) scaleY(.96);transform-origin:left top}
 .t012-search-card p{font-size:18px;letter-spacing:.43px;color:#254a68;margin:0}
 .t012-search-card a{position:absolute;left:25px;bottom:31px;color:#254a68;text-decoration:none;font-size:18px;letter-spacing:.65px}
 .t012-functional{background:#fff;padding-top:48px}
