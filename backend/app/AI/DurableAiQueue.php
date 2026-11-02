@@ -101,6 +101,10 @@ final class DurableAiQueue
             ->whereNull('ai_providers.deleted_at')
             ->where('ai_providers.enabled', true)
             ->where('ai_providers.health_status', 'healthy')
+            // An explicit zero capacity is an administrator stop switch, not
+            // a request for the default one-worker slot. Exclude such a
+            // backlog before LIMIT to avoid starving healthy providers.
+            ->where('ai_providers.concurrent_limit', '>', 0)
             // Managed jobs without a reservation cannot be admitted. Likewise
             // a reservation over the configured daily ceiling is impossible
             // until an admin increases that ceiling. Exclude both before the
@@ -141,7 +145,10 @@ final class DurableAiQueue
 
                 $running = DB::table('ai_jobs')->where('provider_id', $provider->id)
                     ->where('status', 'running')->count();
-                if ($running >= max(1, (int) $provider->concurrent_limit)) {
+                // Re-read the configured capacity inside the provider mutex:
+                // disabling a slot after the initial scan must fail closed.
+                $limit = (int) $provider->concurrent_limit;
+                if ($limit < 1 || $running >= $limit) {
                     return null;
                 }
                 $todayReceipts = DB::table('ai_usage')->where('provider_id', $provider->id)
