@@ -84,7 +84,7 @@ class AndroidScreenCaptureTest(unittest.TestCase):
         ])
 
     def test_supported_routes_are_real_flutter_headings_not_contract_labels(self):
-        self.assertEqual(len(HEADINGS), 8)
+        self.assertEqual(len(HEADINGS), 9)
         for route, labels in HEADINGS.items():
             with self.subTest(route=route):
                 self.assertEqual(len(labels), 2)
@@ -100,6 +100,7 @@ class AndroidScreenCaptureTest(unittest.TestCase):
             ("WALIDSITE_CAPTURE_ROUTE", "/welcome"),
             ("WALIDSITE_CAPTURE_ROUTE", "/profile"),
             ("WALIDSITE_CAPTURE_ROUTE", "/solutions/123"),
+            ("WALIDSITE_CAPTURE_ROUTE", "/solutions/{id}?secret=x"),
             ("WALIDSITE_CAPTURE_ROUTE", "/saved"),
             ("WALIDSITE_CAPTURE_ROUTE", "/home?secret=x"),
             ("WALIDSITE_CAPTURE_LOCALE", "fr"),
