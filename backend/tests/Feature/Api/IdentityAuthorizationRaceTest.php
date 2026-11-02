@@ -68,27 +68,39 @@ final class IdentityAuthorizationRaceTest extends TestCase
 
     public function test_login_cannot_use_old_password_or_old_email_after_a_change(): void
     {
-        foreach (['password', 'email'] as $change) {
-            $user = $this->account('login-rotated-'.$change);
-            $input = $this->credentials($user);
-            $rotatedHash = password_hash('Rotated.OtherPassword.987!', PASSWORD_BCRYPT);
+        // Create both users before installing the facade mock. Two deliberately
+        // ordered attempts simulate distinct post-verification rotations.
+        $passwordUser = $this->account('login-rotated-password');
+        $emailUser = $this->account('login-rotated-email');
+        $passwordInput = $this->credentials($passwordUser);
+        $emailInput = $this->credentials($emailUser);
+        $rotatedHash = password_hash('Rotated.OtherPassword.987!', PASSWORD_BCRYPT);
+        $checkNumber = 0;
 
-            Hash::shouldReceive('check')->once()->andReturnUsing(
-                function ($password, $hash) use ($user, $change, $rotatedHash): bool {
-                    $fields = $change === 'password'
-                        ? ['password_hash' => $rotatedHash]
-                        : ['email' => 'rotated-'.Str::lower(Str::random(8)).'@example.test'];
-                    DB::table('users')->where('id', $user->id)->update($fields);
-                    return password_verify($password, $hash);
+        Hash::shouldReceive('check')->twice()->andReturnUsing(
+            function ($password, $hash) use (
+                $passwordUser, $emailUser, $rotatedHash, &$checkNumber
+            ): bool {
+                $checkNumber++;
+                if ($checkNumber === 1) {
+                    DB::table('users')->where('id', $passwordUser->id)
+                        ->update(['password_hash' => $rotatedHash]);
+                } else {
+                    DB::table('users')->where('id', $emailUser->id)->update([
+                        'email' => 'rotated-'.Str::lower(Str::random(8)).'@example.test',
+                    ]);
                 }
-            );
+                return password_verify($password, $hash);
+            }
+        );
 
-            $this->postJson('/api/v1/auth/login', $input)
-                ->assertStatus(422)->assertJsonPath('message', 'Invalid credentials.');
-            $this->assertDatabaseCount('personal_access_tokens', 0);
-            // Drop the facade mock before the next iteration.
-            Hash::clearResolvedInstance('hash');
-        }
+        $this->postJson('/api/v1/auth/login', $passwordInput)
+            ->assertStatus(422)->assertJsonPath('message', 'Invalid credentials.');
+        $this->postJson('/api/v1/auth/login', $emailInput)
+            ->assertStatus(422)->assertJsonPath('message', 'Invalid credentials.');
+
+        $this->assertSame(2, $checkNumber);
+        $this->assertDatabaseCount('personal_access_tokens', 0);
     }
 
     public function test_profile_email_patch_rejects_post_auth_account_erasure_without_restoring_pii(): void
