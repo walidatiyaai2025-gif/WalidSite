@@ -196,6 +196,7 @@ void main() {
         find.byKey(const Key('ai-technology')), 'SQL Server');
     await tester.enterText(
         find.byKey(const Key('ai-question')), 'Sensitive technical question');
+    await reveal(tester, 'ai-code');
     await tester.enterText(
         find.byKey(const Key('ai-code')), 'PRIVATE_DIAGNOSIS_CODE');
     await reveal(tester, 'ai-consent');
