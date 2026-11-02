@@ -104,7 +104,7 @@ body:has(.t007-reference-stage) .site-footer{margin-top:0}
 .t007-brand span{font-size:40px;font-weight:800;line-height:1;color:#0a9a8c;letter-spacing:-1.2px}
 .t007-brand strong{font-size:25px;font-weight:800;color:#fff;margin-left:4px;letter-spacing:-.35px}
 .t007-nav-links{height:100%;display:flex;align-items:center;flex:1;transform:translateY(3px)}
-.t007-nav-links a{display:flex;align-items:center;height:100%;color:#fff;text-decoration:none;font-size:16px;font-weight:400;white-space:nowrap;margin-right:60px}
+.t007-nav-links a{display:flex;align-items:center;height:100%;color:#d8e6f2;text-decoration:none;font-size:16px;font-weight:400;white-space:nowrap;margin-right:60px}
 .t007-nav-links a.active{color:#0a9a8c}
 .t007-nav-links a:nth-child(3){margin-right:41px}
 .t007-nav-links a:nth-child(4){margin-right:45px}.t007-nav-links a:nth-child(5){margin-right:61px}
@@ -119,10 +119,10 @@ body:has(.t007-reference-stage) .site-footer{margin-top:0}
 .t007-reference-hero{height:326px;background:#edf7fc;position:relative;padding:35px 56px}
 .t007-pill{height:39px;min-width:259px;width:max-content;border-radius:16px;background:#dcf6f1;color:#0a9a8c;display:flex;align-items:center;padding:0 15px;font-size:18px;font-weight:600;letter-spacing:.6px;transform:translateX(-4px)}
 .t007-reference-hero h1{font-size:46px;line-height:1.15;margin:28px 0 21px;color:#184876;font-weight:700;letter-spacing:2.05px}
-.t007-reference-subtitle{margin:0;color:#306a94;font-size:20px;line-height:1.4;letter-spacing:.1px;position:relative;top:2px}
+.t007-reference-subtitle{margin:0;color:#3b6684;font-size:20px;line-height:1.4;letter-spacing:.1px;position:relative;top:2px}
 .t007-reference-actions{display:flex;gap:19px;margin-top:27px}
 .t007-reference-action{height:63px;width:245px;border-radius:16px;display:flex;align-items:center;padding-left:29px;text-decoration:none;color:#184876;font-size:23px;font-weight:700;letter-spacing:1px}
-.t007-reference-action.primary{background:#0a9a8c}.t007-reference-action.secondary{width:249px;background:#fff;border:2px solid #0a9a8c;padding-left:34px;font-weight:500}
+.t007-reference-action.primary{background:#0a9a8c}.t007-reference-action.secondary{width:249px;background:#fff;border:2px solid #0a9a8c;padding-left:34px;font-weight:500;letter-spacing:0}
 .t007-visual-stack{position:absolute;left:920px;top:80px;width:372px;height:226px}
 .t007-visual-stack .tile{position:absolute;width:221px;height:171px;border:3px solid #14bc98;border-radius:21px;background:#306a94;color:#0a9a8c;font-weight:800;font-size:30px;display:flex;align-items:center;justify-content:center;overflow:hidden}
 .t007-visual-stack .one{left:0;top:0;background:#26608e;border-color:#149e98}.t007-visual-stack .two{left:75px;top:27px;background:#2b6591;border-color:#14ad98}.t007-visual-stack .three{left:150px;top:54px;background:#306a94;border-color:#14bc98}
