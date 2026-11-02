@@ -284,7 +284,7 @@ Route::middleware('auth:web')->group(function (): void {
         $unavailableCount = count($all) - $repositories->count();
         $configuredCount = count($all);
 
-        return response()->view('admin.product.github', compact(
+        return response()->view('admin.product.workspace', ['section' => 'github'] + compact(
             'locale', 'repositories', 'unavailableCount', 'configuredCount'
         ))->header('Cache-Control', 'no-store');
     })->name('admin.github.index')->middleware('throttle:30,1');
@@ -355,7 +355,7 @@ Route::middleware('auth:web')->group(function (): void {
             ->orderByDesc('updated_at')->orderBy('id');
         $projects = $query->paginate(20)->appends(array_merge($filters, ['lang' => $locale]));
 
-        return response()->view('admin.product.projects', compact(
+        return response()->view('admin.product.workspace', ['section' => 'projects'] + compact(
             'locale', 'projects', 'filters'
         ))->header('Cache-Control', 'no-store');
     })->name('admin.projects.index')->middleware('throttle:30,1');
@@ -382,7 +382,7 @@ Route::middleware('auth:web')->group(function (): void {
                 ->whereNull('preference.revoked_at')
                 ->distinct()->count('preference.user_id') : 0;
 
-        return response()->view('admin.product.audience', compact(
+        return response()->view('admin.product.workspace', ['section' => 'audience'] + compact(
             'locale', 'accounts', 'roles', 'consentAvailable', 'consented'
         ))->header('Cache-Control', 'no-store');
     })->name('admin.audience.index')->middleware('throttle:30,1');
@@ -443,7 +443,7 @@ Route::middleware('auth:web')->group(function (): void {
                 'X-Content-Type-Options' => 'nosniff',
             ]);
         }
-        return response()->view('admin.product.analytics', compact(
+        return response()->view('admin.product.workspace', ['section' => 'analytics'] + compact(
             'locale', 'period', 'jobs', 'usage', 'content'
         ))->header('Cache-Control', 'no-store');
     })->name('admin.analytics.index')->middleware('throttle:30,1');
