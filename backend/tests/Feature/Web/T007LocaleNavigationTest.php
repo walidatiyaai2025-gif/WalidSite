@@ -152,7 +152,7 @@ class T007LocaleNavigationTest extends TestCase
                     ->assertSee('href="'.route('public.lab', ['lang' => $locale]).'"', false)
                     ->assertSee('href="'.route('public.search', ['lang' => $locale]).'"', false)
                     ->assertSee($locale === 'ar' ? 'المختبر التقني' : 'Tech lab')
-                    ->assertSee($locale === 'ar' ? 'البحث في الموقع' : 'Site search');
+                    ->assertSee($locale === 'ar' ? 'البحث في الموقع' : 'Search');
             }
         }
     }
