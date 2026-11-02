@@ -139,3 +139,59 @@ Schedule::command('site:updates:apply')
     ->everyFiveMinutes()
     ->when(fn () => config('site.auto_migrate'))
     ->withoutOverlapping(10);
+
+
+/*
+ * G-17 legacy migration is intentionally offline and fail-closed. The command
+ * can read only a simple .sql filename under storage/app/legacy-import.
+ * Default mode is dry-run; --apply is an explicit mutation and still refuses
+ * any rejected statement/row. Raw legacy values are never printed.
+ */
+Artisan::command('legacy:import-content {file} {--apply}', function () {
+    $file = (string) $this->argument('file');
+    if (basename($file) !== $file
+        || preg_match('/\A[A-Za-z0-9._-]{1,180}\.sql\z/', $file) !== 1) {
+        $this->error('File must be a simple .sql filename under storage/app/legacy-import.');
+        return 2;
+    }
+
+    $root = storage_path('app/legacy-import');
+    $path = $root.DIRECTORY_SEPARATOR.$file;
+
+    try {
+        $importer = app(\App\Domain\LegacyImport\LegacyContentImporter::class);
+        $report = $this->option('apply')
+            ? $importer->importFile($path, $root)
+            : $importer->dryRunFile($path, $root);
+    } catch (\Throwable $exception) {
+        \Illuminate\Support\Facades\Log::warning('legacy.import.rejected', [
+            'type' => $exception::class,
+        ]);
+        $this->error('Legacy content import rejected. Run dry-run and review the private operator documentation.');
+        return 2;
+    }
+
+    $this->line(sprintf(
+        'Legacy import %s: parsed=%d accepted=%d duplicates=%d rejected=%d sha256=%s',
+        $report['dry_run'] ? 'dry-run' : 'apply',
+        $report['parsed_rows'],
+        array_sum($report['accepted']),
+        $report['duplicate_count'],
+        $report['rejected_count'],
+        $report['source_sha256']
+    ));
+    foreach ($report['accepted'] as $type => $count) {
+        $this->line($type.': '.$count);
+    }
+    foreach ($report['rejections'] as $rejection) {
+        $this->line(sprintf(
+            'rejected statement=%d row=%d table=%s reason=%s',
+            $rejection['statement'],
+            $rejection['row'],
+            $rejection['table'],
+            $rejection['reason']
+        ));
+    }
+
+    return $report['rejected_count'] === 0 ? 0 : 2;
+})->purpose('Dry-run or apply a bounded allowlist-only legacy content SQL export');

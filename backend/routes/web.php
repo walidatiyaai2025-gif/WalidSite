@@ -1752,3 +1752,171 @@ Route::get('/search', function (Request $request) {
     return view('public.search', compact('search', 'articles', 'projects', 'type'));
 })->name('public.search')->middleware('throttle:60,1');
 
+
+
+/*
+ * ADMIN-08..11: server-rendered admin operations. The bearer Admin API is
+ * deliberately not called with a browser session. Both surfaces require their
+ * own authorization, and neither trusts client-supplied GitHub URLs or metrics.
+ */
+Route::middleware('auth:web')->prefix('admin')->group(function (): void {
+    Route::get('/github', function (Request $request, \App\Integrations\GitHub\PublicRepositoryDirectory $directory) {
+        abort_unless($request->user()?->canAccessAdmin(), 403);
+        $request->validate(['lang' => ['sometimes', 'in:ar,en']]);
+        $repos = collect($directory->repositories());
+        return response()->view('admin.operations', [
+            'section' => 'github',
+            'repos' => $repos,
+            'configuredCount' => min(20, count(config('portfolio.github_public_repos', []))),
+        ])->header('Cache-Control', 'no-store, private');
+    })->name('admin.operations.github')->middleware('throttle:30,1');
+
+    Route::post('/github/refresh', function (Request $request, \App\Integrations\GitHub\PublicRepositoryDirectory $directory) {
+        abort_unless($request->user()?->canAccessAdmin(), 403);
+        $request->validate(['lang' => ['sometimes', 'in:ar,en']]);
+        if (array_diff(array_keys($request->request->all()), ['_token']) !== []) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'refresh' => 'Unrecognized synchronization input.',
+            ]);
+        }
+        foreach (array_slice(config('portfolio.github_public_repos', []), 0, 20) as $slug) {
+            if (is_string($slug)) {
+                \Illuminate\Support\Facades\Cache::forget('public-github:'.hash('sha256', strtolower($slug)));
+            }
+        }
+        $repos = collect($directory->repositories());
+        $verified = $repos->filter(static fn (array $item): bool => $item['status'] === 'verified')->count();
+        $configured = min(20, count(config('portfolio.github_public_repos', [])));
+        // A failed verification is not a successful synchronization.
+        return redirect()->route('admin.operations.github', ['lang' => $request->query('lang') === 'ar' ? 'ar' : 'en'])
+            ->with($configured && !$verified ? 'warning' : 'status',
+                $configured && !$verified ? 'No configured public repository could be verified.' :
+                'Verified public repositories: '.$verified);
+    })->name('admin.operations.github.refresh')->middleware('throttle:5,1');
+
+    Route::get('/projects', function (Request $request) {
+        abort_unless($request->user()?->canAccessAdmin(), 403);
+        $input = $request->validate([
+            'lang' => ['sometimes', 'in:ar,en'],
+            'status' => ['sometimes', 'in:completed,in_progress,research,archived'],
+            'visibility' => ['sometimes', 'in:public,private'],
+            'page' => ['sometimes', 'integer', 'between:1,10000'],
+        ]);
+        $query = \App\Models\Project::query()->withCount([
+            'evidence',
+            'evidence as verified_public_evidence_count' => static fn ($q) => $q
+                ->where('visibility', 'public')->whereNotNull('verified_at')
+                ->where('verified_at', '<=', now()),
+        ])->when(isset($input['status']), static fn ($q) => $q->where('status', $input['status']))
+            ->when(isset($input['visibility']), static fn ($q) => $q->where('visibility', $input['visibility']));
+        $projects = $query->orderByDesc('updated_at')->orderBy('id')->paginate(20)
+            ->appends($request->only(['lang', 'status', 'visibility']));
+        return response()->view('admin.operations', [
+            'section' => 'projects', 'projects' => $projects,
+            'statusFilter' => $input['status'] ?? '',
+            'visibilityFilter' => $input['visibility'] ?? '',
+        ])->header('Cache-Control', 'no-store, private');
+    })->name('admin.operations.projects')->middleware('throttle:30,1');
+
+    Route::patch('/projects/{project}', function (Request $request, string $project) {
+        abort_unless($request->user()?->canAccessAdmin() && $request->user()->hasRole('owner'), 403);
+        $input = $request->validate([
+            'lang' => ['sometimes', 'in:ar,en'],
+            'title' => ['required', 'string', 'min:2', 'max:220'],
+            'summary_en' => ['required', 'string', 'min:5', 'max:5000'],
+            'summary_ar' => ['required', 'string', 'min:5', 'max:5000'],
+            'role_en' => ['nullable', 'string', 'max:200'],
+            'role_ar' => ['nullable', 'string', 'max:200'],
+        ]);
+        if (array_diff(array_keys($request->request->all()), [
+            '_token', '_method', 'title', 'summary_en', 'summary_ar', 'role_en', 'role_ar',
+        ]) !== []) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'project' => 'Unsupported project edit fields.',
+            ]);
+        }
+        // No edit may quietly alter an approved public claim; only private
+        // unpublished drafts can be edited. Publication is a separate
+        // evidence/rights/owner-reviewed workflow.
+        \Illuminate\Support\Facades\DB::transaction(function () use ($project, $input, $request): void {
+            $row = \App\Models\Project::query()->whereKey($project)->lockForUpdate()->firstOrFail();
+            abort_unless($row->visibility === 'private' && $row->published_at === null, 409);
+            $row->fill(collect($input)->only([
+                'title', 'summary_en', 'summary_ar', 'role_en', 'role_ar',
+            ])->all())->save();
+            \Illuminate\Support\Facades\Log::notice('admin.project_private_draft.updated', [
+                'project_id' => $row->id, 'actor_id' => $request->user()->id,
+            ]);
+        }, 3);
+        return redirect()->route('admin.operations.projects', [
+            'lang' => $request->query('lang') === 'ar' ? 'ar' : 'en',
+        ])->with('status', 'Private project draft updated; not published.');
+    })->whereUuid('project')->name('admin.operations.projects.update')
+        ->middleware('throttle:10,1');
+
+    Route::get('/audience', function (Request $request) {
+        abort_unless($request->user()?->canAccessAdmin(), 403);
+        $input = $request->validate([
+            'lang' => ['sometimes', 'in:ar,en'],
+            'purpose' => ['sometimes', 'in:account_activity,editorial_updates,product_updates'],
+            'channel' => ['sometimes', 'in:email,push'],
+        ]);
+        $purpose = $input['purpose'] ?? 'editorial_updates';
+        $channel = $input['channel'] ?? 'push';
+        $consented = \Illuminate\Support\Facades\DB::table('notification_preferences as preference')
+            ->join('users', 'users.id', '=', 'preference.user_id')
+            ->where('users.status', 'active')->where('preference.purpose', $purpose)
+            ->where('preference.channel', $channel)->where('preference.enabled', true)
+            ->whereNotNull('preference.consented_at')->whereNull('preference.revoked_at')
+            ->distinct()->count('preference.user_id');
+        return response()->view('admin.operations', [
+            'section' => 'audience',
+            'purpose' => $purpose, 'channel' => $channel,
+            'consented' => $consented,
+            'activeAccounts' => \App\Models\User::query()->where('status', 'active')->count(),
+        ])->header('Cache-Control', 'no-store, private');
+    })->name('admin.operations.audience')->middleware('throttle:30,1');
+
+    Route::get('/analytics', function (Request $request) {
+        abort_unless($request->user()?->canAccessAdmin(), 403);
+        $input = $request->validate([
+            'lang' => ['sometimes', 'in:ar,en'],
+            'day' => ['sometimes', 'date_format:Y-m-d', 'before_or_equal:today'],
+            'format' => ['sometimes', 'in:csv'],
+        ]);
+        $day = $input['day'] ?? now('UTC')->toDateString();
+        $from = \Illuminate\Support\Carbon::parse($day, 'UTC')->startOfDay();
+        $to = $from->copy()->addDay();
+        $usage = \Illuminate\Support\Facades\DB::table('ai_usage')
+            ->where('created_at', '>=', $from)->where('created_at', '<', $to)
+            ->select('cost_currency')->selectRaw('COUNT(*) AS receipts, SUM(cost_minor) AS cost_minor')
+            ->groupBy('cost_currency')->orderBy('cost_currency')->get();
+        if (($input['format'] ?? null) === 'csv') {
+            return response()->streamDownload(static function () use ($usage, $day): void {
+                $stream = fopen('php://output', 'wb');
+                fwrite($stream, "\xEF\xBB\xBF");
+                fputcsv($stream, ['UTC day', 'Currency', 'Receipts', 'Cost (minor units)']);
+                foreach ($usage as $line) {
+                    // An imported database currency is not trusted CSV code.
+                    $currency = preg_match('/\A[A-Z]{3}\z/D', (string) $line->cost_currency)
+                        ? $line->cost_currency : 'INVALID';
+                    fputcsv($stream, [$day, $currency, (int) $line->receipts, (int) $line->cost_minor]);
+                }
+                fclose($stream);
+            }, 'ai-usage-'.$day.'.csv', [
+                'Cache-Control' => 'no-store, private',
+                'X-Content-Type-Options' => 'nosniff',
+            ]);
+        }
+        $jobs = \Illuminate\Support\Facades\DB::table('ai_jobs')
+            ->where('created_at', '>=', $from)->where('created_at', '<', $to)
+            ->select('status')->selectRaw('COUNT(*) AS total')
+            ->groupBy('status')->orderBy('status')->get();
+        return response()->view('admin.operations', [
+            'section' => 'analytics', 'day' => $day, 'usage' => $usage,
+            'jobs' => $jobs,
+            'publicProjects' => \App\Models\Project::query()->publiclyVerified()->count(),
+            'publicArticles' => \App\Models\Article::query()->publiclyVisible()->count(),
+        ])->header('Cache-Control', 'no-store, private');
+    })->name('admin.operations.analytics')->middleware('throttle:30,1');
+});

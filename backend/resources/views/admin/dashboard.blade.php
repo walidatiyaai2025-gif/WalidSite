@@ -28,6 +28,10 @@ button{background:transparent;color:#fff;border:1px solid #fff;border-radius:8px
 <a href="{{ route('admin.home', ['lang'=>$locale]) }}" aria-current="page">{{ $locale === 'ar' ? 'الرئيسية' : 'Overview' }}</a>
 <a href="{{ route('admin.providers.index', ['lang'=>$locale]) }}">{{ $locale === 'ar' ? 'مزودو AI' : 'AI providers' }}</a>
 <a href="{{ route('admin.audit.index', ['lang'=>$locale]) }}">{{ $locale === 'ar' ? 'تدقيق إعدادات AI' : 'AI settings audit' }}</a>
+<a href="{{ route('admin.operations.github', ['lang'=>$locale]) }}">{{ $locale === 'ar' ? 'مزامنة GitHub' : 'GitHub Sync' }}</a>
+<a href="{{ route('admin.operations.projects', ['lang'=>$locale]) }}">{{ $locale === 'ar' ? 'المشاريع والسيرة' : 'Projects & CV' }}</a>
+<a href="{{ route('admin.operations.audience', ['lang'=>$locale]) }}">{{ $locale === 'ar' ? 'الجمهور والموافقات' : 'Audience & consent' }}</a>
+<a href="{{ route('admin.operations.analytics', ['lang'=>$locale]) }}">{{ $locale === 'ar' ? 'التحليلات' : 'Analytics' }}</a>
 <a href="{{ route('admin.content.index', ['lang'=>$locale]) }}">{{ $locale === 'ar' ? 'مراجعة المحتوى' : 'Editorial review' }}</a>
 <a href="{{ route('admin.media.index', ['lang'=>$locale]) }}">{{ $locale === 'ar' ? 'حقوق الصور' : 'Media rights' }}</a>
 @if(auth()->user()?->hasRole('owner'))
