@@ -307,6 +307,9 @@ final class AdminPrivateProjectEvidenceTest extends TestCase
 
     public function test_owner_explicitly_approves_source_and_rights_before_evidence_becomes_public(): void
     {
+        // These matrices exercise validation/authorization repeatedly; keep the
+        // production throttle enabled on the route but isolate it from feature assertions.
+        $this->withoutMiddleware(\\Illuminate\\Routing\\Middleware\\ThrottleRequests::class);
         Http::fake();
         $project = $this->project();
         $candidate = $project->evidence()->create([
@@ -360,6 +363,9 @@ final class AdminPrivateProjectEvidenceTest extends TestCase
 
     public function test_project_publication_requires_owner_confirmation_verified_evidence_and_complete_bilingual_content(): void
     {
+        // These matrices exercise validation/authorization repeatedly; keep the
+        // production throttle enabled on the route but isolate it from feature assertions.
+        $this->withoutMiddleware(\\Illuminate\\Routing\\Middleware\\ThrottleRequests::class);
         Http::fake();
         $project = $this->project();
         $project->forceFill([
@@ -408,6 +414,9 @@ final class AdminPrivateProjectEvidenceTest extends TestCase
 
     public function test_evidence_approval_and_project_publication_fail_closed_on_extra_fields_cross_project_or_incomplete_content(): void
     {
+        // These matrices exercise validation/authorization repeatedly; keep the
+        // production throttle enabled on the route but isolate it from feature assertions.
+        $this->withoutMiddleware(\\Illuminate\\Routing\\Middleware\\ThrottleRequests::class);
         Http::fake();
         $this->actingAs($this->account('owner'), 'web');
         $project = $this->project();
