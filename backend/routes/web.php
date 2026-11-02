@@ -286,7 +286,7 @@ Route::middleware('auth:web')->group(function (): void {
 
         return response()->view('admin.product.workspace', ['section' => 'github'] + compact(
             'locale', 'repositories', 'unavailableCount', 'configuredCount'
-        ))->header('Cache-Control', 'no-store');
+        ))->header('Cache-Control', 'no-store, private');
     })->name('admin.github.index')->middleware('throttle:30,1');
 
     Route::post('/admin/github/sync', function (
@@ -370,7 +370,7 @@ Route::middleware('auth:web')->group(function (): void {
 
         return response()->view('admin.product.workspace', ['section' => 'projects'] + compact(
             'locale', 'projects', 'filters'
-        ))->header('Cache-Control', 'no-store');
+        ))->header('Cache-Control', 'no-store, private');
     })->name('admin.projects.index')->middleware('throttle:30,1');
 
     Route::get('/admin/audience', function (Request $request) {
@@ -392,12 +392,13 @@ Route::middleware('auth:web')->group(function (): void {
                 ->where('users.status', 'active')
                 ->where('preference.enabled', true)
                 ->whereNotNull('preference.consented_at')
+                ->where('preference.consented_at', '<=', now('UTC'))
                 ->whereNull('preference.revoked_at')
                 ->distinct()->count('preference.user_id') : 0;
 
         return response()->view('admin.product.workspace', ['section' => 'audience'] + compact(
             'locale', 'accounts', 'roles', 'consentAvailable', 'consented'
-        ))->header('Cache-Control', 'no-store');
+        ))->header('Cache-Control', 'no-store, private');
     })->name('admin.audience.index')->middleware('throttle:30,1');
 
     Route::get('/admin/analytics', function (Request $request) {
@@ -458,7 +459,7 @@ Route::middleware('auth:web')->group(function (): void {
         }
         return response()->view('admin.product.workspace', ['section' => 'analytics'] + compact(
             'locale', 'period', 'jobs', 'usage', 'content'
-        ))->header('Cache-Control', 'no-store');
+        ))->header('Cache-Control', 'no-store, private');
     })->name('admin.analytics.index')->middleware('throttle:30,1');
 
     // ADMIN-03/13: consolidated, read-only provider configuration audit.
@@ -561,7 +562,7 @@ Route::middleware('auth:web')->group(function (): void {
 
         return response()->view('admin.ai.security-audit', compact(
             'events', 'providers', 'filters', 'locale', 'today'
-        ))->header('Cache-Control', 'no-store');
+        ))->header('Cache-Control', 'no-store, private');
     })->name('admin.audit.index')->middleware('throttle:30,1');
 
     // ADMIN-05: one read-only routing projection for authorized web admins.
@@ -584,7 +585,7 @@ Route::middleware('auth:web')->group(function (): void {
             ->appends(['lang' => $request->query('lang') === 'ar' ? 'ar' : 'en']);
 
         return response()->view('admin.ai.routing', compact('providers'))
-            ->header('Cache-Control', 'no-store');
+            ->header('Cache-Control', 'no-store, private');
     })->name('admin.routing.index');
 
     // ADMIN-04/05: browser journey to register actual AI models and configure
@@ -623,7 +624,7 @@ Route::middleware('auth:web')->group(function (): void {
         return response()->view('admin.ai.model-routes', compact(
             'locale', 'providersForModels', 'models', 'candidates',
             'choicesTruncated', 'taskRoute', 'selected'
-        ))->header('Cache-Control', 'no-store');
+        ))->header('Cache-Control', 'no-store, private');
     })->name('admin.models.index');
 
     Route::post('/admin/ai/models', function (Request $request) {
@@ -795,7 +796,7 @@ Route::middleware('auth:web')->group(function (): void {
             ], static fn ($value): bool => $value !== null));
 
         return response()->view('admin.ai.usage', compact('rows', 'day', 'oldestDay', 'todayDay'))
-            ->header('Cache-Control', 'no-store');
+            ->header('Cache-Control', 'no-store, private');
     })->name('admin.usage.index');
 
     // Laravel web middleware enforces CSRF. API controller remains the only
