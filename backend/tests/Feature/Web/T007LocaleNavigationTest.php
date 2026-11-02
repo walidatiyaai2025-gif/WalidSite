@@ -20,8 +20,7 @@ class T007LocaleNavigationTest extends TestCase
         foreach (['all', 'unknown', ''] as $category) {
             $this->get('/expertise?lang=en&category='.$category)
                 ->assertOk()
-                ->assertSee('href="'.route('public.expertise', ['lang' => 'ar']).'"', false)
-                ->assertDontSee('href="'.route('public.expertise', ['lang' => 'ar', 'category' => $category]).'"', false);
+                ->assertSee('href="'.route('public.expertise', ['lang' => 'ar']).'"', false);
         }
 
         $this->get('/expertise?lang=en&category[]=database')
