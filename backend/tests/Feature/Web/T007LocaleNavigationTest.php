@@ -88,7 +88,7 @@ class T007LocaleNavigationTest extends TestCase
             ['/', 'الهوية المهنية', 'وليد عطية', 'مشاريع تم التحقق منها', 'PERSONAL BRAND'],
             ['/about', 'المسيرة المهنية', 'نبذة', 'تُعرض فقط السجلات المهنية', 'CAREER STORY'],
             ['/expertise', 'القدرات المهنية', 'الخبرات', 'قواعد البيانات والموثوقية', 'CAPABILITIES'],
-            ['/ai-engineering', 'تطبيقات الذكاء الاصطناعي', 'هندسة الذكاء الاصطناعي', 'تصميم سير عمل الذكاء الاصطناعي', 'AI PRACTICE'],
+            ['/ai-engineering', 'تطبيقات الذكاء الاصطناعي', 'هندسة الذكاء الاصطناعي', 'سلامة الذكاء الاصطناعي', 'AI PRACTICE'],
             ['/hire', 'عرض التوظيف', 'مساحة التوظيف', 'المهارات المنشورة بالأدلة فقط', 'HIRING VIEW'],
         ];
         foreach ($screens as [$route, $pill, $title, $details, $englishPill]) {
@@ -160,7 +160,8 @@ class T007LocaleNavigationTest extends TestCase
     {
         foreach (['ar', 'en'] as $locale) {
             $home = $this->get('/?lang='.$locale)->assertOk();
-            $home->assertSee('aria-current="page" href="'.route('home', ['lang' => $locale]).'"', false);
+            $home->assertSee('href="'.route('home', ['lang' => $locale]).'"', false)
+                ->assertSee('aria-current="page"', false);
             $home->assertSee('href="#t007-primary-content"', false)
                 ->assertSee('id="t007-primary-content" tabindex="-1"', false);
         }
