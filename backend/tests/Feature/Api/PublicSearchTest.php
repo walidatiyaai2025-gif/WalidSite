@@ -68,6 +68,43 @@ class PublicSearchTest extends TestCase
         return $project;
     }
 
+    public function test_search_is_no_store_before_and_after_revoking_article_and_project_evidence(): void
+    {
+        $article = $this->article('cacheable-recovery-article');
+        $project = $this->project('cacheable-recovery-project');
+
+        foreach (['en', 'ar'] as $lang) {
+            $response = $this->getJson('/api/v1/public/search?q=recovery&lang='.$lang)
+                ->assertOk()->assertJsonCount(1, 'data.articles')
+                ->assertJsonCount(1, 'data.projects')
+                ->assertJsonPath('data.articles.0.slug', $article->slug)
+                ->assertJsonPath('data.projects.0.slug', $project->slug);
+            $this->assertStringContainsString('no-store',
+                (string) $response->headers->get('Cache-Control'));
+        }
+        // Even a query with no results must not be cached across a future
+        // publication. Keep the same headers as an approved response.
+        $empty = $this->getJson('/api/v1/public/search?lang=ar')
+            ->assertOk()->assertJsonCount(0, 'data.articles')
+            ->assertJsonCount(0, 'data.projects');
+        $this->assertStringContainsString('no-store',
+            (string) $empty->headers->get('Cache-Control'));
+
+        $article->revisions()->firstOrFail()->update(['validation_json' => [
+            'citations_passed' => false, 'technical_passed' => true,
+        ]]);
+        $project->update(['visibility' => 'private']);
+
+        foreach (['en', 'ar'] as $lang) {
+            $response = $this->getJson('/api/v1/public/search?q=recovery&lang='.$lang)
+                ->assertOk()->assertJsonCount(0, 'data.articles')
+                ->assertJsonCount(0, 'data.projects')
+                ->assertDontSee($article->slug)->assertDontSee($project->slug);
+            $this->assertStringContainsString('no-store',
+                (string) $response->headers->get('Cache-Control'));
+        }
+    }
+
     public function test_missing_query_returns_honest_empty_bilingual_response(): void
     {
         foreach (['en', 'ar'] as $lang) {

@@ -98,6 +98,6 @@ class PublicSearchController extends Controller
                 'lang' => $lang,
                 'per_type_limit' => 10,
             ],
-        ]);
+        ])->header('Cache-Control', 'no-store');
     }
 }
