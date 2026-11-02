@@ -275,7 +275,7 @@ final class T016AdminControlPlaneAcceptanceTest extends TestCase
             ->assertSee('qwen2.5:7b')
             ->assertSee('gpt-4.1-mini')
             ->assertSee('Managed AI')
-            ->assertSee('Currently unavailable under real admission rules.', false)
+            ->assertSee('A model is eligible under current recorded state:')
             ->assertDontSee('acceptance-managed-secret');
         $this->get('/admin/ai/model-routes?lang=ar')->assertOk()
             ->assertSee('dir="rtl"', false)
