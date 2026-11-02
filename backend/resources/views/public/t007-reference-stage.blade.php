@@ -2,8 +2,12 @@
 @php($t007Ar = request()->query('lang') === 'ar')
 @php($t007HasAiSkill = isset($skills) && $skills->pluck('slug')->contains('ai-engineering'))
 @php($t007ReferenceReady = match ($screen) {
+    // Visual-reference copy is allowed only when its specific claims are verified.
+    // A verified AI capability alone does not substantiate the broad enterprise
+    // delivery claim in the reference hero and cards.
     'home' => isset($publicProfile, $hasVerifiedAiCapability)
-        && is_array($publicProfile) && $hasVerifiedAiCapability === true,
+        && is_array($publicProfile) && $hasVerifiedAiCapability === true
+        && ! empty($publicProfile['enterprise_delivery_verified']),
     'expertise' => $t007HasAiSkill,
     'ai' => ! empty($aiData['skills'] ?? []),
     default => false,
