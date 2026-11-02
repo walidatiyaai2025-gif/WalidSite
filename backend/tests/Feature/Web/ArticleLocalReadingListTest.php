@@ -81,6 +81,41 @@ final class ArticleLocalReadingListTest extends TestCase
         }
     }
 
+    public function test_bilingual_blog_can_revisit_local_article_links_without_rendering_unapproved_server_content(): void
+    {
+        $this->approvedArticle();
+        Article::create([
+            'slug' => 'unreviewed-stored-candidate',
+            'title_en' => 'Private article not in verified blog',
+            'title_ar' => 'مقال خاص',
+            'canonical_lang' => 'en',
+        ]);
+
+        foreach (['en', 'ar'] as $locale) {
+            $response = $this->get(route('public.blog', ['lang' => $locale]))
+                ->assertOk()
+                ->assertSee('id="blog-saved-links"', false)
+                ->assertSee('id="blog-saved-items"', false)
+                ->assertSee('id="blog-saved-status" role="status" aria-live="polite" aria-atomic="true"', false)
+                ->assertSee("const storageKey = 'walidsite:public-reading-list:v1'", false)
+                ->assertSee("window.localStorage.getItem(storageKey)", false)
+                ->assertSee("validSlug(entry.slug)", false)
+                ->assertSee("encodeURIComponent(entry.slug)", false)
+                ->assertSee("link.textContent = locale === 'ar' ? entry.ar : entry.en", false)
+                ->assertSee("articlePath.replace('reading-list-placeholder', encodeURIComponent(entry.slug))", false)
+                ->assertDontSee('Private article not in verified blog');
+            if ($locale === 'ar') {
+                $response->assertSee('روابط القراءة المحفوظة على هذا الجهاز')
+                    ->assertSee('يتحقق')
+                    ->assertSee('dir="rtl"', false);
+            } else {
+                $response->assertSee('Reading links saved on this device')
+                    ->assertSee('not an account reading history')
+                    ->assertSee('dir="ltr"', false);
+            }
+        }
+    }
+
     public function test_unapproved_or_revoked_articles_never_become_public_through_local_saved_links(): void
     {
         $approved = $this->approvedArticle();
