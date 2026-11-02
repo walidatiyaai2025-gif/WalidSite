@@ -2,7 +2,6 @@
 
 namespace Database\Seeders;
 
-use App\Models\ProfessionalClaim;
 use App\Models\Profile;
 use App\Models\Role;
 use App\Models\Skill;
