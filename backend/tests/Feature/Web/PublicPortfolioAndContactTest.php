@@ -337,4 +337,16 @@ class PublicPortfolioAndContactTest extends TestCase
         }
     }
 
+    public function test_contact_message_does_not_request_browser_autofill_in_either_locale(): void
+    {
+        config(['mail.contact_recipient' => 'contact@example.test', 'mail.default' => 'smtp']);
+
+        foreach (['en', 'ar'] as $locale) {
+            $response = $this->get('/contact?lang='.$locale)->assertOk();
+            $html = $response->getContent();
+            $this->assertIsString($html);
+            $this->assertSame(1, preg_match('/<textarea\\b(?=[^>]*\\bid="contact-message")(?=[^>]*\\bname="message")(?=[^>]*\\bautocomplete="off")[^>]*>/i', $html));
+        }
+    }
+
 }
