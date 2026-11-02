@@ -107,3 +107,20 @@ Canonical MOBILE-05/MOBILE-06 visuals require approved screenshot comparison
 and real Android/iOS staging smoke under T024/T025. Real publisher deployment,
 approved production signing keys and remote endpoint are not in this repository.
 The offline fallback does not depend on those external integrations.
+
+
+## T021 MOBILE-01 welcome → home contract (2026-11-02)
+
+The production app now opens the dedicated bilingual MOBILE-01 Welcome surface
+before Developer Home. The screen exposes only the canonical `choose_language`
+and `start` actions: language changes are session-local and apply immediately
+to RTL/LTR, while Start enters the existing real Home without creating a
+back-stack route containing account or fabricated state. Device Arabic remains
+the launch default when applicable.
+
+Downstream widget tests that specifically exercise Home use
+`WaleedTechApp(initiallyStarted: true)` as an explicit deterministic test
+fixture; production `main()` never enables that fixture hook. The separate
+`welcome_journey_test.dart` verifies the real production default,
+language-before-start behavior, Arabic device locale, and Welcome → Home
+transition. Runtime pixel certification remains under #481/#25.

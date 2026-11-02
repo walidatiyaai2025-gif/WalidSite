@@ -86,7 +86,7 @@ void main() {
 
   testWidgets('language switch changes in-memory root app locale and returns',
       (tester) async {
-    await tester.pumpWidget(const WaleedTechApp());
+    await tester.pumpWidget(const WaleedTechApp(initiallyStarted: true));
     await tester.scrollUntilVisible(
         find.byKey(const Key('mobile-preferences-entry')), 130);
     await tester.ensureVisible(find.byKey(const Key('mobile-preferences-entry')));

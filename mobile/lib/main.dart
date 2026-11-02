@@ -16,7 +16,11 @@ void main() => runApp(const WaleedTechApp());
 
 /// Real bilingual navigation shell; no fabricated projects, AI output or metrics.
 class WaleedTechApp extends StatefulWidget {
-  const WaleedTechApp({super.key});
+  const WaleedTechApp({this.initiallyStarted = false, super.key});
+
+  /// Explicit test/integration fixture hook. Production main() always uses
+  /// the default false value so MOBILE-01 is the real application entry.
+  final bool initiallyStarted;
 
   @override
   State<WaleedTechApp> createState() => _WaleedTechAppState();
@@ -24,10 +28,12 @@ class WaleedTechApp extends StatefulWidget {
 
 class _WaleedTechAppState extends State<WaleedTechApp> {
   bool _arabic = false;
+  late bool _started;
 
   @override
   void initState() {
     super.initState();
+    _started = widget.initiallyStarted;
     // Respect the device's primary locale at app startup.
     // The user can still switch languages explicitly during this session.
     _arabic =
@@ -47,10 +53,102 @@ class _WaleedTechAppState extends State<WaleedTechApp> {
         GlobalCupertinoLocalizations.delegate,
       ],
       theme: WaleedTheme.light(),
-      home: CompanionHome(
-        arabic: _arabic,
-        onToggleLanguage: () => setState(() => _arabic = !_arabic),
-        onSetLanguage: (value) => setState(() => _arabic = value),
+      home: _started
+          ? CompanionHome(
+              arabic: _arabic,
+              onToggleLanguage: () => setState(() => _arabic = !_arabic),
+              onSetLanguage: (value) => setState(() => _arabic = value),
+            )
+          : CompanionWelcome(
+              arabic: _arabic,
+              onToggleLanguage: () => setState(() => _arabic = !_arabic),
+              onStart: () => setState(() => _started = true),
+            ),
+    );
+  }
+}
+
+class CompanionWelcome extends StatelessWidget {
+  const CompanionWelcome({
+    required this.arabic,
+    required this.onToggleLanguage,
+    required this.onStart,
+    super.key,
+  });
+
+  final bool arabic;
+  final VoidCallback onToggleLanguage;
+  final VoidCallback onStart;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      key: const Key('mobile-welcome-screen'),
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 520),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Align(
+                    alignment: AlignmentDirectional.centerStart,
+                    child: Text(
+                      'W',
+                      style: TextStyle(
+                        color: WaleedPalette.accent,
+                        fontSize: 52,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 28),
+                  Semantics(
+                    header: true,
+                    child: Text(
+                      arabic ? 'مرحبًا بك في رفيق وليد التقني' : 'Welcome to Waleed Tech Companion',
+                      key: const Key('welcome-title'),
+                      style: const TextStyle(
+                        color: WaleedPalette.primary,
+                        fontSize: 32,
+                        height: 1.2,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    arabic
+                        ? 'أدوات ومعرفة تقنية موثوقة تعمل بوضوح دون اختلاق نتائج أو بيانات.'
+                        : 'Trusted engineering tools and knowledge with clear, evidence-aware states.',
+                    key: const Key('welcome-subtitle'),
+                    style: const TextStyle(
+                      color: WaleedPalette.body,
+                      fontSize: 16,
+                      height: 1.55,
+                    ),
+                  ),
+                  const SizedBox(height: 32),
+                  FilledButton.icon(
+                    key: const Key('welcome-start'),
+                    onPressed: onStart,
+                    icon: const Icon(Icons.arrow_forward_rounded),
+                    label: Text(arabic ? 'ابدأ' : 'Start'),
+                  ),
+                  const SizedBox(height: 12),
+                  OutlinedButton.icon(
+                    key: const Key('welcome-language'),
+                    onPressed: onToggleLanguage,
+                    icon: const Icon(Icons.language),
+                    label: Text(arabic ? 'English' : 'العربية'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

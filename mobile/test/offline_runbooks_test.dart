@@ -99,7 +99,7 @@ void main() {
   });
 
   testWidgets('offline pack opens with version and unverified warning', (tester) async {
-    await tester.pumpWidget(const WaleedTechApp());
+    await tester.pumpWidget(const WaleedTechApp(initiallyStarted: true));
     await tester.tap(find.byKey(const Key('offline-runbooks-entry')));
     await tester.pumpAndSettle();
 
