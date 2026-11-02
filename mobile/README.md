@@ -142,3 +142,22 @@ errors expose a generic retry state and never raw server diagnostics. Feed
 actions lead to the existing verified article/runbook destinations. This
 connects the existing server MOBILE-02 contract without weakening their own
 publication/evidence checks.
+
+
+## T021 MOBILE-01 verified bootstrap integration (2026-11-02)
+
+Welcome reads the canonical `/api/v1/public/app-bootstrap?lang=en|ar` only when
+an approved HTTPS `WALIDSITE_API_ORIGIN` is configured. The response is
+bounded and fail-closed: the client requires the exact supported locales,
+Light-only theme declaration, implemented relative route map, guest capability
+flags, authenticated AI/saved-resource boundaries, and the real locale-matched
+`/privacy` path. Cross-origin or stale privacy metadata, extra private fields,
+invented tools/routes, malformed locale state and oversized responses are
+rejected.
+
+Network/bootstrap failure never blocks the canonical `start` action: Welcome
+shows a redacted offline-capable state and guest entry remains available. When
+bootstrap succeeds, the privacy control opens only the same-origin public
+disclosure derived from the verified deployment origin; launch failure is
+reported without exposing raw exception details. This is capability discovery,
+not proof that external providers or production hosting are live.
