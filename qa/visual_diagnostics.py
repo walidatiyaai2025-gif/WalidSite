@@ -103,15 +103,25 @@ def diagnose(root: Path, plan: object, commit: str, *, runner=subprocess.run,
                 "WALIDSITE_CAPTURE_DPR": str(item["dpr"]),
                 "WALIDSITE_CAPTURE_ROUTE": item["route"],
             })
+            # A diagnostic comparison is meaningful only if the REAL source
+            # checkout remains pinned across the entire renderer invocation.
+            # Check even when the renderer fails or times out: a partial
+            # process must not alter source for subsequent screen captures.
             try:
-                result = runner(
-                    item["renderer_command"], cwd=root, env=env,
-                    timeout=item["timeout"], check=False,
-                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                )
-            except (OSError, subprocess.TimeoutExpired):
-                info["status"] = "renderer_failed"
-                continue
+                try:
+                    result = runner(
+                        item["renderer_command"], cwd=root, env=env,
+                        timeout=item["timeout"], check=False,
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                    )
+                except (OSError, subprocess.TimeoutExpired):
+                    info["status"] = "renderer_failed"
+                    continue
+            finally:
+                if not verified_head(root, commit):
+                    raise CapturePlanError(
+                        "Renderer modified checked-out Git source during diagnostics"
+                    )
             if result.returncode != 0 or output.is_symlink() or not output.is_file():
                 info["status"] = "renderer_failed"
                 continue
