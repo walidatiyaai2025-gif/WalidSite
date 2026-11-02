@@ -213,6 +213,29 @@ final class AdminProductOperationsJourneyTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_audience_excludes_future_dated_consent_without_sending_notifications(): void
+    {
+        $user = $this->account('reader');
+        DB::table('notification_preferences')->insert([
+            'id' => (string) Str::uuid(),
+            'user_id' => $user->id,
+            'purpose' => 'product_updates',
+            'channel' => 'push',
+            'enabled' => true,
+            'consented_at' => now('UTC')->addDay(),
+            'revoked_at' => null,
+            'created_at' => now('UTC'),
+            'updated_at' => now('UTC'),
+        ]);
+        Http::fake();
+        $this->actingAs($this->account('owner'), 'web');
+        $this->get('/admin/audience')->assertOk()
+            ->assertSee('Currently consented recipients')
+            ->assertSee('>0</strong>', false)
+            ->assertDontSee($user->email);
+        Http::assertNothingSent();
+    }
+
     public function test_analytics_uses_stored_utc_period_and_safe_csv_without_cross_currency_totals(): void
     {
         $provider = $this->provider();
