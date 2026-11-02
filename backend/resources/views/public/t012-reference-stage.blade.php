@@ -157,6 +157,7 @@ body:has(.t012-reference-stage) .site-footer{margin-top:0}
             <form class="t012-search-box" method="get" action="{{ route('public.search') }}" role="search">
                 <input type="hidden" name="lang" value="{{ $locale }}"><input name="q" type="search" maxlength="80" value="" placeholder="{{ $t012Ar ? 'ابحث في الأدلة والمشاريع والكود والمقالات...' : 'Search runbooks, projects, code and articles...' }}">
             </form>
+            @if($type === 'all')
             <div class="t012-search-grid">
                 @foreach($articles->take(3) as $a)
                     <article class="t012-search-card"><span class="t012-search-badge">{{ $t012Ar ? 'حل موثق' : 'Verified solution' }}</span>
@@ -165,6 +166,7 @@ body:has(.t012-reference-stage) .site-footer{margin-top:0}
                     </article>
                 @endforeach
             </div>
+            @endif
         </div>
     @else
         @php($t012Icons = ['<>','AI','DB'])
