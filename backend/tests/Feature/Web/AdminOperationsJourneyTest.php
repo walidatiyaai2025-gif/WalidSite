@@ -119,10 +119,93 @@ final class AdminOperationsJourneyTest extends TestCase
             ->assertRedirect(route('admin.operations.github', ['lang' => 'en']))
             ->assertSessionHas('status', 'Verified public repositories: 1');
         $this->post('/admin/github/refresh?lang=en', ['repo' => 'private-org/private-work'])
-            ->assertRedirect()->assertSessionHasErrors('refresh');
+            ->assertRedirect()->assertSessionHasErrors('repo');
         Http::assertSent(fn ($request) =>
             str_starts_with($request->url(), 'https://api.github.com/repos/'));
-        Http::assertSentCount(4);
+        // A rejected selection can re-check the public allowlist but must
+        // never issue a caller-specified URL or expose credentials.
+        Http::assertSent(fn ($request) =>
+            in_array($request->url(), [
+                'https://api.github.com/repos/owner/verified',
+                'https://api.github.com/repos/private-org/private-work',
+            ], true));
+    }
+
+    public function test_only_verified_allowlisted_github_metadata_can_be_inspected_in_both_locales(): void
+    {
+        // Test the publication/role gate independently from the production
+        // request-rate limiter (which is tested in its own suite).
+        $this->withoutMiddleware(\Illuminate\Routing\Middleware\ThrottleRequests::class);
+        config(['portfolio.github_public_repos' => ['owner/verified', 'private-org/private-work']]);
+        Http::fake([
+            'api.github.com/repos/owner/verified' => Http::response([
+                'full_name' => 'owner/verified', 'html_url' => 'https://github.com/owner/verified',
+                'description' => '<script>not executable</script> Public description',
+                'language' => 'PHP', 'visibility' => 'public', 'private' => false,
+            ]),
+            'api.github.com/repos/private-org/private-work' => Http::response([], 404),
+        ]);
+        $this->actingAs($this->account('admin'), 'web');
+        foreach (['en','ar'] as $lang) {
+            $url = '/admin/github?lang='.$lang.'&repo=owner/verified';
+            $response = $this->get($url)->assertOk()
+                ->assertSee('owner/verified')
+                ->assertSee('name="repo" value="owner/verified"', false)
+                ->assertSee('GitHub public REST')
+                ->assertSee('&lt;script&gt;', false)
+                ->assertDontSee('<script>', false)
+                ->assertHeader('Cache-Control', 'no-store, private');
+            if ($lang === 'ar') {
+                $response->assertSee('dir="rtl"', false)
+                    ->assertSee('فحص البيانات');
+            } else {
+                $response->assertSee('Selected verified public repository')
+                    ->assertSee('Recheck selected public repository');
+            }
+        }
+        $this->get('/admin/github?repo=private-org/private-work')->assertNotFound();
+        $this->get('/admin/github?repo=unknown/repository')->assertNotFound();
+        $this->get('/admin/github?repo[]=owner/verified')->assertRedirect()
+            ->assertSessionHasErrors('repo');
+        $this->post('/admin/github/refresh?lang=ar', ['repo' => 'private-org/private-work'])
+            ->assertRedirect()->assertSessionHasErrors('repo');
+        $this->actingAs($this->account('reader'), 'web')
+            ->get('/admin/github?repo=owner/verified')->assertForbidden();
+    }
+
+    public function test_selected_github_refresh_rechecks_revoked_public_metadata_without_claiming_publication(): void
+    {
+        // Test the publication/role gate independently from the production
+        // request-rate limiter (which is tested in its own suite).
+        $this->withoutMiddleware(\Illuminate\Routing\Middleware\ThrottleRequests::class);
+        $active = true;
+        config(['portfolio.github_public_repos' => ['owner/verified']]);
+        Http::fake(function ($request) use (&$active) {
+            if ($request->url() !== 'https://api.github.com/repos/owner/verified') {
+                return Http::response([], 404);
+            }
+            return $active ? Http::response([
+                'full_name' => 'owner/verified', 'html_url' => 'https://github.com/owner/verified',
+                'description' => 'Public proof', 'visibility' => 'public', 'private' => false,
+            ]) : Http::response([
+                'full_name' => 'owner/verified', 'html_url' => 'https://github.com/owner/verified',
+                'visibility' => 'private', 'private' => true,
+            ], 200);
+        });
+        $this->actingAs($this->account('owner'), 'web');
+        $this->get('/admin/github?repo=owner/verified')->assertOk()
+            ->assertSee('Selected verified public repository');
+        $active = false;
+        $this->post('/admin/github/refresh?lang=ar', ['repo' => 'owner/verified'])
+            ->assertRedirect(route('admin.operations.github', ['lang'=>'ar']))
+            ->assertSessionHas('warning', 'Selected repository is no longer publicly verified.');
+        $this->get('/admin/github?repo=owner/verified')->assertNotFound();
+        $this->get('/admin/github?lang=ar')->assertOk()
+            ->assertSee('مستودع غير متاح')
+            ->assertDontSee('owner/verified')
+            ->assertDontSee('Public proof');
+        Http::assertSent(fn ($request) =>
+            $request->url() === 'https://api.github.com/repos/owner/verified');
     }
 
     public function test_github_sync_cannot_claim_success_when_all_repositories_are_unavailable(): void
@@ -348,6 +431,38 @@ final class AdminOperationsJourneyTest extends TestCase
         $this->get('/admin/analytics?day='.$old.'&window=1&lang=en')->assertOk()
             ->assertSee('KWD')->assertSee('>700</td>', false)
             ->assertDontSee('USD');
+        Http::assertNothingSent();
+    }
+
+    public function test_analytics_csv_never_interprets_imported_currency_as_spreadsheet_formula(): void
+    {
+        Http::fake();
+        $this->actingAs($this->account('owner'), 'web');
+        $provider = AiProvider::create([
+            'display_name' => 'Private provider',
+            'provider_type' => 'ollama-compatible',
+            'base_url' => 'http://127.0.0.1:11434',
+            'enabled' => false, 'health_status' => 'unverified',
+        ]);
+        $jobId = (string) Str::uuid();
+        DB::table('ai_jobs')->insert([
+            'id' => $jobId, 'provider_id' => $provider->id,
+            'job_type' => 'draft', 'idempotency_key' => 'csv-injection-'.Str::uuid(),
+            'payload_hash' => str_repeat('e', 64), 'status' => 'completed',
+            'created_at' => now('UTC'), 'updated_at' => now('UTC'),
+        ]);
+        DB::table('ai_usage')->insert([
+            'id' => (string) Str::uuid(),
+            'usage_key' => 'csv-injection-'.Str::uuid(),
+            'job_id' => $jobId, 'provider_id' => $provider->id,
+            'cost_currency' => '=HYPERLINK("https://example.invalid")',
+            'cost_minor' => 15, 'created_at' => now('UTC'),
+        ]);
+
+        $csv = $this->get('/admin/analytics?window=1&format=csv')
+            ->assertOk()->streamedContent();
+        $this->assertStringContainsString('INVALID,1,15', $csv);
+        $this->assertStringNotContainsString('=HYPERLINK', $csv);
         Http::assertNothingSent();
     }
 
