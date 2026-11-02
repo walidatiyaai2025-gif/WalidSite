@@ -167,4 +167,39 @@ class T007LocaleNavigationTest extends TestCase
         }
     }
 
+    public function test_about_and_recruiter_download_the_real_bilingual_evidence_gated_pdf(): void
+    {
+        foreach (['ar', 'en'] as $locale) {
+            $this->get('/about?lang='.$locale)->assertOk()
+                ->assertSee('href="'.e(route('public.resume.pdf', [
+                    'lang' => $locale, 'track' => 'all',
+                ])).'"', false)
+                ->assertSee('type="application/pdf" download', false);
+
+            foreach (['all', 'database', 'software', 'delivery'] as $track) {
+                $this->get('/hire?lang='.$locale.'&track='.$track)->assertOk()
+                    ->assertSee('href="'.e(route('public.resume.pdf', [
+                        'lang' => $locale, 'track' => $track,
+                    ])).'"', false);
+            }
+
+            // Invalid and array-valued input cannot choose a private or
+            // unsupported CV track in either the HTML or PDF destination.
+            $this->get('/hire?lang='.$locale.'&track[]=private')->assertOk()
+                ->assertSee('href="'.e(route('public.resume.pdf', [
+                    'lang' => $locale, 'track' => 'all',
+                ])).'"', false)
+                ->assertDontSee('track%5B0%5D=', false);
+
+            $pdf = $this->get('/resume/pdf?lang='.$locale.'&track=delivery')
+                ->assertOk()
+                ->assertHeader('Content-Type', 'application/pdf');
+            $this->assertStringStartsWith('%PDF-', $pdf->getContent());
+            $this->assertStringContainsString('attachment;', (string) $pdf->headers->get('Content-Disposition'));
+            $this->assertStringContainsString('delivery-'.$locale.'.pdf',
+                (string) $pdf->headers->get('Content-Disposition'));
+            $this->assertSame('no-store, private', $pdf->headers->get('Cache-Control'));
+        }
+    }
+
 }
