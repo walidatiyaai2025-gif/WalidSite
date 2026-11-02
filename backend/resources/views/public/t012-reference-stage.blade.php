@@ -49,7 +49,9 @@ body:has(.t012-reference-stage) .site-footer{margin-top:0}
 .t012-reference-stage{height:760px;background:#f5f9fc}
 .t012-reference-hero{height:326px;background:#edf7fc;position:relative;padding:35px 56px}
 .t012-pill{height:39px;min-width:259px;width:max-content;border-radius:16px;background:#dcf6f1;color:#0a9a8c;display:flex;align-items:center;padding:0 15px;font-size:18px;font-weight:700;letter-spacing:.7px;transform:translateX(-4px)}
-.t012-pill span{display:block;transform:translate(-1px,-1px)}\n.t012-screen-blog .t012-pill{letter-spacing:.6px}\n.t012-screen-blog .t012-pill span{transform:translate(-1px,-2px)}
+.t012-pill span{display:block;transform:translate(-1px,-1px)}
+.t012-screen-blog .t012-pill{letter-spacing:.6px}
+.t012-screen-blog .t012-pill span{transform:translate(-1px,-2px)}
 .t012-reference-hero h1{font-size:46px;line-height:1.15;margin:28px 0 21px;color:#184876;font-weight:700;letter-spacing:2.05px}
 .t012-reference-subtitle{margin:0 0 0 2px;color:#3b6684;font-size:20px;line-height:1.4;letter-spacing:-.18px;position:relative;top:3px}
 .t012-screen-blog .t012-reference-hero h1{transform:translate(-1px,3px) scale(.977,.913);transform-origin:left top}
@@ -74,7 +76,8 @@ body:has(.t012-reference-stage) .site-footer{margin-top:0}
 .t012-card-icon{width:67px;height:65px;border-radius:12px;background:#edf7fc;color:#0a9a8c;font-size:20px;font-weight:800;display:flex;align-items:center;justify-content:center;transform:translateX(-1px)}
 .t012-card-icon span{display:block;transform:translateY(-7px)}
 .t012-reference-card h2{font-size:26px;line-height:1.25;margin:36px 0 22px;color:#184876;font-weight:700;letter-spacing:1.5px;overflow-wrap:anywhere;transform:translateY(1px) scaleY(.92);transform-origin:left top}
-.t012-screen-lab .t012-reference-card h2{font-weight:800}\n.t012-reference-card p{font-size:16px;line-height:1.5;margin:0;color:#254a68;letter-spacing:.55px;position:relative;top:-3px;overflow-wrap:anywhere;transform:scaleY(.94);transform-origin:left top}
+.t012-screen-lab .t012-reference-card h2{font-weight:800}
+.t012-reference-card p{font-size:16px;line-height:1.5;margin:0;color:#254a68;letter-spacing:.55px;position:relative;top:-3px;overflow-wrap:anywhere;transform:scaleY(.94);transform-origin:left top}
 .t012-card-rule{height:2px;background:#dce7ec;position:absolute;left:19px;right:29px;top:244px}
 .t012-card-link{position:absolute;top:271px;left:26px;color:#0a7e74;text-decoration:none;font-size:20px;font-weight:600;letter-spacing:1.35px;transform:translateY(2px) scaleY(.84);transform-origin:left top}
 .t012-article-body{padding:30px 56px 36px;display:grid;grid-template-columns:minmax(0,946px) minmax(0,346px);gap:34px}
