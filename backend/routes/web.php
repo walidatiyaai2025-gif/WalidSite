@@ -2095,6 +2095,29 @@ Route::middleware('auth:web')->prefix('admin')->group(function (): void {
         ])->header('Cache-Control', 'no-store, private');
     })->name('admin.operations.projects')->middleware('throttle:30,1');
 
+    // ADMIN-09: owner-only, paginated review of ALL pending private draft
+    // evidence. Previously only ten newest candidates were reachable.
+    Route::get('/projects/{project}/evidence', function (Request $request, string $project) {
+        abort_unless($request->user()?->canAccessAdmin() && $request->user()->hasRole('owner'), 403);
+        $input = $request->validate([
+            'lang' => ['sometimes', 'in:ar,en'],
+            'page' => ['sometimes', 'integer', 'between:1,10000'],
+        ]);
+        $draft = \App\Models\Project::query()->whereKey($project)->firstOrFail();
+        abort_unless($draft->visibility === 'private' && $draft->published_at === null, 409);
+        $locale = $input['lang'] ?? 'en';
+        $evidence = \App\Models\ProjectEvidence::query()
+            ->where('project_id', $draft->id)
+            ->where('visibility', 'private')->whereNull('verified_at')
+            ->orderByDesc('created_at')->orderByDesc('id')
+            ->paginate(10)->appends(['lang' => $locale]);
+        return response()->view('admin.project-evidence-review', compact(
+            'draft', 'evidence', 'locale'
+        ))->header('Cache-Control', 'no-store, private')
+            ->header('X-Content-Type-Options', 'nosniff');
+    })->whereUuid('project')->name('admin.operations.projects.evidence.review')
+        ->middleware('throttle:30,1');
+
     Route::patch('/projects/{project}', function (Request $request, string $project) {
         abort_unless($request->user()?->canAccessAdmin() && $request->user()->hasRole('owner'), 403);
         $input = $request->validate([
@@ -2212,7 +2235,11 @@ Route::middleware('auth:web')->prefix('admin')->group(function (): void {
     // Discard is a private draft review action, not approval or publication.
     Route::delete('/projects/{project}/evidence/{evidence}', function (Request $request, string $project, string $evidence) {
         abort_unless($request->user()?->canAccessAdmin() && $request->user()->hasRole('owner'), 403);
-        $request->validate(['lang' => ['sometimes', 'in:ar,en']]);
+        $request->validate([
+            'lang' => ['sometimes', 'in:ar,en'],
+            'return' => ['sometimes', 'in:review'],
+            'page' => ['sometimes', 'integer', 'between:1,10000'],
+        ]);
         if (array_diff(array_keys($request->request->all()), ['_token', '_method']) !== []) {
             throw \Illuminate\Validation\ValidationException::withMessages([
                 'evidence' => 'Unsupported evidence review fields.',
@@ -2232,7 +2259,16 @@ Route::middleware('auth:web')->prefix('admin')->group(function (): void {
             ]);
         }, 3);
         $ar = $request->query('lang') === 'ar';
-        return redirect()->route('admin.operations.projects', ['lang' => $ar ? 'ar' : 'en'])
+        // Only a fixed internal marker can return an owner to the review
+        // queue. Never accept an arbitrary redirect URL from the browser.
+        $review = $request->query('return') === 'review';
+        return redirect()->route($review
+            ? 'admin.operations.projects.evidence.review'
+            : 'admin.operations.projects', $review ? [
+                'project' => $project,
+                'lang' => $ar ? 'ar' : 'en',
+                'page' => $request->query('page', 1),
+            ] : ['lang' => $ar ? 'ar' : 'en'])
             ->with('status', $ar ? 'تم رفض الدليل الخاص غير المعتمد.' : 'Unverified private evidence discarded; no publication occurred.');
     })->whereUuid('project')->whereUuid('evidence')
         ->name('admin.operations.projects.evidence.discard')->middleware('throttle:10,1');

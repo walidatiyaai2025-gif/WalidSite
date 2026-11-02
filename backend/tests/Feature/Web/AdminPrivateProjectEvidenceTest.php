@@ -207,4 +207,101 @@ final class AdminPrivateProjectEvidenceTest extends TestCase
             ->where('visibility', 'private')->whereNull('verified_at')->count());
         Http::assertNothingSent();
     }
+    public function test_owner_can_review_every_pending_private_candidate_beyond_first_ten_without_fetching_urls(): void
+    {
+        Http::fake();
+        $owner = $this->account('owner');
+        $project = $this->project();
+        for ($number = 1; $number <= 12; $number++) {
+            $candidate = $project->evidence()->create([
+                'evidence_type' => 'document',
+                'url' => 'https://docs.example.org/private-proof-'.sprintf('%02d', $number),
+                'visibility' => 'private',
+                'verified_at' => null,
+            ]);
+            $candidate->forceFill([
+                'created_at' => now()->subMinutes(13 - $number),
+            ])->save();
+        }
+
+        $this->actingAs($owner, 'web');
+        $this->get('/admin/projects?lang=en')->assertOk()
+            ->assertSee('Review all private evidence (paginated)')
+            ->assertSee(route('admin.operations.projects.evidence.review', [
+                'project' => $project->id, 'lang' => 'en',
+            ]), false);
+
+        $pageOne = $this->get('/admin/projects/'.$project->id.'/evidence?lang=en');
+        $pageOne->assertOk()->assertSee('Pending private evidence review')
+            ->assertSee('private-proof-12')->assertDontSee('private-proof-01')
+            ->assertSee('Evidence review pages')
+            ->assertHeader('X-Content-Type-Options', 'nosniff')
+            ->assertHeader('Cache-Control', 'no-store, private');
+
+        $pageTwo = $this->get('/admin/projects/'.$project->id.'/evidence?lang=ar&page=2');
+        $pageTwo->assertOk()->assertSee('مراجعة الأدلة الخاصة المعلقة')
+            ->assertSee('dir="rtl"', false)
+            ->assertSee('private-proof-01')->assertSee('private-proof-02')
+            ->assertDontSee('private-proof-12')
+            ->assertSee('name="_token"', false)
+            ->assertSee('رفض الدليل غير المعتمد')
+            ->assertHeader('Cache-Control', 'no-store, private');
+        $this->assertDatabaseCount('project_evidence', 12);
+        Http::assertNothingSent();
+    }
+
+    public function test_owner_discard_from_later_review_page_returns_to_same_private_queue(): void
+    {
+        Http::fake();
+        $project = $this->project();
+        $candidate = $project->evidence()->create([
+            'evidence_type' => 'publication',
+            'url' => 'https://example.org/private-evidence',
+            'visibility' => 'private',
+            'verified_at' => null,
+        ]);
+        $this->actingAs($this->account('owner'), 'web');
+        $path = '/admin/projects/'.$project->id.'/evidence/'.$candidate->id;
+        $this->delete($path.'?return=review&page=2&lang=ar')
+            ->assertRedirect(route('admin.operations.projects.evidence.review', [
+                'project' => $project->id, 'lang' => 'ar', 'page' => 2,
+            ]))->assertSessionHas('status', 'تم رفض الدليل الخاص غير المعتمد.');
+        $this->assertDatabaseMissing('project_evidence', ['id' => $candidate->id]);
+        $this->assertNull($project->fresh()->published_at);
+        $this->assertSame('private', $project->fresh()->visibility);
+        $this->delete($path.'?return=https://outside.example.org')
+            ->assertRedirect()->assertSessionHasErrors('return');
+        Http::assertNothingSent();
+    }
+
+    public function test_full_private_review_queue_rejects_guests_nonowners_public_projects_and_invalid_pages(): void
+    {
+        Http::fake();
+        $private = $this->project();
+        $public = $this->project(true);
+        $path = '/admin/projects/'.$private->id.'/evidence';
+        $this->get($path)->assertRedirect('/admin/login');
+        foreach (['reader', 'admin'] as $role) {
+            $this->actingAs($this->account($role), 'web')
+                ->get($path.'?lang=ar')->assertForbidden()
+                ->assertDontSee('private-proof');
+            // The reader role is denied the admin operations index entirely.
+            // Admin access is governed independently from owner-only evidence.
+            $index = $this->get('/admin/projects');
+            if ($role === 'reader') {
+                $index->assertForbidden();
+            } else {
+                $index->assertOk()
+                    ->assertDontSee('Review all private evidence (paginated)');
+            }
+        }
+        $this->actingAs($this->account('owner'), 'web');
+        $this->get('/admin/projects/'.$public->id.'/evidence')->assertStatus(409);
+        $this->get($path.'?page=0')->assertRedirect()->assertSessionHasErrors('page');
+        $this->get($path.'?page[]=2')->assertRedirect()->assertSessionHasErrors('page');
+        $this->get($path.'?lang=fr')->assertRedirect()->assertSessionHasErrors('lang');
+        $this->get($path.'?lang=ar')->assertOk()
+            ->assertSee('لا توجد أدلة معلقة في هذه الصفحة.');
+        Http::assertNothingSent();
+    }
 }

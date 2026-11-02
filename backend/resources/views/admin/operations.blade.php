@@ -104,6 +104,7 @@ details{border:1px solid var(--edge);padding:10px;border-radius:8px}details[open
 <td>{{ $project->verified_public_evidence_count }} / {{ $project->evidence_count }}</td>
 <td>
 @if(auth()->user()?->hasRole('owner') && $project->visibility==='private' && $project->published_at===null)
+<p><a href="{{ route('admin.operations.projects.evidence.review', ['project'=>$project->id,'lang'=>$locale]) }}">{{ $ar ? 'مراجعة جميع الأدلة الخاصة (صفحات)' : 'Review all private evidence (paginated)' }}</a></p>
 <details><summary>{{ $ar ? 'تحرير مسودة خاصة' : 'Edit private draft' }}</summary>
 <form method="post" action="{{ route('admin.operations.projects.update', ['project'=>$project->id,'lang'=>$locale]) }}">
 @csrf @method('PATCH')
