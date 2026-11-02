@@ -252,7 +252,7 @@ void main() {
     expect(find.byKey(const Key('account-login')), findsOneWidget);
     expect(find.byKey(const Key('account-profile-email')), findsNothing);
     expect(find.text(bearer), findsNothing);
-    expect(tester.widget<TextField>(find.byKey(const Key('account-email'))
+    expect(tester.widget<TextField>(find.byKey(const Key('account-email')))
         .controller!.text, isEmpty);
   });
 
@@ -335,7 +335,7 @@ void main() {
     expect(find.byKey(const Key('account-profile-email')), findsNothing);
     expect(find.text(bearer), findsNothing);
     expect(find.text('current-password'), findsNothing);
-    expect(tester.widget<TextField>(find.byKey(const Key('account-email'))
+    expect(tester.widget<TextField>(find.byKey(const Key('account-email')))
         .controller!.text, isEmpty);
   });
 
