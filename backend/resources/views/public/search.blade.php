@@ -19,7 +19,8 @@
 </style>
 @endpush
 @section('content')
-<section class="site-wrap editorial">
+@include('public.t012-reference-stage', ['screen' => 'search'])
+<section class="site-wrap editorial t012-functional" id="t012-functional">
 <h1>{{ $locale === 'ar' ? 'البحث في المعلومات الموثقة' : 'Search verified content' }}</h1>
 <form method="get" action="{{ route('public.search') }}" role="search" class="ed-form ed-card">
 <input type="hidden" name="lang" value="{{ $locale }}">
