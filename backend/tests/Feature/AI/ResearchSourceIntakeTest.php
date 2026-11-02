@@ -3,6 +3,8 @@
 namespace Tests\Feature\AI;
 
 use App\AI\ResearchSourceIntake;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Http;
 use InvalidArgumentException;
 use Tests\TestCase;
 
@@ -152,6 +154,64 @@ class ResearchSourceIntakeTest extends TestCase
         ], (new ResearchSourceIntake())->candidateCitations([
             'https://docs.example.org/guide?lang=ar&page=2#chapter',
         ]));
+    }
+
+    public function test_github_citations_require_allowlist_and_live_public_visibility(): void
+    {
+        Cache::flush();
+        config(['portfolio.github_public_repos' => ['owner/public-repo']]);
+        Http::fake([
+            'https://api.github.com/repos/owner/public-repo' => Http::response([
+                'private' => false,
+                'visibility' => 'public',
+                'full_name' => 'owner/public-repo',
+                'html_url' => 'https://github.com/owner/public-repo',
+                'description' => 'Verified public repository',
+                'language' => 'PHP',
+            ], 200),
+        ]);
+
+        $url = 'https://github.com/owner/public-repo/blob/main/README.md';
+        $this->assertSame([
+            ['source_url' => $url, 'verified' => false],
+        ], (new ResearchSourceIntake())->candidateCitations([$url]));
+
+        Http::assertSentCount(1);
+    }
+
+    public function test_private_unallowlisted_and_direct_github_capability_urls_never_enter_ai_sources(): void
+    {
+        Cache::flush();
+        config(['portfolio.github_public_repos' => ['owner/private-repo']]);
+        Http::fake([
+            'https://api.github.com/repos/owner/private-repo' => Http::response([
+                'private' => true,
+                'visibility' => 'private',
+                'full_name' => 'owner/private-repo',
+                'html_url' => 'https://github.com/owner/private-repo',
+            ], 200),
+        ]);
+
+        $intake = new ResearchSourceIntake();
+        foreach ([
+            'https://github.com/owner/private-repo/blob/main/README.md',
+            'https://github.com/other/not-allowlisted',
+            'https://api.github.com/repos/owner/private-repo',
+            'https://raw.githubusercontent.com/owner/private-repo/main/secret.txt',
+            'https://gist.github.com/owner/0123456789abcdef',
+        ] as $url) {
+            try {
+                $intake->candidateCitations([$url]);
+                $this->fail('Unverified GitHub source entered the AI citation set.');
+            } catch (InvalidArgumentException $exception) {
+                $this->assertSame(
+                    'Research sources must use a safe public HTTPS URL.',
+                    $exception->getMessage()
+                );
+            }
+        }
+
+        Http::assertSentCount(2);
     }
 
     public function test_requires_one_to_twenty_source_candidates(): void
