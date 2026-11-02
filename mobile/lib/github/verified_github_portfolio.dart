@@ -2,9 +2,8 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:path_provider/path_provider.dart';
-
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../articles/verified_articles.dart';
@@ -149,80 +148,12 @@ class VerifiedGithubPortfolioReader {
   }
 }
 
-
 /// Device-local follow list. It never mutates the user's GitHub account.
-abstract class GithubFollowStore {
-  Future<Set<String>> load();
-  Future<void> save(Set<String> repositories);
-}
-
+abstract class GithubFollowStore { Future<Set<String>> load(); Future<void> save(Set<String> repositories); }
 class GithubFollowStoreCodec {
   GithubFollowStoreCodec._();
-  static final RegExp _name = RegExp(
-    r'^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?/[A-Za-z0-9_][A-Za-z0-9_.-]{0,99}$',
-  );
+  static final RegExp _name = RegExp(r'^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?/[A-Za-z0-9_][A-Za-z0-9_.-]{0,99}
 
-  static Set<String> decode(String raw) {
-    if (raw.length > 16384) throw const FormatException('Follow list too large');
-    final value = jsonDecode(raw);
-    if (value is! Map<String, dynamic> || value.length != 2 ||
-        value['schema'] != 'walidsite.github-follows.v1' ||
-        value['repositories'] is! List) {
-      throw const FormatException('Invalid local follow list');
-    }
-    final entries = value['repositories'] as List<dynamic>;
-    if (entries.length > 100) throw const FormatException('Follow list limit exceeded');
-    final result = <String>{};
-    for (final entry in entries) {
-      if (entry is! String || !_name.hasMatch(entry) || entry.contains('..') ||
-          !result.add(entry.toLowerCase())) {
-        throw const FormatException('Invalid or duplicate followed repository');
-      }
-    }
-    return Set.unmodifiable(result);
-  }
-
-  static String encode(Set<String> repositories) {
-    if (repositories.length > 100 || repositories.any((name) =>
-        !_name.hasMatch(name) || name.contains('..'))) {
-      throw const FormatException('Invalid local follow selection');
-    }
-    final normalized = repositories.map((name) => name.toLowerCase()).toSet();
-    if (normalized.length != repositories.length) {
-      throw const FormatException('Duplicate local follow selection');
-    }
-    final sorted = normalized.toList()..sort();
-    return jsonEncode({'schema': 'walidsite.github-follows.v1', 'repositories': sorted});
-  }
-}
-
-class FileGithubFollowStore implements GithubFollowStore {
-  const FileGithubFollowStore();
-  Future<File> _file() async {
-    final directory = await getApplicationSupportDirectory();
-    return File('${directory.path}/github-followed-repositories.json');
-  }
-  @override
-  Future<Set<String>> load() async {
-    final file = await _file();
-    if (!await file.exists()) return const <String>{};
-    return GithubFollowStoreCodec.decode(await file.readAsString());
-  }
-  @override
-  Future<void> save(Set<String> repositories) async {
-    final encoded = GithubFollowStoreCodec.encode(repositories);
-    final file = await _file();
-    await file.parent.create(recursive: true);
-    final temporary = File('${file.path}.tmp');
-    try {
-      await temporary.writeAsString(encoded, flush: true);
-      await temporary.rename(file.path);
-    } catch (_) {
-      if (await temporary.exists()) await temporary.delete();
-      rethrow;
-    }
-  }
-}
 /// MOBILE-10: real public repository cards and links, with no made-up metrics.
 class VerifiedGithubPortfolioScreen extends StatefulWidget {
   const VerifiedGithubPortfolioScreen({
@@ -249,9 +180,7 @@ class _VerifiedGithubPortfolioScreenState
   bool _followLoading = true;
   bool _followSaving = false;
   String? _followError;
-
-  GithubFollowStore get _followStore =>
-      widget.followStore ?? const FileGithubFollowStore();
+  GithubFollowStore get _followStore => widget.followStore ?? const FileGithubFollowStore();
   bool get _configured =>
       widget.loader != null || VerifiedGithubPortfolioReader.configuredOrigin() != null;
 
@@ -273,47 +202,18 @@ class _VerifiedGithubPortfolioScreenState
 
   Future<void> _loadFollowed() async {
     setState(() { _followLoading = true; _followError = null; });
-    try {
-      final saved = await _followStore.load();
-      if (!mounted) return;
-      setState(() { _followed = saved; _followLoading = false; });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _followLoading = false;
-        _followError = widget.arabic
-            ? 'تعذر قراءة قائمة المتابعة المحلية. أعد المحاولة.'
-            : 'Could not read the on-device follow list. Retry.';
-      });
-    }
+    try { final saved = await _followStore.load(); if (!mounted) return; setState(() { _followed = saved; _followLoading = false; }); }
+    catch (_) { if (!mounted) return; setState(() { _followLoading = false; _followError = widget.arabic ? 'تعذر قراءة قائمة المتابعة المحلية. أعد المحاولة.' : 'Could not read the on-device follow list. Retry.'; }); }
   }
 
   Future<void> _toggleFollow(VerifiedGithubRepository repository) async {
     if (_followLoading || _followSaving || _followError != null) return;
-    final key = repository.fullName.toLowerCase();
-    final next = Set<String>.of(_followed);
-    if (!next.remove(key)) {
-      if (next.length >= 100) {
-        setState(() => _followError = widget.arabic
-            ? 'وصلت إلى الحد الأقصى وهو 100 مستودع محفوظ.'
-            : 'The on-device list is limited to 100 repositories.');
-        return;
-      }
-      next.add(key);
-    }
+    final key = repository.fullName.toLowerCase(); final next = Set<String>.of(_followed);
+    if (!next.remove(key)) { if (next.length >= 100) { setState(() => _followError = widget.arabic ? 'وصلت إلى الحد الأقصى وهو 100 مستودع محفوظ.' : 'The on-device list is limited to 100 repositories.'); return; } next.add(key); }
     setState(() { _followSaving = true; _followError = null; });
-    try {
-      await _followStore.save(next);
-      if (!mounted) return;
-      setState(() => _followed = next);
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => _followError = widget.arabic
-          ? 'تعذر حفظ التغيير على هذا الجهاز. لم تتغير القائمة.'
-          : 'Could not save this change on the device. The list is unchanged.');
-    } finally {
-      if (mounted) setState(() => _followSaving = false);
-    }
+    try { await _followStore.save(next); if (!mounted) return; setState(() => _followed = next); }
+    catch (_) { if (!mounted) return; setState(() => _followError = widget.arabic ? 'تعذر حفظ التغيير على هذا الجهاز. لم تتغير القائمة.' : 'Could not save this change on the device. The list is unchanged.'); }
+    finally { if (mounted) setState(() => _followSaving = false); }
   }
 
   void _refresh() {
@@ -401,20 +301,15 @@ class _VerifiedGithubPortfolioScreenState
                           ? 'مستودعات عامة تم التحقق منها عبر GitHub. لا تُعرض مستودعات خاصة أو إحصاءات تخمينية.'
                           : 'Public repositories verified through GitHub. No private projects or estimated metrics.'),
                       const SizedBox(height: 8),
-                      Text(
-                        ar
-                            ? 'المتابعة محفوظة على هذا الجهاز فقط، ولا تنشئ نجمة أو متابعة في حساب GitHub.'
-                            : 'Follows are stored on this device only; they do not star or watch repositories on GitHub.',
-                        key: const Key('github-follow-local-note'),
-                      ),
+                      Text(ar
+                          ? 'المتابعة محفوظة على هذا الجهاز فقط، ولا تنشئ نجمة أو متابعة في حساب GitHub.'
+                          : 'Follows are stored on this device only; they do not star or watch repositories on GitHub.',
+                          key: const Key('github-follow-local-note')),
                       if (_followError != null) ...[
-                        const SizedBox(height: 8),
                         Text(_followError!, key: const Key('github-follow-error')),
-                        TextButton(
-                          key: const Key('github-follow-retry'),
+                        TextButton(key: const Key('github-follow-retry'),
                           onPressed: _followLoading || _followSaving ? null : _loadFollowed,
-                          child: Text(ar ? 'إعادة المحاولة' : 'Retry'),
-                        ),
+                          child: Text(ar ? 'إعادة المحاولة' : 'Retry')),
                       ],
                       const SizedBox(height: 12),
                       for (final repository in repositories)
@@ -438,14 +333,9 @@ class _VerifiedGithubPortfolioScreenState
                             ),
                             trailing: IconButton(
                               key: Key('github-follow-' + repository.fullName),
-                              tooltip: _followed.contains(repository.fullName.toLowerCase())
-                                  ? (ar ? 'إلغاء المتابعة على هذا الجهاز' : 'Unfollow on this device')
-                                  : (ar ? 'متابعة على هذا الجهاز' : 'Follow on this device'),
-                              onPressed: _followLoading || _followSaving || _followError != null
-                                  ? null : () => _toggleFollow(repository),
-                              icon: Icon(_followed.contains(repository.fullName.toLowerCase())
-                                  ? Icons.bookmark_added_outlined
-                                  : Icons.bookmark_add_outlined),
+                              tooltip: _followed.contains(repository.fullName.toLowerCase()) ? (ar ? 'إلغاء المتابعة على هذا الجهاز' : 'Unfollow on this device') : (ar ? 'متابعة على هذا الجهاز' : 'Follow on this device'),
+                              onPressed: _followLoading || _followSaving || _followError != null ? null : () => _toggleFollow(repository),
+                              icon: Icon(_followed.contains(repository.fullName.toLowerCase()) ? Icons.bookmark_added_outlined : Icons.bookmark_add_outlined),
                             ),
                             onTap: () => _open(repository),
                           )),
@@ -458,82 +348,39 @@ class _VerifiedGithubPortfolioScreenState
     );
   }
 }
-,
-  );
-
+);
   static Set<String> decode(String raw) {
-    if (raw.length > 16384) {
-      throw const FormatException('Follow list exceeds its size limit');
-    }
+    if (raw.length > 16384) throw const FormatException('Follow list too large');
     final value = jsonDecode(raw);
-    if (value is! Map<String, dynamic> ||
-        value.length != 2 ||
-        value['schema'] != 'walidsite.github-follows.v1' ||
-        value['repositories'] is! List) {
-      throw const FormatException('Invalid local follow list');
-    }
+    if (value is! Map<String, dynamic> || value.length != 2 || value['schema'] != 'walidsite.github-follows.v1' || value['repositories'] is! List) throw const FormatException('Invalid local follow list');
     final entries = value['repositories'] as List<dynamic>;
-    if (entries.length > 100) {
-      throw const FormatException('Too many followed repositories');
-    }
+    if (entries.length > 100) throw const FormatException('Follow list limit exceeded');
     final result = <String>{};
     for (final entry in entries) {
-      if (entry is! String ||
-          !_repositoryName.hasMatch(entry) ||
-          entry.contains('..') ||
-          !result.add(entry.toLowerCase())) {
-        throw const FormatException('Invalid or duplicate followed repository');
-      }
+      if (entry is! String || !_name.hasMatch(entry) || entry.contains('..') || !result.add(entry.toLowerCase())) throw const FormatException('Invalid or duplicate followed repository');
     }
     return Set.unmodifiable(result);
   }
-
   static String encode(Set<String> repositories) {
-    if (repositories.length > 100 ||
-        repositories.any((name) =>
-            !_repositoryName.hasMatch(name) || name.contains('..'))) {
-      throw const FormatException('Invalid local follow selection');
-    }
+    if (repositories.length > 100 || repositories.any((name) => !_name.hasMatch(name) || name.contains('..'))) throw const FormatException('Invalid local follow selection');
     final normalized = repositories.map((name) => name.toLowerCase()).toSet();
-    if (normalized.length != repositories.length) {
-      throw const FormatException('Duplicate local follow selection');
-    }
+    if (normalized.length != repositories.length) throw const FormatException('Duplicate local follow selection');
     final sorted = normalized.toList()..sort();
-    return jsonEncode({
-      'schema': 'walidsite.github-follows.v1',
-      'repositories': sorted,
-    });
+    return jsonEncode({'schema': 'walidsite.github-follows.v1', 'repositories': sorted});
   }
 }
-
 class FileGithubFollowStore implements GithubFollowStore {
   const FileGithubFollowStore();
-
-  Future<File> _file() async {
-    final directory = await getApplicationSupportDirectory();
-    return File('${directory.path}/github-followed-repositories.json');
-  }
-
+  Future<File> _file() async { final directory = await getApplicationSupportDirectory(); return File('${directory.path}/github-followed-repositories.json'); }
   @override
-  Future<Set<String>> load() async {
-    final file = await _file();
-    if (!await file.exists()) return const <String>{};
-    return GithubFollowStoreCodec.decode(await file.readAsString());
-  }
-
+  Future<Set<String>> load() async { final file = await _file(); if (!await file.exists()) return const <String>{}; return GithubFollowStoreCodec.decode(await file.readAsString()); }
   @override
   Future<void> save(Set<String> repositories) async {
     final encoded = GithubFollowStoreCodec.encode(repositories);
-    final file = await _file();
-    await file.parent.create(recursive: true);
+    final file = await _file(); await file.parent.create(recursive: true);
     final temporary = File('${file.path}.tmp');
-    try {
-      await temporary.writeAsString(encoded, flush: true);
-      await temporary.rename(file.path);
-    } catch (_) {
-      if (await temporary.exists()) await temporary.delete();
-      rethrow;
-    }
+    try { await temporary.writeAsString(encoded, flush: true); await temporary.rename(file.path); }
+    catch (_) { if (await temporary.exists()) await temporary.delete(); rethrow; }
   }
 }
 
@@ -660,22 +507,6 @@ class _VerifiedGithubPortfolioScreenState
                       Text(ar
                           ? 'مستودعات عامة تم التحقق منها عبر GitHub. لا تُعرض مستودعات خاصة أو إحصاءات تخمينية.'
                           : 'Public repositories verified through GitHub. No private projects or estimated metrics.'),
-                      const SizedBox(height: 8),
-                      Text(
-                        ar
-                            ? 'المتابعة محفوظة على هذا الجهاز فقط، ولا تنشئ نجمة أو متابعة في حساب GitHub.'
-                            : 'Follows are stored on this device only; they do not star or watch repositories on GitHub.',
-                        key: const Key('github-follow-local-note'),
-                      ),
-                      if (_followError != null) ...[
-                        const SizedBox(height: 8),
-                        Text(_followError!, key: const Key('github-follow-error')),
-                        TextButton(
-                          key: const Key('github-follow-retry'),
-                          onPressed: _followLoading || _followSaving ? null : _loadFollowed,
-                          child: Text(ar ? 'إعادة المحاولة' : 'Retry'),
-                        ),
-                      ],
                       const SizedBox(height: 12),
                       for (final repository in repositories)
                         Padding(
@@ -696,17 +527,7 @@ class _VerifiedGithubPortfolioScreenState
                                     repository.verifiedAt.toIso8601String()),
                               ],
                             ),
-                            trailing: IconButton(
-                              key: Key('github-follow-' + repository.fullName),
-                              tooltip: _followed.contains(repository.fullName.toLowerCase())
-                                  ? (ar ? 'إلغاء المتابعة على هذا الجهاز' : 'Unfollow on this device')
-                                  : (ar ? 'متابعة على هذا الجهاز' : 'Follow on this device'),
-                              onPressed: _followLoading || _followSaving || _followError != null
-                                  ? null : () => _toggleFollow(repository),
-                              icon: Icon(_followed.contains(repository.fullName.toLowerCase())
-                                  ? Icons.bookmark_added_outlined
-                                  : Icons.bookmark_add_outlined),
-                            ),
+                            trailing: const Icon(Icons.open_in_new),
                             onTap: () => _open(repository),
                           )),
                         ),
