@@ -46,6 +46,23 @@ class T007DiagnosticExitTest(unittest.TestCase):
         self.assertEqual(exit_code(["exact"] * 5, responsive_ok=False), 1)
         self.assertEqual(exit_code(["mismatch"] * 5, responsive_ok=True), 0)
 
+    def test_rasterization_sweep_is_diagnostic_only(self):
+        source = (Path(__file__).resolve().parents[1] /
+                  "capture_t007_diagnostics.py").read_text(encoding="utf-8")
+        self.assertIn('"current": ["--disable-lcd-text"]', source)
+        self.assertIn('"--font-render-hinting=none"', source)
+        self.assertIn('"--font-render-hinting=slight"', source)
+        self.assertIn('"default": []', source)
+        self.assertIn('report["rasterization_sweep"]', source)
+        # The diagnostic result is intentionally absent from the final exit
+        # policy and pixel acceptance; it must never turn a mismatch green.
+        tree = ast.parse(source)
+        main = next(node for node in tree.body
+                    if isinstance(node, ast.FunctionDef) and node.name == "main")
+        final_return = next(node for node in reversed(main.body)
+                            if isinstance(node, ast.Return))
+        self.assertNotIn("rasterization_sweep", ast.unparse(final_return.value))
+
     def test_runtime_audit_covers_mobile_tablet_arabic_english_and_keyboard(self):
         source = (Path(__file__).resolve().parents[1] /
                   "capture_t007_diagnostics.py").read_text(encoding="utf-8")
