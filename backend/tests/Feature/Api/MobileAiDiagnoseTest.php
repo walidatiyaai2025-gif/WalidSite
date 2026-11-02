@@ -256,22 +256,32 @@ final class MobileAiDiagnoseTest extends TestCase
             ]),
         ]);
 
+        // Install one listener for both cases. DB::listen callbacks live
+        // for the whole test, so registering one per iteration would let an
+        // earlier listener consume the next iteration's transition.
+        $targetAccount = null;
+        $targetStatus = null;
+        $switchedDuringCatalogRead = false;
+        DB::listen(function ($event) use (
+            &$targetAccount, &$targetStatus, &$switchedDuringCatalogRead
+        ): void {
+            if ($targetAccount === null || $switchedDuringCatalogRead
+                || ! str_contains(strtolower($event->sql), 'runbooks')) {
+                return;
+            }
+            // This runs *after* token authentication, as part of the
+            // genuine reviewed catalog database read.
+            $switchedDuringCatalogRead = true;
+            DB::table('users')->where('id', $targetAccount)
+                ->update(['status' => $targetStatus]);
+        });
+
         foreach (['inactive', 'deleted'] as $status) {
             $owner = $this->user();
             $token = $this->token($owner);
+            $targetAccount = $owner->id;
+            $targetStatus = $status;
             $switchedDuringCatalogRead = false;
-
-            DB::listen(function ($event) use ($owner, $status, &$switchedDuringCatalogRead): void {
-                if ($switchedDuringCatalogRead
-                    || ! str_contains(strtolower($event->sql), 'runbooks')) {
-                    return;
-                }
-                // This runs *after* token authentication, as part of the
-                // genuine reviewed catalog database read.
-                $switchedDuringCatalogRead = true;
-                DB::table('users')->where('id', $owner->id)
-                    ->update(['status' => $status]);
-            });
 
             $this->withToken($token)
                 ->postJson('/api/v1/mobile/ai/diagnose', $this->payload())
@@ -289,6 +299,7 @@ final class MobileAiDiagnoseTest extends TestCase
             $this->assertDatabaseCount('ai_usage', 0);
             Auth::forgetGuards();
         }
+        $targetAccount = null;
 
         Http::assertNothingSent();
 
