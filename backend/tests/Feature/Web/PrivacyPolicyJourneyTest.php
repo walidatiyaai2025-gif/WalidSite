@@ -38,7 +38,7 @@ final class PrivacyPolicyJourneyTest extends TestCase
             $this->get('/privacy?lang='.$lang)->assertSee(
                 'href="'.e(route('public.contact', [
                     'lang' => $lang, 'topic' => 'privacy',
-                ]).'"', false
+                ])).'"', false
             );
         }
     }
@@ -72,12 +72,12 @@ final class PrivacyPolicyJourneyTest extends TestCase
             ->assertSee('Data handling details')
             ->assertSee('href="'.e(route('public.contact', [
                 'lang' => 'ar', 'topic' => 'privacy',
-            ]).'"', false);
+            ])).'"', false);
         $this->get('/contact?lang=ar&topic=privacy')->assertOk()
             ->assertSee('طلب متعلق بالخصوصية أو البيانات')
             ->assertSee('href="'.e(route('public.contact', [
                 'lang' => 'en', 'topic' => 'privacy',
-            ]).'"', false);
+            ])).'"', false);
         $this->get('/contact?lang=en&topic%5B%5D=privacy')->assertOk()
             ->assertDontSee('value="Privacy or personal data request"', false);
         $this->get('/contact?lang=en&topic=unsafe-injected')->assertOk()
