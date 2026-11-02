@@ -71,6 +71,65 @@ class IdentitySecurityTest extends TestCase
         $this->getJson('/api/v1/mobile/me')->assertUnauthorized();
     }
 
+    public function test_mobile_login_accepts_case_variants_and_remains_mobile_scoped(): void
+    {
+        $user = $this->userWithRole('owner');
+        $user->update(['email' => 'Mixed.Case@example.test']);
+
+        $response = $this->postJson('/api/v1/auth/login', [
+            'email' => 'mIXED.cASE@EXAMPLE.TEST',
+            'password' => 'VeryLongTestPassword.123!',
+            'device_name' => 'case-test-phone',
+        ])->assertOk()->assertJsonPath('data.token_type', 'Bearer');
+
+        $token = $response->json('data.token');
+        $this->assertIsString($token);
+        $this->assertSame(1, $user->tokens()->count());
+        Auth::forgetGuards();
+        $this->withToken($token)->getJson('/api/v1/mobile/me')
+            ->assertOk()->assertJsonPath('data.id', $user->id)
+            ->assertJsonPath('data.email', 'Mixed.Case@example.test');
+        $this->getJson('/api/v1/admin/identity-check')->assertForbidden();
+    }
+
+    public function test_mobile_login_denies_ambiguous_legacy_case_collision(): void
+    {
+        // SQLite's legacy unique index permits case-distinct records. The
+        // login must never select whichever matched row appears first.
+        $first = $this->userWithRole();
+        $second = $this->userWithRole();
+        $first->update(['email' => 'Legacy.Collision@example.test']);
+        $second->update(['email' => 'legacy.collision@EXAMPLE.TEST']);
+
+        $this->postJson('/api/v1/auth/login', [
+            'email' => 'LEGACY.COLLISION@example.test',
+            'password' => 'VeryLongTestPassword.123!',
+            'device_name' => 'ambiguous-phone',
+        ])->assertStatus(422)->assertJsonPath('message', 'Invalid credentials.')
+            ->assertJsonMissingPath('data.token');
+
+        $this->assertDatabaseCount('personal_access_tokens', 0);
+    }
+
+    public function test_mixed_case_login_still_denies_bad_password_and_inactive_account(): void
+    {
+        $user = $this->userWithRole();
+        $user->update(['email' => 'Denied.Login@example.test']);
+        $input = [
+            'email' => 'DENIED.LOGIN@EXAMPLE.TEST',
+            'password' => 'incorrect-password',
+            'device_name' => 'bad-phone',
+        ];
+
+        $this->postJson('/api/v1/auth/login', $input)
+            ->assertStatus(422)->assertJsonPath('message', 'Invalid credentials.');
+        $user->update(['status' => 'inactive']);
+        $input['password'] = 'VeryLongTestPassword.123!';
+        $this->postJson('/api/v1/auth/login', $input)
+            ->assertStatus(422)->assertJsonPath('message', 'Invalid credentials.');
+        $this->assertDatabaseCount('personal_access_tokens', 0);
+    }
+
     public function test_expired_mobile_token_is_rejected(): void
     {
         $user = $this->userWithRole();

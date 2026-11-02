@@ -20,7 +20,14 @@ class IdentityController extends Controller
             'password' => ['required', 'string'],
             'device_name' => ['required', 'string', 'max:100'],
         ]);
-        $user = User::query()->where('email', $data['email'])->first();
+        // Profile email updates already enforce case-insensitive uniqueness.
+        // Use the same rule when authenticating on SQLite and MariaDB. A
+        // legacy database with two case-equivalent accounts is ambiguous:
+        // never choose an arbitrary account to receive a bearer token.
+        $matches = User::query()
+            ->whereRaw('LOWER(email) = ?', [Str::lower($data['email'])])
+            ->limit(2)->get();
+        $user = $matches->count() === 1 ? $matches->first() : null;
 
         if (! $user || $user->status !== 'active' ||
             ! $user->password_hash || ! Hash::check($data['password'], $user->password_hash)) {
