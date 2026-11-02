@@ -123,7 +123,10 @@ def main() -> int:
         from playwright.sync_api import sync_playwright
         base_url = os.environ.get("WALIDSITE_RENDER_BASE_URL", "").rstrip("/")
         with sync_playwright() as playwright:
-            browser = playwright.chromium.launch(headless=True)
+            browser = playwright.chromium.launch(
+                headless=True,
+                args=["--disable-lcd-text"],
+            )
             try:
                 context = browser.new_context(
                     viewport={"width": 1440, "height": 860},
