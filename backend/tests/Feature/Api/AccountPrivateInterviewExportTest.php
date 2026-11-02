@@ -44,7 +44,7 @@ final class AccountPrivateInterviewExportTest extends TestCase
         return $id;
     }
 
-    private function session(User $user, string $path, ?string $answer, int $offset): string
+    private function insertInterviewSession(User $user, string $path, ?string $answer, int $offset): string
     {
         $id = (string) Str::uuid();
         DB::table('mobile_interview_sessions')->insert([
@@ -69,9 +69,9 @@ final class AccountPrivateInterviewExportTest extends TestCase
         $owner = $this->user('self-export');
         $other = $this->user('foreign-export');
         $path = $this->path();
-        $first = $this->session($owner, $path, 'PRIVATE_USER_AUTHORED_ANSWER', 0);
-        $pending = $this->session($owner, $path, null, 1);
-        $this->session($other, $path, 'FOREIGN_PRIVATE_ANSWER', 0);
+        $first = $this->insertInterviewSession($owner, $path, 'PRIVATE_USER_AUTHORED_ANSWER', 0);
+        $pending = $this->insertInterviewSession($owner, $path, null, 1);
+        $this->insertInterviewSession($other, $path, 'FOREIGN_PRIVATE_ANSWER', 0);
 
         DB::table('saved_resources')->insert([
             'id' => (string) Str::uuid(),
@@ -122,7 +122,7 @@ final class AccountPrivateInterviewExportTest extends TestCase
         $other = $this->user('another-account');
         $owner = $this->user('only-owner');
         $path = $this->path();
-        $this->session($other, $path, 'NEVER_EXPORTED_OTHER_ACCOUNT', 0);
+        $this->insertInterviewSession($other, $path, 'NEVER_EXPORTED_OTHER_ACCOUNT', 0);
 
         $this->withToken($this->token($owner, ['admin']))
             ->getJson('/api/v1/mobile/account/export')->assertForbidden();
@@ -191,7 +191,7 @@ final class AccountPrivateInterviewExportTest extends TestCase
         ])->save();
         $token = $this->token($owner);
         $path = $this->path();
-        $this->session($owner, $path, 'PRIVATE_ERASE_WITH_ACCOUNT', 0);
+        $this->insertInterviewSession($owner, $path, 'PRIVATE_ERASE_WITH_ACCOUNT', 0);
 
         $this->withToken($token)
             ->getJson('/api/v1/mobile/account/export')
