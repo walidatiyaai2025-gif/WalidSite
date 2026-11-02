@@ -36,8 +36,8 @@ body:has(.t012-reference-stage) .site-main{min-height:0}
 body:has(.t012-reference-stage) .site-footer{margin-top:0}
 .t012-nav-shell{height:100px;background:#184876;display:flex;align-items:center;padding:0 59px 0 55px;color:#fff}
 .t012-brand{display:flex;align-items:center;text-decoration:none;white-space:nowrap;margin-right:47px;transform:translate(-2px,2px)}
-.t012-brand span{display:inline-block;font-size:40px;font-weight:800;line-height:1;color:#0a9a8c;letter-spacing:-1.2px;transform:translate(1px,1px);transform-origin:left top}
-.t012-brand strong{display:inline-block;font-size:25px;font-weight:700;color:#fff;margin-left:4px;letter-spacing:.18px;transform:translate(-1px,-3px) scaleY(.92);transform-origin:left top}
+.t012-brand span{display:inline-block;font-size:40px;font-weight:800;line-height:1;color:#0a9a8c;letter-spacing:-1.2px;transform:translate(2px,1px) scale(.972,.966);transform-origin:left top}
+.t012-brand strong{display:inline-block;font-size:25px;font-weight:700;color:#fff;margin-left:4px;letter-spacing:.18px;transform:translate(-1px,-2px) scale(1.006,.856);transform-origin:left top}
 .t012-nav-links{height:100%;display:flex;align-items:center;flex:1;min-width:0;transform:translate(-9px,3px)}
 .t012-nav-links a{display:flex;align-items:center;height:100%;color:#d8e6f2;text-decoration:none;font-size:16px;font-weight:400;white-space:nowrap;margin-right:0;flex:0 0 auto}
 .t012-nav-links a.active{color:#0a9a8c}
