@@ -131,7 +131,9 @@ def main() -> int:
             os.environ.get("WALIDSITE_QA_ADMIN_PASSWORD", ""),
             locale=os.environ.get("WALIDSITE_QA_ADMIN_LOCALE", "en"),
         )
-    except (AdminSessionError, OSError, ValueError, RuntimeError, TimeoutError, KeyError):
+    except Exception:
+        # Playwright raises its own Error/TimeoutError classes; never allow
+        # their diagnostic text or browser context to leak login credentials.
         print("ADMIN SESSION NOT VERIFIED: login, authorization or local runtime failed", file=sys.stderr)
         return 1
     print("WALIDSITE_CAPTURE_STORAGE_STATE=" + str(state))
