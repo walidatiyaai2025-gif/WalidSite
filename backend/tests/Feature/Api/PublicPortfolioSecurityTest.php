@@ -92,6 +92,95 @@ class PublicPortfolioSecurityTest extends TestCase
             ->assertJsonPath('data.summary', 'عمل معتمد بالمصادر');
     }
 
+    public function test_trailing_root_dot_github_links_never_qualify_as_public_project_proof(): void
+    {
+        $unverified = $this->project();
+        foreach ([
+            'https://github.com./owner/unverified-repository',
+            'https://WWW.GITHUB.COM./owner/private-repository',
+            'https://GitHub.Com./organization/unchecked',
+            'https://www.github.com./organization/unchecked',
+            'https://github.com/owner/private-repository',
+        ] as $url) {
+            $this->proof($unverified, 'public', true, $url);
+        }
+
+        $verified = $this->project();
+        $this->proof($verified, 'public', true, 'https://docs.example.test/public-reviewed');
+        $this->proof($verified, 'public', true, 'https://github.com./owner/unverified-repository');
+
+        foreach (['en', 'ar'] as $locale) {
+            $this->getJson('/api/v1/public/projects?lang='.$locale)
+                ->assertOk()
+                ->assertJsonCount(1, 'data')
+                ->assertJsonPath('meta.total', 1)
+                ->assertJsonPath('data.0.slug', $verified->slug)
+                ->assertJsonCount(1, 'data.0.evidence_urls')
+                ->assertJsonPath('data.0.evidence_urls.0', 'https://docs.example.test/public-reviewed')
+                ->assertDontSee('github.com.')
+                ->assertDontSee($unverified->slug);
+            $this->getJson('/api/v1/public/projects/'.$unverified->slug.'?lang='.$locale)
+                ->assertNotFound();
+            $this->getJson('/api/v1/public/projects/'.$verified->slug.'?lang='.$locale)
+                ->assertOk()->assertJsonCount(1, 'data.evidence_urls')
+                ->assertJsonPath('data.evidence_urls.0', 'https://docs.example.test/public-reviewed')
+                ->assertDontSee('github.com.');
+            $this->get('/projects?lang='.$locale)->assertOk()
+                ->assertDontSee($unverified->slug)
+                ->assertDontSee('github.com.');
+            $this->get('/projects/'.$unverified->slug.'?lang='.$locale)->assertNotFound();
+        }
+    }
+
+    public function test_trailing_root_dot_github_claims_do_not_expose_unverified_professional_evidence(): void
+    {
+        $user = User::create([
+            'email' => 'github-root-dot-owner@example.test', 'status' => 'active',
+        ]);
+        $user->roles()->attach(Role::firstOrCreate(['name' => 'owner'])->id);
+        $profile = Profile::create([
+            'user_id' => $user->id,
+            'public_name' => 'Verified Public Owner',
+            'publish_status' => 'published',
+        ]);
+
+        foreach ([
+            'https://github.com./organization/private',
+            'https://WWW.GITHUB.COM./organization/unchecked',
+            'https://github.com/organization/private',
+        ] as $i => $url) {
+            ProfessionalClaim::create([
+                'profile_id' => $profile->id,
+                'claim_en' => 'Unverified GitHub claim '.$i,
+                'claim_ar' => 'ادعاء GitHub غير موثق '.$i,
+                'evidence_url' => $url,
+                'status' => 'approved',
+                'is_public' => true,
+            ]);
+        }
+        ProfessionalClaim::create([
+            'profile_id' => $profile->id,
+            'claim_en' => 'Independent published public evidence',
+            'claim_ar' => 'دليل عام مستقل معتمد',
+            'evidence_url' => 'https://docs.example.test/public-reviewed',
+            'status' => 'approved',
+            'is_public' => true,
+        ]);
+
+        foreach (['en', 'ar'] as $locale) {
+            $this->getJson('/api/v1/public/profile?lang='.$locale)
+                ->assertOk()
+                ->assertJsonCount(1, 'data.claims')
+                ->assertJsonPath('data.claims.0.text', $locale === 'ar'
+                    ? 'دليل عام مستقل معتمد'
+                    : 'Independent published public evidence')
+                ->assertJsonPath('data.claims.0.evidence_url', 'https://docs.example.test/public-reviewed')
+                ->assertDontSee('github.com.')
+                ->assertDontSee('Unverified GitHub claim')
+                ->assertDontSee('ادعاء GitHub غير موثق');
+        }
+    }
+
     public function test_internal_evidence_links_never_qualify_as_public_project_proof(): void
     {
         $unproven = $this->project();
