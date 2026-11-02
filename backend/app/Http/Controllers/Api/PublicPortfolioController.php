@@ -224,7 +224,9 @@ class PublicPortfolioController extends Controller
             && ! isset($parts['query'])
             && ! isset($parts['fragment'])
             // Repository visibility is checked only by T017, not by this evidence flag.
-            && ! in_array(strtolower($parts['host']), ['github.com', 'www.github.com'], true);
+            // DNS treats a final root dot as the same host. Do not allow
+            // github.com. to bypass T017's verified-repository allowlist.
+            && ! in_array(strtolower(rtrim($parts['host'], '.')), ['github.com', 'www.github.com'], true);
     }
 
     /**
