@@ -4,10 +4,8 @@
 @php($t007ReferenceReady = match ($screen) {
     'home' => isset($publicProfile, $hasVerifiedAiCapability)
         && is_array($publicProfile) && $hasVerifiedAiCapability === true,
-    'about' => isset($positions) && $positions->count() >= 3,
     'expertise' => $t007HasAiSkill,
     'ai' => ! empty($aiData['skills'] ?? []),
-    'hire' => $t007HasAiSkill,
     default => false,
 })
 @php($referenceCopy = [
