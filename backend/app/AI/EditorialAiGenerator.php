@@ -6,6 +6,7 @@ use App\Models\AiProvider;
 use App\Models\Article;
 use App\Models\ArticleRevision;
 use App\Models\Asset;
+use App\Models\AssetVariant;
 use DomainException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -164,6 +165,20 @@ final class EditorialAiGenerator
                 'rights_status' => 'unverified',
                 'publishable' => false,
             ]);
+
+            // Register the exact verified generator output as the canonical
+            // source variant. Do not invent resized thumbnails when this
+            // deployment has no approved image-processing extension. Width,
+            // height and format come from decoded bytes, never provider text.
+            AssetVariant::create([
+                'asset_id' => $asset->id,
+                'size_key' => 'source',
+                'storage_key' => $key,
+                'width' => (int) $details[0],
+                'height' => (int) $details[1],
+                'format' => $extension,
+            ]);
+
             $manifest = [
                 'asset_id' => $asset->id,
                 'sha256' => $sha,
