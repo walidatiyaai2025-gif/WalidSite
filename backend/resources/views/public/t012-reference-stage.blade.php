@@ -75,9 +75,8 @@ body:has(.t012-reference-stage) .site-footer{margin-top:0}
 .t012-card-icon{width:67px;height:65px;border-radius:12px;background:#edf7fc;color:#0a9a8c;font-size:20px;font-weight:800;display:flex;align-items:center;justify-content:center;transform:translateX(-1px)}
 .t012-card-icon span{display:block;transform:translateY(-7px)}
 .t012-reference-card h2{font-size:26px;line-height:1.25;margin:36px 0 22px;color:#184876;font-weight:700;letter-spacing:1.5px;overflow-wrap:anywhere;transform:translateY(1px) scaleY(.92);transform-origin:left top}
-.t012-screen-blog .t012-reference-card h2{transform:translate(-1px,2px) scale(.975,.96);transform-origin:left top}
-.t012-screen-lab .t012-reference-card h2{font-weight:800;transform:translateY(2px) scale(.983,.92);transform-origin:left top}
-.t012-reference-card p{font-size:16px;line-height:1.5;margin:0;color:#254a68;letter-spacing:.55px;position:relative;top:-3px;overflow-wrap:anywhere;transform:translateY(1px) scaleY(.94);transform-origin:left top}
+.t012-screen-lab .t012-reference-card h2{font-weight:800}
+.t012-reference-card p{font-size:16px;line-height:1.5;margin:0;color:#254a68;letter-spacing:.55px;position:relative;top:-3px;overflow-wrap:anywhere;transform:scaleY(.94);transform-origin:left top}
 .t012-card-rule{height:2px;background:#dce7ec;position:absolute;left:19px;right:29px;top:244px}
 .t012-card-link{position:absolute;top:271px;left:26px;color:#0a7e74;text-decoration:none;font-size:20px;font-weight:600;letter-spacing:1.35px;transform:translateY(2px) scaleY(.84);transform-origin:left top}
 .t012-article-body{padding:30px 56px 36px;display:grid;grid-template-columns:minmax(0,946px) minmax(0,346px);gap:34px}
