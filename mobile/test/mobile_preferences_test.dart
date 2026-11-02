@@ -58,6 +58,11 @@ void main() {
       expect(fetches, 1);
       expect(find.byKey(const Key('preferences-verified')), findsOneWidget);
       expect(find.byKey(const Key('preferences-language')), findsOneWidget);
+      expect(find.byKey(const Key('preferences-theme')), findsOneWidget);
+      expect(find.byKey(const Key('preferences-change-theme-unavailable')), findsOneWidget);
+      expect(tester.widget<OutlinedButton>(
+          find.byKey(const Key('preferences-change-theme-unavailable'))).onPressed, isNull);
+      expect(find.text(arabic ? 'المظهر الفاتح فقط' : 'Light theme only'), findsOneWidget);
       expect(find.byKey(const Key('preferences-offline')), findsOneWidget);
       expect(find.byKey(const Key('preferences-alerts')), findsOneWidget);
       expect(find.byKey(const Key('preferences-ai')), findsOneWidget);
@@ -79,7 +84,9 @@ void main() {
       await tester.pumpAndSettle();
       expect(clears, 1);
       expect(find.byKey(const Key('preferences-clear-status')), findsOneWidget);
-      expect(find.textContaining('server data'), arabic ? findsNothing : findsWidgets);
+      expect(find.textContaining(
+          arabic ? 'تصدير الحساب وحذفه متاحان' : 'Account export and deletion are available'),
+          findsWidgets);
       expect(selected, isEmpty);
     });
   }
