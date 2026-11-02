@@ -32,7 +32,7 @@ class WebVisualPlanTest(unittest.TestCase):
             ROOT, project_slug="real-published-project",
             article_slug="real-reviewed-article", require_all=True,
         )
-        self.assertEqual(len(validate_plan(ROOT, plan, require_all=True)), 14)
+        self.assertEqual(len(validate_plan(ROOT, plan)), 14)
         routes = {row["screen_id"]: row["route"] for row in plan["captures"]}
         self.assertEqual(routes["WEB-05"], "/projects/real-published-project")
         self.assertEqual(routes["WEB-08"], "/blog/real-reviewed-article")

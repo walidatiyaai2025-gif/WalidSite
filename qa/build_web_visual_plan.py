@@ -84,7 +84,10 @@ def build_web_plan(root: Path, *, project_slug: str | None = None,
             "timeout": timeout,
         })
     plan = {"version": 1, "captures": captures}
-    validate_plan(root, plan, require_all=require_all)
+    validate_plan(root, plan)
+    # require_all here is WEB-01..14 only, never the full 40-screen app gate.
+    if require_all and len(captures) != len(WEB_IDS):
+        raise WebPlanError("All 14 Web screens must be present")
     return plan
 
 
