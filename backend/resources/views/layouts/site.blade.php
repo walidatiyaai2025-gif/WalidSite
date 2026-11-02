@@ -11,7 +11,7 @@
          URLs. WEB-03 expertise categories and WEB-12 recruiter tracks each
          have different allowlists; never echo raw or array-valued query data. --}}
     @php($seoPage = request()->route()?->getName())
-    @if (in_array($seoPage, ['home', 'public.about', 'public.expertise', 'public.hire'], true))
+    @if (in_array($seoPage, ['home', 'public.about', 'public.expertise', 'public.hire', 'public.privacy', 'public.terms'], true))
         @php($seoRawTrack = request()->query()['track'] ?? null)
         @php($seoRawCategory = request()->query()['category'] ?? null)
         @php($seoFilters = $seoPage === 'public.hire' && is_string($seoRawTrack)
@@ -25,6 +25,10 @@
         <link rel="alternate" hreflang="en" href="{{ route($seoPage, array_merge(['lang' => 'en'], $seoFilters)) }}">
         <link rel="alternate" hreflang="ar" href="{{ route($seoPage, array_merge(['lang' => 'ar'], $seoFilters)) }}">
         <link rel="alternate" hreflang="x-default" href="{{ route($seoPage, array_merge(['lang' => 'en'], $seoFilters)) }}">
+    @endif
+    @if(in_array($seoPage, ['public.privacy', 'public.terms'], true))
+        {{-- Unapproved legal drafts must not be indexed. --}}
+        <meta name="robots" content="noindex,follow">
     @endif
     <style>
         :root {
@@ -102,7 +106,7 @@
                 <a class="language-link" href="{{ route('public.github', ['lang' => $locale]) }}"@if(request()->routeIs('public.github')) aria-current="page"@endif>
                     {{ $locale === 'ar' ? 'مشاريع GitHub' : 'GitHub projects' }}
                 </a>
-                @php($languageRoute = request()->routeIs('public.github', 'public.about', 'public.expertise', 'public.hire', 'public.projects', 'public.project', 'public.resume', 'public.contact', 'public.blog', 'public.article', 'public.lab', 'public.lab.runbook', 'public.lab.runbooks', 'public.search') ? request()->route()->getName() : 'home')
+                @php($languageRoute = request()->routeIs('public.github', 'public.about', 'public.expertise', 'public.hire', 'public.projects', 'public.project', 'public.resume', 'public.contact', 'public.blog', 'public.article', 'public.lab', 'public.lab.runbook', 'public.lab.runbooks', 'public.search', 'public.privacy', 'public.terms') ? request()->route()->getName() : 'home')
                 @php($languageArgs = ['lang' => $locale === 'ar' ? 'en' : 'ar'])
                 @if(request()->routeIs('public.project', 'public.article'))
                     @php($languageArgs['slug'] = request()->route('slug'))
@@ -175,6 +179,10 @@
                             && in_array($rawContactTrack, ['database', 'software', 'delivery'], true))
                             @php($languageArgs['track'] = $rawContactTrack)
                         @endif
+                        @php($rawContactTopic = request()->query()['topic'] ?? null)
+                        @if(is_string($rawContactTopic) && $rawContactTopic === 'privacy')
+                            @php($languageArgs['topic'] = 'privacy')
+                        @endif
                     @endif
                 @endif
                 @if(request()->routeIs('public.resume', 'public.hire'))
@@ -194,6 +202,11 @@
     <footer class="site-footer">
         <div class="site-wrap footer-row">
             <span>{{ $locale === 'ar' ? 'وليد عطية — الموقع المهني' : 'Waleed Atiya — Engineering portfolio' }}</span>
+            <nav class="header-links" aria-label="{{ $locale === 'ar' ? 'روابط الخصوصية والقانون' : 'Privacy and legal links' }}">
+                <a class="language-link" href="{{ route('public.privacy', ['lang' => $locale]) }}"@if(request()->routeIs('public.privacy')) aria-current="page"@endif>{{ $locale === 'ar' ? 'الخصوصية والبيانات' : 'Privacy & data' }}</a>
+                <a class="language-link" href="{{ route('public.terms', ['lang' => $locale]) }}"@if(request()->routeIs('public.terms')) aria-current="page"@endif>{{ $locale === 'ar' ? 'الشروط' : 'Terms' }}</a>
+                <a class="language-link" href="{{ route('public.contact', ['lang' => $locale, 'topic' => 'privacy']) }}">{{ $locale === 'ar' ? 'طلب بيانات' : 'Data request' }}</a>
+            </nav>
             <span>{{ $locale === 'ar' ? 'قيد التطوير والتحقق' : 'In development and verification' }}</span>
         </div>
     </footer>
