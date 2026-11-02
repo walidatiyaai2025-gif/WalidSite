@@ -42,9 +42,9 @@ final class AdminApprovalsAuditJourneyTest extends TestCase
         $article->revisions()->create([
             'revision_no' => 1,
             'status' => $verified ? 'validated' : 'draft',
-            'body_md' => 'PRIVATE-DRAFT-BODY-NEVER-RENDER',
+            'body_md' => 'PRIVATE-DRAFT-BODY-NEVER-RENDER DO-NOT-LEAK',
             'citations_json' => [[
-                'source_url' => 'https://private.example.test/source?token=DO-NOT-LEAK',
+                'source_url' => 'https://example.org/reviewed-source',
                 'verified' => $verified,
             ]],
             'validation_json' => [
