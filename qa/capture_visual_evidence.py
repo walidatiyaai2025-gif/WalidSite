@@ -16,7 +16,14 @@ from pathlib import Path
 
 from PIL import Image, UnidentifiedImageError
 
-from qa.validate_visual_fidelity import audit
+try:
+    from qa.validate_visual_fidelity import audit
+except ModuleNotFoundError as exc:
+    # python3 qa/capture_visual_evidence.py puts qa/ first on sys.path.
+    # The module form (python3 -m qa.capture_visual_evidence) uses qa.*.
+    if exc.name != "qa":
+        raise
+    from validate_visual_fidelity import audit
 
 
 class CaptureError(ValueError):
