@@ -17,6 +17,105 @@ from PIL import Image, ImageChops, ImageEnhance
 
 SCREEN_IDS = ("WEB-01", "WEB-02", "WEB-03", "WEB-06", "WEB-12")
 
+# WEB-06 currently renders the same visible copy/geometry as its reference, so
+# it is the cleanest probe for Chromium/font rasterization. These candidates
+# are diagnostics only: the best mismatch count is never promoted to evidence.
+RASTER_CANDIDATES = {
+    "current": ["--disable-lcd-text"],
+    "no_hint": ["--disable-lcd-text", "--font-render-hinting=none"],
+    "slight_hint": ["--disable-lcd-text", "--font-render-hinting=slight"],
+    "default": [],
+}
+
+
+def select_best_raster_candidate(rows: dict):
+    measured = [
+        (name, row["mismatching_rgba_pixels"])
+        for name, row in rows.items()
+        if row.get("status") in ("exact", "mismatch")
+        and isinstance(row.get("mismatching_rgba_pixels"), int)
+    ]
+    return min(measured, key=lambda item: (item[1], item[0]))[0] if measured else None
+
+
+def rasterization_sweep(base_url: str, reference_path: Path, out: Path) -> dict:
+    """Measure browser text-rasterization candidates against immutable WEB-06.
+
+    This never edits the fidelity ledger and never treats a lower mismatch as
+    acceptance. It only gives the next implementation step reproducible data.
+    """
+    from playwright.sync_api import sync_playwright
+
+    if not base_url.startswith(("https://", "http://127.0.0.1:", "http://localhost:")):
+        raise ValueError("Raster sweep needs an approved HTTPS or local origin")
+
+    with Image.open(reference_path) as source:
+        reference = source.convert("RGBA")
+        width, height = reference.size
+
+    rows = {}
+    with sync_playwright() as playwright:
+        for name, browser_args in RASTER_CANDIDATES.items():
+            runtime_path = out / f"WEB-06.raster-{name}.png"
+            browser = playwright.chromium.launch(headless=True, args=browser_args)
+            try:
+                context = browser.new_context(
+                    viewport={"width": width, "height": height},
+                    device_scale_factor=1,
+                    locale="en-US",
+                    reduced_motion="reduce",
+                    color_scheme="light",
+                )
+                try:
+                    page = context.new_page()
+                    url = base_url.rstrip("/") + "/ai-engineering?lang=en"
+                    response = page.goto(
+                        url, wait_until="domcontentloaded", timeout=30000
+                    )
+                    if response is None or response.status != 200:
+                        raise RuntimeError("raster probe route did not return HTTP 200")
+                    page.evaluate("() => document.fonts.ready")
+                    if page.url.rstrip("/") != url.rstrip("/"):
+                        raise RuntimeError("raster probe redirected")
+                    html = page.locator("html")
+                    if html.get_attribute("lang") != "en" or html.get_attribute("dir") != "ltr":
+                        raise RuntimeError("raster probe locale mismatch")
+                    page.screenshot(
+                        path=str(runtime_path), full_page=False,
+                        animations="disabled", caret="hide", type="png",
+                    )
+                finally:
+                    context.close()
+            except Exception as exc:
+                rows[name] = {"status": "render_failed", "error": type(exc).__name__}
+                continue
+            finally:
+                browser.close()
+
+            with Image.open(runtime_path) as source:
+                runtime = source.convert("RGBA")
+            if runtime.size != reference.size:
+                rows[name] = {
+                    "status": "wrong_dimensions",
+                    "runtime_size": list(runtime.size),
+                    "reference_size": list(reference.size),
+                }
+                continue
+            mismatches = sum(
+                actual != expected
+                for actual, expected in zip(runtime.getdata(), reference.getdata())
+            )
+            rows[name] = {
+                "status": "exact" if mismatches == 0 else "mismatch",
+                "mismatching_rgba_pixels": mismatches,
+                "total_pixels": width * height,
+                "mismatch_ratio": mismatches / (width * height),
+                "browser_args": browser_args,
+            }
+
+    best = select_best_raster_candidate(rows)
+    return {"candidates": rows, "best": best}
+
 
 def responsive_browser_audit(base_url: str, screens: dict) -> dict:
     """Real responsive/keyboard checks; separate from zero-pixel visual proof."""
@@ -204,6 +303,15 @@ def main() -> int:
             "total_pixels": total,
             "mismatch_ratio": mismatches / total,
         }
+
+    try:
+        report["rasterization_sweep"] = rasterization_sweep(
+            os.environ.get("WALIDSITE_RENDER_BASE_URL", "").rstrip("/"),
+            root / screens["WEB-06"]["reference_image"],
+            out,
+        )
+    except Exception as exc:
+        report["rasterization_sweep"] = {"error": type(exc).__name__}
 
     try:
         from playwright.sync_api import sync_playwright
