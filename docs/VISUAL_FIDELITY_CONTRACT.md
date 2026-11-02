@@ -34,7 +34,9 @@ The original immutable `contracts/screens.json` has historical boilerplate stati
 
 - `design/visual-fidelity-evidence.json` lists all 40 references, with initial `pending` status. Each matched item needs an actual independently captured PNG and metadata.
 - `qa/validate_visual_fidelity.py` checks PNG structure, canonical coverage, reference paths, evidence, dimensions and **zero pixel differences** in decoded RGBA pixels via Pillow.
-- Run `python3 qa/validate_visual_fidelity.py` (install pinned Pillow from the CI specification when executing visual comparisons).
+- Run `python3 qa/validate_visual_fidelity.py` (install pinned Pillow from the CI specification when executing visual comparisons). This development check accepts `pending` as an *honest, unverified* state.
+- Run `python3 qa/validate_visual_fidelity.py --require-complete` as a **final release acceptance gate** under T024 after the 40 runtime captures exist. It fails while any screen remains pending or has invalid proof. Do not add this option to ordinary feature-branch CI while reference captures are still missing.
+- A byte-identical copy of an approved reference PNG is explicitly rejected as a fake capture. Re-encoding a screenshot is not proof of independently running the UI: per-screen render commands, real fixture provenance, renderer SHA and repeatable device/browser evidence must also be reviewed. Never turn a unit-test fixture into accepted capture evidence.
 - The same validation is mandatory inside existing `.github/workflows/ci.yml`; the two-workflow policy remains unchanged.
 - Example *shape only*, NOT proof of a result: `{"status":"matched","capture":"qa/visual-captures/WEB-01.png","renderer_commit":"<real full 40-hex SHA>","capture_command":"<real repeatable render command>","route":"/","locale":"en","device_pixel_ratio":1}`. Capture width/height come from the immutable reference file. No placeholders can be submitted as verified evidence.
 
