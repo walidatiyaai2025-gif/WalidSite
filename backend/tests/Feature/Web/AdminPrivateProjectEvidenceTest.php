@@ -355,8 +355,10 @@ final class AdminPrivateProjectEvidenceTest extends TestCase
         $this->assertNull($project->fresh()->published_at);
         $this->get('/admin/projects/'.$project->id.'/evidence?lang=en')->assertOk()
             ->assertSee('Approved public evidence for this project')
-            ->assertSee('Project publication gate')
-            ->assertSee('Publish project')
+            ->assertSee('Usable public evidence links')
+            ->assertSee('Approved evidence cannot currently appear on a public case study')
+            ->assertDontSee('Project publication gate')
+            ->assertDontSee('Publish project')
             ->assertDontSee('reviewed-public-project');
         Http::assertNothingSent();
     }
@@ -500,6 +502,52 @@ final class AdminPrivateProjectEvidenceTest extends TestCase
         $this->get('/projects/'.$validSlug)->assertOk()
             ->assertSee('https://docs.example.org/reviewed-project-proof')
             ->assertDontSee('not-reviewed/private-repo');
+        Http::assertNothingSent();
+    }
+
+    public function test_publish_action_reflects_public_evidence_and_route_policy_in_both_locales(): void
+    {
+        Http::fake();
+        $project = $this->project();
+        $project->evidence()->create([
+            'evidence_type' => 'repository',
+            'url' => 'https://github.com/unknown-owner/unreviewed-repo',
+            'visibility' => 'public',
+            'verified_at' => now()->subMinute(),
+        ]);
+        $this->actingAs($this->account('owner'), 'web');
+        $base = '/admin/projects/'.$project->id.'/evidence';
+
+        $this->get($base.'?lang=en')->assertOk()
+            ->assertSee('Usable public evidence links')
+            ->assertSee('Approved evidence cannot currently appear on a public case study')
+            ->assertDontSee('Project publication gate')
+            ->assertDontSee('Publish project');
+
+        $this->get($base.'?lang=ar')->assertOk()
+            ->assertSee('dir="rtl"', false)
+            ->assertSee('روابط الأدلة الصالحة للعرض العام')
+            ->assertSee('الأدلة المعتمدة الحالية لا تصلح لصفحة مشروع عامة')
+            ->assertDontSee('بوابة نشر المشروع')
+            ->assertDontSee('>نشر المشروع</button>', false);
+
+        $project->evidence()->create([
+            'evidence_type' => 'document',
+            'url' => 'https://docs.example.org/source-reviewed-and-safe',
+            'visibility' => 'public',
+            'verified_at' => now()->subMinute(),
+        ]);
+        $this->get($base.'?lang=en')->assertOk()
+            ->assertSee('Project publication gate')
+            ->assertSee('Publish project')
+            ->assertDontSee('Approved evidence cannot currently appear on a public case study');
+
+        $project->update(['slug' => 'unrouteable_slug']);
+        $this->get($base.'?lang=en')->assertOk()
+            ->assertSee('Approved evidence cannot currently appear on a public case study')
+            ->assertDontSee('Project publication gate')
+            ->assertDontSee('Publish project');
+        $this->assertSame('private', $project->fresh()->visibility);
         Http::assertNothingSent();
     }
 
