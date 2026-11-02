@@ -124,6 +124,18 @@ class CaptureRunnerTest(unittest.TestCase):
         self.assertFalse((self.root / "qa/visual-captures/WEB-01.png").exists())
         self.assertEqual(audit(self.root), ([], 0, 40))
 
+    def test_renderer_mutating_source_cannot_advance_a_capture(self):
+        from unittest.mock import patch
+        # Initial source checkout attestation passes, but the renderer
+        # modifies tracked source before the post-capture second check.
+        with patch("qa.capture_visual_evidence.verified_source_checkout",
+                   side_effect=[True, False]) as verifier:
+            with self.assertRaisesRegex(CaptureError, "changed Git source"):
+                self.run_capture()
+            self.assertEqual(verifier.call_count, 2)
+        self.assertEqual(self.record()["status"], "pending")
+        self.assertFalse((self.root / "qa/visual-captures/WEB-01.png").exists())
+
     def test_renderer_failure_cannot_advance_ledger(self):
         with self.assertRaisesRegex(CaptureError, "Renderer failed"):
             self.run_capture(command=[sys.executable, "-c", "raise SystemExit(9)"])
