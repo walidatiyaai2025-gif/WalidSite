@@ -108,6 +108,7 @@
             ? 'هذه روابط عامة حفظتها بنفسك في هذا المتصفح، وليست قائمة مرتبطة بالحساب. تتحقق صفحة المقال من حالة النشر والمصادر مجددًا عند فتح كل رابط؛ قد لا يعود المحتوى متاحًا بعد سحب اعتماده.'
             : 'These are public links you explicitly saved in this browser, not an account reading history. Every linked article is rechecked for publication and evidence when opened, and revoked content may no longer be available.' }}</p>
         <p id="blog-saved-status" role="status" aria-live="polite" aria-atomic="true">{{ $locale === 'ar' ? 'يتطلب عرض المحفوظات تشغيل JavaScript وإتاحة تخزين المتصفح.' : 'Showing local saved links requires JavaScript and browser storage.' }}</p>
+        <button id="blog-clear-saved" type="button" hidden>{{ $locale === 'ar' ? 'مسح كل الروابط المحفوظة' : 'Clear all saved links' }}</button>
         <ul id="blog-saved-items" aria-label="{{ $locale === 'ar' ? 'روابط محفوظة محليًا' : 'Locally saved links' }}"></ul>
     </section>
 </section>
@@ -121,7 +122,8 @@
     const articlePath = @json($localArticlePath);
     const status = document.getElementById('blog-saved-status');
     const list = document.getElementById('blog-saved-items');
-    if (!status || !list) return;
+    const clearButton = document.getElementById('blog-clear-saved');
+    if (!status || !list || !clearButton) return;
     const validSlug = slug => typeof slug === 'string'
         && /^[A-Za-z0-9-]{1,220}$/.test(slug);
     function render() {
@@ -132,6 +134,7 @@
             if (!Array.isArray(parsed)) throw new Error('Unexpected saved links');
         } catch (_) {
             list.replaceChildren();
+            clearButton.hidden = true;
             status.textContent = locale === 'ar'
                 ? 'تعذر قراءة روابط الحفظ المحلي من هذا المتصفح.'
                 : 'Browser local saved links are unavailable.';
@@ -175,10 +178,23 @@
             item.appendChild(remove);
             list.appendChild(item);
         });
+        clearButton.hidden = list.children.length === 0;
         status.textContent = list.children.length === 0
             ? (locale === 'ar' ? 'لا توجد روابط محفوظة بعد.' : 'No links have been saved yet.')
             : (locale === 'ar' ? 'روابط محفوظة محليًا فقط، وقد يُلغى نشرها لاحقًا.' : 'Locally saved links only; availability is rechecked on open.');
     }
+    clearButton.addEventListener('click', () => {
+        try {
+            // Clearing removes only this browser's reading-list key.
+            window.localStorage.removeItem(storageKey);
+            render();
+            status.textContent = locale === 'ar'
+                ? 'تم مسح جميع الروابط المحفوظة محليًا.' : 'All locally saved links were cleared.';
+        } catch (_) {
+            status.textContent = locale === 'ar'
+                ? 'تعذر مسح روابط الحفظ المحلي.' : 'Could not clear locally saved links.';
+        }
+    });
     // Changes made in another tab must immediately update this public list.
     window.addEventListener('storage', event => {
         if (event.key === storageKey || event.key === null) render();
