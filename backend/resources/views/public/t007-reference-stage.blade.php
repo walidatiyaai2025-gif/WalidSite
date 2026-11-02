@@ -197,7 +197,7 @@ body:has(.t007-reference-stage) .site-footer{margin-top:0}
 .t007-pill{height:39px;min-width:259px;width:max-content;border-radius:16px;background:#dcf6f1;color:#0a9a8c;display:flex;align-items:center;padding:0 15px;font-size:18px;font-weight:700;letter-spacing:.6px;transform:translateX(-4px)}
 .t007-pill span{display:block;transform:translate(-1px,-2px)}
 .t007-reference-hero h1{font-size:46px;line-height:1.15;margin:28px 0 21px;color:#184876;font-weight:700;letter-spacing:2.05px}
-.t007-reference-subtitle{margin:0 0 0 2px;color:#3b6684;font-size:20px;line-height:1.4;letter-spacing:-.18px;position:relative;top:3px}
+.t007-reference-subtitle{margin:0 0 0 2px;color:#3b6684;font-size:20px;line-height:1.4;letter-spacing:0;position:relative;top:1px}
 .t007-reference-actions{display:flex;gap:19px;margin-top:27px}
 .t007-reference-action{height:63px;width:245px;border-radius:16px;display:flex;align-items:center;padding-left:29px;text-decoration:none;color:#184876;font-size:23px;font-weight:700;letter-spacing:1px}
 .t007-reference-action.primary{background:#0a9a8c;padding-bottom:4px}.t007-reference-action.secondary{width:249px;background:#fff;border:2px solid #0a9a8c;padding-left:33px;padding-bottom:2px;font-weight:500;letter-spacing:-.3px}
