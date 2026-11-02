@@ -46,13 +46,13 @@
 <p>{{ $locale === 'ar' ? 'اختر نوع الطلب لفتح نموذج التواصل بموضوع محدد. لا ينفذ إرسال الاستفسار حذفًا أو تصديرًا تلقائيًا، ويتطلب موافقة صريحة وخدمة بريد مهيأة.' : 'Choose a request to open the contact form with a specific subject. An inquiry does not automatically delete or export data; affirmative consent and configured mail delivery are required.' }}</p>
 <ul>
 @foreach([
- 'privacy-access' => ['ar' => 'الاطلاع على بياناتي', 'en' => 'Access my data'],
- 'privacy-correction' => ['ar' => 'تصحيح بياناتي', 'en' => 'Correct my data'],
- 'privacy-export' => ['ar' => 'تصدير بياناتي', 'en' => 'Export my data'],
- 'privacy-deletion' => ['ar' => 'طلب حذف بياناتي', 'en' => 'Request deletion'],
- 'privacy-notifications' => ['ar' => 'سحب موافقة الإشعارات', 'en' => 'Revoke notification consent'],
+ 'access' => ['ar' => 'الاطلاع على بياناتي', 'en' => 'Access my data'],
+ 'correction' => ['ar' => 'تصحيح بياناتي', 'en' => 'Correct my data'],
+ 'export' => ['ar' => 'تصدير بياناتي', 'en' => 'Export my data'],
+ 'deletion' => ['ar' => 'طلب حذف بياناتي', 'en' => 'Request deletion'],
+ 'revoke' => ['ar' => 'سحب موافقة الإشعارات', 'en' => 'Revoke notification consent'],
 ] as $topic => $labels)
-<li><a href="{{ route('public.contact', ['lang' => $locale, 'topic' => $topic]) }}">{{ $labels[$locale] }}</a></li>
+<li><a href="{{ route('public.contact', ['lang' => $locale, 'topic' => 'privacy', 'request' => $topic]) }}">{{ $labels[$locale] }}</a></li>
 @endforeach
 </ul>
 </article>
