@@ -75,6 +75,9 @@
 <p><a class="contact-again" href="{{ route('public.contact', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'إرسال رسالة أخرى' : 'Send another message' }}</a></p>
 @elseif(!$available)
 <div class="contact-notice" role="status">{{ $locale === 'ar' ? 'استقبال الرسائل غير مفعل حتى تهيئة البريد والتحقق منه.' : 'Contact delivery is unavailable until a verified mail transport and recipient are configured.' }}</div>
+@if($privacyRequest)
+<p role="status">{{ $locale === 'ar' ? 'هذا نموذج استفسار عن حقوق البيانات، وليس دليلًا على حذف الحساب أو تصدير البيانات أو سحب الموافقة؛ لا يمكن إرسال الطلب حتى تهيئة البريد.' : 'This privacy inquiry is not proof of deletion, data export or notification revocation. No request can be delivered until contact mail is configured.' }}</p>
+@endif
 @else
 <form method="post" action="{{ route('public.contact.submit', ['lang'=>$locale]) }}">
 @csrf
