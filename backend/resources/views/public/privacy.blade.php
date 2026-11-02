@@ -27,7 +27,15 @@
 <p>{{ $locale === 'ar' ? 'قد تتفاعل مع استضافة الموقع أو البريد أو GitHub أو مزود ذكاء اصطناعي بحسب الميزات المستخدمة. التفاصيل والجهات النهائية تحتاج مراجعة قانونية. عند تعطل البريد يعرض الموقع حالة غير متاحة بدل تأكيد إرسال غير صحيح.' : 'Hosting, mail, GitHub and configured AI providers may be involved depending on the feature used. Final provider identities and terms require legal review. When mail is unavailable, the site reports it unavailable rather than falsely confirming delivery.' }}</p>
 </article>
 <nav class="policy-actions" aria-label="{{ $locale === 'ar' ? 'إجراءات الخصوصية' : 'Privacy actions' }}">
-<a href="{{ route('public.contact', ['lang'=>$locale, 'topic'=>'privacy']) }}">{{ $locale === 'ar' ? 'طلب وصول أو حذف أو تصدير' : 'Request access, deletion or export' }}</a>
+@foreach([
+    'privacy-access' => ['طلب الاطلاع', 'Request access'],
+    'privacy-correction' => ['طلب التصحيح', 'Request correction'],
+    'privacy-export' => ['طلب التصدير', 'Request export'],
+    'privacy-deletion' => ['طلب الحذف', 'Request deletion'],
+    'privacy-notifications' => ['طلب إلغاء موافقة الإشعارات', 'Request notification revocation'],
+] as $topic => $labels)
+<a href="{{ route('public.contact', ['lang'=>$locale, 'topic'=>$topic]) }}">{{ $labels[$locale === 'ar' ? 0 : 1] }}</a>
+@endforeach
 <a href="{{ route('public.terms', ['lang'=>$locale]) }}">{{ $locale === 'ar' ? 'عرض الشروط' : 'View terms' }}</a>
 </nav>
 </section>
