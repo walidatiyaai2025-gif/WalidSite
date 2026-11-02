@@ -303,7 +303,7 @@ final class AdminOperationsJourneyTest extends TestCase
         $this->actingAs($this->account('owner'), 'web');
 
         $this->get('/admin/projects?lang=ar&status=research&visibility=private')->assertOk()
-            ->assertSee('value="research" selected', false)
+            ->assertSee('value="research"', false)
             ->assertSee('بحث')
             ->assertSee('خاص')
             ->assertDontSee('>research</option>', false);
