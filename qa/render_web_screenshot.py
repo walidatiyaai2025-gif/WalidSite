@@ -10,8 +10,10 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 # Reference PNGs use grayscale text antialiasing. Disable Chromium LCD
-# subpixel text so runtime captures are deterministic across CI hosts.
-CHROMIUM_RENDER_ARGS = ["--disable-lcd-text"]
+# subpixel text and use the measured slight FreeType hinting mode; T007
+# diagnostics proved this produces fewer WEB-06 reference mismatches than
+# Chromium default, no-hint, or disable-LCD alone on the pinned CI browser.
+CHROMIUM_RENDER_ARGS = ["--disable-lcd-text", "--font-render-hinting=slight"]
 
 
 class RenderConfigError(ValueError):
