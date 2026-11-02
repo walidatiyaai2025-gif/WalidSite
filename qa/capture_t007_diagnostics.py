@@ -166,6 +166,16 @@ def main() -> int:
     except Exception as exc:
         report["font_probe"] = {"error": type(exc).__name__}
 
+    report["summary"] = {
+        "expected_screens": len(SCREEN_IDS),
+        "captured_screens": sum(row["status"] in ("exact", "mismatch")
+                                for row in report["screens"].values()),
+        "exact_screens": sum(row["status"] == "exact"
+                             for row in report["screens"].values()),
+        "mismatched_screens": sum(row["status"] == "mismatch"
+                                  for row in report["screens"].values()),
+        "font_probe_ok": "error" not in report.get("font_probe", {}),
+    }
     report_path = out / "report.json"
     report_path.write_text(
         json.dumps(report, ensure_ascii=False, indent=2) + "\n",
