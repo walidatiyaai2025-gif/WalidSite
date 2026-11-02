@@ -18,11 +18,15 @@ void main() {
       TextDirection.ltr,
     );
 
+    await tester.scrollUntilVisible(find.byKey(const Key('welcome-start')), 120);
+    await tester.ensureVisible(find.byKey(const Key('welcome-start')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('welcome-start')));
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('mobile-welcome-screen')), findsNothing);
     expect(find.byType(CompanionHome), findsOneWidget);
+    await tester.scrollUntilVisible(find.byKey(const Key('offline-runbooks-entry')), 120);
     expect(find.byKey(const Key('offline-runbooks-entry')), findsOneWidget);
     expect(
       Navigator.of(tester.element(find.byType(CompanionHome))).canPop(),
@@ -36,6 +40,9 @@ void main() {
     await tester.pumpWidget(const WaleedTechApp());
     await tester.pumpAndSettle();
 
+    await tester.scrollUntilVisible(find.byKey(const Key('welcome-language')), 120);
+    await tester.ensureVisible(find.byKey(const Key('welcome-language')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('welcome-language')));
     await tester.pumpAndSettle();
 
@@ -47,6 +54,9 @@ void main() {
       TextDirection.rtl,
     );
 
+    await tester.scrollUntilVisible(find.byKey(const Key('welcome-start')), 120);
+    await tester.ensureVisible(find.byKey(const Key('welcome-start')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('welcome-start')));
     await tester.pumpAndSettle();
 
