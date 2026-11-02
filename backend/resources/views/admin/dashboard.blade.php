@@ -34,6 +34,8 @@ button{background:transparent;color:#fff;border:1px solid #fff;border-radius:8px
 <a href="{{ route('admin.operations.analytics', ['lang'=>$locale]) }}">{{ $locale === 'ar' ? 'التحليلات' : 'Analytics' }}</a>
 <a href="{{ route('admin.content.index', ['lang'=>$locale]) }}">{{ $locale === 'ar' ? 'مراجعة المحتوى' : 'Editorial review' }}</a>
 <a href="{{ route('admin.media.index', ['lang'=>$locale]) }}">{{ $locale === 'ar' ? 'حقوق الصور' : 'Media rights' }}</a>
+<a href="{{ route('admin.quality.index', ['lang'=>$locale]) }}">{{ $locale === 'ar' ? 'بوابات الجودة' : 'Quality gates' }}</a>
+<a href="{{ route('admin.approvals.index', ['lang'=>$locale]) }}">{{ $locale === 'ar' ? 'الموافقات' : 'Approvals' }}</a>
 @if(auth()->user()?->hasRole('owner'))
 <a href="{{ route('admin.updates.index', ['lang'=>$locale]) }}">{{ $locale === 'ar' ? 'التحديثات والباتشات' : 'Updates & patches' }}</a>
 @endif

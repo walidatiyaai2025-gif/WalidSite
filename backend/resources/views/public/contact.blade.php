@@ -42,14 +42,15 @@
 <h1 id="contact-heading">{{ $locale === 'ar' ? 'التواصل' : 'Contact' }}</h1>
 <p>{{ $locale === 'ar' ? 'تُستخدم بيانات الرسالة فقط للرد على طلب التواصل، ولا تنشر على الموقع.' : 'Messages are used only to reply to the inquiry; they are not published.' }}
 <a href="{{ route('public.privacy', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'اقرأ إشعار الخصوصية والبيانات (مسودة غير معتمدة).' : 'Read the privacy and data disclosure (unapproved draft).' }}</a></p>
-@if(isset($privacyRight) && $privacyRight !== null)
-<div class="contact-notice" role="note" id="privacy-rights-inquiry-notice">
-<strong>{{ $locale === 'ar' ? 'طلب مراجعة متعلق بالبيانات' : 'Data-rights inquiry for review' }}</strong>
-<p>{{ $locale === 'ar'
-? 'نوع طلبك محدد في الموضوع ويمكن تعديله. إرسال هذه الرسالة لا يحذف بياناتك ولا يلغي اشتراكًا ولا ينشئ ملف تصدير. يلزم موافقة مستقلة على نموذج التواصل قبل الإرسال.'
-: 'Your inquiry category is prefilled in the editable subject. Sending this message does not delete account data, revoke a subscription or generate an export. Separate contact consent is required before submission.' }}</p>
-<p><a href="{{ route('public.privacy', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'تفاصيل الخصوصية وحقوق البيانات' : 'Privacy and data rights details' }}</a></p>
-</div>
+<p class="contact-privacy-context">{{ $locale === 'ar' ? 'الموافقة على الرد على رسالتك لا تشترك بك في بريد تسويقي أو إشعارات. إلغاء موافقات حساب التطبيق وتصدير بياناته وحذفه تتم من الملف الشخصي في التطبيق؛ ويمكن استخدام طلب الخصوصية هنا للمساعدة إذا كان البريد مهيأ.' : 'Consenting to a reply does not subscribe you to marketing email or push notifications. To revoke your companion-app choices, export your data or delete your account, open Account privacy under My profile in the signed-in app. This contact form can request assistance when mail is configured.' }}
+<a href="{{ route('public.privacy', ['lang' => $locale]) }}#account-controls">{{ $locale === 'ar' ? 'خطوات التحكم في بيانات الحساب' : 'Account privacy control steps' }}</a></p>
+@php($privacyRequest = $privacyRight ?? null)
+@php($privacyRequest = in_array($privacyRequest, ['access', 'correction', 'export', 'deletion', 'revoke', 'notifications'], true) ? $privacyRequest : null)
+@if($privacyRequest)
+<p id="privacy-request-disclosure" role="status">{{ $locale === 'ar'
+    ? 'هذا نموذج استفسار عن حقوق البيانات، وليس إجراءً مصادقًا عليه لحذف الحساب أو تصدير البيانات أو سحب الموافقة. يلزم التحقق من الهوية؛ إرسال الرسالة لا يثبت تنفيذ الطلب.'
+    : 'This is a data rights inquiry, not an authenticated action. Identity must be verified; sending a message is not proof of deletion, export or notification consent revocation.' }}</p>
+<a href="{{ route('public.contact', ['lang' => $locale === 'ar' ? 'en' : 'ar', 'topic' => 'privacy', 'request' => $privacyRequest]) }}">{{ $locale === 'ar' ? 'English' : 'العربية' }}</a>
 @endif
 @if($reportArticle)
 <p class="contact-article-context">
@@ -74,6 +75,9 @@
 <p><a class="contact-again" href="{{ route('public.contact', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'إرسال رسالة أخرى' : 'Send another message' }}</a></p>
 @elseif(!$available)
 <div class="contact-notice" role="status">{{ $locale === 'ar' ? 'استقبال الرسائل غير مفعل حتى تهيئة البريد والتحقق منه.' : 'Contact delivery is unavailable until a verified mail transport and recipient are configured.' }}</div>
+@if($privacyRequest)
+<p role="status">{{ $locale === 'ar' ? 'هذا نموذج استفسار عن حقوق البيانات، وليس دليلًا على حذف الحساب أو تصدير البيانات أو سحب الموافقة؛ لا يمكن إرسال الطلب حتى تهيئة البريد.' : 'This privacy inquiry is not proof of deletion, data export or notification revocation. No request can be delivered until contact mail is configured.' }}</p>
+@endif
 @else
 <form method="post" action="{{ route('public.contact.submit', ['lang'=>$locale]) }}">
 @csrf
@@ -109,7 +113,7 @@ default => $locale === 'ar' ? 'الموضوع' : 'Subject' } }}</label>
 <textarea id="contact-message" name="message" required maxlength="3000" @error('message') aria-invalid="true" aria-describedby="contact-message-error" @enderror>{{ is_string(old('message')) ? old('message') : '' }}</textarea>
 @error('message')<p id="contact-message-error" class="contact-error" role="alert">{{ $message }}</p>@enderror
 <label class="contact-consent" for="contact-privacy-consent">
-<input id="contact-privacy-consent" type="checkbox" name="privacy_consent" value="1" @checked(old('privacy_consent') === '1') @error('privacy_consent') aria-invalid="true" aria-describedby="contact-privacy-consent-error" @enderror>
+<input id="contact-privacy-consent" type="checkbox" name="privacy_consent" value="1" required aria-required="true" @checked(old('privacy_consent') === '1') @error('privacy_consent') aria-invalid="true" aria-describedby="contact-privacy-consent-error" @enderror>
 <span>{{ $locale === 'ar' ? 'أوافق على استخدام اسمي وبريدي الإلكتروني ونص الرسالة للرد على استفساري فقط.' : 'I consent to using my name, email address and message solely to respond to my inquiry.' }} <a href="{{ route('public.privacy', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'تفاصيل معالجة البيانات' : 'Data handling details' }}</a></span>
 </label>
 @error('privacy_consent')<p id="contact-privacy-consent-error" class="contact-error" role="alert">{{ $message }}</p>@enderror

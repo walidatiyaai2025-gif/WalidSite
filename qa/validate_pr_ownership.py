@@ -18,6 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 BRANCH = re.compile(r"^(?:feat|fix|chore)/(?P<key>T[0-9]{3}|[1-9][0-9]*)[-/][A-Za-z0-9][A-Za-z0-9._/-]*$")
 TITLE_ISSUE = re.compile(r"#([1-9][0-9]*)\b")
 TITLE_TASK = re.compile(r"\b(T[0-9]{3})\b")
+SHA40 = re.compile(r"^[0-9a-f]{40}$")
 
 
 def task_map():
@@ -40,8 +41,15 @@ def issue_from_title(title, mapping):
     return values
 
 
-def inspect(pr, open_prs, branches, issue_state, files_by_pr, mapping, repo, expected_sha):
+def compare_proves_ancestor(payload):
+    """Only an identical/ancestor branch is reconciled; divergence stays blocking."""
+    return payload.get("status") in ("ahead", "identical") and payload.get("behind_by") == 0
+
+
+def inspect(pr, open_prs, branches, issue_state, files_by_pr, mapping, repo, expected_sha,
+            reconciled_branches=None):
     errors, warnings = [], []
+    reconciled_branches = set(reconciled_branches or ())
     number = pr["number"]
     head = pr["head"]
     source = head["ref"]
@@ -77,7 +85,13 @@ def inspect(pr, open_prs, branches, issue_state, files_by_pr, mapping, repo, exp
     for branch in branches:
         name = branch["name"]
         if name != source and issue_from_branch(name, mapping) == issue:
-            errors.append(f"Competing branch for Issue #{issue}: {name}; reconcile, do not delete unmerged code")
+            if name in reconciled_branches:
+                warnings.append(
+                    f"RECONCILED ANCESTOR branch retained for Issue #{issue}: {name}; "
+                    "safe cleanup may remove it after the canonical PR merges"
+                )
+            else:
+                errors.append(f"Competing branch for Issue #{issue}: {name}; reconcile, do not delete unmerged code")
 
     if not pr.get("draft", False):
         ours = set(files_by_pr.get(number, ()))
@@ -150,6 +164,21 @@ def main():
         issue_state = api.get(f"/repos/{repo}/issues/{issue}")["state"] if issue else "unknown"
         peers = api.pages(f"/repos/{repo}/pulls?state=open")
         branches = api.pages(f"/repos/{repo}/branches")
+        reconciled_branches = set()
+        if issue:
+            if not SHA40.fullmatch(expected_sha):
+                raise ValueError("pull-request head SHA is malformed")
+            source = pr["head"]["ref"]
+            for branch in branches:
+                name = branch["name"]
+                if name == source or issue_from_branch(name, mapping) != issue:
+                    continue
+                branch_sha = (branch.get("commit") or {}).get("sha", "")
+                if not SHA40.fullmatch(branch_sha):
+                    raise ValueError(f"branch {name} returned a malformed head SHA")
+                comparison = api.get(f"/repos/{repo}/compare/{branch_sha}...{expected_sha}")
+                if compare_proves_ancestor(comparison):
+                    reconciled_branches.add(name)
         files_by_pr = {}
         # Inspect ready PRs and drafts only when the target is ready.
         if not pr.get("draft"):
@@ -159,7 +188,8 @@ def main():
                         f["filename"] for f in api.pages(f"/repos/{repo}/pulls/{other['number']}/files")
                     ]
         errors, warnings = inspect(
-            pr, peers, branches, issue_state, files_by_pr, mapping, repo, expected_sha
+            pr, peers, branches, issue_state, files_by_pr, mapping, repo, expected_sha,
+            reconciled_branches=reconciled_branches,
         )
         for warning in warnings:
             print("WARNING: " + warning)

@@ -36,6 +36,8 @@ Route::post('/auth/login', [IdentityController::class, 'login'])
 // Block insecure bearer-token requests before Sanctum or privileged handlers.
 Route::middleware([RequireSecureApiTransport::class, 'auth:sanctum'])->group(function (): void {
     Route::get('/mobile/me', [IdentityController::class, 'me']);
+    Route::patch('/mobile/me', [IdentityController::class, 'updateMe'])
+        ->name('api.mobile.me.update')->middleware('throttle:6,1');
     // MOBILE-12/13 + G-16: self-service privacy lifecycle. Missing consent is deny.
     Route::get('/mobile/account/export', [AccountPrivacyController::class, 'export'])
         ->name('api.mobile.account.export')->middleware('throttle:10,1');

@@ -130,6 +130,11 @@ class MobileSavedPage {
 
 typedef AccountLogin = Future<MobileAiSession> Function(String, String);
 typedef AccountReadProfile = Future<MobileAccount> Function(String);
+typedef AccountUpdateProfile = Future<MobileAccount> Function(
+  String bearer,
+  String email,
+  String currentPassword,
+);
 typedef AccountReadSaved = Future<MobileSavedPage> Function(String, bool, int);
 typedef AccountRemoveSaved = Future<void> Function(String, MobileSavedResource);
 typedef AccountRevoke = Future<void> Function(String);
@@ -146,7 +151,7 @@ class MobileAccountClient {
       VerifiedArticleReader.validatedOrigin(MobileAiClient.apiOrigin);
 
   Future<String> _request(String method, String path, String? bearer,
-      {Map<String, String>? query}) async {
+      {Map<String, String>? query, Map<String, Object?>? body}) async {
     final origin = configuredOrigin();
     if (origin == null || (bearer == null &&
             !(method == 'GET' && _articlePath.hasMatch(path))) ||
@@ -163,6 +168,10 @@ class MobileAccountClient {
       request.headers.set(HttpHeaders.acceptHeader, 'application/json');
       if (bearer != null) {
         request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $bearer');
+      }
+      if (body != null) {
+        request.headers.set(HttpHeaders.contentTypeHeader, 'application/json');
+        request.add(utf8.encode(jsonEncode(body)));
       }
       final response = await request.close().timeout(const Duration(seconds: 8));
       if (response.statusCode != HttpStatus.ok) {
@@ -183,6 +192,30 @@ class MobileAccountClient {
 
   Future<MobileAccount> profile(String bearer) async =>
       MobileAccount.parse(await _request('GET', '/api/v1/mobile/me', bearer));
+
+  Future<MobileAccount> updateProfile(
+    String bearer,
+    String email,
+    String currentPassword,
+  ) async {
+    final safeEmail = email.trim();
+    if (safeEmail.isEmpty ||
+        safeEmail.length > 254 ||
+        !safeEmail.contains('@') ||
+        currentPassword.isEmpty ||
+        currentPassword.length > 4096) {
+      throw const FormatException('Invalid account profile update');
+    }
+    return MobileAccount.parse(await _request(
+      'PATCH',
+      '/api/v1/mobile/me',
+      bearer,
+      body: {
+        'email': safeEmail,
+        'current_password': currentPassword,
+      },
+    ));
+  }
 
   Future<MobileSavedPage> saved(String bearer, bool arabic, int page) async {
     if (page < 1 || page > 10000) throw const FormatException('Invalid saved page');
@@ -244,6 +277,7 @@ class MobileAccountJourney extends StatefulWidget {
     required this.arabic,
     this.loginAction,
     this.profileAction,
+    this.profileUpdateAction,
     this.savedAction,
     this.removeAction,
     this.logoutAction,
@@ -254,6 +288,7 @@ class MobileAccountJourney extends StatefulWidget {
   final bool arabic;
   final AccountLogin? loginAction;
   final AccountReadProfile? profileAction;
+  final AccountUpdateProfile? profileUpdateAction;
   final AccountReadSaved? savedAction;
   final AccountRemoveSaved? removeAction;
   final AccountRevoke? logoutAction;
@@ -266,6 +301,8 @@ class MobileAccountJourney extends StatefulWidget {
 class _MobileAccountJourneyState extends State<MobileAccountJourney> {
   final _email = TextEditingController();
   final _password = TextEditingController();
+  final _profileEmail = TextEditingController();
+  final _profilePassword = TextEditingController();
   MobileAiSession? _session;
   MobileAccount? _profile;
   List<MobileSavedResource> _saved = const [];
@@ -275,6 +312,7 @@ class _MobileAccountJourneyState extends State<MobileAccountJourney> {
   bool _busy = false;
   bool _loadingMore = false;
   bool _showProfile = false;
+  bool _editingProfile = false;
   String? _message;
 
   bool get _configured => widget.loginAction != null ||
@@ -283,6 +321,8 @@ class _MobileAccountJourneyState extends State<MobileAccountJourney> {
       const MobileAiClient().login;
   AccountReadProfile get _readProfile => widget.profileAction ??
       const MobileAccountClient().profile;
+  AccountUpdateProfile get _updateProfile => widget.profileUpdateAction ??
+      const MobileAccountClient().updateProfile;
   AccountReadSaved get _readSaved => widget.savedAction ??
       const MobileAccountClient().saved;
   AccountRemoveSaved get _remove => widget.removeAction ??
@@ -303,13 +343,18 @@ class _MobileAccountJourneyState extends State<MobileAccountJourney> {
     _saved = const [];
     _page = 1;
     _hasMore = false;
+    _editingProfile = false;
     _password.clear();
+    _profileEmail.clear();
+    _profilePassword.clear();
   }
 
   @override
   void dispose() {
     _email.dispose();
     _password.dispose();
+    _profileEmail.dispose();
+    _profilePassword.dispose();
     super.dispose();
   }
 
@@ -331,6 +376,7 @@ class _MobileAccountJourneyState extends State<MobileAccountJourney> {
       setState(() {
         _session = session;
         _profile = profile;
+        _profileEmail.text = profile.email;
         _saved = saved.items;
         _page = 1;
         _hasMore = saved.hasMore;
@@ -467,6 +513,99 @@ class _MobileAccountJourneyState extends State<MobileAccountJourney> {
     ));
   }
 
+  void _beginProfileEdit() {
+    if (_busy || !_requireSession() || _profile == null) return;
+    setState(() {
+      _editingProfile = true;
+      _profileEmail.text = _profile!.email;
+      _profilePassword.clear();
+      _message = null;
+    });
+  }
+
+  void _cancelProfileEdit() {
+    if (_busy) return;
+    setState(() {
+      _editingProfile = false;
+      _profileEmail.text = _profile?.email ?? '';
+      _profilePassword.clear();
+      _message = null;
+    });
+  }
+
+  Future<void> _saveProfile() async {
+    if (_busy || !_requireSession() || _profile == null) return;
+    final safeEmail = _profileEmail.text.trim();
+    final currentPassword = _profilePassword.text;
+    if (safeEmail.isEmpty ||
+        safeEmail.length > 254 ||
+        !safeEmail.contains('@') ||
+        currentPassword.isEmpty) {
+      setState(() {
+        _message = _label(
+          'Enter a valid email and your current password.',
+          'أدخل بريدًا إلكترونيًا صالحًا وكلمة المرور الحالية.',
+        );
+      });
+      return;
+    }
+
+    final epoch = _epoch;
+    final bearer = _session!.token;
+    final accountId = _profile!.id;
+    setState(() {
+      _busy = true;
+      _message = null;
+    });
+    try {
+      final updated = await _updateProfile(
+        bearer,
+        safeEmail,
+        currentPassword,
+      );
+      if (!mounted || epoch != _epoch || _session?.token != bearer) return;
+      if (updated.id.toLowerCase() != accountId.toLowerCase()) {
+        throw const FormatException('Mismatched account identity');
+      }
+      setState(() {
+        _profile = updated;
+        _profileEmail.text = updated.email;
+        _email.text = updated.email;
+        _profilePassword.clear();
+        _editingProfile = false;
+        _message = _label(
+          'Account email updated. Other bearer sessions were revoked.',
+          'تم تحديث بريد الحساب وإلغاء جلسات الأجهزة الأخرى.',
+        );
+      });
+    } catch (error) {
+      if (!mounted || epoch != _epoch || _session?.token != bearer) return;
+      setState(() {
+        _profilePassword.clear();
+        if (error is MobileAiHttpException &&
+            (error.statusCode == 401 || error.statusCode == 403)) {
+          _clearSession();
+          _message = _label(
+            'Session no longer authorized. Sign in again.',
+            'لم تعد الجلسة مصرحًا بها. سجل الدخول مجددًا.',
+          );
+        } else if (error is MobileAiHttpException && error.statusCode == 422) {
+          _message = _label(
+            'Check the email address and current password.',
+            'تحقق من البريد الإلكتروني وكلمة المرور الحالية.',
+          );
+        } else {
+          _message = _label(
+            'Could not confirm the account update. Try again.',
+            'تعذر تأكيد تحديث الحساب. حاول مجددًا.',
+          );
+        }
+      });
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Future<void> _signOut() async {
     if (_busy || !_requireSession()) return;
     final bearer = _session!.token;
@@ -556,8 +695,59 @@ class _MobileAccountJourneyState extends State<MobileAccountJourney> {
                   if (_showProfile) ...[
                     Text(_profile!.email, key: const Key('account-profile-email')),
                     const SizedBox(height: 12),
-                    Text(_label('Profile changes are not supported by this API yet.',
-                        'تعديل الملف الشخصي غير متاح عبر واجهة API الحالية.')),
+                    Text(_label(
+                      'Edit only your private account email here. Public portfolio content is managed separately.',
+                      'يمكن تعديل بريد الحساب الخاص فقط هنا. محتوى الملف العام يُدار بشكل منفصل.',
+                    )),
+                    const SizedBox(height: 12),
+                    if (!_editingProfile)
+                      OutlinedButton(
+                        key: const Key('account-edit-profile'),
+                        onPressed: _busy ? null : _beginProfileEdit,
+                        child: Text(_label('Edit account email', 'تعديل بريد الحساب')),
+                      )
+                    else ...[
+                      TextField(
+                        key: const Key('account-edit-email'),
+                        controller: _profileEmail,
+                        keyboardType: TextInputType.emailAddress,
+                        autofillHints: const [AutofillHints.email],
+                        decoration: InputDecoration(
+                          labelText: _label('New email', 'البريد الإلكتروني الجديد'),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        key: const Key('account-edit-password'),
+                        controller: _profilePassword,
+                        obscureText: true,
+                        autocorrect: false,
+                        enableSuggestions: false,
+                        autofillHints: const [AutofillHints.password],
+                        decoration: InputDecoration(
+                          labelText: _label('Current password', 'كلمة المرور الحالية'),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(children: [
+                        Expanded(child: FilledButton(
+                          key: const Key('account-edit-save'),
+                          onPressed: _busy ? null : _saveProfile,
+                          child: Text(_label('Save email', 'حفظ البريد')),
+                        )),
+                        const SizedBox(width: 8),
+                        Expanded(child: OutlinedButton(
+                          key: const Key('account-edit-cancel'),
+                          onPressed: _busy ? null : _cancelProfileEdit,
+                          child: Text(_label('Cancel', 'إلغاء')),
+                        )),
+                      ]),
+                      const SizedBox(height: 8),
+                      Text(_label(
+                        'Saving requires your current password and revokes other bearer sessions.',
+                        'الحفظ يتطلب كلمة المرور الحالية ويلغي جلسات الأجهزة الأخرى.',
+                      )),
+                    ],
                     const SizedBox(height: 12),
                     OutlinedButton(
                       key: const Key('account-privacy-entry'),

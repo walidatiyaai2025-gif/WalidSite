@@ -6,7 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 use Laravel\Sanctum\PersonalAccessToken;
 
 class IdentityController extends Controller
@@ -48,6 +50,54 @@ class IdentityController extends Controller
         return response()->json(['data' => [
             'id' => $user->getKey(),
             'email' => $user->email,
+        ]]);
+    }
+
+    public function updateMe(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $token = $user?->currentAccessToken();
+        if (! $user || $user->status !== 'active' || ! $user->tokenCan('mobile') ||
+            ! $token instanceof PersonalAccessToken || ! $token->can('mobile')) {
+            abort(403);
+        }
+
+        $data = $request->validate([
+            'email' => ['required', 'string', 'email', 'max:254'],
+            'current_password' => ['required', 'string', 'max:4096'],
+        ]);
+
+        if (! $user->password_hash || ! Hash::check($data['current_password'], $user->password_hash)) {
+            return response()->json([
+                'message' => 'The given data was invalid.',
+                'errors' => ['current_password' => ['The current password is invalid.']],
+            ], 422);
+        }
+
+        $email = trim($data['email']);
+        $duplicate = User::query()
+            ->whereKeyNot($user->getKey())
+            ->whereRaw('LOWER(email) = ?', [Str::lower($email)])
+            ->exists();
+
+        if ($duplicate) {
+            return response()->json([
+                'message' => 'The given data was invalid.',
+                'errors' => ['email' => ['This email address is already in use.']],
+            ], 422);
+        }
+
+        DB::transaction(function () use ($user, $token, $email): void {
+            $user->forceFill(['email' => $email])->save();
+            // A successful identity edit invalidates every other bearer device.
+            // The exact token that performed the reauthenticated change remains
+            // usable so the current screen can confirm the updated identity.
+            $user->tokens()->whereKeyNot($token->getKey())->delete();
+        });
+
+        return response()->json(['data' => [
+            'id' => $user->getKey(),
+            'email' => $user->fresh()->email,
         ]]);
     }
 

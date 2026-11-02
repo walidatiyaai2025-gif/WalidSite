@@ -191,6 +191,14 @@
                             ], true))
                             {{-- Copy only server-supported request topics across locales. --}}
                             @php($languageArgs['topic'] = $rawContactTopic)
+                            @if($rawContactTopic === 'privacy')
+                                {{-- Preserve only validated privacy request kinds across the global locale switch. --}}
+                                @php($rawPrivacyRequest = request()->query()['request'] ?? null)
+                                @if(is_string($rawPrivacyRequest)
+                                    && in_array($rawPrivacyRequest, ['access', 'correction', 'export', 'deletion', 'revoke', 'notifications'], true))
+                                    @php($languageArgs['request'] = $rawPrivacyRequest)
+                                @endif
+                            @endif
                         @endif
                     @endif
                 @endif
