@@ -80,7 +80,7 @@ class PublicArticleController extends Controller
         return response()->json(['data' => $data, 'meta' => [
             'current_page' => $currentPage,
             'has_more_pages' => $hasMorePages,
-        ]]);
+        ]])->header('Cache-Control', 'no-store');
     }
 
     public function show(Request $request, string $slug): JsonResponse
@@ -94,7 +94,7 @@ class PublicArticleController extends Controller
             $article,
             $revision,
             ($query['lang'] ?? '') === 'ar' ? 'ar' : 'en'
-        )]);
+        )])->header('Cache-Control', 'no-store');
     }
 
     private function serialize(Article $article, ArticleRevision $revision, string $lang): array

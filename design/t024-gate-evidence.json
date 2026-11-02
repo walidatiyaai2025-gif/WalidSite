@@ -1,0 +1,109 @@
+{
+  "version": 1,
+  "authority": "contracts/acceptance-gates.json",
+  "note": "Only source-pinned, reviewed real evidence may be added; pending is not acceptance. G-12 deployment and G-20 owner handoff belong to T025/T027.",
+  "actions": {},
+  "api_operations": {},
+  "gates": {
+    "G-01": {
+      "status": "pending",
+      "owner_issue": 25,
+      "evidence": []
+    },
+    "G-02": {
+      "status": "pending",
+      "owner_issue": 25,
+      "evidence": []
+    },
+    "G-03": {
+      "status": "pending",
+      "owner_issue": 25,
+      "evidence": []
+    },
+    "G-04": {
+      "status": "pending",
+      "owner_issue": 25,
+      "evidence": []
+    },
+    "G-05": {
+      "status": "pending",
+      "owner_issue": 25,
+      "evidence": []
+    },
+    "G-06": {
+      "status": "pending",
+      "owner_issue": 25,
+      "evidence": []
+    },
+    "G-07": {
+      "status": "pending",
+      "owner_issue": 25,
+      "evidence": []
+    },
+    "G-08": {
+      "status": "pending",
+      "owner_issue": 25,
+      "evidence": []
+    },
+    "G-09": {
+      "status": "pending",
+      "owner_issue": 25,
+      "evidence": []
+    },
+    "G-10": {
+      "status": "pending",
+      "owner_issue": 25,
+      "evidence": []
+    },
+    "G-11": {
+      "status": "pending",
+      "owner_issue": 25,
+      "evidence": []
+    },
+    "G-12": {
+      "status": "deferred_external",
+      "owner_issue": 26,
+      "evidence": []
+    },
+    "G-13": {
+      "status": "pending",
+      "owner_issue": 25,
+      "evidence": []
+    },
+    "G-14": {
+      "status": "pending",
+      "owner_issue": 25,
+      "evidence": []
+    },
+    "G-15": {
+      "status": "pending",
+      "owner_issue": 25,
+      "evidence": []
+    },
+    "G-16": {
+      "status": "pending",
+      "owner_issue": 25,
+      "evidence": []
+    },
+    "G-17": {
+      "status": "pending",
+      "owner_issue": 25,
+      "evidence": []
+    },
+    "G-18": {
+      "status": "pending",
+      "owner_issue": 25,
+      "evidence": []
+    },
+    "G-19": {
+      "status": "pending",
+      "owner_issue": 25,
+      "evidence": []
+    },
+    "G-20": {
+      "status": "deferred_external",
+      "owner_issue": 28,
+      "evidence": []
+    }
+  }
+}

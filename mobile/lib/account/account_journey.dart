@@ -310,6 +310,7 @@ class _MobileAccountJourneyState extends State<MobileAccountJourney> {
   final _profilePassword = TextEditingController();
   MobileAiSession? _session;
   MobileAccount? _profile;
+  bool _accountReady = false;
   List<MobileSavedResource> _saved = const [];
   bool _hasMore = false;
   int _page = 1;
@@ -342,10 +343,17 @@ class _MobileAccountJourneyState extends State<MobileAccountJourney> {
   bool get _validSession => _session != null &&
       (_session!.expiresAt == null ||
           _session!.expiresAt!.isAfter(DateTime.now().toUtc()));
+
+  // A rejected bearer is not a transient catalog outage. Never trap the
+  // user behind a retry/sign-out flow that keeps replaying a revoked token.
+  bool _authorizationLost(Object error) => error is MobileAiHttpException &&
+      (error.statusCode == 401 || error.statusCode == 403);
+
   void _clearSession() {
     _epoch++;
     _session = null;
     _profile = null;
+    _accountReady = false;
     _saved = const [];
     _page = 1;
     _hasMore = false;
@@ -372,39 +380,100 @@ class _MobileAccountJourneyState extends State<MobileAccountJourney> {
     super.dispose();
   }
 
+  // The server token exists as soon as login succeeds, even when profile
+  // or saved-resource reads fail. Retain it for a safe retry or real revocation
+  // rather than minting another token after a transient catalog outage.
+  Future<void> _loadAccountData(MobileAiSession session, int epoch) async {
+    final profile = await _readProfile(session.token);
+    final saved = await _readSaved(session.token, widget.arabic, 1);
+    if (!mounted || epoch != _epoch || _session?.token != session.token) return;
+    if (saved.page != 1) throw const FormatException('Unexpected saved page');
+    setState(() {
+      _profile = profile;
+      _profileEmail.text = profile.email;
+      _saved = saved.items;
+      _page = 1;
+      _hasMore = saved.hasMore;
+      _accountReady = true;
+    });
+  }
+
   Future<void> _signIn() async {
-    if (_busy) return;
+    if (_busy || _session != null) return;
     setState(() { _busy = true; _message = null; });
-    final token = ++_epoch;
+    final epoch = ++_epoch;
     try {
       final session = await _login(_email.text.trim(), _password.text);
-      if (!mounted || token != _epoch) return;
+      if (!mounted || epoch != _epoch) return;
       if (session.token.isEmpty || session.token.length > 8192 ||
           (session.expiresAt != null &&
               !session.expiresAt!.isAfter(DateTime.now().toUtc()))) {
         throw const FormatException('Expired account session');
       }
-      final profile = await _readProfile(session.token);
-      final saved = await _readSaved(session.token, widget.arabic, 1);
-      if (!mounted || token != _epoch) return;
       setState(() {
         _session = session;
-        _profile = profile;
-        _profileEmail.text = profile.email;
-        _saved = saved.items;
+        _accountReady = false;
+        _profile = null;
+        _saved = const [];
         _page = 1;
-        _hasMore = saved.hasMore;
-        // The authenticated identity lives in _profile; never retain the
-        // login-form address for another user on passive token expiry.
+        _hasMore = false;
         _email.clear();
         _password.clear();
       });
-    } catch (_) {
-      if (!mounted || token != _epoch) return;
+      await _loadAccountData(session, epoch);
+    } catch (error) {
+      if (!mounted || epoch != _epoch) return;
       setState(() {
-        _clearSession();
-        _message = _label('Could not sign in or load your account. Check the connection.',
-            'تعذر تسجيل الدخول أو تحميل الحساب. تحقق من الاتصال.');
+        if (_session != null && _authorizationLost(error)) {
+          // Profile and saved data have not both been verified. The server
+          // rejected the bearer; clear all local identity and allow re-login.
+          _clearSession();
+          _message = _label('Session no longer authorized. Sign in again.',
+              'لم تعد الجلسة مصرحًا بها. سجل الدخول مجددًا.');
+        } else if (_session != null) {
+          _profile = null;
+          _accountReady = false;
+          _saved = const [];
+          _page = 1;
+          _hasMore = false;
+          _message = _label(
+              'Signed in, but account data could not load. Retry or sign out.',
+              'تم تسجيل الدخول لكن تعذر تحميل بيانات الحساب. أعد المحاولة أو سجل الخروج.');
+        } else {
+          _clearSession();
+          _message = _label(
+              'Could not sign in. Check the connection.',
+              'تعذر تسجيل الدخول. تحقق من الاتصال.');
+        }
+      });
+    } finally {
+      _password.clear();
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _retryAccount() async {
+    if (_busy || _accountReady || _session == null || !_requireSession()) return;
+    final epoch = ++_epoch;
+    final session = _session!;
+    setState(() { _busy = true; _message = null; });
+    try {
+      await _loadAccountData(session, epoch);
+    } catch (error) {
+      if (!mounted || epoch != _epoch) return;
+      setState(() {
+        if (_authorizationLost(error)) {
+          _clearSession();
+          _message = _label('Session no longer authorized. Sign in again.',
+              'لم تعد الجلسة مصرحًا بها. سجل الدخول مجددًا.');
+        } else {
+          _profile = null;
+          _accountReady = false;
+          _saved = const [];
+          _message = _label(
+              'Account data is still unavailable. Retry or sign out.',
+              'بيانات الحساب ما زالت غير متاحة. أعد المحاولة أو سجل الخروج.');
+        }
       });
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -660,7 +729,7 @@ class _MobileAccountJourneyState extends State<MobileAccountJourney> {
   @override
   Widget build(BuildContext context) {
     return Semantics(
-      identifier: _validSession && _profile != null
+      identifier: _validSession && _accountReady && _profile != null
           ? (_showProfile ? 'walidsite.mobile.12' : 'walidsite.mobile.11')
           : 'walidsite.mobile.account.locked',
       child: Scaffold(
@@ -681,7 +750,7 @@ class _MobileAccountJourneyState extends State<MobileAccountJourney> {
                     padding: const EdgeInsets.only(bottom: 12),
                     child: Text(_message!, key: const Key('account-message')),
                   ),
-                if (!_validSession || _profile == null) ...[
+                if (!_validSession || _session == null) ...[
                   Text(_label('Sign in to access your own saved resources.',
                       'سجل الدخول لعرض محفوظات حسابك فقط.')),
                   const SizedBox(height: 16),
@@ -712,6 +781,27 @@ class _MobileAccountJourneyState extends State<MobileAccountJourney> {
                   ),
                   Text(_label('Credentials and session are not stored on this device.',
                       'لا تُحفظ بيانات الدخول أو الجلسة على هذا الجهاز.')),
+                ] else if (!_accountReady || _profile == null) ...[
+                  Text(_label(
+                      'Signed in. Personal data is unavailable until both '
+                      'your profile and saved items load successfully.',
+                      'تم تسجيل الدخول. لن تُعرض بياناتك حتى يتم تحميل '
+                      'الملف الشخصي والمحفوظات بنجاح.'),
+                    key: const Key('account-load-unavailable')),
+                  if (_busy)
+                    const LinearProgressIndicator(key: Key('account-load-pending')),
+                  FilledButton(
+                    key: const Key('account-retry-data'),
+                    onPressed: _busy ? null : _retryAccount,
+                    child: Text(_label('Retry account data', 'إعادة تحميل بيانات الحساب')),
+                  ),
+                  const SizedBox(height: 12),
+                  OutlinedButton(
+                    key: const Key('account-signout'),
+                    onPressed: _busy ? null : _signOut,
+                    child: Text(_label('Sign out and revoke session',
+                        'تسجيل الخروج وإلغاء الجلسة')),
+                  ),
                 ] else ...[
                   Row(children: [
                     Expanded(child: OutlinedButton(

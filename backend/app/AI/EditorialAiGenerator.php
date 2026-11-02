@@ -87,10 +87,18 @@ final class EditorialAiGenerator
             throw new RuntimeException('AI draft generation failed safely.');
         }
 
-        $draft = $this->composer->saveDraft($article, $body, array_column($candidates, 'source_url'));
+        // A paid provider has now returned a validated bounded response.
+        // The billable inference happened even when the article is deleted
+        // during the HTTP round trip, or saving the unverified draft fails.
+        // Record that actual call FIRST. Use an opaque per-call key, not a
+        // revision ID (there may never be a revision on storage failure).
+        // If the usage budget/lease rejects the receipt, do not save a draft.
         $this->recordEstimatedUsage($provider, $jobId, $owner,
-            'ai-draft:'.$draft->id, $estimatedCostMinor, $model, $tokens);
-        return $draft;
+            'ai-draft-inference:'.Str::uuid(), $estimatedCostMinor, $model, $tokens);
+
+        return $this->composer->saveDraft(
+            $article, $body, array_column($candidates, 'source_url')
+        );
     }
 
     /**

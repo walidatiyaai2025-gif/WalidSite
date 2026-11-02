@@ -25,6 +25,10 @@ final class PublicLearningPathController extends Controller
     private function publicData(stdClass $row): ?array
     {
         if (! is_string($row->id)
+            // The mobile catalog parses every entry as a canonical UUID.
+            // A malformed legacy/imported key otherwise rejects the entire
+            // Flutter page, including unrelated approved learning tracks.
+            || preg_match('/\\A[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}\\z/D', $row->id) !== 1
             || ! is_string($row->slug)
             || preg_match('/^[a-z0-9](?:[a-z0-9-]{0,148}[a-z0-9])?$/D', $row->slug) !== 1
             || ! is_string($row->title)

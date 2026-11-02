@@ -18,7 +18,7 @@ final class ProviderRouter
      * Never return a secret or attempt a connection here; budget reservations
      * and durable dispatch belong to T011/T015.
      *
-     * @param array<int, array<string, mixed>> $candidates
+     * @param array<int, mixed> $candidates
      */
     public function selectProviderId(string $capability, array $candidates): ?string
     {
@@ -26,7 +26,12 @@ final class ProviderRouter
             throw new InvalidArgumentException('Unknown AI capability.');
         }
 
-        $eligible = array_filter($candidates, static function (array $candidate) use ($capability): bool {
+        $eligible = array_filter($candidates, static function (mixed $candidate) use ($capability): bool {
+            // An imported malformed row must not crash the whole route and
+            // starve another healthy provider. Reject the row before casts.
+            if (! is_array($candidate)) {
+                return false;
+            }
             $id = $candidate['id'] ?? null;
             $capabilities = $candidate['capabilities'] ?? [];
             // Only installed adapter implementations may receive jobs.
@@ -41,11 +46,23 @@ final class ProviderRouter
             // provider just because the stored capability flag was enabled.
             $supported = in_array($type, ['ollama-compatible', 'openai-compatible'], true)
                 && ($capability !== 'image-generation' || $type === 'openai-compatible');
-            // Missing capacity defaults to the documented single worker.
-            // An explicit zero/negative limit means NO available slot.
-            $limit = (int) ($candidate['concurrent_limit'] ?? 1);
-            $inFlight = max(0, (int) ($candidate['in_flight'] ?? 0));
-            $budgetRemaining = (float) ($candidate['daily_budget_remaining'] ?? 0);
+            // SQL decimal balances can be strings, but arbitrary strings,
+            // negative in-flight counters and malformed priorities must not
+            // be silently cast to zero and select an ineligible paid route.
+            $limit = self::integerSetting(array_key_exists('concurrent_limit', $candidate)
+                ? $candidate['concurrent_limit'] : 1);
+            $inFlight = self::integerSetting(array_key_exists('in_flight', $candidate)
+                ? $candidate['in_flight'] : 0);
+            $priority = self::integerSetting(array_key_exists('routing_priority', $candidate)
+                ? $candidate['routing_priority'] : 100);
+            $budgetValue = array_key_exists('daily_budget_remaining', $candidate)
+                ? $candidate['daily_budget_remaining'] : 0;
+            if ($limit === null || $limit < 1
+                || $inFlight === null || $inFlight < 0
+                || $priority === null || ! self::isBudgetNumber($budgetValue)) {
+                return false;
+            }
+            $budgetRemaining = (float) $budgetValue;
             // Self-hosted Ollama inference has no paid-provider reservation.
             // Paid OpenAI-compatible routing still requires a positive budget.
             $local = $type === 'ollama-compatible';
@@ -69,5 +86,32 @@ final class ProviderRouter
         );
 
         return $eligible === [] ? null : $eligible[0]['id'];
+    }
+
+    /**
+     * Database integer columns may arrive as canonical decimal strings.
+     * No lossy casts: '0busy' must not become zero in-flight requests, and
+     * 'urgent' must never gain sorting priority over an approved route.
+     */
+    private static function integerSetting(mixed $value): ?int
+    {
+        if (is_int($value)) {
+            return $value;
+        }
+        if (! is_string($value)
+            || preg_match('/\\A-?(?:0|[1-9][0-9]*)\\z/D', $value) !== 1) {
+            return null;
+        }
+
+        $parsed = filter_var($value, FILTER_VALIDATE_INT);
+
+        return $parsed === false ? null : $parsed;
+    }
+
+    private static function isBudgetNumber(mixed $value): bool
+    {
+        return is_int($value) || is_float($value)
+            || (is_string($value)
+                && preg_match('/\\A(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?\\z/D', $value) === 1);
     }
 }

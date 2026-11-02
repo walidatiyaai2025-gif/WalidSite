@@ -75,6 +75,16 @@ final class EditorialScheduleRunner
             if (! $schedule || $schedule->status !== 'pending' || CarbonImmutable::parse($schedule->due_at)->isFuture()) {
                 return null;
             }
+            // The admin may have disabled auto-publication after run()
+            // selected its due IDs. The initial policy snapshot is only a
+            // scheduling hint; this transactional row lock is the authority
+            // at the actual publication boundary. Do not consume the due
+            // schedule or create a publication event while disabled.
+            $currentPolicy = DB::table('editorial_policies')
+                ->where('id', 1)->lockForUpdate()->first();
+            if (! $currentPolicy || ! (bool) $currentPolicy->enabled) {
+                return null;
+            }
             $article = Article::query()->whereKey($schedule->article_id)->lockForUpdate()->first();
             $revision = $article?->revisions()->orderByDesc('revision_no')->first();
             $checks = $revision?->validation_json;

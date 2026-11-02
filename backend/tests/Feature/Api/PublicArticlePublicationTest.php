@@ -39,6 +39,44 @@ class PublicArticlePublicationTest extends TestCase
         ]);
     }
 
+    public function test_revocable_article_api_is_not_cacheable_for_list_and_detail_in_both_languages(): void
+    {
+        $article = $this->article('cache-revocation-guide');
+        $revision = $this->revision($article);
+        $article->publishVerified();
+
+        foreach (['en', 'ar'] as $lang) {
+            // Both the public browser list and the shared mobile article feed
+            // must refuse intermediary persistence of evidence that can later
+            // be revoked. Detail includes the approved markdown itself.
+            foreach (['/api/v1/public/articles', '/api/v1/mobile/articles'] as $route) {
+                $result = $this->getJson($route.'?lang='.$lang)
+                    ->assertOk()->assertJsonCount(1, 'data')
+                    ->assertJsonPath('data.0.slug', $article->slug);
+                $this->assertStringContainsString('no-store',
+                    (string) $result->headers->get('Cache-Control'));
+            }
+            $detail = $this->getJson('/api/v1/public/articles/'.$article->slug.'?lang='.$lang)
+                ->assertOk()->assertJsonPath('data.body_markdown', '# Verified step 1');
+            $this->assertStringContainsString('no-store',
+                (string) $detail->headers->get('Cache-Control'));
+        }
+
+        // An approved citation can be withdrawn after a client has fetched it.
+        // Fresh requests must not expose the revoked snapshot or cache it.
+        $revision->update(['citations_json' => [
+            ['source_url' => 'https://example.org/verified', 'verified' => false],
+        ]]);
+        foreach (['/api/v1/public/articles', '/api/v1/mobile/articles'] as $route) {
+            $withdrawn = $this->getJson($route.'?lang=ar')->assertOk()
+                ->assertJsonCount(0, 'data')->assertDontSee('cache-revocation-guide');
+            $this->assertStringContainsString('no-store',
+                (string) $withdrawn->headers->get('Cache-Control'));
+        }
+        $this->getJson('/api/v1/public/articles/'.$article->slug)
+            ->assertNotFound()->assertDontSee('# Verified step 1');
+    }
+
     public function test_drafts_and_unvalidated_entries_never_appear_publicly(): void
     {
         Http::fake();

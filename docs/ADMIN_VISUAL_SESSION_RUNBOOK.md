@@ -131,3 +131,42 @@ Record the actual source SHA, route, viewport/DPR, locale, non-sensitive
 mismatch counts and CI evidence in Issue #481; never paste authenticated
 cookies, private client records, source portrait substitutes, or credentials.
 Cross-device Flutter and final 40/40 attestation remain separate.
+
+## Read-only 13-screen bilingual accessibility and responsive matrix
+
+Issue #481 includes a separate diagnostic program: `qa/audit_admin_runtime.py`.
+It uses the same real authenticated local Laravel session prepared above and
+checks 13 canonical Admin screens in both languages at 1440x900 (desktop)
+and 390x844 (mobile): **52 independent live browser navigations**.
+An existing local ADMIN-04 provider UUID is mandatory; never invent one.
+
+Run from an exact clean Git checkout with an actual authorized local session:
+
+```bash
+export WALIDSITE_RENDER_BASE_URL=http://127.0.0.1:8000
+export WALIDSITE_CAPTURE_STORAGE_STATE=/private/temporary/path/storage-state.json
+sha="$(git rev-parse HEAD)"
+python3 -B qa/audit_admin_runtime.py \
+  --provider-id ACTUAL_EXISTING_QA_PROVIDER_UUID \
+  --commit "$sha" \
+  --output /tmp/walidsite-admin-a11y-UNIQUE-REPORT.json
+```
+
+Replace both example paths/UUID with real local values; the report filename
+must be new. The helper rejects remote hosts, dirty or mismatched sources,
+public/shared session files, noncanonical routes and external browser requests.
+It never writes to the Laravel application or transmits Admin cookies.
+The report records only screen ID, locale, viewport, failure codes and source SHA;
+it explicitly says `visual_parity: not_attested` and never contains page HTML,
+private project evidence, credentials, personally identifying data or cookies.
+
+For every screen, the audit checks HTTP 200 at the expected route, real source
+H1, AR/EN document direction, a main landmark, skip navigation, keyboard Tab
+focus, whole-page horizontal overflow, unnamed visible interactive controls
+and inert/script links. A nonzero exit indicates defects to fix in the owning
+W2 product code; never suppress failures or change reference PNGs to force a pass.
+
+The standard CI `test_visual_*.py` suite checks the audit harness using fakes;
+these fakes do NOT establish the 52 real-browser checks, screenshot pixels,
+accessibility compliance or release readiness. Zero-RGBA verified captures
+remain independently required for all 40 screens before Issue #481 can close.

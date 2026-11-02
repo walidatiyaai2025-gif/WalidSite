@@ -214,12 +214,21 @@ class OfflineRunbookRepository {
   final RunbookSnapshotStore store;
   final Future<OfflineRunbookPack> Function() bundled;
 
-  Future<OfflineRunbookPack?> _trustedSnapshot() async {
+  // Reserve an in-order slot synchronously before the first await. Otherwise
+  // two valid signed downloads may both inspect an obsolete cached snapshot
+  // and the slower, older write can replace the newer revision.
+  Future<void> _syncBarrier = Future<void>.value();
+
+  // Retain the exact signed envelope alongside its verified payload.
+  // A timestamp alone cannot establish an ordering between two different
+  // publisher-signed packs stamped at the same instant.
+  Future<({OfflineRunbookPack pack, String envelope})?> _trustedSnapshot() async {
     if (!source.configured) return null;
     try {
       final stored = await store.read();
       if (stored == null) return null;
-      return await source.verify(stored);
+      final pack = await source.verify(stored);
+      return (pack: pack, envelope: stored);
     } catch (_) {
       // Invalid/partially written/unreadable snapshots never become trusted.
       return null;
@@ -227,20 +236,48 @@ class OfflineRunbookRepository {
   }
 
   Future<OfflineRunbookPack> load() async =>
-      await _trustedSnapshot() ?? await bundled();
+      (await _trustedSnapshot())?.pack ?? await bundled();
 
-  Future<OfflineRunbookPack> sync() async {
+  Future<OfflineRunbookPack> sync() {
+    final prior = _syncBarrier;
+    final completed = Completer<void>();
+    _syncBarrier = completed.future;
+    return _syncAfter(prior, completed);
+  }
+
+  Future<OfflineRunbookPack> _syncAfter(
+      Future<void> prior, Completer<void> completed) async {
+    try {
+      await prior;
+      return await _syncOnce();
+    } finally {
+      // Never strand queued updates if fetching, signature verification or
+      // persistence fails. The barrier itself must not complete with error.
+      completed.complete();
+    }
+  }
+
+  Future<OfflineRunbookPack> _syncOnce() async {
     if (!source.configured) {
       throw const FormatException('Signed runbook updates not configured');
     }
     final received = await source.fetch();
     final fresh = await source.verify(received);
-    final current = await _trustedSnapshot();
-    // Reject replay/rollback: an older signed pack cannot replace a newer
-    // trusted local snapshot, even if its signature is mathematically valid.
-    if (current != null &&
-        fresh.verifiedAt!.isBefore(current.verifiedAt!)) {
-      throw const FormatException('Refusing older signed runbook update');
+    final snapshot = await _trustedSnapshot();
+    if (snapshot != null) {
+      final order = fresh.verifiedAt!.compareTo(snapshot.pack.verifiedAt!);
+      if (order < 0) {
+        throw const FormatException('Refusing older signed runbook update');
+      }
+      if (order == 0) {
+        // Re-downloading identical signed bytes is harmless and should not
+        // rewrite the offline cache. A *different* signed payload with the
+        // same UTC time is unordered: do not permit a same-time rollback.
+        if (received != snapshot.envelope) {
+          throw const FormatException('Conflicting signed runbook timestamp');
+        }
+        return snapshot.pack;
+      }
     }
     await store.write(received);
     return fresh;
