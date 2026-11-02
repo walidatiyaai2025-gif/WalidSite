@@ -173,11 +173,13 @@ jobs:
               "site.setup_database_ready" => false,
               "site.install_lock_path" => storage_path("app/site-installed.lock"),
           ]);
-          $ok = app(App\Support\Deployment\SiteInstaller::class)->complete(
+          $installer = app(App\Support\Deployment\SiteInstaller::class);
+          $ok = $installer->complete(
               getenv("WALIDSITE_QA_ADMIN_PASSWORD"),
               app(App\Support\Deployment\SiteUpdater::class)
           );
           if (! $ok) { fwrite(STDERR, "Visual QA owner activation was not completed\\n"); exit(2); }
+          file_put_contents("/tmp/walidsite-admin-email", $installer->ownerEmail());
           $provider = App\Models\AiProvider::create([
               "display_name" => "Visual QA provider",
               "provider_type" => "ollama-compatible",
@@ -208,7 +210,7 @@ jobs:
             kill "$server_pid" 2>/dev/null || true
             if test -n "$session_dir"; then rm -rf -- "$session_dir"; fi
             if test -n "$plan_dir"; then rm -rf -- "$plan_dir"; fi
-            unset WALIDSITE_QA_ADMIN_PASSWORD WALIDSITE_CAPTURE_STORAGE_STATE
+            unset WALIDSITE_QA_ADMIN_PASSWORD WALIDSITE_QA_ADMIN_EMAIL WALIDSITE_CAPTURE_STORAGE_STATE
           }
           trap cleanup EXIT
           for attempt in {1..30}; do
@@ -218,7 +220,13 @@ jobs:
           done
           curl --fail --silent --show-error http://127.0.0.1:8000/admin/login >/dev/null
 
-          session_output="$(python3 qa/admin_visual_session.py)"
+          export WALIDSITE_QA_ADMIN_EMAIL="$(cat /tmp/walidsite-admin-email)"
+          if ! session_output="$(python3 qa/admin_visual_session.py)"; then
+            echo "Admin session helper rejected the local runtime; server diagnostics follow"
+            cat /tmp/walidsite-admin-visual.log
+            exit 1
+          fi
+          unset WALIDSITE_QA_ADMIN_EMAIL
           export WALIDSITE_CAPTURE_STORAGE_STATE="$(printf '%s\n' "$session_output" | sed -n 's/^WALIDSITE_CAPTURE_STORAGE_STATE=//p')"
           test -n "$WALIDSITE_CAPTURE_STORAGE_STATE"
           session_dir="$(dirname "$WALIDSITE_CAPTURE_STORAGE_STATE")"
