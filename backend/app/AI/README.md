@@ -10,6 +10,7 @@ The job queue and execution dispatcher are implemented. **No provider inference,
 - Completed step checkpoints are immutable, with opaque storage-only output references. `yieldCheckpointedJob` releases the owned lease **only after a new successful checkpoint** and preserves the failure retry allowance for later cron ticks.
 - On failure only redacted machine error codes persist; bounded exponential retry and circuit breaker protect providers. On success, paid jobs require an idempotent usage receipt and all checkpoints; cost receipts cannot exceed the job reservation or provider daily budget.
 - `heartbeat` allows active lease owners to extend up to five minutes from claim, never resurrecting expired leases. Lease ownership is rechecked for every checkpoint, receipt, completion and failure.
+- `cancelJob()` atomically terminates queued/retry/running work, removes any active lease and releases only the unspent reservation. Already-recorded usage remains immutable; cancellation is idempotent and does not count as a provider failure or open its circuit.
 
 ## One checkpoint per cPanel invocation
 
@@ -18,6 +19,12 @@ The job queue and execution dispatcher are implemented. **No provider inference,
 - Laravel command `php artisan ai:tick` calls the bounded worker once and exits. The existing `schedule:run` registration runs each minute **only when handlers have been explicitly registered**, with overlap suppression. A fresh installation has no handlers and therefore makes no inference calls. Production hosting cron must separately invoke `php artisan schedule:run` as provisioned by the operator; the application does not install a cron daemon or pretend to have a running worker.
 - Step `position` is persisted to maintain enqueue order. Migration deterministically orders legacy checkpoints by creation timestamp / UUID when the old schema lacked an ordinal. Original legacy insertion order cannot be recovered if those values tie; no false claim of perfect reconstruction.
 
+## Research-source privacy boundary
+
+- Candidate research URLs are never fetched by `ResearchSourceIntake`; they remain unverified until editorial review.
+- Generic sources must be public HTTPS and reject private/local hosts, credentials, signed capability parameters and deeply encoded credential keys.
+- GitHub citations have an additional fail-closed rule: only canonical `github.com/<owner>/<repo>` public surfaces from the server-side allowlist may be used, and the existing `PublicRepositoryDirectory` must re-verify the repository as `visibility=public` through GitHub's unauthenticated public API. Direct API/raw/Gist/subdomain URLs and private/unavailable/unallowlisted repositories are rejected before any AI provider receives the citation.
+
 ## Acceptance boundary
 
-Automated tests cover idempotency, locks, checkpoints, resume across ticks, ordered execution, no-handler fail-closed behavior, retries, budget receipts, circuit breaker, leases, redacted errors and the CLI guard. This is a tested **generic orchestration runtime**, not proof that T014 content handlers exist, cPanel cron is installed, a provider credential is usable, staging was deployed, or real inference completed.
+Automated tests cover idempotency, locks, checkpoints, resume across ticks, ordered execution, explicit cancellation, no-handler fail-closed behavior, retries, budget receipts, circuit breaker, leases, redacted errors, verified-public GitHub source admission and the CLI guard. This is a tested **generic orchestration runtime**, not proof that T014 content handlers exist, cPanel cron is installed, a provider credential is usable, staging was deployed, or real inference completed.
