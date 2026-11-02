@@ -29,6 +29,16 @@ def main() -> int:
         raise SystemExit("A full lowercase renderer commit SHA is required.")
 
     root = Path(__file__).resolve().parents[1]
+    checked_out = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=root,
+        check=True,
+        text=True,
+        capture_output=True,
+    ).stdout.strip()
+    if checked_out != args.commit:
+        raise SystemExit("Renderer commit must equal the checked-out Git HEAD.")
+
     contracts = json.loads((root / "contracts/screens.json").read_text(encoding="utf-8"))
     screens = {item["id"]: item for item in contracts["screens"]}
     out = root / "qa/visual-diagnostics/T007"

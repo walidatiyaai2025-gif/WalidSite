@@ -67,12 +67,18 @@ class T007LocaleNavigationTest extends TestCase
     {
         $this->get('/about?lang=en')
             ->assertOk()
-            ->assertSee('class="t007-contact t007-language-switch" lang="ar" hreflang="ar"', false)
+            ->assertDontSee('<a class="t007-contact t007-language-switch"', false)
+            ->assertSee('class="language-link t007-footer-language-switch"', false)
+            ->assertSee('lang="ar"', false)
+            ->assertSee('hreflang="ar"', false)
             ->assertSee('href="'.route('public.about', ['lang' => 'ar']).'"', false);
 
         $this->get('/about?lang=ar')
             ->assertOk()
-            ->assertSee('class="t007-contact t007-language-switch" lang="en" hreflang="en"', false)
+            ->assertDontSee('<a class="t007-contact t007-language-switch"', false)
+            ->assertSee('class="language-link t007-footer-language-switch"', false)
+            ->assertSee('lang="en"', false)
+            ->assertSee('hreflang="en"', false)
             ->assertSee('href="'.route('public.about', ['lang' => 'en']).'"', false);
     }
 }

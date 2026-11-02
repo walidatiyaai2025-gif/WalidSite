@@ -9,7 +9,7 @@
         <a @class(['active' => $t007Current === 'public.about']) @if($t007Current === 'public.about') aria-current="page" @endif href="{{ route('public.about', ['lang' => $t007Locale]) }}">{{ $t007Locale === 'ar' ? 'نبذة' : 'About' }}</a>
         <a @class(['active' => $t007Current === 'public.expertise']) @if($t007Current === 'public.expertise') aria-current="page" @endif href="{{ route('public.expertise', ['lang' => $t007Locale]) }}">{{ $t007Locale === 'ar' ? 'الخبرات' : 'Expertise' }}</a>
         <a href="{{ route('public.projects', ['lang' => $t007Locale]) }}">{{ $t007Locale === 'ar' ? 'المشاريع' : 'Projects' }}</a>
-        <a @class(['active' => $t007Current === 'public.ai-engineering']) @if($t007Current === 'public.ai-engineering') aria-current="page" @endif href="{{ route('public.ai-engineering', ['lang' => $t007Locale]) }}">{{ $t007Locale === 'ar' ? 'مختبر AI' : 'AI Lab' }}</a>
+        <a @if($t007Current === 'public.ai-engineering') aria-current="page" @endif href="{{ route('public.ai-engineering', ['lang' => $t007Locale]) }}">{{ $t007Locale === 'ar' ? 'مختبر AI' : 'AI Lab' }}</a>
         <a href="{{ route('public.blog', ['lang' => $t007Locale]) }}">{{ $t007Locale === 'ar' ? 'المدونة' : 'Blog' }}</a>
         <a href="{{ route('public.github', ['lang' => $t007Locale]) }}">{{ $t007Locale === 'ar' ? 'GitHub' : 'GitHub' }}</a>
         <a href="{{ route('public.resume', ['lang' => $t007Locale]) }}">{{ $t007Locale === 'ar' ? 'السيرة العامة' : 'Resume' }}</a>
@@ -28,11 +28,9 @@
             @php($t007SwitchArgs['category'] = $t007RawCategory)
         @endif
     @endif
-    {{-- Language selection must be visible and keyboard-operable, not screen-reader-only.
-         Preserve the recruiter track only after validating its public allowlist. --}}
-    <a class="t007-contact t007-language-switch" lang="{{ $t007Locale === 'ar' ? 'en' : 'ar' }}" hreflang="{{ $t007Locale === 'ar' ? 'en' : 'ar' }}" aria-label="{{ $t007Locale === 'ar' ? 'Switch to English' : 'التبديل إلى العربية' }}" href="{{ route($t007SwitchRoute, $t007SwitchArgs) }}">
-        {{ $t007Locale === 'ar' ? 'English' : 'العربية' }}
-    </a>
+    {{-- The visible locale switch is rendered in the page footer so the
+         reference header remains exact while bilingual access stays visible,
+         keyboard-operable and available after the primary screen content. --}}
     @if($t007Current === 'public.hire')
         <a class="t007-sr-only" aria-current="page" href="{{ route('public.hire', ['lang' => $t007Locale, 'track' => $t007SwitchArgs['track'] ?? 'all']) }}">{{ $t007Locale === 'ar' ? 'التوظيف' : 'Recruiter' }}</a>
     @endif

@@ -36,6 +36,10 @@ jobs:
           --health-retries=10
     steps:
       - uses: actions/checkout@v4
+        with:
+          # PR workflows must test the submitted head itself, not GitHub's
+          # synthetic merge ref. Push runs keep using their actual push SHA.
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
       - name: Validate immutable v6 reference pack
         run: python3 qa/validate_pack.py
       - uses: actions/setup-python@v5
@@ -143,6 +147,9 @@ jobs:
           WALIDSITE_RENDER_BASE_URL: http://127.0.0.1:8000
         run: |
           set -euo pipefail
+          renderer_sha="$(git rev-parse HEAD)"
+          test "$renderer_sha" = "${{ github.event.pull_request.head.sha }}"
+          export GITHUB_SHA="$renderer_sha"
           touch backend/database/t007-visual.sqlite
           cd backend
           php artisan migrate:fresh --force
@@ -164,7 +171,7 @@ jobs:
           curl --fail --silent --show-error http://127.0.0.1:8000/ >/dev/null
           python -m pip install --disable-pip-version-check --quiet playwright==1.55.0
           python -m playwright install --with-deps chromium
-          python qa/capture_t007_diagnostics.py --commit "$GITHUB_SHA" --locale en --dpr 1
+          python qa/capture_t007_diagnostics.py --commit "$(git rev-parse HEAD)" --locale en --dpr 1
 
       - name: Upload T007 runtime visual diagnostics
         if: ${{ always() && steps.t007_visual_diagnostics.outcome != 'skipped' && github.event_name == 'pull_request' && github.head_ref == 'feat/T007-runtime-parity-final' }}

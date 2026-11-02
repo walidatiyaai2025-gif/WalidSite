@@ -5,6 +5,13 @@ from pathlib import Path
 
 
 class T007DiagnosticExitTest(unittest.TestCase):
+    def test_renderer_commit_is_bound_to_checked_out_git_head(self):
+        source = Path(__file__).resolve().parents[1] / "capture_t007_diagnostics.py"
+        code = source.read_text(encoding="utf-8")
+        self.assertIn('["git", "rev-parse", "HEAD"]', code)
+        self.assertIn("checked_out != args.commit", code)
+        self.assertIn("Renderer commit must equal the checked-out Git HEAD.", code)
+
     def test_exit_policy_rejects_failed_and_wrong_size_captures(self):
         source = Path(__file__).resolve().parents[1] / "capture_t007_diagnostics.py"
         tree = ast.parse(source.read_text(encoding="utf-8"))
