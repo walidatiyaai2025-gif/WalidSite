@@ -788,9 +788,12 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
   // The user must initiate their own offline keyword search.
   void _openOfflineRecovery() {
     Navigator.of(context).push(MaterialPageRoute<void>(
-      builder: (_) => OfflineSolutionFinder(
-        arabic: widget.arabic,
-        bundledPack: widget.offlinePack,
+      builder: (_) => Directionality(
+        textDirection: widget.arabic ? TextDirection.rtl : TextDirection.ltr,
+        child: OfflineSolutionFinder(
+          arabic: widget.arabic,
+          bundledPack: widget.offlinePack,
+        ),
       ),
     ));
   }
@@ -798,7 +801,10 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
   void _openReviewedCatalog() {
     if (ReviewedRunbookReader.configuredOrigin() == null) return;
     Navigator.of(context).push(MaterialPageRoute<void>(
-      builder: (_) => ReviewedRunbookLibrary(arabic: widget.arabic),
+      builder: (_) => Directionality(
+        textDirection: widget.arabic ? TextDirection.rtl : TextDirection.ltr,
+        child: ReviewedRunbookLibrary(arabic: widget.arabic),
+      ),
     ));
   }
 
