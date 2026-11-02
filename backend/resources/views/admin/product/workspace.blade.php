@@ -162,5 +162,6 @@ aside button{background:transparent;border:1px solid #fff;color:#fff;padding:8px
 <nav class="nav-bottom" aria-label="{{ $locale === 'ar' ? 'إجراءات الإدارة المرتبطة' : 'Related admin actions' }}">
 <a href="{{ route('admin.content.index', ['lang'=>$locale]) }}">{{ $locale === 'ar' ? 'مراجعة المقالات' : 'Editorial review' }}</a>
 <a href="{{ route('admin.audit.index', ['lang'=>$locale]) }}">{{ $locale === 'ar' ? 'السجل الأمني' : 'Security audit' }}</a>
+<a href="{{ route('admin.operations.projects', ['lang'=>$locale]) }}">{{ $locale === 'ar' ? 'تحرير مسودات المشاريع' : 'Edit private project drafts' }}</a>
 </nav>
 </main></div></body></html>
