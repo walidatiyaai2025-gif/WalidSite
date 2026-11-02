@@ -17,7 +17,7 @@ String feed({
   String lang = 'en',
   List<Map<String, dynamic>>? projects,
   List<Map<String, dynamic>>? articles,
-  List<Map<String, dynamic>>? runbooks,
+  List<Map<String, dynamic>>? runbookItems,
   List<dynamic>? tools,
   bool savedRequiresAuth = true,
 }) => jsonEncode({
@@ -41,7 +41,7 @@ String feed({
         'published_at': '2026-11-02T10:00:00Z',
       },
     ],
-    'offline_runbooks': runbooks ?? [
+    'offline_runbooks': runbookItems ?? [
       runbook('00000000-0000-4000-8000-000000000001', 'Reviewed runbook'),
     ],
     'tools': tools ?? [],
@@ -62,7 +62,7 @@ void main() {
         lang: 'ar',
         projects: const [],
         articles: const [],
-        runbooks: const [],
+        runbookItems: const [],
       ),
       true,
     );
@@ -168,7 +168,7 @@ void main() {
               lang: 'ar',
               projects: const [],
               articles: const [],
-              runbooks: const [],
+              runbookItems: const [],
             ),
             true,
           ),
