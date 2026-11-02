@@ -28,7 +28,9 @@ final class PrivacyPolicyJourneyTest extends TestCase
                     ->assertSee('href="'.route('public.'.$page, [
                         'lang' => $isArabic ? 'en' : 'ar',
                     ]).'"', false);
-                $response->assertSee($isArabic ? 'غير معتمدة' : 'not legally approved');
+                $response->assertSee($page === 'privacy'
+                    ? ($isArabic ? 'غير معتمدة' : 'not legally approved')
+                    : ($isArabic ? 'مسودة وليست شروطًا قانونية نافذة' : 'not effective legal terms'));
             }
             $this->get('/privacy?lang='.$lang)->assertSee(
                 'href="'.route('public.contact', [
