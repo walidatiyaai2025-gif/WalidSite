@@ -78,7 +78,7 @@ class CaptureRunnerTest(unittest.TestCase):
 
     def run_capture(self, screen="WEB-01", route="/", command=None):
         return capture(
-            self.root, screen, commit=self.sha, locale="ar", dpr=2,
+            self.root, screen, commit=self.sha, locale="ar", dpr=1,
             route=route, command=self.renderer() if command is None else command,
         )
 
@@ -91,6 +91,7 @@ class CaptureRunnerTest(unittest.TestCase):
         self.assertEqual(self.record()["status"], "matched")
         self.assertEqual(self.record()["renderer_commit"], self.sha)
         self.assertEqual(self.record()["locale"], "ar")
+        self.assertEqual(self.record()["device_pixel_ratio"], 1)
         self.assertIn("qa/capture_visual_evidence.py", self.record()["capture_command"])
         self.assertNotEqual(
             (self.root / location).read_bytes(),
@@ -157,6 +158,12 @@ class CaptureRunnerTest(unittest.TestCase):
         with self.assertRaisesRegex(CaptureError, "not an original reference"):
             self.run_capture(command=["cp", "assets/screen-reference/ref_1.png",
                                       "qa/visual-captures/WEB-01.png"])
+        self.assertEqual(self.record()["status"], "pending")
+
+    def test_reference_dimensions_must_be_divisible_by_dpr(self):
+        with self.assertRaisesRegex(CaptureError, "divisible by DPR"):
+            capture(self.root, "WEB-01", commit=self.sha, locale="ar",
+                    dpr=2, route="/", command=self.renderer())
         self.assertEqual(self.record()["status"], "pending")
 
     def test_dpr_and_locale_invalid_fail_before_running(self):
