@@ -2,6 +2,9 @@
 
 namespace Database\Seeders;
 
+use App\Domain\Profile\OwnerCvPublisher;
+use App\Models\Role;
+use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
@@ -40,9 +43,17 @@ final class T007VisualCaptureSeeder extends Seeder
             throw new RuntimeException('T007 visual fixture requires the exact public renderer commit.');
         }
 
-        // Seed only the owner-supplied baseline. Its review, verification,
-        // publication and role states are intentionally preserved: a visual
-        // fixture must never grant owner access or manufacture approved claims.
+        // Start from the exact fail-closed source import, then reproduce
+        // the legitimate post-activation transition used by SiteInstaller.
+        // The fixture never marks a career/skill verified itself; the shared
+        // domain gate re-checks the canonical owner, source values and refs.
         $this->call(OwnerCvBaselineSeeder::class);
+        $owner = User::query()->where('email', app(\App\Support\Deployment\SiteInstaller::class)->ownerEmail())
+            ->firstOrFail();
+        $owner->forceFill(['status' => 'active'])->save();
+        $owner->roles()->syncWithoutDetaching([
+            Role::firstOrCreate(['name' => 'owner'])->id,
+        ]);
+        app(OwnerCvPublisher::class)->publishAfterVerifiedActivation($owner->fresh());
     }
 }
