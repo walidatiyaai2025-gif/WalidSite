@@ -128,6 +128,8 @@
 @endpush
 
 @section('content')
+@include('public.t007-reference-stage', ['screen' => 'home'])
+<div class="t007-functional">
 <div class="landing">
     <section class="landing-hero" aria-labelledby="landing-title">
         <div class="site-wrap landing-grid">
@@ -255,5 +257,6 @@
             @endif
         </div>
     </section>
+</div>
 </div>
 @endsection

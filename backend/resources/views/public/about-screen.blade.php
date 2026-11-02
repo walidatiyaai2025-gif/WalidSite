@@ -112,6 +112,10 @@ body:has(.about-screen) .header-links a[href*="/contact"]{background:#00A999;col
                 <a href="{{ route('public.resume', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'افتح السيرة القابلة للطباعة أو حفظ PDF' : 'Open printable CV / save PDF' }}</a>
                 <a href="{{ route('public.projects', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'دراسات حالة موثقة' : 'Verified case studies' }}</a>
                 <a href="{{ route('public.contact', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'التواصل' : 'Contact' }}</a>
+                @if($hasPublishedOwnerCv)
+                    <a href="{{ route('public.resume.pdf', ['lang' => $locale, 'track' => 'all']) }}"
+                       type="application/pdf" download>{{ $locale === 'ar' ? 'تحميل السيرة PDF' : 'Download verified CV (PDF)' }}</a>
+                @endif
             </nav>
             <nav class="about-jump-links" aria-label="{{ $locale === 'ar' ? 'أقسام النبذة' : 'About sections' }}">
                 <a href="#about-career">{{ $locale === 'ar' ? 'السجل المهني' : 'Experience' }}</a>

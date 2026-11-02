@@ -24,7 +24,8 @@
 @section('meta_description', $seoDescriptions[$page][$locale])
 
 @section('content')
-<div class="site-wrap" aria-label="Evidence-gated public profile">
+@include('public.t007-reference-stage', ['screen' => $page])
+<div class="site-wrap t007-functional" aria-label="Evidence-gated public profile">
     @if($page === 'about')
         @include('public.about-screen')
     @elseif($page === 'expertise')

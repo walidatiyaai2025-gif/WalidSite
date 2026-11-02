@@ -7,11 +7,17 @@ from types import ModuleType, SimpleNamespace
 from unittest.mock import Mock, patch
 
 from qa.render_web_screenshot import (
+    CHROMIUM_RENDER_ARGS,
     RenderConfigError, localized_target, render, target_url, viewport,
 )
 
 
 class RealWebCaptureConfigTest(unittest.TestCase):
+    def test_renderer_uses_measured_grayscale_hinting_for_reference_stability(self):
+        self.assertEqual(CHROMIUM_RENDER_ARGS, [
+            "--disable-lcd-text", "--font-render-hinting=slight",
+        ])
+
     def test_https_and_loopback_http_targets(self):
         self.assertEqual(target_url("https://preview.example.test/", "/about"),
                          "https://preview.example.test/about")

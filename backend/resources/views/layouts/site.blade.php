@@ -1,4 +1,5 @@
 @php($locale = request()->query('lang') === 'ar' ? 'ar' : 'en')
+@php($t007ReferenceRoute = request()->routeIs('home', 'public.about', 'public.expertise', 'public.ai-engineering', 'public.hire'))
 <!doctype html>
 <html lang="{{ $locale }}" dir="{{ $locale === 'ar' ? 'rtl' : 'ltr' }}">
 <head>
@@ -11,7 +12,7 @@
          URLs. WEB-03 expertise categories and WEB-12 recruiter tracks each
          have different allowlists; never echo raw or array-valued query data. --}}
     @php($seoPage = request()->route()?->getName())
-    @if (in_array($seoPage, ['home', 'public.about', 'public.expertise', 'public.hire', 'public.privacy', 'public.terms'], true))
+    @if (in_array($seoPage, ['home', 'public.about', 'public.expertise', 'public.ai-engineering', 'public.hire', 'public.privacy', 'public.terms'], true))
         @php($seoRawTrack = request()->query()['track'] ?? null)
         @php($seoRawCategory = request()->query()['category'] ?? null)
         @php($seoFilters = $seoPage === 'public.hire' && is_string($seoRawTrack)
@@ -87,6 +88,9 @@
 </head>
 <body>
     <a class="skip-link" href="#main-content">{{ $locale === 'ar' ? 'تجاوز إلى المحتوى' : 'Skip to content' }}</a>
+    @if($t007ReferenceRoute)
+        @include('public.t007-header')
+    @else
     <header class="site-header">
         <div class="site-wrap header-row">
             <a class="brand" href="{{ route('home', ['lang' => $locale]) }}" aria-label="{{ $locale === 'ar' ? 'الصفحة الرئيسية — وليد عطية' : 'Home — Waleed Atiya' }}"@if(request()->routeIs('home')) aria-current="page"@endif>
@@ -211,11 +215,35 @@
             </nav>
         </div>
     </header>
+    @endif
     <main class="site-main" id="main-content" tabindex="-1">@yield('content')</main>
     <footer class="site-footer">
         <div class="site-wrap footer-row">
             <span>{{ $locale === 'ar' ? 'وليد عطية — الموقع المهني' : 'Waleed Atiya — Engineering portfolio' }}</span>
             <nav class="header-links" aria-label="{{ $locale === 'ar' ? 'روابط الخصوصية والقانون' : 'Privacy and legal links' }}">
+                @if($t007ReferenceRoute)
+                    @php($t007FooterSwitchRoute = request()->route()?->getName() ?? 'home')
+                    @php($t007FooterSwitchArgs = ['lang' => $locale === 'ar' ? 'en' : 'ar'])
+                    @if(request()->routeIs('public.hire'))
+                        @php($t007FooterRawTrack = request()->query()['track'] ?? 'all')
+                        @php($t007FooterSwitchArgs['track'] = is_string($t007FooterRawTrack)
+                            && in_array($t007FooterRawTrack, ['all', 'database', 'software', 'delivery'], true)
+                                ? $t007FooterRawTrack : 'all')
+                    @endif
+                    @if(request()->routeIs('public.expertise'))
+                        @php($t007FooterRawCategory = request()->query()['category'] ?? null)
+                        @if(is_string($t007FooterRawCategory)
+                            && in_array($t007FooterRawCategory, ['database', 'integration', 'security', 'delivery'], true))
+                            @php($t007FooterSwitchArgs['category'] = $t007FooterRawCategory)
+                        @endif
+                    @endif
+                    <a class="language-link t007-footer-language-switch"
+                       href="{{ route($t007FooterSwitchRoute, $t007FooterSwitchArgs) }}"
+                       lang="{{ $locale === 'ar' ? 'en' : 'ar' }}"
+                       hreflang="{{ $locale === 'ar' ? 'en' : 'ar' }}">
+                        {{ $locale === 'ar' ? 'English' : 'العربية' }}
+                    </a>
+                @endif
                 <a class="language-link" href="{{ route('public.privacy', ['lang' => $locale]) }}"@if(request()->routeIs('public.privacy')) aria-current="page"@endif>{{ $locale === 'ar' ? 'الخصوصية والبيانات' : 'Privacy & data' }}</a>
                 <a class="language-link" href="{{ route('public.terms', ['lang' => $locale]) }}"@if(request()->routeIs('public.terms')) aria-current="page"@endif>{{ $locale === 'ar' ? 'الشروط' : 'Terms' }}</a>
                 <a class="language-link" href="{{ route('public.contact', ['lang' => $locale, 'topic' => 'privacy']) }}">{{ $locale === 'ar' ? 'طلب بيانات' : 'Data request' }}</a>
