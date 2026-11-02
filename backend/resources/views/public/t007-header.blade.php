@@ -2,7 +2,7 @@
 @php($t007Current = request()->route()?->getName())
 <header class="t007-nav-shell" aria-label="{{ $t007Locale === 'ar' ? 'التنقل الرئيسي' : 'Primary navigation' }}">
     <a class="t007-brand" @if($t007Current === 'home') aria-current="page" @endif href="{{ route('home', ['lang' => $t007Locale]) }}">
-        <span aria-hidden="true">WA</span><strong>Waleed Atiya</strong>
+        <span aria-hidden="true">WA</span><strong>{{ $t007Locale === 'ar' ? 'وليد عطية' : 'Waleed Atiya' }}</strong>
     </a>
     <nav class="t007-nav-links">
         <a @class(['active' => $t007Current === 'home']) href="{{ route('home', ['lang' => $t007Locale]) }}">Home</a>
