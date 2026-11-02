@@ -198,6 +198,120 @@ void main() {
     });
   }
 
+  for (final arabic in [false, true]) {
+    for (final failedStep in ['profile', 'saved']) {
+      testWidgets('account $failedStep failure keeps single bearer for '
+          'authenticated retry without showing private data: '
+          '${arabic ? 'AR' : 'EN'}', (tester) async {
+        var logins = 0;
+        var profileReads = 0;
+        var savedReads = 0;
+        var revokes = 0;
+        await tester.pumpWidget(MaterialApp(
+          home: MobileAccountJourney(
+            arabic: arabic,
+            loginAction: (_, __) async {
+              logins++;
+              return const MobileAiSession(token: bearer, expiresAt: null);
+            },
+            profileAction: (token) async {
+              expect(token, bearer);
+              profileReads++;
+              if (failedStep == 'profile' && profileReads == 1) {
+                throw const FormatException('PRIVATE_PROFILE_BACKEND_TRACE');
+              }
+              return const MobileAccount(articleId, email);
+            },
+            savedAction: (token, locale, n) async {
+              expect(token, bearer);
+              expect(locale, arabic);
+              savedReads++;
+              if (failedStep == 'saved' && savedReads == 1) {
+                throw const FormatException('PRIVATE_SAVED_BACKEND_TRACE');
+              }
+              return MobileSavedPage.parse(page(n, [article()]), n);
+            },
+            logoutAction: (token) async {
+              expect(token, bearer);
+              revokes++;
+            },
+          ),
+        ));
+        await login(tester);
+        expect(logins, 1);
+        expect(find.byKey(const Key('account-load-unavailable')), findsOneWidget);
+        expect(find.byKey(const Key('account-retry-data')), findsOneWidget);
+        expect(find.byKey(const Key('account-signout')), findsOneWidget);
+        expect(find.byKey(const Key('account-login')), findsNothing);
+        expect(find.byKey(const Key('account-saved-empty')), findsNothing);
+        expect(find.byKey(const Key('account-profile-email')), findsNothing);
+        expect(find.text('Source-verified Laravel guide'), findsNothing);
+        expect(find.text(email), findsNothing);
+        expect(find.text(bearer), findsNothing);
+        expect(find.textContaining('PRIVATE_PROFILE_BACKEND_TRACE'), findsNothing);
+        expect(find.textContaining('PRIVATE_SAVED_BACKEND_TRACE'), findsNothing);
+
+        await tester.ensureVisible(find.byKey(const Key('account-retry-data')));
+        await tester.tap(find.byKey(const Key('account-retry-data')));
+        await tester.pumpAndSettle();
+        expect(logins, 1);
+        expect(profileReads, 2);
+        expect(savedReads, failedStep == 'profile' ? 1 : 2);
+        expect(find.byKey(const Key('account-load-unavailable')), findsNothing);
+        expect(find.text('Source-verified Laravel guide'), findsOneWidget);
+        expect(find.byKey(const Key('account-login')), findsNothing);
+        await tester.tap(find.byKey(const Key('account-profile-tab')));
+        await tester.pumpAndSettle();
+        expect(find.text(email), findsOneWidget);
+        await tester.ensureVisible(find.byKey(const Key('account-signout')));
+        await tester.tap(find.byKey(const Key('account-signout')));
+        await tester.pumpAndSettle();
+        expect(revokes, 1);
+        expect(find.byKey(const Key('account-login')), findsOneWidget);
+        expect(find.text(email), findsNothing);
+        expect(find.text(bearer), findsNothing);
+      });
+    }
+  }
+
+  testWidgets('signout works after first saved read fails, scrubs local data '
+      'even when token revocation is unconfirmed', (tester) async {
+    var revokes = 0;
+    var logins = 0;
+    await tester.pumpWidget(MaterialApp(
+      home: MobileAccountJourney(
+        arabic: true,
+        loginAction: (_, __) async {
+          logins++;
+          return const MobileAiSession(token: bearer, expiresAt: null);
+        },
+        profileAction: (_) async => const MobileAccount(articleId, email),
+        savedAction: (_, __, ___) async =>
+            throw const FormatException('PRIVATE_DATA_PROVENANCE'),
+        logoutAction: (token) async {
+          expect(token, bearer);
+          revokes++;
+          throw const FormatException('PRIVATE_REVOKE_FAILURE');
+        },
+      ),
+    ));
+    await login(tester);
+    expect(logins, 1);
+    expect(find.byKey(const Key('account-load-unavailable')), findsOneWidget);
+    expect(find.text(email), findsNothing);
+    await tester.ensureVisible(find.byKey(const Key('account-signout')));
+    await tester.tap(find.byKey(const Key('account-signout')));
+    await tester.pumpAndSettle();
+    expect(revokes, 1);
+    expect(find.byKey(const Key('account-login')), findsOneWidget);
+    expect(find.byKey(const Key('account-load-unavailable')), findsNothing);
+    expect(find.text(email), findsNothing);
+    expect(find.text(bearer), findsNothing);
+    expect(find.textContaining('PRIVATE_REVOKE_FAILURE'), findsNothing);
+    expect(find.text('تم مسح الجلسة محليًا؛ لم يتم تأكيد إلغائها على الخادم.'),
+        findsOneWidget);
+  });
+
   testWidgets('saved pagination is single-flight, rejects duplicate IDs and recovers',
       (tester) async {
     var attempts = 0;
