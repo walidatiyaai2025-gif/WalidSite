@@ -23,7 +23,8 @@ def _route_matches(contract_route: str, actual: str) -> bool:
     if (
         not isinstance(contract_route, str) or not isinstance(actual, str)
         or not actual.startswith("/") or actual.startswith("//")
-        or any(c in actual for c in ("?", "#", "\\", "\n", "\r"))
+        or any(c in actual for c in ("?", "#", "\\", "%"))
+        or any(ord(c) < 32 or ord(c) == 127 for c in actual)
         or any(part in (".", "..") for part in actual.split("/"))
     ):
         return False
