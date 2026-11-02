@@ -20,7 +20,7 @@ class MobileBootstrapCapabilities {
   final String locale;
   final String defaultLocale;
   final bool aiDiagnosisAvailable;
-  final Uri privacyUri;
+  final Uri? privacyUri;
 
   static MobileBootstrapCapabilities parse(
     String body,
@@ -102,7 +102,7 @@ class MobileBootstrapCapabilities {
         availability['authenticated_ai_diagnosis'] is! bool ||
         availability['server_saved_resources'] != true ||
         availability['saved_resources_requires_auth'] != true ||
-        privacy is! String) {
+        (privacy != null && privacy is! String)) {
       throw const FormatException('Unsupported bootstrap capabilities');
     }
 
@@ -112,22 +112,25 @@ class MobileBootstrapCapabilities {
       }
     }
 
-    final relative = Uri.tryParse(privacy);
-    if (relative == null ||
-        relative.hasScheme ||
-        relative.hasAuthority ||
-        relative.userInfo.isNotEmpty ||
-        relative.hasFragment ||
-        relative.path != '/privacy' ||
-        relative.queryParameters.length != 1 ||
-        relative.queryParameters['lang'] != locale) {
-      throw const FormatException('Unsafe privacy route');
-    }
-    final privacyUri = origin.resolveUri(relative);
-    if (privacyUri.scheme != origin.scheme ||
-        privacyUri.host != origin.host ||
-        privacyUri.port != origin.port) {
-      throw const FormatException('Cross-origin privacy route');
+    Uri? privacyUri;
+    if (privacy is String) {
+      final relative = Uri.tryParse(privacy);
+      if (relative == null ||
+          relative.hasScheme ||
+          relative.hasAuthority ||
+          relative.userInfo.isNotEmpty ||
+          relative.hasFragment ||
+          relative.path != '/privacy' ||
+          relative.queryParameters.length != 1 ||
+          relative.queryParameters['lang'] != locale) {
+        throw const FormatException('Unsafe privacy route');
+      }
+      privacyUri = origin.resolveUri(relative);
+      if (privacyUri.scheme != origin.scheme ||
+          privacyUri.host != origin.host ||
+          privacyUri.port != origin.port) {
+        throw const FormatException('Cross-origin privacy route');
+      }
     }
 
     return MobileBootstrapCapabilities(
@@ -238,9 +241,9 @@ class _MobileBootstrapPanelState extends State<MobileBootstrapPanel> {
         (widget.fetch ?? const MobileBootstrapReader().load)(widget.arabic);
   }
 
-  Future<void> _privacy(MobileBootstrapCapabilities data) async {
+  Future<void> _privacy(Uri privacyUri) async {
     try {
-      final opened = await (widget.openPrivacy ?? _openPrivacy)(data.privacyUri);
+      final opened = await (widget.openPrivacy ?? _openPrivacy)(privacyUri);
       if (!opened && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(label(
@@ -338,15 +341,24 @@ class _MobileBootstrapPanelState extends State<MobileBootstrapPanel> {
                         ),
                 ),
                 const SizedBox(height: 8),
-                TextButton.icon(
-                  key: const Key('welcome-privacy'),
-                  onPressed: () => _privacy(data),
-                  icon: const Icon(Icons.privacy_tip_outlined),
-                  label: Text(label(
-                    'Privacy & data disclosure',
-                    'الخصوصية والبيانات',
-                  )),
-                ),
+                if (data.privacyUri != null)
+                  TextButton.icon(
+                    key: const Key('welcome-privacy'),
+                    onPressed: () => _privacy(data.privacyUri!),
+                    icon: const Icon(Icons.privacy_tip_outlined),
+                    label: Text(label(
+                      'Privacy & data disclosure',
+                      'الخصوصية والبيانات',
+                    )),
+                  )
+                else
+                  Text(
+                    label(
+                      'A public privacy disclosure has not been published yet.',
+                      'لم يتم نشر إشعار خصوصية عام حتى الآن.',
+                    ),
+                    key: const Key('welcome-privacy-unavailable'),
+                  ),
               ],
             ),
           ),
