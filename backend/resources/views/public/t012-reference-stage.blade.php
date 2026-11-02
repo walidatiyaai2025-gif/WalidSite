@@ -135,24 +135,8 @@ body:has(.t012-reference-stage) .site-footer{margin-top:0}
             if ($search !== '' || $type !== 'all') {
                 $t012SwitchArgs['type'] = $type;
             }
-        } elseif ($t012Current === 'public.blog') {
-            $rawT012Query = request()->query();
-            $rawT012Search = $rawT012Query['q'] ?? null;
-            if (is_string($rawT012Search) && mb_strlen(trim($rawT012Search)) <= 80
-                && trim($rawT012Search) !== '') {
-                $t012SwitchArgs['q'] = trim($rawT012Search);
-            }
-            $rawT012Category = $rawT012Query['category'] ?? null;
-            if (is_string($rawT012Category)
-                && preg_match('/\\A[a-z0-9-]{1,110}\\z/D', $rawT012Category)) {
-                $t012SwitchArgs['category'] = $rawT012Category;
-            }
-            $rawT012Page = $rawT012Query['page'] ?? null;
-            if (is_string($rawT012Page) && ctype_digit($rawT012Page)
-                && (int) $rawT012Page >= 1 && (int) $rawT012Page <= 10000) {
-                $t012SwitchArgs['page'] = (int) $rawT012Page;
-            }
-        }
+
+
     ?>
     <a class="t012-sr-only" href="{{ route($t012Current ?? 'home', $t012SwitchArgs) }}">{{ $t012Ar ? 'English' : 'العربية' }}</a>
 </header>
