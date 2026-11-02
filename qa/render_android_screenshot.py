@@ -29,6 +29,24 @@ HEADINGS = {
     "/github": ("My GitHub", "مشاريعي على GitHub"),
     "/settings": ("Preferences", "التفضيلات"),
 }
+# Native Flutter Semantics.identifier is exposed to Android UIAutomator as
+# resource-id, not as visible labels. The target route identity must be
+# present on the *currently rendered* view, never inferred from a home card.
+# Dynamic solution detail is tagged only after a verified public fetch;
+# Saved/Profile tags require a valid authenticated account and selected tab.
+NATIVE_SCREENS = {
+    "/welcome": ("walidsite.mobile.01",
+                 ("Welcome to Waleed Tech Companion", "مرحبًا بك في رفيق وليد التقني"),
+                 False),
+    "/solutions/{id}": ("walidsite.mobile.04",
+                        ("Solution detail", "تفاصيل الحل"), True),
+    "/runbooks/{id}/offline": ("walidsite.mobile.06",
+                              ("General guidance steps", "خطوات توضيحية عامة"), False),
+    "/saved": ("walidsite.mobile.11",
+               ("Saved & profile", "المحفوظات والحساب"), True),
+    "/profile": ("walidsite.mobile.12",
+                 ("Saved & profile", "المحفوظات والحساب"), True),
+}
 MAX_CAPTURE_BYTES = 64 * 1024 * 1024
 MAX_ACCESSIBILITY_BYTES = 8 * 1024 * 1024
 
@@ -78,11 +96,48 @@ def _verify_heading(xml: bytes, heading: str, height: int) -> None:
     raise AndroidCaptureError("Current visible screen title does not match canonical route")
 
 
+
+def _verify_native_identity(xml: bytes, identifier: str, heading: str,
+                            width: int, height: int, top_heading: bool) -> None:
+    """Require one visible native route marker AND visible localized text."""
+    if len(xml) > MAX_ACCESSIBILITY_BYTES:
+        raise AndroidCaptureError("Accessibility evidence exceeds safe bounds")
+    start, end = xml.find(b"<hierarchy"), xml.rfind(b"</hierarchy>")
+    if start < 0 or end < start:
+        raise AndroidCaptureError("No Android accessibility hierarchy available")
+    try:
+        root = ET.fromstring(xml[start:end + len(b"</hierarchy>")])
+    except ET.ParseError as exc:
+        raise AndroidCaptureError("Invalid Android accessibility hierarchy") from exc
+    if root.tag != "hierarchy":
+        raise AndroidCaptureError("Unexpected accessibility document")
+
+    marker_count = 0
+    has_heading = False
+    for node in root.iter("node"):
+        bounds = node.attrib.get("bounds", "")
+        box = re.fullmatch(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]", bounds)
+        visible = node.attrib.get("visible-to-user") == "true"
+        inside = bool(box and 0 <= int(box[1]) < int(box[3]) <= width
+                      and 0 <= int(box[2]) < int(box[4]) <= height)
+        if node.attrib.get("resource-id") == identifier:
+            if not visible or not inside:
+                raise AndroidCaptureError("Native screen marker is not visible")
+            marker_count += 1
+        if heading in (node.attrib.get("text"), node.attrib.get("content-desc")):
+            if visible and inside and (not top_heading or int(box[2]) <= height // 5):
+                has_heading = True
+    if marker_count != 1:
+        raise AndroidCaptureError("Canonical Flutter native screen identity is missing or ambiguous")
+    if not has_heading:
+        raise AndroidCaptureError("Native screen locale or visible title is not verified")
+
+
 def render(env=None, runner=subprocess.run) -> Path:
     env = os.environ if env is None else env
     route = env.get("WALIDSITE_CAPTURE_ROUTE")
-    if route not in HEADINGS:
-        raise AndroidCaptureError("This Flutter route has no independently verified heading")
+    if route not in HEADINGS and route not in NATIVE_SCREENS:
+        raise AndroidCaptureError("This Flutter route has no independently verified identity")
     locale = env.get("WALIDSITE_CAPTURE_LOCALE")
     if locale not in ("en", "ar"):
         raise AndroidCaptureError("Capture locale is invalid")
@@ -121,7 +176,12 @@ def render(env=None, runner=subprocess.run) -> Path:
         raise AndroidCaptureError("WalidSite Flutter is not the foreground application")
 
     hierarchy = _run(serial, ["shell", "uiautomator", "dump", "/dev/tty"], runner)
-    _verify_heading(hierarchy, HEADINGS[route][0 if locale == "en" else 1], height)
+    if route in HEADINGS:
+        _verify_heading(hierarchy, HEADINGS[route][0 if locale == "en" else 1], height)
+    else:
+        identifier, titles, top = NATIVE_SCREENS[route]
+        _verify_native_identity(hierarchy, identifier,
+                                titles[0 if locale == "en" else 1], width, height, top)
     pixels = _run(serial, ["exec-out", "screencap", "-p"], runner)
     if not pixels or len(pixels) > MAX_CAPTURE_BYTES:
         raise AndroidCaptureError("Invalid or oversized device screenshot")
@@ -144,7 +204,12 @@ def render(env=None, runner=subprocess.run) -> Path:
     if focused_after != focused_lines:
         raise AndroidCaptureError("Foreground application changed during capture")
     hierarchy_after = _run(serial, ["shell", "uiautomator", "dump", "/dev/tty"], runner)
-    _verify_heading(hierarchy_after, HEADINGS[route][0 if locale == "en" else 1], height)
+    if route in HEADINGS:
+        _verify_heading(hierarchy_after, HEADINGS[route][0 if locale == "en" else 1], height)
+    else:
+        identifier, titles, top = NATIVE_SCREENS[route]
+        _verify_native_identity(hierarchy_after, identifier,
+                                titles[0 if locale == "en" else 1], width, height, top)
 
     # Exclusive creation: a pre-existing file/symlink is never overwritten.
     try:
