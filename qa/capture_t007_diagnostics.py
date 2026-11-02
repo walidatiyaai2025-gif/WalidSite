@@ -176,6 +176,10 @@ def main() -> int:
                                   for row in report["screens"].values()),
         "font_probe_ok": "error" not in report.get("font_probe", {}),
     }
+    report["summary"]["pixel_parity_complete"] = (
+        report["summary"]["exact_screens"] == len(SCREEN_IDS)
+        and report["summary"]["font_probe_ok"]
+    )
     report_path = out / "report.json"
     report_path.write_text(
         json.dumps(report, ensure_ascii=False, indent=2) + "\n",
