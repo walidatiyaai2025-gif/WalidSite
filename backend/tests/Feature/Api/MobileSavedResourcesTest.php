@@ -262,6 +262,38 @@ final class MobileSavedResourcesTest extends TestCase
         $this->assertSame($ids, $got);
     }
 
+    public function test_saved_quota_counts_hidden_items_and_duplicate_at_capacity_is_idempotent(): void
+    {
+        $user = $this->user('quota');
+        $article = $this->article('quota-public');
+        $this->withToken($this->token($user));
+        for ($i = 0; $i < 199; $i++) {
+            DB::table('saved_resources')->insert([
+                'id' => (string) Str::uuid(), 'user_id' => $user->id,
+                'resource_type' => 'article', 'resource_id' => (string) Str::uuid(),
+                'saved_at' => now(),
+            ]);
+        }
+        $payload = ['resource_type' => 'article', 'resource_id' => $article->id];
+        $this->postJson('/api/v1/mobile/saved', $payload)->assertOk();
+        $this->assertSame(200, DB::table('saved_resources')->where('user_id', $user->id)->count());
+        $this->postJson('/api/v1/mobile/saved', $payload)->assertOk();
+        $this->assertDatabaseCount('saved_resources', 200);
+
+        $second = $this->article('quota-second');
+        $this->postJson('/api/v1/mobile/saved', [
+            'resource_type' => 'article', 'resource_id' => $second->id,
+        ])->assertUnprocessable();
+        $this->assertDatabaseCount('saved_resources', 200);
+
+        $this->deleteJson('/api/v1/mobile/saved/article/'.$article->id)
+            ->assertOk()->assertJsonPath('data.removed', true);
+        $this->postJson('/api/v1/mobile/saved', [
+            'resource_type' => 'article', 'resource_id' => $second->id,
+        ])->assertOk();
+        $this->assertDatabaseCount('saved_resources', 200);
+    }
+
     public function test_production_plaintext_denied_before_processing_bearer_credentials(): void
     {
         $user = $this->user('secure-reader');
