@@ -81,6 +81,8 @@ class AndroidScreenCaptureTest(unittest.TestCase):
             ["get-state"], ["shell", "dumpsys", "window", "windows"],
             ["shell", "uiautomator", "dump", "/dev/tty"],
             ["exec-out", "screencap", "-p"],
+            ["shell", "dumpsys", "window", "windows"],
+            ["shell", "uiautomator", "dump", "/dev/tty"],
         ])
 
     def test_supported_routes_are_real_flutter_headings_not_contract_labels(self):
@@ -136,6 +138,42 @@ class AndroidScreenCaptureTest(unittest.TestCase):
                 with self.assertRaises(AndroidCaptureError):
                     render(self.env, runner)
                 self.assertFalse(self.output.exists())
+
+    def test_foreground_switch_after_screenshot_rejects_device_image(self):
+        original, calls = self.runner()
+        focus_checks = [0]
+
+        def switched(args, **kwargs):
+            result = original(args, **kwargs)
+            if args[3:] == ["shell", "dumpsys", "window", "windows"]:
+                focus_checks[0] += 1
+                if focus_checks[0] == 2:
+                    return SimpleNamespace(stdout=b"mCurrentFocus=Window{a u0 other.app/.MainActivity}",
+                                           stderr=b"SECRET", returncode=0)
+            return result
+
+        with self.assertRaisesRegex(AndroidCaptureError, "changed"):
+            render(self.env, switched)
+        self.assertEqual(focus_checks[0], 2)
+        self.assertFalse(self.output.exists())
+
+    def test_screen_title_switch_after_screenshot_rejects_device_image(self):
+        original, calls = self.runner()
+        seen = [0]
+
+        def switched(args, **kwargs):
+            result = original(args, **kwargs)
+            if args[3:] == ["shell", "uiautomator", "dump", "/dev/tty"]:
+                seen[0] += 1
+                if seen[0] == 2:
+                    return SimpleNamespace(stdout=self.hierarchy("Different screen"),
+                                           stderr=b"SECRET", returncode=0)
+            return result
+
+        with self.assertRaisesRegex(AndroidCaptureError, "title"):
+            render(self.env, switched)
+        self.assertEqual(seen[0], 2)
+        self.assertFalse(self.output.exists())
 
     def test_screen_pixels_must_be_valid_png_at_unscaled_reference_size(self):
         wrong = Image.new("RGBA", (100, 200))
