@@ -38,7 +38,7 @@ body:has(.t012-reference-stage) .site-footer{margin-top:0}
 .t012-brand{display:flex;align-items:center;text-decoration:none;white-space:nowrap;margin-right:47px;transform:translate(-2px,2px)}
 .t012-brand span{font-size:40px;font-weight:800;line-height:1;color:#0a9a8c;letter-spacing:-1.2px}
 .t012-brand strong{display:inline-block;font-size:25px;font-weight:800;color:#fff;margin-left:4px;letter-spacing:0;transform:translateY(-3px)}
-.t012-nav-links{height:100%;display:flex;align-items:center;flex:1;min-width:0;transform:translateY(3px)}
+.t012-nav-links{height:100%;display:flex;align-items:center;flex:1;min-width:0;transform:translate(-6px,3px)}
 .t012-nav-links a{display:flex;align-items:center;height:100%;color:#d8e6f2;text-decoration:none;font-size:16px;font-weight:400;white-space:nowrap;margin-right:60px}
 .t012-nav-links a.active{color:#0a9a8c}
 .t012-nav-links a:nth-child(3){margin-right:41px}.t012-nav-links a:nth-child(4){margin-right:45px}
