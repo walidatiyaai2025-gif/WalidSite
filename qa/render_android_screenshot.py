@@ -133,6 +133,19 @@ def render(env=None, runner=subprocess.run) -> Path:
     except (OSError, UnidentifiedImageError, Image.DecompressionBombError) as exc:
         raise AndroidCaptureError("Device screenshot could not be decoded") from exc
 
+    # Guard against an app or screen switch while the ADB screenshot command
+    # was running. Both the focused window and visible localized heading must
+    # remain the same after the native pixels were captured.
+    window_after = _run(serial, ["shell", "dumpsys", "window", "windows"], runner)
+    if len(window_after) > MAX_ACCESSIBILITY_BYTES:
+        raise AndroidCaptureError("Invalid post-capture foreground evidence")
+    focused_after = [line.decode("utf-8", errors="replace")
+                     for line in window_after.splitlines() if b"mCurrentFocus=" in line]
+    if focused_after != focused_lines:
+        raise AndroidCaptureError("Foreground application changed during capture")
+    hierarchy_after = _run(serial, ["shell", "uiautomator", "dump", "/dev/tty"], runner)
+    _verify_heading(hierarchy_after, HEADINGS[route][0 if locale == "en" else 1], height)
+
     # Exclusive creation: a pre-existing file/symlink is never overwritten.
     try:
         descriptor = os.open(output, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
