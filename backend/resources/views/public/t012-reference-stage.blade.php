@@ -141,7 +141,19 @@ body:has(.t012-reference-stage) .site-footer{margin-top:0}
     <?php
         // Only preserve bounded first-party browse parameters.
         $t012SwitchArgs = ['lang' => $t012Ar ? 'en' : 'ar'];
-        if ($t012Current === 'public.article') {
+        if ($t012Current === 'public.blog') {
+            // Preserve only the values validated by the public Blog route.
+            // Never relay arbitrary caller parameters or untrusted return URLs.
+            if ($search !== '') {
+                $t012SwitchArgs['q'] = $search;
+            }
+            if ($category !== '') {
+                $t012SwitchArgs['category'] = $category;
+            }
+            if ($paginated->currentPage() > 1) {
+                $t012SwitchArgs['page'] = $paginated->currentPage();
+            }
+        } elseif ($t012Current === 'public.article') {
             $t012SwitchArgs['slug'] = $article->slug;
             $t012SwitchArgs = array_merge($t012SwitchArgs, $articleContextQuery ?? []);
         } elseif ($t012Current === 'public.search') {
