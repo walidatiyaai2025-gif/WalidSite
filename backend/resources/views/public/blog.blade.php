@@ -122,40 +122,49 @@
     const status = document.getElementById('blog-saved-status');
     const list = document.getElementById('blog-saved-items');
     if (!status || !list) return;
-    let parsed;
-    try {
-        const raw = window.localStorage.getItem(storageKey);
-        parsed = raw === null ? [] : JSON.parse(raw);
-        if (!Array.isArray(parsed)) throw new Error('Unexpected saved links');
-    } catch (_) {
-        status.textContent = locale === 'ar'
-            ? 'تعذر قراءة روابط الحفظ المحلي من هذا المتصفح.'
-            : 'Browser local saved links are unavailable.';
-        return;
-    }
-    const seen = new Set();
     const validSlug = slug => typeof slug === 'string'
         && /^[A-Za-z0-9-]{1,220}$/.test(slug);
-    parsed.filter(entry => {
-        if (!entry || typeof entry !== 'object'
-            || !validSlug(entry.slug)
-            || typeof entry.en !== 'string' || entry.en.length < 1 || entry.en.length > 500
-            || typeof entry.ar !== 'string' || entry.ar.length < 1 || entry.ar.length > 500
-            || seen.has(entry.slug)) return false;
-        seen.add(entry.slug);
-        return true;
-    }).slice(0, 30).forEach(entry => {
-        const item = document.createElement('li');
-        const link = document.createElement('a');
-        // Local storage is never a trusted URL or safe HTML source.
-        link.href = articlePath.replace('reading-list-placeholder', encodeURIComponent(entry.slug));
-        link.textContent = locale === 'ar' ? entry.ar : entry.en;
-        item.appendChild(link);
-        list.appendChild(item);
+    function render() {
+        let parsed;
+        try {
+            const raw = window.localStorage.getItem(storageKey);
+            parsed = raw === null ? [] : JSON.parse(raw);
+            if (!Array.isArray(parsed)) throw new Error('Unexpected saved links');
+        } catch (_) {
+            list.replaceChildren();
+            status.textContent = locale === 'ar'
+                ? 'تعذر قراءة روابط الحفظ المحلي من هذا المتصفح.'
+                : 'Browser local saved links are unavailable.';
+            return;
+        }
+        const seen = new Set();
+        list.replaceChildren();
+        parsed.filter(entry => {
+            if (!entry || typeof entry !== 'object'
+                || !validSlug(entry.slug)
+                || typeof entry.en !== 'string' || entry.en.length < 1 || entry.en.length > 500
+                || typeof entry.ar !== 'string' || entry.ar.length < 1 || entry.ar.length > 500
+                || seen.has(entry.slug)) return false;
+            seen.add(entry.slug);
+            return true;
+        }).slice(0, 30).forEach(entry => {
+            const item = document.createElement('li');
+            const link = document.createElement('a');
+            // Local storage is never a trusted URL or safe HTML source.
+            link.href = articlePath.replace('reading-list-placeholder', encodeURIComponent(entry.slug));
+            link.textContent = locale === 'ar' ? entry.ar : entry.en;
+            item.appendChild(link);
+            list.appendChild(item);
+        });
+        status.textContent = list.children.length === 0
+            ? (locale === 'ar' ? 'لا توجد روابط محفوظة بعد.' : 'No links have been saved yet.')
+            : (locale === 'ar' ? 'روابط محفوظة محليًا فقط، وقد يُلغى نشرها لاحقًا.' : 'Locally saved links only; availability is rechecked on open.');
+    }
+    // Changes made in another tab must immediately update this public list.
+    window.addEventListener('storage', event => {
+        if (event.key === storageKey || event.key === null) render();
     });
-    status.textContent = list.children.length === 0
-        ? (locale === 'ar' ? 'لا توجد روابط محفوظة بعد.' : 'No links have been saved yet.')
-        : (locale === 'ar' ? 'روابط محفوظة محليًا فقط، وقد يُلغى نشرها لاحقًا.' : 'Locally saved links only; availability is rechecked on open.');
+    render();
 })();
 </script>
 @endsection
