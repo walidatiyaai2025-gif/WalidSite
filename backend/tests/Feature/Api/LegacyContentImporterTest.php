@@ -246,6 +246,23 @@ SQL;
         }
     }
 
+    public function test_empty_and_unterminated_sources_never_create_receipts(): void
+    {
+        $importer = app(LegacyContentImporter::class);
+        foreach (['', 'INSERT INTO legacy_runbooks (slug, title, body_md, version) VALUES ('] as $source) {
+            $report = $importer->dryRunSql($source, 'malformed.sql');
+            $this->assertGreaterThan(0, $report['rejected_count']);
+            try {
+                $importer->importSql($source, 'malformed.sql');
+                $this->fail('Malformed import must fail closed.');
+            } catch (DomainException) {
+                // Expected: no partial writes or provenance receipts.
+            }
+        }
+        $this->assertDatabaseCount('legacy_import_receipts', 0);
+        $this->assertDatabaseCount('runbooks', 0);
+    }
+
     public function test_conflicting_rows_for_same_target_are_reported_before_writes(): void
     {
         $sql = <<<'SQL'
