@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\AdminDashboardController;
 use App\Http\Controllers\Api\AdminAiRouteController;
 use App\Http\Controllers\Api\AdminAiTaskRouteController;
 use App\Http\Controllers\Api\AdminArticleController;
+use App\Http\Controllers\Api\AdminProductController;
 use App\Http\Controllers\Api\PublicPortfolioController;
 use App\Http\Controllers\Api\PublicAiExpertiseController;
 use App\Http\Controllers\Api\PublicHomeController;
@@ -88,6 +89,33 @@ Route::middleware([RequireSecureApiTransport::class, 'auth:sanctum'])->group(fun
     // ADMIN-02: edit queue metadata only, never expose raw drafts or citations.
     Route::get('/admin/articles', [AdminArticleController::class, 'index'])
         ->name('api.admin.articles')->middleware('throttle:60,1');
+
+    // Canonical ADMIN-02/06..13 API contracts. These routes expose only
+    // bounded persisted projections and re-run domain safety gates on writes.
+    Route::post('/admin/articles/{id}/publish', [AdminProductController::class, 'publishArticle'])
+        ->whereUuid('id')->name('api.admin.articles.publish')->middleware('throttle:10,1');
+    Route::get('/admin/ai/images', [AdminProductController::class, 'images'])
+        ->name('api.admin.ai.images')->middleware('throttle:60,1');
+    Route::post('/admin/ai/images', [AdminProductController::class, 'createImageJob'])
+        ->name('api.admin.ai.images.create')->middleware('throttle:10,1');
+    Route::get('/admin/quality', [AdminProductController::class, 'quality'])
+        ->name('api.admin.quality')->middleware('throttle:60,1');
+    Route::get('/admin/github', [AdminProductController::class, 'github'])
+        ->name('api.admin.github')->middleware('throttle:30,1');
+    Route::post('/admin/github/sync', [AdminProductController::class, 'syncGithub'])
+        ->name('api.admin.github.sync')->middleware('throttle:6,1');
+    Route::get('/admin/projects', [AdminProductController::class, 'projects'])
+        ->name('api.admin.projects')->middleware('throttle:60,1');
+    Route::get('/admin/audience', [AdminProductController::class, 'audience'])
+        ->name('api.admin.audience')->middleware('throttle:60,1');
+    Route::get('/admin/analytics', [AdminProductController::class, 'analytics'])
+        ->name('api.admin.analytics')->middleware('throttle:60,1');
+    Route::get('/admin/approvals', [AdminProductController::class, 'approvals'])
+        ->name('api.admin.approvals')->middleware('throttle:60,1');
+    Route::post('/admin/approvals/{id}/decision', [AdminProductController::class, 'approvalDecision'])
+        ->whereUuid('id')->name('api.admin.approvals.decision')->middleware('throttle:10,1');
+    Route::get('/admin/audit', [AdminProductController::class, 'audit'])
+        ->name('api.admin.audit')->middleware('throttle:30,1');
 
     // Explicit administrator-scoped token + role required in the controller.
     Route::get('/admin/ai/providers', [AiProviderController::class, 'index']);
