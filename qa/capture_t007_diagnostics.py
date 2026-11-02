@@ -174,7 +174,10 @@ def main() -> int:
                              for row in report["screens"].values()),
         "mismatched_screens": sum(row["status"] == "mismatch"
                                   for row in report["screens"].values()),
-        "font_probe_ok": "error" not in report.get("font_probe", {}),
+        "font_probe_ok": (isinstance(report.get("font_probe"), dict)
+                          and "error" not in report["font_probe"]
+                          and report["font_probe"].get("inter_400") is True
+                          and report["font_probe"].get("inter_800") is True),
     }
     report["summary"]["pixel_parity_complete"] = (
         report["summary"]["exact_screens"] == len(SCREEN_IDS)
@@ -192,7 +195,7 @@ def main() -> int:
     return 1 if (set(report["screens"]) != set(SCREEN_IDS)
                  or any(row["status"] not in ("exact", "mismatch")
                         for row in report["screens"].values())
-                 or "error" in report.get("font_probe", {})) else 0
+                 or not report["summary"]["font_probe_ok"]) else 0
 
 
 if __name__ == "__main__":
