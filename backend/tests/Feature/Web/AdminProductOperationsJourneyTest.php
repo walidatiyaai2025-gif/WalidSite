@@ -276,9 +276,12 @@ final class AdminProductOperationsJourneyTest extends TestCase
             ->assertDontSee('127.0.0.1');
         $this->get('/admin/analytics?period=all')->assertOk()
             ->assertSee('>1250</td>', false);
+        $this->get('/admin/analytics?period=7d')->assertOk()
+            ->assertHeader('Cache-Control', 'no-store, private');
         $csv = $this->get('/admin/analytics?period=7d&format=csv')->assertOk()
             ->assertHeader('Content-Type', 'text/csv; charset=UTF-8')
-            ->assertHeader('X-Content-Type-Options', 'nosniff');
+            ->assertHeader('X-Content-Type-Options', 'nosniff')
+            ->assertHeader('Cache-Control', 'no-store, private');
         $export = $csv->streamedContent();
         $this->assertStringContainsString('ai_usage,7d,USD,250,minor_currency_units', $export);
         $this->assertStringContainsString('ai_usage,7d,KWD,19,minor_currency_units', $export);
