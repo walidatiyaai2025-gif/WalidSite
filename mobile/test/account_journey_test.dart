@@ -83,8 +83,11 @@ void main() {
       var pageCalls = 0;
       var removals = 0;
       var revocations = 0;
+      var profileUpdates = 0;
       var removed = false;
       var articleCalls = 0;
+      final updatedEmail =
+          arabic ? 'arabic.updated@example.org' : 'updated@example.org';
       await tester.pumpWidget(MaterialApp(
         home: MobileAccountJourney(
           arabic: arabic,
@@ -97,6 +100,13 @@ void main() {
           profileAction: (token) async {
             expect(token, bearer);
             return const MobileAccount(articleId, email);
+          },
+          profileUpdateAction: (token, address, currentPassword) async {
+            expect(token, bearer);
+            expect(address, updatedEmail);
+            expect(currentPassword, 'current-account-password');
+            profileUpdates++;
+            return MobileAccount(articleId, address);
           },
           savedAction: (token, locale, number) async {
             expect(token, bearer);
@@ -144,7 +154,28 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('account-profile-email')), findsOneWidget);
       expect(find.text(email), findsOneWidget);
-      expect(find.textContaining('not supported'), arabic ? findsNothing : findsOneWidget);
+      expect(find.byKey(const Key('account-edit-profile')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('account-edit-profile')));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('account-edit-email')),
+        updatedEmail,
+      );
+      await tester.enterText(
+        find.byKey(const Key('account-edit-password')),
+        'current-account-password',
+      );
+      await tester.tap(find.byKey(const Key('account-edit-save')));
+      await tester.pumpAndSettle();
+      expect(profileUpdates, 1);
+      expect(find.text(updatedEmail), findsOneWidget);
+      expect(find.text('current-account-password'), findsNothing);
+      expect(
+        find.text(arabic
+            ? 'تم تحديث بريد الحساب وإلغاء جلسات الأجهزة الأخرى.'
+            : 'Account email updated. Other bearer sessions were revoked.'),
+        findsOneWidget,
+      );
       await tester.tap(find.byKey(const Key('account-saved-tab')));
       await tester.pumpAndSettle();
 
@@ -243,6 +274,64 @@ void main() {
         findsOneWidget);
     expect(find.textContaining('PRIVATE_BACKEND_ERROR'), findsNothing);
     expect(find.byKey(const Key('account-login')), findsOneWidget);
+  });
+
+  testWidgets('profile edit handles validation failure then unauthorized session safely',
+      (tester) async {
+    var attempts = 0;
+    await tester.pumpWidget(MaterialApp(
+      home: MobileAccountJourney(
+        arabic: false,
+        loginAction: (_, __) async =>
+            const MobileAiSession(token: bearer, expiresAt: null),
+        profileAction: (_) async => const MobileAccount(articleId, email),
+        profileUpdateAction: (_, __, ___) async {
+          attempts++;
+          if (attempts == 1) throw const MobileAiHttpException(422);
+          throw const MobileAiHttpException(403);
+        },
+        savedAction: (_, __, n) async =>
+            MobileSavedPage.parse(page(n, []), n),
+      ),
+    ));
+    await login(tester);
+    await tester.tap(find.byKey(const Key('account-profile-tab')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('account-edit-profile')));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byKey(const Key('account-edit-email')),
+      'candidate@example.org',
+    );
+    await tester.enterText(
+      find.byKey(const Key('account-edit-password')),
+      'wrong-current-password',
+    );
+    await tester.tap(find.byKey(const Key('account-edit-save')));
+    await tester.pumpAndSettle();
+
+    expect(attempts, 1);
+    expect(find.text('Check the email address and current password.'),
+        findsOneWidget);
+    expect(find.byKey(const Key('account-edit-email')), findsOneWidget);
+    expect(find.text('wrong-current-password'), findsNothing);
+    expect(find.text(email), findsOneWidget);
+
+    await tester.enterText(
+      find.byKey(const Key('account-edit-password')),
+      'current-password',
+    );
+    await tester.tap(find.byKey(const Key('account-edit-save')));
+    await tester.pumpAndSettle();
+
+    expect(attempts, 2);
+    expect(find.text('Session no longer authorized. Sign in again.'),
+        findsOneWidget);
+    expect(find.byKey(const Key('account-login')), findsOneWidget);
+    expect(find.byKey(const Key('account-profile-email')), findsNothing);
+    expect(find.text(bearer), findsNothing);
+    expect(find.text('current-password'), findsNothing);
   });
 
   testWidgets('main app opens real account screen with truthful unavailable state',
