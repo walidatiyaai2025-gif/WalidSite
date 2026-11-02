@@ -11,6 +11,7 @@ String bootstrap({
   bool arabic = false,
   bool aiAvailable = true,
   Object? privacy,
+  bool privacyUnavailable = false,
   Map<String, dynamic>? routes,
   Map<String, dynamic>? availability,
 }) {
@@ -39,7 +40,8 @@ String bootstrap({
         'server_saved_resources': true,
         'saved_resources_requires_auth': true,
       },
-      'privacy_policy_url': privacy,
+      'privacy_policy_url':
+          privacyUnavailable ? null : (privacy ?? '/privacy?lang=$locale'),
     },
   });
 }
@@ -55,7 +57,7 @@ void main() {
     expect(en.locale, 'en');
     expect(en.defaultLocale, 'en');
     expect(en.aiDiagnosisAvailable, isTrue);
-    expect(en.privacyUri, isNull);
+    expect(en.privacyUri, Uri.parse('$origin/privacy?lang=en'));
 
     final ar = MobileBootstrapCapabilities.parse(
       bootstrap(arabic: true, aiAvailable: false),
@@ -65,7 +67,7 @@ void main() {
     expect(ar.appName, 'رفيق وليد التقني');
     expect(ar.locale, 'ar');
     expect(ar.aiDiagnosisAvailable, isFalse);
-    expect(ar.privacyUri, isNull);
+    expect(ar.privacyUri, Uri.parse('$origin/privacy?lang=ar'));
   });
 
   test('MOBILE-01 bootstrap parser rejects unsafe or stale capability claims', () {
@@ -128,14 +130,17 @@ void main() {
     expect(find.byType(CompanionHome), findsOneWidget);
   });
 
-  testWidgets('canonical null privacy stays ready with truthful unavailable state',
+  testWidgets('missing privacy route falls back truthfully without breaking bootstrap',
       (tester) async {
     await tester.pumpWidget(MaterialApp(
       home: Scaffold(
         body: MobileBootstrapPanel(
           arabic: false,
           fetch: (_) async => MobileBootstrapCapabilities.parse(
-            bootstrap(aiAvailable: true),
+            bootstrap(
+              aiAvailable: true,
+              privacyUnavailable: true,
+            ),
             false,
             Uri.parse(origin),
           ),
@@ -150,7 +155,7 @@ void main() {
     expect(find.textContaining('has not been published yet'), findsOneWidget);
   });
 
-  testWidgets('future verified privacy route is validated before opening',
+  testWidgets('current verified privacy route is validated before opening',
       (tester) async {
     Uri? opened;
     await tester.pumpWidget(MaterialApp(
