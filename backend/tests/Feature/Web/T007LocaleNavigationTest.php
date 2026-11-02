@@ -118,4 +118,25 @@ class T007LocaleNavigationTest extends TestCase
             ->assertSee('السيرة العامة حسب المسار المختار');
     }
 
+
+    public function test_recruiter_resume_link_preserves_vetted_focus_and_locale(): void
+    {
+        foreach (['ar', 'en'] as $locale) {
+            foreach (['database', 'software', 'delivery'] as $track) {
+                $this->get('/hire?lang='.$locale.'&track='.$track)->assertOk()
+                    ->assertSee('href="'.e(route('public.resume', ['lang' => $locale, 'track' => $track])).'"', false);
+                $this->get('/resume?lang='.$locale.'&track='.$track)->assertOk()
+                    ->assertSee('aria-current="page"', false);
+            }
+
+            foreach (['unsupported', '', 'all'] as $invalid) {
+                $this->get('/hire?lang='.$locale.'&track='.$invalid)->assertOk()
+                    ->assertSee('href="'.e(route('public.resume', ['lang' => $locale, 'track' => 'all'])).'"', false);
+            }
+
+            $this->get('/hire?lang='.$locale.'&track[]=database')->assertOk()
+                ->assertSee('href="'.e(route('public.resume', ['lang' => $locale, 'track' => 'all'])).'"', false)
+                ->assertDontSee('track%5B0%5D=', false);
+        }
+    }
 }
