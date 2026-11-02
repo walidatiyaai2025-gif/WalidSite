@@ -96,6 +96,7 @@ body:has(.t012-reference-stage) .site-footer{margin-top:0}
 .t012-article-code{height:116px;width:871px;max-width:100%;border-radius:14px;background:#184876;color:#7debcb;padding:15px 26px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:18px;line-height:1.8;white-space:pre-wrap;overflow:hidden;transform:translate(-1px,6px)}
 .t012-article-aside h2{font-size:24px;margin:3px 0 31px;color:#184876;font-weight:700;letter-spacing:.7px;transform:translate(1px,2px) scaleY(.963);transform-origin:left top}
 .t012-article-aside ul{list-style:none;padding:0;margin:0}.t012-article-aside li{font-size:20px;line-height:30.1px;color:#254a68;margin-bottom:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;transform:scaleY(.875);transform-origin:left top}
+.t012-article-aside .t012-outline-link{color:inherit;text-decoration:none}.t012-article-aside .t012-outline-link:focus-visible{outline:3px solid #0a9a8c;outline-offset:3px;border-radius:2px}
 .t012-search-body{padding:33px 55px 44px}
 .t012-search-box{height:72px;width:1316px;max-width:100%;background:#fff;border-radius:16px;margin-bottom:28px;display:flex;align-items:center;padding:0 33px}
 .t012-search-box input{width:100%;border:0;outline:0;background:transparent;font:inherit;font-size:23px;letter-spacing:.5px;color:#315471;transform:translateY(2px) scaleY(.96);transform-origin:left top}
@@ -182,7 +183,7 @@ body:has(.t012-reference-stage) .site-footer{margin-top:0}
             </section>
             <aside class="t012-article-aside">
                 <h2>{{ $t012Ar ? 'في هذا المقال' : 'In this article' }}</h2>
-                <ul>
+                <ul id="t012-article-outline" aria-label="{{ $t012Ar ? 'أقسام المقال' : 'Article sections' }}">
                     @foreach($t012Headings as $heading)<li>{{ $heading }}</li>@endforeach
                 </ul>
             </aside>
@@ -245,3 +246,38 @@ body:has(.t012-reference-stage) .site-footer{margin-top:0}
         </div>
     @endif
 </section>
+
+@if($t012Screen === 'article')
+{{-- Keep the source-backed outline as readable text without JavaScript. Only
+     turn a label into a link if the *rendered, verified* article has the
+     corresponding section. Never generate dead anchors or trust HTML in labels. --}}
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    'use strict';
+    const outline = document.getElementById('t012-article-outline');
+    const body = document.getElementById('article-content');
+    if (!outline || !body) return;
+    const headings = Array.from(body.querySelectorAll('h2'));
+    const labels = Array.from(outline.querySelectorAll('li'));
+    const normalize = value => value.replace(/\s+/gu, ' ').trim();
+    let nextHeading = 0;
+    for (const label of labels) {
+        const text = normalize(label.textContent || '');
+        if (!text) continue;
+        const index = headings.findIndex((heading, i) =>
+            i >= nextHeading && normalize(heading.textContent || '') === text);
+        if (index < 0) continue;
+        const heading = headings[index];
+        const target = heading.id || 't012-section-' + (index + 1);
+        if (!heading.id && document.getElementById(target)) continue;
+        if (!heading.id) heading.id = target;
+        const link = document.createElement('a');
+        link.className = 't012-outline-link';
+        link.setAttribute('href', '#' + encodeURIComponent(target));
+        link.textContent = label.textContent;
+        label.replaceChildren(link);
+        nextHeading = index + 1;
+    }
+});
+</script>
+@endif
