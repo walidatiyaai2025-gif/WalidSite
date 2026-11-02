@@ -120,8 +120,10 @@ body:has(.t012-reference-stage) .site-footer{margin-top:0}
         <a href="{{ route('public.resume', ['lang' => $locale]) }}">{{ $t012Ar ? 'السيرة العامة' : 'Resume' }}</a>
     </nav>
     <a class="t012-contact" href="{{ route('public.contact', ['lang' => $locale]) }}">{{ $t012Ar ? 'تواصل' : 'Get in touch' }}</a>
-    {{-- Use Blade's inline @php directives, which are evaluated in this view's scope. --}}
-    @php($t012SwitchArgs = ['lang' => $t012Ar ? 'en' : 'ar'])
+    {{-- Compute the locale-switch parameters in an explicit Blade PHP scope. --}}
+    @php
+        $t012SwitchArgs = ['lang' => $t012Ar ? 'en' : 'ar'];
+    @endphp
     @if($t012Current === 'public.article')
         @php($t012SwitchArgs['slug'] = $article->slug)
         @php($t012SwitchArgs = array_merge($t012SwitchArgs, $articleContextQuery ?? []))
