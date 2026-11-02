@@ -263,6 +263,191 @@ Route::middleware('auth:web')->group(function (): void {
             ->header('Cache-Control', 'no-store');
     })->whereUuid('provider')->name('admin.providers.audit');
 
+
+    /*
+     * ADMIN-08..11 browser operations: web-session RBAC + CSRF, never
+     * attempt to mint a Sanctum bearer token inside server-rendered pages.
+     * All metrics come from persisted state or the verified public directory.
+     */
+    Route::get('/admin/github', function (
+        Request $request, \App\Integrations\GitHub\PublicRepositoryDirectory $directory
+    ) {
+        abort_unless($request->user()?->canAccessAdmin(), 403);
+        $input = $request->validate(['lang' => ['sometimes', 'in:ar,en']]);
+        $locale = $input['lang'] ?? 'en';
+        $all = $directory->repositories();
+        $repositories = collect($all)->filter(static fn ($repo) =>
+            is_array($repo) && ($repo['status'] ?? null) === 'verified'
+            && is_string($repo['full_name'] ?? null)
+            && is_string($repo['url'] ?? null)
+        )->values();
+        $unavailableCount = count($all) - $repositories->count();
+        $configuredCount = count($all);
+
+        return response()->view('admin.product.github', compact(
+            'locale', 'repositories', 'unavailableCount', 'configuredCount'
+        ))->header('Cache-Control', 'no-store');
+    })->name('admin.github.index')->middleware('throttle:30,1');
+
+    Route::post('/admin/github/sync', function (
+        Request $request, \App\Integrations\GitHub\PublicRepositoryDirectory $directory
+    ) {
+        abort_unless($request->user()?->canAccessAdmin(), 403);
+        $input = $request->validate(['lang' => ['sometimes', 'in:ar,en']]);
+        $locale = $input['lang'] ?? 'en';
+        // The public directory holds only independently verified metadata.
+        // Invalidate known allowlisted keys, never accept a user-provided URL.
+        $configured = config('portfolio.github_public_repos', []);
+        foreach (is_array($configured) ? array_slice($configured, 0, 20) : [] as $slug) {
+            if (is_string($slug) && preg_match(
+                '/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?\/[A-Za-z0-9_][A-Za-z0-9_.-]{0,99}$/D',
+                $slug
+            ) === 1 && ! str_contains($slug, '..')) {
+                \Illuminate\Support\Facades\Cache::forget('public-github:'.hash('sha256', strtolower($slug)));
+            }
+        }
+        $all = $directory->repositories();
+        $verifiedCount = count(array_filter($all, static fn ($repo) =>
+            is_array($repo) && ($repo['status'] ?? null) === 'verified'
+        ));
+        if ($all === []) {
+            return redirect()->route('admin.github.index', ['lang' => $locale])
+                ->with('notice', $locale === 'ar'
+                    ? 'لا توجد مستودعات عامة معرّفة في القائمة المسموحة.'
+                    : 'No public repositories are configured in the allowlist.');
+        }
+        if ($verifiedCount === 0) {
+            return redirect()->route('admin.github.index', ['lang' => $locale])
+                ->with('error', $locale === 'ar'
+                    ? 'تعذّر التحقق من بيانات GitHub العامة؛ لم نعتمد أية نتيجة.'
+                    : 'Public GitHub verification is unavailable; no result was approved.');
+        }
+        return redirect()->route('admin.github.index', ['lang' => $locale])
+            ->with('status', $locale === 'ar'
+                ? 'اكتمل التحقق من مستودعات عامة متاحة؛ البقية غير معتمدة.'
+                : 'Available public repositories were verified; others remain unapproved.');
+    })->name('admin.github.sync')->middleware('throttle:6,1');
+
+    Route::get('/admin/projects', function (Request $request) {
+        abort_unless($request->user()?->canAccessAdmin(), 403);
+        $input = $request->validate([
+            'lang' => ['sometimes', 'in:ar,en'],
+            'page' => ['sometimes', 'integer', 'between:1,10000'],
+            'status' => ['sometimes', 'in:completed,in_progress,research,archived'],
+            'visibility' => ['sometimes', 'in:public,private'],
+        ]);
+        $locale = $input['lang'] ?? 'en';
+        $filters = array_filter([
+            'status' => $input['status'] ?? null,
+            'visibility' => $input['visibility'] ?? null,
+        ], static fn ($value) => $value !== null);
+        $query = \App\Models\Project::query()
+            ->select(['id', 'slug', 'title', 'status', 'visibility', 'role_en', 'published_at', 'updated_at'])
+            ->withCount([
+                'evidence',
+                'evidence as verified_public_evidence_count' => static fn ($q) =>
+                    $q->where('visibility', 'public')
+                        ->whereNotNull('verified_at')
+                        ->where('verified_at', '<=', now()),
+            ])
+            ->when(isset($filters['status']), fn ($q) => $q->where('status', $filters['status']))
+            ->when(isset($filters['visibility']), fn ($q) => $q->where('visibility', $filters['visibility']))
+            ->orderByDesc('updated_at')->orderBy('id');
+        $projects = $query->paginate(20)->appends(array_merge($filters, ['lang' => $locale]));
+
+        return response()->view('admin.product.projects', compact(
+            'locale', 'projects', 'filters'
+        ))->header('Cache-Control', 'no-store');
+    })->name('admin.projects.index')->middleware('throttle:30,1');
+
+    Route::get('/admin/audience', function (Request $request) {
+        abort_unless($request->user()?->canAccessAdmin(), 403);
+        $input = $request->validate(['lang' => ['sometimes', 'in:ar,en']]);
+        $locale = $input['lang'] ?? 'en';
+        $accounts = [
+            'active' => \Illuminate\Support\Facades\DB::table('users')->where('status', 'active')->count(),
+            'inactive' => \Illuminate\Support\Facades\DB::table('users')->where('status', '!=', 'active')->count(),
+        ];
+        $roles = \Illuminate\Support\Facades\DB::table('roles')
+            ->leftJoin('role_user', 'role_user.role_id', '=', 'roles.id')
+            ->select('roles.name')->selectRaw('COUNT(role_user.user_id) AS users')
+            ->groupBy('roles.id', 'roles.name')->orderBy('roles.name')->get();
+        $consentAvailable = \Illuminate\Support\Facades\Schema::hasTable('notification_preferences');
+        $consented = $consentAvailable
+            ? \Illuminate\Support\Facades\DB::table('notification_preferences as preference')
+                ->join('users', 'users.id', '=', 'preference.user_id')
+                ->where('users.status', 'active')
+                ->where('preference.enabled', true)
+                ->whereNotNull('preference.consented_at')
+                ->whereNull('preference.revoked_at')
+                ->distinct()->count('preference.user_id') : 0;
+
+        return response()->view('admin.product.audience', compact(
+            'locale', 'accounts', 'roles', 'consentAvailable', 'consented'
+        ))->header('Cache-Control', 'no-store');
+    })->name('admin.audience.index')->middleware('throttle:30,1');
+
+    Route::get('/admin/analytics', function (Request $request) {
+        abort_unless($request->user()?->canAccessAdmin(), 403);
+        $input = $request->validate([
+            'lang' => ['sometimes', 'in:ar,en'],
+            'period' => ['sometimes', 'in:today,7d,30d,all'],
+            'format' => ['sometimes', 'in:csv'],
+        ]);
+        $locale = $input['lang'] ?? 'en';
+        $period = $input['period'] ?? '7d';
+        $utc = now('UTC');
+        $from = match ($period) {
+            'today' => $utc->copy()->startOfDay(),
+            '7d' => $utc->copy()->subDays(7),
+            '30d' => $utc->copy()->subDays(30),
+            default => null,
+        };
+        $jobs = \Illuminate\Support\Facades\DB::table('ai_jobs')
+            ->when($from, fn ($q) => $q->where('created_at', '>=', $from))
+            ->select('status')->selectRaw('COUNT(*) AS total')
+            ->groupBy('status')->orderBy('status')->get();
+        $usage = \Illuminate\Support\Facades\DB::table('ai_usage')
+            ->when($from, fn ($q) => $q->where('created_at', '>=', $from))
+            ->select('cost_currency')
+            ->selectRaw('COUNT(*) AS receipts, SUM(cost_minor) AS cost_minor')
+            ->groupBy('cost_currency')->orderBy('cost_currency')->limit(100)->get();
+        $content = [
+            'articles' => \App\Models\Article::query()->publiclyVisible()->count(),
+            'projects' => \App\Models\Project::query()->publiclyVerified()->count(),
+            'drafts' => \App\Models\Article::query()->where('status', 'draft')->count(),
+        ];
+        if (($input['format'] ?? null) === 'csv') {
+            $safe = static fn (string $value): string =>
+                preg_match('/^[=+\-@\t\r]/u', $value) === 1 ? "'".$value : $value;
+            return response()->streamDownload(static function () use ($content, $jobs, $usage, $period, $safe): void {
+                $stream = fopen('php://output', 'wb');
+                fwrite($stream, "\xEF\xBB\xBF");
+                fputcsv($stream, ['Report', 'Period UTC', 'Metric', 'Value', 'Unit']);
+                foreach ($content as $metric => $count) {
+                    fputcsv($stream, ['current_content_snapshot', 'current', $metric, $count, 'records']);
+                }
+                foreach ($jobs as $job) {
+                    fputcsv($stream, ['ai_jobs', $period, $safe((string) $job->status), $job->total, 'jobs']);
+                }
+                foreach ($usage as $entry) {
+                    fputcsv($stream, ['ai_usage', $period, $safe((string) $entry->cost_currency),
+                        $entry->cost_minor, 'minor_currency_units']);
+                    fputcsv($stream, ['ai_receipts', $period, $safe((string) $entry->cost_currency),
+                        $entry->receipts, 'receipts']);
+                }
+                fclose($stream);
+            }, 'walidsite-analytics-'.now('UTC')->format('Ymd').'.csv', [
+                'Content-Type' => 'text/csv; charset=UTF-8',
+                'Cache-Control' => 'no-store',
+                'X-Content-Type-Options' => 'nosniff',
+            ]);
+        }
+        return response()->view('admin.product.analytics', compact(
+            'locale', 'period', 'jobs', 'usage', 'content'
+        ))->header('Cache-Control', 'no-store');
+    })->name('admin.analytics.index')->middleware('throttle:30,1');
+
     // ADMIN-03/13: consolidated, read-only provider configuration audit.
     // It exposes audited *field names*, never untrusted stored values, actor
     // details or provider credentials. Archived providers retain history.
