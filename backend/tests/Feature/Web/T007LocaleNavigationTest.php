@@ -81,4 +81,41 @@ class T007LocaleNavigationTest extends TestCase
             ->assertSee('hreflang="en"', false)
             ->assertSee('href="'.route('public.about', ['lang' => 'en']).'"', false);
     }
+
+    public function test_t007_hero_and_evidence_gated_cards_render_bilingual_rtl_content(): void
+    {
+        $screens = [
+            ['/', 'الهوية المهنية', 'وليد عطية', 'مشاريع تم التحقق منها', 'PERSONAL BRAND'],
+            ['/about', 'المسيرة المهنية', 'نبذة', 'تُعرض فقط السجلات المهنية', 'CAREER STORY'],
+            ['/expertise', 'القدرات المهنية', 'الخبرات', 'قواعد البيانات والموثوقية', 'CAPABILITIES'],
+            ['/ai-engineering', 'تطبيقات الذكاء الاصطناعي', 'هندسة الذكاء الاصطناعي', 'تصميم سير عمل الذكاء الاصطناعي', 'AI PRACTICE'],
+            ['/hire', 'عرض التوظيف', 'مساحة التوظيف', 'المهارات المنشورة بالأدلة فقط', 'HIRING VIEW'],
+        ];
+        foreach ($screens as [$route, $pill, $title, $details, $englishPill]) {
+            $this->get($route.'?lang=ar')->assertOk()
+                ->assertSee('dir="rtl"', false)
+                ->assertSee('class="t007-reference-stage"', false)
+                ->assertSee($pill)
+                ->assertSee($title)
+                ->assertSee($details)
+                ->assertDontSee($englishPill);
+            $this->get($route.'?lang=en')->assertOk()
+                ->assertSee('dir="ltr"', false)
+                ->assertSee($englishPill);
+        }
+    }
+
+    public function test_t007_arabic_cards_link_to_real_localized_routes_without_unverified_cv_claims(): void
+    {
+        $this->get('/?lang=ar')->assertOk()
+            ->assertSee('دراسات الحالة المنشورة فقط')
+            ->assertSee('href="'.route('public.projects', ['lang' => 'ar']).'"', false);
+        $this->get('/about?lang=ar')->assertOk()
+            ->assertSee('لا توجد فترات مهنية اجتازت التحقق والنشر بعد.')
+            ->assertDontSee('Government & enterprise systems');
+        $this->get('/hire?lang=ar')->assertOk()
+            ->assertSee('href="'.route('public.resume', ['lang' => 'ar']).'"', false)
+            ->assertSee('السيرة العامة حسب المسار المختار');
+    }
+
 }
