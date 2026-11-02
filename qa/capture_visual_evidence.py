@@ -43,7 +43,7 @@ def capture(root: Path, screen_id: str, *, commit: str, locale: str,
     root = root.resolve()
     if not re.fullmatch(r"[0-9a-f]{40}", commit):
         raise CaptureError("Renderer commit must be a full lowercase SHA")
-    if locale not in ("ar", "en") or not 0 < dpr <= 8:
+    if locale not in ("ar", "en") or not isinstance(dpr, (int, float)) or not 0 < dpr <= 8:
         raise CaptureError("Invalid locale or device pixel ratio")
     if not command or any("assets/screen-reference" in part for part in command):
         raise CaptureError("Supply a runtime renderer command, not an original reference")
