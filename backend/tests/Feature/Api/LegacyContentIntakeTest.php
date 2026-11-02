@@ -38,6 +38,16 @@ class LegacyContentIntakeTest extends TestCase
         $this->assertCount(6, $result['rejected']);
     }
 
+    public function test_list_shaped_table_map_is_rejected_before_row_processing(): void
+    {
+        $payload = json_encode(['version' => 1, 'tables' => [
+            [['slug' => 'unexpected', 'title_en' => 'Not a named table']],
+        ]], JSON_THROW_ON_ERROR);
+
+        $this->expectException(InvalidArgumentException::class);
+        (new LegacyContentIntake)->inspect($payload);
+    }
+
     public function test_sql_dump_and_oversized_payload_are_not_accepted(): void
     {
         foreach (['INSERT INTO users VALUES (1);', str_repeat('x', 1048577)] as $payload) {
