@@ -85,6 +85,9 @@ class T007DiagnosticExitTest(unittest.TestCase):
         self.assertIn('supplemental_keyboard_link_visible', source)
         self.assertIn('"responsive_checks": len(report["responsive_audit"])', source)
         self.assertIn('"responsive_ok": responsive_audit_complete(report["responsive_audit"])', source)
+        self.assertIn("card_text_contained", source)
+        self.assertIn("node.scrollWidth <= node.clientWidth + 2", source)
+        self.assertIn("node.closest(", source)
 
 
     def test_complete_responsive_audit_rejects_missing_replaced_or_failed_cases(self):

@@ -228,11 +228,11 @@ body:has(.t007-reference-stage) .site-footer{margin-top:0}
 .t007-about-rows{display:grid;gap:19px;padding:6px 6px 0}
 .t007-about-row{height:98px;border-radius:18px;background:#fff;display:flex;align-items:center;padding:0 25px}
 .t007-about-period{width:176px;height:45px;border-radius:14px;background:#e2f2f3;color:#007174;display:flex;align-items:center;padding-left:14px;font-size:17px;font-weight:700;letter-spacing:.25px}
-.t007-about-row strong{margin-left:32px;font-size:26px;line-height:1.25;color:#184876;font-weight:800;letter-spacing:.1px}
+.t007-about-row strong{display:block;flex:1 1 0;min-width:0;margin-left:32px;font-size:26px;line-height:1.25;color:#184876;font-weight:800;letter-spacing:.1px;overflow-wrap:anywhere;white-space:normal}
 .t007-hire-cards{display:grid;grid-template-columns:repeat(3,412px);gap:28px;padding-top:-6px}
 .t007-hire-card{height:348px;border-radius:20px;background:#fff;padding:34px 25px;color:#184876}
-.t007-hire-card h2{font-size:30px;margin:0 0 34px;line-height:1.2}.t007-hire-card p{font-size:20px;margin:0 0 34px;color:#254a68;white-space:nowrap}
-.t007-hire-card a{display:block;text-decoration:none;color:#254a68;font-size:20px;margin:0 0 31px}
+.t007-hire-card h2{font-size:30px;margin:0 0 34px;line-height:1.2}.t007-hire-card p{font-size:20px;margin:0 0 24px;color:#254a68;white-space:normal;overflow-wrap:anywhere;line-height:1.35}
+.t007-hire-card a{display:block;text-decoration:none;color:#254a68;font-size:20px;margin:0 0 24px;max-width:100%;overflow-wrap:anywhere}
 .t007-functional{background:#fff;padding-top:48px}
 @media(min-width:901px) and (max-width:1399px){.t007-nav-shell{padding-inline:24px}.t007-brand{margin-right:24px}.t007-nav-links a,.t007-nav-links a:nth-child(n){margin-right:clamp(8px,1.4vw,20px);font-size:14px}.t007-reference-cards,.t007-hire-cards{grid-template-columns:repeat(3,minmax(0,1fr));gap:20px}.t007-reference-hero{padding-inline:36px}.t007-visual-stack{left:auto;right:30px;transform:scale(.78);transform-origin:top right}.t007-reference-subtitle{max-width:65%}.t007-reference-body{padding-inline:36px}.t007-hire-card p{white-space:normal;overflow-wrap:anywhere}}
 /* At 901–1399px the eight-link desktop rail exceeds its allocated space.

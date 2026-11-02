@@ -561,6 +561,25 @@ def responsive_browser_audit(base_url: str, screens: dict) -> dict:
                                         jump_target_focusable: Boolean(target &&
                                             target.tabIndex === -1),
                                         nav_present: Boolean(nav && nav.querySelectorAll('a').length >= 8),
+                                        // Detect text protruding outside its real
+                                        // evidence/CV/timeline card. A long,
+                                        // source-verified job title must wrap,
+                                        // never overlap an adjacent column.
+                                        card_text_contained: [...document.querySelectorAll(
+                                            '.t007-about-row strong, .t007-hire-card h2, ' +
+                                            '.t007-hire-card p, .t007-hire-card a'
+                                        )].every((node) => {
+                                            const owner = node.closest(
+                                                '.t007-about-row, .t007-hire-card'
+                                            );
+                                            if (!owner) return false;
+                                            const boundary = owner.getBoundingClientRect();
+                                            const box = node.getBoundingClientRect();
+                                            return node.scrollWidth <= node.clientWidth + 2 &&
+                                                box.left >= boundary.left - 2 &&
+                                                box.right <= boundary.right + 2 &&
+                                                box.width > 0;
+                                        }),
                                     };
                                 }""")
                                 # Focus is a user action: every header link must
