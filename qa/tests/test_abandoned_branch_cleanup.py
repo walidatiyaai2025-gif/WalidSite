@@ -88,6 +88,8 @@ class AbandonedBranchCleanupTest(unittest.TestCase):
             170: ("fix/168-setup-schema-mismatch-recovery-guard", 171),
             172: ("fix/169-schema-mismatch-recovery-guard", 171),
             337: ("fix/332-mobile-learning-unique-page-slugs", 336),
+            # Closed-unmerged alternate PR #525 superseded by merged #523.
+            525: ("fix/521-serialize-mobile-bookmark-quota", 523),
         }
         for pr, (branch, successor) in expected.items():
             with self.subTest(pr=pr):
