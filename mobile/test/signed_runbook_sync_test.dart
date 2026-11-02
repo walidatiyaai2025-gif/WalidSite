@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:cryptography/cryptography.dart';
@@ -18,6 +19,29 @@ class MemorySnapshotStore implements RunbookSnapshotStore {
   Future<void> write(String envelope) async {
     snapshot = envelope;
     writes++;
+  }
+}
+
+/// Simulates a slow atomic storage write and catches overlapping writes.
+class GatedSnapshotStore extends MemorySnapshotStore {
+  final firstStarted = Completer<void>();
+  final releaseFirst = Completer<void>();
+  int activeWrites = 0;
+  int maxActiveWrites = 0;
+
+  @override
+  Future<void> write(String envelope) async {
+    activeWrites++;
+    if (activeWrites > maxActiveWrites) maxActiveWrites = activeWrites;
+    try {
+      if (writes == 0 && !firstStarted.isCompleted) {
+        firstStarted.complete();
+        await releaseFirst.future;
+      }
+      await super.write(envelope);
+    } finally {
+      activeWrites--;
+    }
   }
 }
 
@@ -282,6 +306,83 @@ void main() {
     await repo.sync();
     expect(store.writes, 1,
         reason: 'A second fetch of the same newer envelope is a no-op');
+  });
+
+  test('concurrent signed updates serialize writes: older cannot overtake newer',
+      () async {
+    final keys = await signer();
+    final time = DateTime.now().toUtc().subtract(const Duration(hours: 2));
+    final older = await signedEnvelope(
+      key: keys.pair, verifiedAt: time, version: '1.0.0',
+    );
+    final newer = await signedEnvelope(
+      key: keys.pair,
+      verifiedAt: time.add(const Duration(hours: 1)),
+      version: '2.0.0',
+    );
+    final store = GatedSnapshotStore();
+    var fetches = 0;
+    final repo = OfflineRunbookRepository(
+      source: SignedRunbookSource(
+        url: 'https://docs.example.org/packs/signed.json',
+        publicKeyBase64: keys.key,
+        transport: (_) async {
+          fetches++;
+          return fetches == 1 ? older : newer;
+        },
+      ),
+      store: store,
+      bundled: () => SynchronousFuture<OfflineRunbookPack>(fallback),
+    );
+
+    final first = repo.sync();
+    await store.firstStarted.future;
+    final second = repo.sync();
+    await Future<void>.delayed(Duration.zero);
+    expect(fetches, 1,
+        reason: 'Next request must not read an obsolete cache while a write is pending');
+    expect(store.writes, 0);
+    expect(store.activeWrites, 1);
+
+    store.releaseFirst.complete();
+    final results = await Future.wait([first, second]);
+    expect(results.map((pack) => pack.version), ['1.0.0', '2.0.0']);
+    expect(results.every((pack) => pack.signedVerified), isTrue);
+    expect(fetches, 2);
+    expect(store.maxActiveWrites, 1);
+    expect(store.activeWrites, 0);
+    expect(store.writes, 2);
+    expect(store.snapshot, newer);
+    expect((await repo.load()).version, '2.0.0');
+  });
+
+  test('failed first signed sync releases the queue for verified next update',
+      () async {
+    final keys = await signer();
+    final trusted = await signedEnvelope(key: keys.pair);
+    var requests = 0;
+    final store = MemorySnapshotStore();
+    final repo = OfflineRunbookRepository(
+      source: SignedRunbookSource(
+        url: 'https://docs.example.org/packs/signed.json',
+        publicKeyBase64: keys.key,
+        transport: (_) async {
+          requests++;
+          return requests == 1 ? 'PRIVATE_INVALID_SIGNATURE' : trusted;
+        },
+      ),
+      store: store,
+      bundled: () => SynchronousFuture<OfflineRunbookPack>(fallback),
+    );
+    final first = repo.sync();
+    final second = repo.sync();
+    await expectLater(first, throwsFormatException);
+    final recovered = await second;
+    expect(recovered.version, '2.0.0');
+    expect(recovered.signedVerified, isTrue);
+    expect(store.snapshot, trusted);
+    expect(store.writes, 1);
+    expect(requests, 2);
   });
 
   test('unsafe endpoints and oversized signed envelope fail closed', () async {
