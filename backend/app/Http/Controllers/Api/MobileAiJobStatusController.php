@@ -15,8 +15,11 @@ use Laravel\Sanctum\PersonalAccessToken;
  */
 final class MobileAiJobStatusController extends Controller
 {
-    public function __invoke(Request $request, string $id): JsonResponse
-    {
+    public function __invoke(
+        Request $request,
+        string $id,
+        PublicRunbookController $runbooks,
+    ): JsonResponse {
         $user = $request->user();
         $token = $user?->currentAccessToken();
         abort_unless(
@@ -54,6 +57,7 @@ final class MobileAiJobStatusController extends Controller
                 'progress_percent' => $progress,
                 'result_url' => $status === 'completed'
                     && $diagnosis->selected_runbook_id !== null
+                    && $runbooks->verifiedData((string) $diagnosis->selected_runbook_id) !== null
                         ? route('api.mobile.solution', ['id' => $diagnosis->selected_runbook_id], false)
                         : null,
                 'retry_after_seconds' => $status === 'queued' || $status === 'running'

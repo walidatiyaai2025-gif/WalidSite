@@ -1628,6 +1628,111 @@ Route::get('/resume', function (Request $request) {
 })->name('public.resume');
 
 /*
+ * WEB-11: downloadable PDF of the SAME evidence-gated public CV data.
+ * Only embedded escaped text is rendered: no remote assets, HTML images,
+ * submitted URLs, scripts, or privately held evidence reach the renderer.
+ * This is not the browser's print-to-PDF approximation.
+ */
+Route::get('/resume/pdf', function (Request $request) {
+    $input = $request->validate([
+        'lang' => ['sometimes', 'in:ar,en'],
+        'track' => ['sometimes', \Illuminate\Validation\Rule::in([
+            'all', 'database', 'software', 'delivery',
+        ])],
+    ]);
+    $locale = $input['lang'] ?? 'en';
+    $track = $input['track'] ?? 'all';
+    $tracks = [
+        'all' => [],
+        'database' => ['Database & Reliability'],
+        'software' => ['Software & Integration', 'Infrastructure & Security'],
+        'delivery' => ['Project Delivery'],
+    ];
+    $profile = \App\Models\Profile::query()->published()
+        ->whereHas('user', fn ($q) => $q->where('status', 'active')
+            ->whereHas('roles', fn ($r) => $r->where('name', 'owner')))
+        ->firstOrFail();
+
+    $positions = \App\Models\CareerPosition::query()->publiclyVerified()
+        ->where('profile_id', $profile->id)
+        ->orderByDesc('started_on')->limit(250)->get();
+    $certifications = \App\Models\Certification::query()->publiclyVerified()
+        ->where('profile_id', $profile->id)->orderBy('title')->limit(250)->get();
+    $skillsQuery = \App\Models\Skill::query()->withVerifiedEvidence()
+        ->whereIn('id', \Illuminate\Support\Facades\DB::table('profile_skill')
+            ->where('profile_id', $profile->id)->select('skill_id'));
+    if ($track !== 'all') {
+        $skillsQuery->whereIn('category', $tracks[$track]);
+    }
+    $skills = $skillsQuery->orderBy('category')->orderBy('name_en')->limit(250)->get();
+
+    // Do not pass user-controlled HTML or URL references to the PDF engine.
+    // HTML-escape every value and use only a fixed, embedded stylesheet.
+    $esc = static fn ($value): string => htmlspecialchars(
+        mb_substr((string) ($value ?? ''), 0, 320),
+        ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'
+    );
+    $ar = $locale === 'ar';
+    $title = $ar ? 'السيرة المهنية العامة' : 'Public professional resume';
+    $html = '<style>body{font-family:freeserif;font-size:12pt;color:#142E4D}'
+        .'h1{color:#163B66;font-size:20pt}h2{color:#163B66;font-size:15pt}'
+        .'p{margin:3mm 0}.item{margin-bottom:5mm}</style>'
+        .'<h1>'.$esc($title).'</h1><h2>'.$esc($profile->public_name).'</h2>'
+        .'<p>'.$esc($ar
+            ? 'تعرض هذه الوثيقة البيانات المنشورة والمتحقق من أدلتها فقط.'
+            : 'This document includes only evidence-verified public records.').'</p>';
+    $html .= '<h2>'.$esc($ar ? 'الخبرات المعتمدة' : 'Verified experience').'</h2>';
+    foreach ($positions as $entry) {
+        $period = ($entry->started_on?->format('Y') ?? '')
+            .' – '.($entry->ended_on?->format('Y') ?? ($ar ? 'حتى الآن' : 'Present'));
+        $html .= '<div class="item"><b>'.$esc($ar ? $entry->role_ar : $entry->role_en)
+            .'</b><p>'.$esc($entry->org_name).' — '.$esc($period).'</p></div>';
+    }
+    if ($positions->isEmpty()) {
+        $html .= '<p>'.$esc($ar ? 'لا توجد خبرات معتمدة بعد.' : 'No verified experience available.').'</p>';
+    }
+    $html .= '<h2>'.$esc($ar ? 'الشهادات المتحقق منها' : 'Verified credentials').'</h2>';
+    foreach ($certifications as $entry) {
+        $html .= '<div class="item"><b>'.$esc($entry->title).'</b>'
+            .'<p>'.$esc($entry->issuer).'</p></div>';
+    }
+    if ($certifications->isEmpty()) {
+        $html .= '<p>'.$esc($ar ? 'لا توجد شهادات معتمدة بعد.' : 'No verified credentials available.').'</p>';
+    }
+    $html .= '<h2>'.$esc($ar ? 'المهارات المهنية الموثقة' : 'Verified skills').'</h2>';
+    foreach ($skills as $entry) {
+        $html .= '<div class="item"><b>'.$esc($ar ? $entry->name_ar : $entry->name_en)
+            .'</b><p>'.$esc($entry->category).'</p></div>';
+    }
+    if ($skills->isEmpty()) {
+        $html .= '<p>'.$esc($ar ? 'لا توجد مهارات موثقة لهذا المسار بعد.'
+            : 'No verified skills for this focus yet.').'</p>';
+    }
+
+    $pdf = new \TCPDF('P', 'mm', 'A4', true, 'UTF-8', false);
+    $pdf->setPrintHeader(false);
+    $pdf->setPrintFooter(false);
+    $pdf->SetMargins(16, 18, 16);
+    $pdf->SetAutoPageBreak(true, 18);
+    $pdf->SetCreator('WalidSite');
+    $pdf->SetTitle($title);
+    $pdf->AddPage();
+    $pdf->setRTL($ar);
+    // FreeSerif is bundled with the installed TCPDF package and supports Arabic.
+    $pdf->SetFont('freeserif', '', 12);
+    $pdf->writeHTML($html, true, false, true, false, '');
+
+    $bytes = $pdf->Output('', 'S');
+    $filename = 'waleed-verified-cv-'.$track.'-'.$locale.'.pdf';
+    return response($bytes, 200, [
+        'Content-Type' => 'application/pdf',
+        'Content-Disposition' => 'attachment; filename="'.$filename.'"',
+        'Cache-Control' => 'no-store, private',
+        'X-Content-Type-Options' => 'nosniff',
+    ]);
+})->name('public.resume.pdf')->middleware('throttle:20,1');
+
+/*
  * Secure-by-default contact flow. The recipient is intentionally not stored
  * in source or exposed to the browser; activation requires verified mail
  * delivery and a configured contact recipient on the server.
@@ -2032,22 +2137,70 @@ Route::get('/search', function (Request $request) {
 Route::middleware('auth:web')->prefix('admin')->group(function (): void {
     Route::get('/github', function (Request $request, \App\Integrations\GitHub\PublicRepositoryDirectory $directory) {
         abort_unless($request->user()?->canAccessAdmin(), 403);
-        $request->validate(['lang' => ['sometimes', 'in:ar,en']]);
+        $input = $request->validate([
+            'lang' => ['sometimes', 'in:ar,en'],
+            'repo' => ['sometimes', 'string', 'max:140'],
+        ]);
         $repos = collect($directory->repositories());
+        // Inspect only metadata that has ALREADY passed the public allowlist
+        // and live verification gate. A private/missing repo is indistinguishable
+        // from an unknown name; never render the requested slug unverified.
+        $selectedRepo = null;
+        if (isset($input['repo'])) {
+            $selectedRepo = $repos->first(static fn (array $item): bool =>
+                ($item['status'] ?? null) === 'verified'
+                && is_string($item['full_name'] ?? null)
+                && strcasecmp($item['full_name'], $input['repo']) === 0
+            );
+            abort_if($selectedRepo === null, 404);
+        }
         return response()->view('admin.operations', [
             'section' => 'github',
             'repos' => $repos,
+            'selectedRepo' => $selectedRepo,
             'configuredCount' => min(20, count(config('portfolio.github_public_repos', []))),
         ])->header('Cache-Control', 'no-store, private');
     })->name('admin.operations.github')->middleware('throttle:30,1');
 
     Route::post('/github/refresh', function (Request $request, \App\Integrations\GitHub\PublicRepositoryDirectory $directory) {
         abort_unless($request->user()?->canAccessAdmin(), 403);
-        $request->validate(['lang' => ['sometimes', 'in:ar,en']]);
-        if (array_diff(array_keys($request->request->all()), ['_token']) !== []) {
+        $input = $request->validate([
+            'lang' => ['sometimes', 'in:ar,en'],
+            'repo' => ['sometimes', 'string', 'max:140'],
+        ]);
+        if (array_diff(array_keys($request->request->all()), ['_token', 'repo']) !== []) {
             throw \Illuminate\Validation\ValidationException::withMessages([
                 'refresh' => 'Unrecognized synchronization input.',
             ]);
+        }
+        // A submitted slug alone is NOT permission to query GitHub. Restrict
+        // individual refreshes to CURRENTLY verified public allowlist entries.
+        if (isset($input['repo'])) {
+            $verifiedRepo = collect($directory->repositories())->first(static fn (array $item): bool =>
+                ($item['status'] ?? null) === 'verified'
+                && is_string($item['full_name'] ?? null)
+                && strcasecmp($item['full_name'], $input['repo']) === 0
+            );
+            if ($verifiedRepo === null) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'repo' => 'Selected repository is not verified public.',
+                ]);
+            }
+            $slug = $verifiedRepo['full_name'];
+            \Illuminate\Support\Facades\Cache::forget('public-github:'.hash('sha256', strtolower($slug)));
+            $updated = collect($directory->repositories())->first(static fn (array $item): bool =>
+                ($item['status'] ?? null) === 'verified'
+                && is_string($item['full_name'] ?? null)
+                && strcasecmp($item['full_name'], $slug) === 0
+            );
+            $lang = ($input['lang'] ?? 'en') === 'ar' ? 'ar' : 'en';
+            // If the source is withdrawn during refresh, never preserve an
+            // inspect link or claim verification success from old cached data.
+            return redirect()->route('admin.operations.github', $updated === null
+                ? ['lang' => $lang] : ['lang' => $lang, 'repo' => $updated['full_name']])
+                ->with($updated === null ? 'warning' : 'status', $updated === null
+                    ? 'Selected repository is no longer publicly verified.'
+                    : 'Selected public repository verified from GitHub.');
         }
         foreach (array_slice(config('portfolio.github_public_repos', []), 0, 20) as $slug) {
             if (is_string($slug)) {
@@ -2058,7 +2211,7 @@ Route::middleware('auth:web')->prefix('admin')->group(function (): void {
         $verified = $repos->filter(static fn (array $item): bool => $item['status'] === 'verified')->count();
         $configured = min(20, count(config('portfolio.github_public_repos', [])));
         // A failed verification is not a successful synchronization.
-        return redirect()->route('admin.operations.github', ['lang' => $request->query('lang') === 'ar' ? 'ar' : 'en'])
+        return redirect()->route('admin.operations.github', ['lang' => ($input['lang'] ?? 'en') === 'ar' ? 'ar' : 'en'])
             ->with($configured && !$verified ? 'warning' : 'status',
                 $configured && !$verified ? 'No configured public repository could be verified.' :
                 'Verified public repositories: '.$verified);

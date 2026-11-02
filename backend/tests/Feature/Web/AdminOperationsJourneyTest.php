@@ -125,6 +125,77 @@ final class AdminOperationsJourneyTest extends TestCase
         Http::assertSentCount(4);
     }
 
+    public function test_only_verified_allowlisted_github_metadata_can_be_inspected_in_both_locales(): void
+    {
+        config(['portfolio.github_public_repos' => ['owner/verified', 'private-org/private-work']]);
+        Http::fake([
+            'api.github.com/repos/owner/verified' => Http::response([
+                'full_name' => 'owner/verified', 'html_url' => 'https://github.com/owner/verified',
+                'description' => '<script>not executable</script> Public description',
+                'language' => 'PHP', 'visibility' => 'public', 'private' => false,
+            ]),
+            'api.github.com/repos/private-org/private-work' => Http::response([], 404),
+        ]);
+        $this->actingAs($this->account('admin'), 'web');
+        foreach (['en','ar'] as $lang) {
+            $url = '/admin/github?lang='.$lang.'&repo=owner/verified';
+            $response = $this->get($url)->assertOk()
+                ->assertSee('owner/verified')
+                ->assertSee('name="repo" value="owner/verified"', false)
+                ->assertSee('Verification source', $lang === 'en')
+                ->assertSee('GitHub public REST')
+                ->assertSee('&#039;', false) // Escaped markup is not executed.
+                ->assertDontSee('<script>', false)
+                ->assertHeader('Cache-Control', 'no-store, private');
+            if ($lang === 'ar') {
+                $response->assertSee('dir="rtl"', false)
+                    ->assertSee('فحص البيانات');
+            } else {
+                $response->assertSee('Selected verified public repository')
+                    ->assertSee('Recheck selected public repository');
+            }
+        }
+        $this->get('/admin/github?repo=private-org/private-work')->assertNotFound();
+        $this->get('/admin/github?repo=unknown/repository')->assertNotFound();
+        $this->get('/admin/github?repo[]=owner/verified')->assertRedirect()
+            ->assertSessionHasErrors('repo');
+        $this->post('/admin/github/refresh?lang=ar', ['repo' => 'private-org/private-work'])
+            ->assertRedirect()->assertSessionHasErrors('repo');
+        $this->actingAs($this->account('reader'), 'web')
+            ->get('/admin/github?repo=owner/verified')->assertForbidden();
+    }
+
+    public function test_selected_github_refresh_rechecks_revoked_public_metadata_without_claiming_publication(): void
+    {
+        $active = true;
+        config(['portfolio.github_public_repos' => ['owner/verified']]);
+        Http::fake(function ($request) use (&$active) {
+            if ($request->url() !== 'https://api.github.com/repos/owner/verified') {
+                return Http::response([], 404);
+            }
+            return $active ? Http::response([
+                'full_name' => 'owner/verified', 'html_url' => 'https://github.com/owner/verified',
+                'description' => 'Public proof', 'visibility' => 'public', 'private' => false,
+            ]) : Http::response([
+                'full_name' => 'owner/verified', 'html_url' => 'https://github.com/owner/verified',
+                'visibility' => 'private', 'private' => true,
+            ], 200);
+        });
+        $this->actingAs($this->account('owner'), 'web');
+        $this->get('/admin/github?repo=owner/verified')->assertOk()
+            ->assertSee('Selected verified public repository');
+        $active = false;
+        $this->post('/admin/github/refresh?lang=ar', ['repo' => 'owner/verified'])
+            ->assertRedirect(route('admin.operations.github', ['lang'=>'ar']))
+            ->assertSessionHas('warning', 'Selected repository is no longer publicly verified.');
+        $this->get('/admin/github?repo=owner/verified')->assertNotFound();
+        $this->get('/admin/github?lang=ar')->assertOk()
+            ->assertSee('مستودع غير متاح')
+            ->assertDontSee('owner/verified')
+            ->assertDontSee('Public proof');
+        Http::assertSentCount(3);
+    }
+
     public function test_github_sync_cannot_claim_success_when_all_repositories_are_unavailable(): void
     {
         config(['portfolio.github_public_repos' => ['owner/nonexistent']]);
