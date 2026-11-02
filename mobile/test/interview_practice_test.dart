@@ -235,4 +235,109 @@ void main() {
     expect(find.text(bearer), findsNothing);
     expect(find.textContaining('SECOND_PASSWORD_SECRET'), findsNothing);
   });
+
+  for (final arabic in [false, true]) {
+    testWidgets('catalog failure retains one mobile bearer and retry restores '
+        'verified lessons without a second login: ${arabic ? 'AR' : 'EN'}',
+        (tester) async {
+      var loginCalls = 0;
+      var catalogCalls = 0;
+      var revocations = 0;
+      await tester.pumpWidget(MaterialApp(home: InterviewPracticeScreen(
+        arabic: arabic,
+        loginAction: (_, __) async {
+          loginCalls++;
+          return RunbookSession(token: bearer, expiresAt: DateTime.utc(2100));
+        },
+        startAction: (_, __, id, ___) async =>
+            InterviewStarted.parse(startJson(), id),
+        tracksAction: (_, page) async {
+          catalogCalls++;
+          expect(page, 1);
+          if (catalogCalls == 1) {
+            throw const FormatException('PRIVATE_CATALOG_ERROR_AND_COOKIE');
+          }
+          return tracks();
+        },
+        logoutAction: (token) async {
+          expect(token, bearer);
+          revocations++;
+        },
+      )));
+      await tester.pumpAndSettle();
+      await login(tester, 'PRIVATE_PASSWORD_FOR_LOGIN');
+      expect(loginCalls, 1);
+      expect(catalogCalls, 1);
+      expect(find.byKey(const Key('interview-catalog-unavailable')), findsOneWidget);
+      expect(find.byKey(const Key('interview-retry-tracks')), findsOneWidget);
+      expect(find.byKey(const Key('interview-empty')), findsNothing);
+      expect(find.byKey(const Key('interview-start-recovery-track-0')),
+          findsNothing);
+      expect(find.byKey(const Key('interview-sign-out')), findsOneWidget);
+      expect(find.byKey(const Key('interview-email')), findsNothing);
+      expect(find.text(bearer), findsNothing);
+      expect(find.textContaining('PRIVATE_CATALOG_ERROR_AND_COOKIE'), findsNothing);
+      expect(find.textContaining('PRIVATE_PASSWORD_FOR_LOGIN'), findsNothing);
+
+      await tester.ensureVisible(find.byKey(const Key('interview-retry-tracks')));
+      await tester.tap(find.byKey(const Key('interview-retry-tracks')));
+      await tester.pumpAndSettle();
+      expect(catalogCalls, 2);
+      expect(loginCalls, 1);
+      expect(find.byKey(const Key('interview-catalog-unavailable')), findsNothing);
+      expect(find.byKey(const Key('interview-start-recovery-track-0')),
+          findsOneWidget);
+      expect(find.text('Verified database lessons'), findsOneWidget);
+      await tester.ensureVisible(find.byKey(const Key('interview-sign-out')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('interview-sign-out')));
+      await tester.pumpAndSettle();
+      expect(revocations, 1);
+      expect(find.byKey(const Key('interview-email')), findsOneWidget);
+      expect(find.text(bearer), findsNothing);
+    });
+  }
+
+  testWidgets('unavailable Arabic catalog permits signout retry when revocation '
+      'fails; token is never falsely reported revoked', (tester) async {
+    var catalogCalls = 0;
+    var revocations = 0;
+    await tester.pumpWidget(MaterialApp(home: InterviewPracticeScreen(
+      arabic: true,
+      loginAction: (_, __) async => RunbookSession(
+          token: bearer, expiresAt: DateTime.utc(2100)),
+      startAction: (_, __, id, ___) async =>
+          InterviewStarted.parse(startJson(), id),
+      tracksAction: (_, __) async {
+        catalogCalls++;
+        throw const FormatException('PRIVATE_SERVER_RESPONSE');
+      },
+      logoutAction: (token) async {
+        expect(token, bearer);
+        revocations++;
+        if (revocations == 1) {
+          throw const FormatException('PRIVATE_REVOKE_ERROR');
+        }
+      },
+    )));
+    await tester.pumpAndSettle();
+    await login(tester, 'PRIVATE_PASSWORD');
+    expect(catalogCalls, 1);
+    expect(find.text('تم تسجيل الدخول لكن الدروس المراجعة لم تُحمّل. '
+        'التدريب معطل حتى تتوفر الدروس.'), findsOneWidget);
+    await tester.ensureVisible(find.byKey(const Key('interview-sign-out')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('interview-sign-out')));
+    await tester.pumpAndSettle();
+    expect(revocations, 1);
+    expect(find.byKey(const Key('interview-sign-out')), findsOneWidget);
+    expect(find.textContaining('PRIVATE_REVOKE_ERROR'), findsNothing);
+    expect(find.byKey(const Key('interview-email')), findsNothing);
+    await tester.tap(find.byKey(const Key('interview-sign-out')));
+    await tester.pumpAndSettle();
+    expect(revocations, 2);
+    expect(find.byKey(const Key('interview-email')), findsOneWidget);
+    expect(find.text(bearer), findsNothing);
+  });
+
 }
