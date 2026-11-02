@@ -119,6 +119,31 @@ def main() -> int:
                     page.screenshot(path=str(runtime_path), full_page=False,
                                     animations="disabled", caret="hide", type="png")
 
+                    if screen_id == "WEB-08":
+                        # Browser E2E, after the pixel capture: the displayed
+                        # article outline must navigate to an actually rendered
+                        # verified Markdown H2, not a synthetic/dead anchor.
+                        outline = page.locator("#t012-article-outline .t012-outline-link")
+                        if outline.count() == 0:
+                            raise RuntimeError("WEB-08 article outline has no active section links")
+                        first = outline.first
+                        target = first.get_attribute("href")
+                        if not target or not target.startswith("#t012-section-"):
+                            raise RuntimeError("WEB-08 outline link is not a local section anchor")
+                        first.focus()
+                        if not first.evaluate("(link) => document.activeElement === link"):
+                            raise RuntimeError("WEB-08 article outline is not keyboard focusable")
+                        first.click()
+                        if not page.evaluate(
+                            "(fragment) => location.hash === fragment && "
+                            "!!document.getElementById(fragment.slice(1))", target
+                        ):
+                            raise RuntimeError("WEB-08 outline failed to navigate to article heading")
+                        report["article_outline"] = {
+                            "rendered_links": outline.count(),
+                            "focused_and_navigated": True,
+                        }
+
                     if screen_id == "WEB-07":
                         report["font_probe"] = page.evaluate("""() => {
                             const pick = (selector) => {
