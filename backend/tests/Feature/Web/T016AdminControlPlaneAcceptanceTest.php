@@ -267,7 +267,7 @@ final class T016AdminControlPlaneAcceptanceTest extends TestCase
         $this->get('/admin/ai/usage?lang=ar')->assertOk()
             ->assertSee('dir="rtl"', false)
             ->assertSee('Managed AI')
-            ->assertSee('إيصالات اليوم المحدد')
+            ->assertSee('عدد الإيصالات اليوم')
             ->assertDontSee('acceptance-managed-secret');
 
         $this->get('/admin/ai/model-routes?lang=en')->assertOk()
