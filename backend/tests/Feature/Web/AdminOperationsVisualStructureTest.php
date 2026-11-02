@@ -75,10 +75,10 @@ final class AdminOperationsVisualStructureTest extends TestCase
                 $this->assertSame(1, preg_match_all('/<h1>[^<]*<\/h1>/', $html));
                 $this->assertStringContainsString('<h1>'.$titles[$locale === 'ar' ? 1 : 0].'</h1>', $html);
                 $this->assertSame(1, preg_match_all('/aria-current="page"/', $html));
-                $response->assertSee(
-                    'href="'.route('admin.operations.'.$section, ['lang' => $locale]).'" aria-current="page"',
-                    false
-                );
+                $this->assertSame(1, preg_match(
+                    '~<a\\s+href="'.preg_quote(route('admin.operations.'.$section, ['lang' => $locale]), '~').'"\\s+aria-current="page"~',
+                    $html
+                ), 'Only the active screen should carry aria-current regardless of Blade whitespace.');
                 $response->assertSee('href="'.route('admin.operations.'.$section, [
                     'lang' => $locale === 'ar' ? 'en' : 'ar',
                 ]), false);
