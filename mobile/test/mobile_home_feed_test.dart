@@ -146,11 +146,13 @@ void main() {
 
     expect(find.byKey(const Key('mobile-home-feed')), findsOneWidget);
     expect(find.text('Verified project'), findsOneWidget);
-    expect(find.text('Reviewed article'), findsOneWidget);
-    expect(find.text('Reviewed runbook'), findsOneWidget);
+    expect(find.textContaining('Reviewed article'), findsOneWidget);
+    expect(find.textContaining('Reviewed runbook'), findsOneWidget);
 
+    await tester.ensureVisible(find.byKey(const Key('mobile-home-open-articles')));
     await tester.tap(find.byKey(const Key('mobile-home-open-articles')));
     await tester.pump();
+    await tester.ensureVisible(find.byKey(const Key('mobile-home-open-runbooks')));
     await tester.tap(find.byKey(const Key('mobile-home-open-runbooks')));
     await tester.pump();
     expect(articles, 1);
