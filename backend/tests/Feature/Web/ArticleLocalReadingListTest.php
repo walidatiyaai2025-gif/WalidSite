@@ -106,7 +106,7 @@ final class ArticleLocalReadingListTest extends TestCase
                 ->assertDontSee('Private article not in verified blog');
             if ($locale === 'ar') {
                 $response->assertSee('روابط القراءة المحفوظة على هذا الجهاز')
-                    ->assertSee('يتحقق')
+                    ->assertSee('تتحقق صفحة المقال')
                     ->assertSee('dir="rtl"', false);
             } else {
                 $response->assertSee('Reading links saved on this device')
