@@ -181,11 +181,7 @@ body:has(.t007-reference-stage) .site-footer{margin-top:0}
             </div>
         @elseif($screen === 'hire')
             <div class="t007-hire-cards">
-                @foreach($t007ReferenceReady ? [
-                    ['Profile fit', 'SQL DBA | Technical PM | AI Engineering'],
-                    ['Evidence', 'Case studies • certifications • verified links'],
-                    ['CV options', 'ATS PDF | Executive | Engineering'],
-                ] : ($t007Ar ? [
+                @foreach($t007Ar ? [
                     ['ملاءمة الملف', 'المهارات المنشورة بالأدلة فقط'],
                     ['الأدلة', 'دراسات الحالة والروابط العامة المراجعة'],
                     ['خيارات السيرة', 'السيرة العامة حسب المسار المختار'],
@@ -193,7 +189,7 @@ body:has(.t007-reference-stage) .site-footer{margin-top:0}
                     ['Profile fit', 'Evidence-reviewed published skills only'],
                     ['Evidence', 'Published case studies and reviewed public links'],
                     ['CV options', 'Public CV for the selected career track'],
-                ]) as $card)
+                ] as $card)
                     <article class="t007-hire-card">
                         <h2>{{ $card[0] }}</h2><p>{{ $card[1] }}</p>
                         <a href="{{ route('public.resume', ['lang' => $locale]) }}">Download profile</a>
