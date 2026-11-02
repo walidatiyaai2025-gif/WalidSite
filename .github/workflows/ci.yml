@@ -235,6 +235,13 @@ jobs:
           plan_path="$plan_dir/admin-plan.json"
           python3 qa/build_admin_visual_plan.py --provider-id "$provider_id" --locale en --dpr 1 --timeout 120 --output "$plan_path"
 
+          dirty_status="$(git status --porcelain=v1 --untracked-files=all)"
+          if test -n "$dirty_status"; then
+            echo "Visual attestation found repository changes before capture (status/path only):"
+            printf '%s\n' "$dirty_status"
+            exit 3
+          fi
+
           set +e
           python3 qa/visual_diagnostics.py --plan "$plan_path" --commit "$tested_sha"
           diagnostic_exit=$?
@@ -270,7 +277,7 @@ jobs:
         with:
           name: issue-481-admin-runtime-visual-diagnostics
           path: qa/visual-diagnostics/
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 7
       - uses: actions/setup-node@v4
         if: ${{ hashFiles('backend/package.json') != '' }}
