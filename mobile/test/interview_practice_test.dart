@@ -77,7 +77,7 @@ void main() {
 
   testWidgets('home offers a real entry with honest unconfigured state',
       (tester) async {
-    await tester.pumpWidget(const WaleedTechApp());
+    await tester.pumpWidget(const WaleedTechApp(initiallyStarted: true));
     await tester.scrollUntilVisible(
         find.byKey(const Key('interview-practice-entry')), 140);
     await tester.ensureVisible(find.byKey(const Key('interview-practice-entry')));

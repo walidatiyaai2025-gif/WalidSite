@@ -204,6 +204,7 @@ details{border:1px solid var(--edge);padding:10px;border-radius:8px}details[open
 </select></div>
 <div><button type="submit">{{ $ar ? 'عرض التقرير' : 'View report' }}</button></div>
 <div><a class="button" href="{{ route('admin.operations.analytics', ['lang'=>$locale,'day'=>$day,'window'=>$window,'format'=>'csv']) }}">{{ $ar ? 'تصدير التكاليف CSV' : 'Export cost CSV' }}</a></div>
+<div><a class="button" href="{{ route('admin.operations.analytics', ['lang'=>$locale,'day'=>$day,'window'=>$window,'format'=>'jobs-csv']) }}">{{ $ar ? 'تصدير حالات مهام الذكاء الاصطناعي CSV' : 'Export AI job status CSV' }}</a></div>
 </form>
 <p class="muted" role="status">{{ $ar ? 'الفترة الفعلية' : 'Actual window' }}: <time datetime="{{ $startDay }}">{{ $startDay }}</time> — <time datetime="{{ $day }}">{{ $day }}</time> (UTC, {{ $window }} {{ $ar ? 'يوم' : ($window===1 ? 'day' : 'days') }})</p>
 <div class="cards" style="margin-top:20px">

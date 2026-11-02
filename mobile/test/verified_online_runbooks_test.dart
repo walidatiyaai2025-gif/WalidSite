@@ -106,7 +106,7 @@ void main() {
 
   testWidgets('home entry opens honest unconfigured online state separately from offline pack',
       (tester) async {
-    await tester.pumpWidget(const WaleedTechApp());
+    await tester.pumpWidget(const WaleedTechApp(initiallyStarted: true));
     await tester.scrollUntilVisible(
       find.byKey(const Key('online-runbooks-entry')), 140,
     );

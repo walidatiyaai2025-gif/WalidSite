@@ -58,6 +58,17 @@ void main() {
       expect(fetches, 1);
       expect(find.byKey(const Key('preferences-verified')), findsOneWidget);
       expect(find.byKey(const Key('preferences-language')), findsOneWidget);
+      expect(find.byKey(const Key('preferences-theme')), findsOneWidget);
+      expect(find.byKey(const Key('preferences-change-theme')), findsOneWidget);
+      await tester.ensureVisible(find.byKey(const Key('preferences-change-theme')));
+      await tester.tap(find.byKey(const Key('preferences-change-theme')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('preferences-theme-unavailable')), findsOneWidget);
+      expect(find.text(arabic ? 'المظهر الفاتح فقط' : 'Light theme only'), findsOneWidget);
+      expect(find.textContaining(arabic ? 'لن يتم تغيير' : 'Nothing will be changed'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('preferences-theme-dismiss')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('preferences-theme-unavailable')), findsNothing);
       expect(find.byKey(const Key('preferences-offline')), findsOneWidget);
       expect(find.byKey(const Key('preferences-alerts')), findsOneWidget);
       expect(find.byKey(const Key('preferences-ai')), findsOneWidget);
@@ -79,14 +90,16 @@ void main() {
       await tester.pumpAndSettle();
       expect(clears, 1);
       expect(find.byKey(const Key('preferences-clear-status')), findsOneWidget);
-      expect(find.textContaining('server data'), arabic ? findsNothing : findsWidgets);
+      expect(find.textContaining(
+          arabic ? 'تصدير الحساب وحذفه متاحان' : 'Account export and deletion are available'),
+          findsWidgets);
       expect(selected, isEmpty);
     });
   }
 
   testWidgets('language switch changes in-memory root app locale and returns',
       (tester) async {
-    await tester.pumpWidget(const WaleedTechApp());
+    await tester.pumpWidget(const WaleedTechApp(initiallyStarted: true));
     await tester.scrollUntilVisible(
         find.byKey(const Key('mobile-preferences-entry')), 130);
     await tester.ensureVisible(find.byKey(const Key('mobile-preferences-entry')));

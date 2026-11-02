@@ -107,3 +107,58 @@ Canonical MOBILE-05/MOBILE-06 visuals require approved screenshot comparison
 and real Android/iOS staging smoke under T024/T025. Real publisher deployment,
 approved production signing keys and remote endpoint are not in this repository.
 The offline fallback does not depend on those external integrations.
+
+
+## T021 MOBILE-01 welcome → home contract (2026-11-02)
+
+The production app now opens the dedicated bilingual MOBILE-01 Welcome surface
+before Developer Home. The screen exposes only the canonical `choose_language`
+and `start` actions: language changes are session-local and apply immediately
+to RTL/LTR, while Start enters the existing real Home without creating a
+back-stack route containing account or fabricated state. Device Arabic remains
+the launch default when applicable.
+
+Downstream widget tests that specifically exercise Home use
+`WaleedTechApp(initiallyStarted: true)` as an explicit deterministic test
+fixture; production `main()` never enables that fixture hook. The separate
+`welcome_journey_test.dart` verifies the real production default,
+language-before-start behavior, Arabic device locale, and Welcome → Home
+transition. Runtime pixel certification remains under #481/#25.
+
+
+## T021 MOBILE-02 verified home feed integration (2026-11-02)
+
+Developer Home now reads the canonical `/api/v1/mobile/home?lang=en|ar`
+contract when the same approved HTTPS `WALIDSITE_API_ORIGIN` used by the
+verified reading clients is configured. The client bounds the payload, requires
+the server's exact locale and guest-safety flags, rejects duplicate resources
+and any non-empty executable-tool catalog, and displays only reviewed project,
+article and runbook labels supplied by that endpoint.
+
+Without an approved origin, Home remains useful offline and states explicitly
+that the live verified feed is not configured; it never substitutes sample
+projects, article counts, saved-resource counts or invented tools. Network
+errors expose a generic retry state and never raw server diagnostics. Feed
+actions lead to the existing verified article/runbook destinations. This
+connects the existing server MOBILE-02 contract without weakening their own
+publication/evidence checks.
+
+
+## T021 MOBILE-01 verified bootstrap integration (2026-11-02)
+
+Welcome reads the canonical `/api/v1/public/app-bootstrap?lang=en|ar` only when
+an approved HTTPS `WALIDSITE_API_ORIGIN` is configured. The response is
+bounded and fail-closed: the client requires the exact supported locales,
+Light-only theme declaration, implemented relative route map, guest capability
+flags and authenticated AI/saved-resource boundaries. A legacy truthful null
+privacy value is shown as unavailable; when a policy path is present it must be
+the locale-matched `/privacy` route. Cross-origin or stale privacy metadata, extra private fields,
+invented tools/routes, malformed locale state and oversized responses are
+rejected.
+
+Network/bootstrap failure never blocks the canonical `start` action: Welcome
+shows a redacted offline-capable state and guest entry remains available. When
+bootstrap succeeds, the privacy control opens only the same-origin public
+disclosure derived from the verified deployment origin; launch failure is
+reported without exposing raw exception details. This is capability discovery,
+not proof that external providers or production hosting are live.

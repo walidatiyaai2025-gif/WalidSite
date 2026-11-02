@@ -33,7 +33,7 @@ final class MobileBootstrapTest extends TestCase
             ->assertJsonPath('data.availability.authenticated_ai_diagnosis', false)
             ->assertJsonPath('data.availability.server_saved_resources', true)
             ->assertJsonPath('data.availability.saved_resources_requires_auth', true)
-            ->assertJsonPath('data.privacy_policy_url', null)
+            ->assertJsonPath('data.privacy_policy_url', route('public.privacy', ['lang' => 'en'], false))
             ->assertJsonMissingPath('data.admin')
             ->assertJsonMissingPath('data.setup_token')
             ->assertJsonMissingPath('data.publisher_key');
@@ -62,6 +62,7 @@ final class MobileBootstrapTest extends TestCase
         $bootstrap = $this->getJson('/api/v1/public/app-bootstrap?lang=ar')
             ->assertOk()
             ->assertJsonPath('data.locale', 'ar')
+            ->assertJsonPath('data.privacy_policy_url', route('public.privacy', ['lang' => 'ar'], false))
             ->assertJsonPath('data.availability.server_saved_resources', true)
             ->assertJsonPath('data.availability.saved_resources_requires_auth', true)
             ->assertJsonPath('data.routes.saved_resources', route('api.mobile.saved', [], false))
@@ -102,7 +103,8 @@ final class MobileBootstrapTest extends TestCase
         $this->getJson('/api/v1/public/app-bootstrap?lang=en')->assertOk()
             ->assertJsonPath('data.default_locale', 'ar')
             ->assertJsonPath('data.locale', 'en')
-            ->assertJsonPath('data.app_name', 'Waleed Tech Companion');
+            ->assertJsonPath('data.app_name', 'Waleed Tech Companion')
+            ->assertJsonPath('data.privacy_policy_url', route('public.privacy', ['lang' => 'en'], false));
         $this->getJson('/api/v1/mobile/preferences?lang=en')->assertOk()
             ->assertJsonPath('data.default_locale', 'ar')
             ->assertJsonPath('data.locale', 'en');

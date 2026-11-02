@@ -6,7 +6,7 @@ void main() {
   testWidgets('home renders engineering topics without invented metrics', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const WaleedTechApp());
+    await tester.pumpWidget(const WaleedTechApp(initiallyStarted: true));
 
     expect(find.text('Waleed Tech Companion'), findsOneWidget);
     await tester.scrollUntilVisible(find.text('Explore engineering topics'), 140);
@@ -24,7 +24,7 @@ void main() {
   testWidgets('topic card navigates to a real details screen', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const WaleedTechApp());
+    await tester.pumpWidget(const WaleedTechApp(initiallyStarted: true));
     await tester.scrollUntilVisible(find.text('Database Engineering'), 140);
     await tester.ensureVisible(find.text('Database Engineering'));
     await tester.pumpAndSettle();
@@ -46,7 +46,7 @@ void main() {
   testWidgets('AI troubleshooter entry opens a real configured-or-unavailable screen', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const WaleedTechApp());
+    await tester.pumpWidget(const WaleedTechApp(initiallyStarted: true));
     await tester.scrollUntilVisible(
       find.byKey(const Key('ai-troubleshooter-entry')),
       140,
@@ -63,7 +63,7 @@ void main() {
   testWidgets('language switch changes layout to Arabic RTL and back', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const WaleedTechApp());
+    await tester.pumpWidget(const WaleedTechApp(initiallyStarted: true));
 
     expect(find.byTooltip('Switch to Arabic'), findsOneWidget);
     await tester.tap(find.byTooltip('Switch to Arabic'));
@@ -91,7 +91,7 @@ void main() {
   testWidgets('Arabic topic opens a real localized details route', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const WaleedTechApp());
+    await tester.pumpWidget(const WaleedTechApp(initiallyStarted: true));
     await tester.tap(find.byTooltip('Switch to Arabic'));
     await tester.pumpAndSettle();
     await tester.scrollUntilVisible(find.text('هندسة قواعد البيانات'), 140);
@@ -111,7 +111,7 @@ void main() {
     tester.binding.platformDispatcher.localeTestValue = const Locale('ar', 'KW');
     addTearDown(tester.binding.platformDispatcher.clearLocaleTestValue);
 
-    await tester.pumpWidget(const WaleedTechApp());
+    await tester.pumpWidget(const WaleedTechApp(initiallyStarted: true));
     expect(find.text('رفيق وليد التقني'), findsOneWidget);
     expect(find.byTooltip('Switch to English'), findsOneWidget);
     expect(
@@ -134,7 +134,7 @@ void main() {
     tester.binding.platformDispatcher.localeTestValue = const Locale('fr', 'FR');
     addTearDown(tester.binding.platformDispatcher.clearLocaleTestValue);
 
-    await tester.pumpWidget(const WaleedTechApp());
+    await tester.pumpWidget(const WaleedTechApp(initiallyStarted: true));
     expect(find.text('Waleed Tech Companion'), findsOneWidget);
     expect(find.byTooltip('Switch to Arabic'), findsOneWidget);
     expect(

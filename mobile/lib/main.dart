@@ -11,12 +11,18 @@ import 'solutions/offline_solution_finder.dart';
 import 'ai/ai_troubleshooter.dart';
 import 'account/account_journey.dart';
 import 'preferences/mobile_preferences.dart';
+import 'home/mobile_home_feed.dart';
+import 'bootstrap/mobile_bootstrap.dart';
 
 void main() => runApp(const WaleedTechApp());
 
 /// Real bilingual navigation shell; no fabricated projects, AI output or metrics.
 class WaleedTechApp extends StatefulWidget {
-  const WaleedTechApp({super.key});
+  const WaleedTechApp({this.initiallyStarted = false, super.key});
+
+  /// Explicit test/integration fixture hook. Production main() always uses
+  /// the default false value so MOBILE-01 is the real application entry.
+  final bool initiallyStarted;
 
   @override
   State<WaleedTechApp> createState() => _WaleedTechAppState();
@@ -24,10 +30,12 @@ class WaleedTechApp extends StatefulWidget {
 
 class _WaleedTechAppState extends State<WaleedTechApp> {
   bool _arabic = false;
+  late bool _started;
 
   @override
   void initState() {
     super.initState();
+    _started = widget.initiallyStarted;
     // Respect the device's primary locale at app startup.
     // The user can still switch languages explicitly during this session.
     _arabic =
@@ -47,10 +55,107 @@ class _WaleedTechAppState extends State<WaleedTechApp> {
         GlobalCupertinoLocalizations.delegate,
       ],
       theme: WaleedTheme.light(),
-      home: CompanionHome(
-        arabic: _arabic,
-        onToggleLanguage: () => setState(() => _arabic = !_arabic),
-        onSetLanguage: (value) => setState(() => _arabic = value),
+      home: _started
+          ? CompanionHome(
+              arabic: _arabic,
+              onToggleLanguage: () => setState(() => _arabic = !_arabic),
+              onSetLanguage: (value) => setState(() => _arabic = value),
+            )
+          : CompanionWelcome(
+              arabic: _arabic,
+              onToggleLanguage: () => setState(() => _arabic = !_arabic),
+              onStart: () => setState(() => _started = true),
+            ),
+    );
+  }
+}
+
+class CompanionWelcome extends StatelessWidget {
+  const CompanionWelcome({
+    required this.arabic,
+    required this.onToggleLanguage,
+    required this.onStart,
+    super.key,
+  });
+
+  final bool arabic;
+  final VoidCallback onToggleLanguage;
+  final VoidCallback onStart;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      identifier: 'walidsite.mobile.01',
+      child: Scaffold(
+        key: const Key('mobile-welcome-screen'),
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 520),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Align(
+                    alignment: AlignmentDirectional.centerStart,
+                    child: Text(
+                      'W',
+                      style: TextStyle(
+                        color: WaleedPalette.accent,
+                        fontSize: 52,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 28),
+                  Semantics(
+                    header: true,
+                    child: Text(
+                      arabic ? 'مرحبًا بك في رفيق وليد التقني' : 'Welcome to Waleed Tech Companion',
+                      key: const Key('welcome-title'),
+                      style: const TextStyle(
+                        color: WaleedPalette.primary,
+                        fontSize: 32,
+                        height: 1.2,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    arabic
+                        ? 'أدوات ومعرفة تقنية موثوقة تعمل بوضوح دون اختلاق نتائج أو بيانات.'
+                        : 'Trusted engineering tools and knowledge with clear, evidence-aware states.',
+                    key: const Key('welcome-subtitle'),
+                    style: const TextStyle(
+                      color: WaleedPalette.body,
+                      fontSize: 16,
+                      height: 1.55,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  MobileBootstrapPanel(arabic: arabic),
+                  const SizedBox(height: 24),
+                  FilledButton.icon(
+                    key: const Key('welcome-start'),
+                    onPressed: onStart,
+                    icon: const Icon(Icons.arrow_forward_rounded),
+                    label: Text(arabic ? 'ابدأ' : 'Start'),
+                  ),
+                  const SizedBox(height: 12),
+                  OutlinedButton.icon(
+                    key: const Key('welcome-language'),
+                    onPressed: onToggleLanguage,
+                    icon: const Icon(Icons.language),
+                    label: Text(arabic ? 'English' : 'العربية'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
       ),
     );
   }
@@ -113,6 +218,20 @@ class CompanionHome extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
           children: [
             _IntroPanel(arabic: arabic),
+            const SizedBox(height: 16),
+            MobileHomeFeedPanel(
+              arabic: arabic,
+              onOpenArticles: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => VerifiedArticleLibrary(arabic: arabic),
+                ),
+              ),
+              onOpenRunbooks: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => ReviewedRunbookLibrary(arabic: arabic),
+                ),
+              ),
+            ),
             const SizedBox(height: 16),
             Card(
               child: ListTile(
@@ -264,19 +383,45 @@ class CompanionHome extends StatelessWidget {
             const SizedBox(height: 16),
             Card(
               child: ListTile(
-                key: const Key('account-saved-profile-entry'),
+                key: const Key('account-saved-entry'),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16, vertical: 12,
+                ),
+                leading: const Icon(Icons.bookmark_outline, size: 30),
+                title: Text(arabic ? 'المحفوظات' : 'Saved resources'),
+                subtitle: Text(arabic
+                    ? 'سجل الدخول لفتح محفوظاتك الموثقة وإدارتها'
+                    : 'Sign in to review and manage your verified saved items'),
+                trailing: Icon(arabic ? Icons.chevron_left : Icons.chevron_right),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => MobileAccountJourney(
+                      arabic: arabic,
+                      initialSection: MobileAccountSection.saved,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Card(
+              child: ListTile(
+                key: const Key('account-profile-entry'),
                 contentPadding: const EdgeInsets.symmetric(
                   horizontal: 16, vertical: 12,
                 ),
                 leading: const Icon(Icons.person_outline, size: 30),
-                title: Text(arabic ? 'المحفوظات وحسابي' : 'Saved resources & account'),
+                title: Text(arabic ? 'الملف الشخصي' : 'Personal profile'),
                 subtitle: Text(arabic
-                    ? 'سجل الدخول لقراءة محفوظاتك وإدارة جلسة الحساب'
-                    : 'Sign in to access verified saved resources and your session'),
+                    ? 'سجل الدخول لإدارة بريد الحساب والخصوصية والجلسة'
+                    : 'Sign in to manage account email, privacy and session controls'),
                 trailing: Icon(arabic ? Icons.chevron_left : Icons.chevron_right),
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute<void>(
-                    builder: (_) => MobileAccountJourney(arabic: arabic),
+                    builder: (_) => MobileAccountJourney(
+                      arabic: arabic,
+                      initialSection: MobileAccountSection.profile,
+                    ),
                   ),
                 ),
               ),
