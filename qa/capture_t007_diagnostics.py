@@ -396,6 +396,7 @@ def main() -> int:
             for actual, expected in zip(runtime.getdata(), reference.getdata())
         )
         difference = ImageChops.difference(runtime, reference).convert("RGB")
+        mismatch_bbox = difference.getbbox()
         # Amplify diagnostic differences only. This file is never admissible
         # evidence and is not referenced by the visual fidelity ledger.
         ImageEnhance.Contrast(difference).enhance(4.0).save(diff_path)
@@ -405,6 +406,7 @@ def main() -> int:
             "status": "exact" if mismatches == 0 else "mismatch",
             "reference_size": [width, height],
             "mismatching_rgba_pixels": mismatches,
+            "mismatch_bbox": list(mismatch_bbox) if mismatch_bbox else None,
             "total_pixels": total,
             "mismatch_ratio": mismatches / total,
         }
