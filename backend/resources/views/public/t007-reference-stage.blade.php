@@ -5,7 +5,7 @@
         && ! empty($publicProfile['claims'] ?? []),
     'about' => isset($positions, $approvedClaims)
         && $positions->count() >= 3 && ! empty($approvedClaims),
-    'expertise' => isset($skills) && $skills->isNotEmpty(),
+    'expertise' => isset($skills) && $skills->contains(fn ($skill) =>\n        $skill->slug === 'ai-engineering'),
     'ai' => ! empty($aiData['skills'] ?? []),
     'hire' => isset($skills, $approvedClaims)
         && $skills->isNotEmpty() && ! empty($approvedClaims),
