@@ -351,6 +351,38 @@ final class AdminOperationsJourneyTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_analytics_csv_never_interprets_imported_currency_as_spreadsheet_formula(): void
+    {
+        Http::fake();
+        $this->actingAs($this->account('owner'), 'web');
+        $provider = AiProvider::create([
+            'display_name' => 'Private provider',
+            'provider_type' => 'ollama-compatible',
+            'base_url' => 'http://127.0.0.1:11434',
+            'enabled' => false, 'health_status' => 'unverified',
+        ]);
+        $jobId = (string) Str::uuid();
+        DB::table('ai_jobs')->insert([
+            'id' => $jobId, 'provider_id' => $provider->id,
+            'job_type' => 'draft', 'idempotency_key' => 'csv-injection-'.Str::uuid(),
+            'payload_hash' => str_repeat('e', 64), 'status' => 'completed',
+            'created_at' => now('UTC'), 'updated_at' => now('UTC'),
+        ]);
+        DB::table('ai_usage')->insert([
+            'id' => (string) Str::uuid(),
+            'usage_key' => 'csv-injection-'.Str::uuid(),
+            'job_id' => $jobId, 'provider_id' => $provider->id,
+            'cost_currency' => '=HYPERLINK("https://example.invalid")',
+            'cost_minor' => 15, 'created_at' => now('UTC'),
+        ]);
+
+        $csv = $this->get('/admin/analytics?window=1&format=csv')
+            ->assertOk()->streamedContent();
+        $this->assertStringContainsString('INVALID,1,15', $csv);
+        $this->assertStringNotContainsString('=HYPERLINK', $csv);
+        Http::assertNothingSent();
+    }
+
     public function test_analytics_period_rejects_bad_ranges_and_preserves_role_protection(): void
     {
         Http::fake();
