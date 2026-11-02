@@ -41,9 +41,9 @@ body:has(.t012-reference-stage) .site-footer{margin-top:0}
 .t012-nav-links{height:100%;display:flex;align-items:center;flex:1;min-width:0;transform:translate(-9px,3px)}
 .t012-nav-links a{display:flex;align-items:center;height:100%;color:#d8e6f2;text-decoration:none;font-size:16px;font-weight:400;white-space:nowrap;margin-right:0;flex:0 0 auto}
 .t012-nav-links a.active{color:#0a9a8c}
-.t012-nav-links a:nth-child(1){width:106px}.t012-nav-links a:nth-child(2){width:108px}.t012-nav-links a:nth-child(3){width:107px}.t012-nav-links a:nth-child(4){width:106px}
-.t012-nav-links a:nth-child(5){width:108px}.t012-nav-links a:nth-child(6){width:106px}.t012-nav-links a:nth-child(7){width:108px}.t012-nav-links a:nth-child(8){width:62px}
-.t012-contact{display:flex;width:161px;height:50px;align-items:center;justify-content:center;border-radius:16px;background:#0a9a8c;color:#184876;text-decoration:none;font-size:18px;font-weight:800;white-space:nowrap;margin-left:auto;transform:translateY(2px);flex-shrink:0;padding-left:6px;padding-bottom:2px}
+.t012-nav-links a:nth-child(1){width:106px;letter-spacing:.33px}.t012-nav-links a:nth-child(2){width:108px;letter-spacing:.5px}.t012-nav-links a:nth-child(3){width:107px;letter-spacing:.5px}.t012-nav-links a:nth-child(4){width:106px;letter-spacing:.3px}
+.t012-nav-links a:nth-child(5){width:108px;letter-spacing:.6px}.t012-nav-links a:nth-child(6){width:106px;letter-spacing:.33px}.t012-nav-links a:nth-child(7){width:108px;letter-spacing:1px}.t012-nav-links a:nth-child(8){width:62px;letter-spacing:.8px}
+.t012-contact{display:flex;width:161px;height:50px;align-items:center;justify-content:center;border-radius:16px;background:#0a9a8c;color:#184876;text-decoration:none;font-size:18px;font-weight:800;letter-spacing:1.55px;white-space:nowrap;margin-left:auto;transform:translateY(2px);flex-shrink:0;padding-left:21px;padding-bottom:2px}
 .t012-sr-only{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
 .t012-reference-stage{height:760px;background:#f5f9fc}
 .t012-reference-hero{height:326px;background:#edf7fc;position:relative;padding:35px 56px}
