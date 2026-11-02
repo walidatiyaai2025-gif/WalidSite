@@ -23,7 +23,7 @@ class T007DiagnosticExitTest(unittest.TestCase):
 
         screen_ids = ("WEB-01", "WEB-02", "WEB-03", "WEB-06", "WEB-12")
 
-        def exit_code(statuses, font_probe=None):
+        def exit_code(statuses, font_probe=None, responsive_ok=True):
             report = {
                 "screens": {sid: {"status": status} for sid, status in zip(screen_ids, statuses)},
                 "font_probe": {"inter_400": True, "inter_800": True} if font_probe is None else font_probe,
@@ -31,7 +31,8 @@ class T007DiagnosticExitTest(unittest.TestCase):
             report["summary"] = {"font_probe_ok": (isinstance(report["font_probe"], dict)
                 and "error" not in report["font_probe"]
                 and report["font_probe"].get("inter_400") is True
-                and report["font_probe"].get("inter_800") is True)}
+                and report["font_probe"].get("inter_800") is True),
+                "responsive_ok": responsive_ok}
             return eval(check, {"report": report, "SCREEN_IDS": screen_ids})
 
         self.assertEqual(exit_code(["exact"] * 4 + ["mismatch"]), 0)
@@ -42,6 +43,18 @@ class T007DiagnosticExitTest(unittest.TestCase):
         self.assertEqual(exit_code(["exact"] * 5, {"error": "TimeoutError"}), 1)
         self.assertEqual(exit_code(["exact"] * 5, {}), 1)
         self.assertEqual(exit_code(["exact"] * 5, {"inter_400": True, "inter_800": False}), 1)
+        self.assertEqual(exit_code(["exact"] * 5, responsive_ok=False), 1)
+        self.assertEqual(exit_code(["mismatch"] * 5, responsive_ok=True), 0)
+
+    def test_runtime_audit_covers_mobile_tablet_arabic_english_and_keyboard(self):
+        source = (Path(__file__).resolve().parents[1] /
+                  "capture_t007_diagnostics.py").read_text(encoding="utf-8")
+        self.assertIn('((390, 844), (768, 1024))', source)
+        self.assertIn('("ar", "en")', source)
+        self.assertIn('page.keyboard.press("Tab")', source)
+        self.assertIn('supplemental_keyboard_link_visible', source)
+        self.assertIn('"responsive_checks": len(report["responsive_audit"])', source)
+        self.assertIn('len(report["responsive_audit"]) == 20', source)
 
 
 if __name__ == "__main__":
