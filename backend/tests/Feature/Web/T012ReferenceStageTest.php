@@ -367,4 +367,40 @@ final class T012ReferenceStageTest extends TestCase
                 ->assertSee('<html lang="'.$lang.'" dir="'.($lang === 'ar' ? 'rtl' : 'ltr').'">', false);
         }
     }
+
+
+    public function test_reference_blog_language_switch_preserves_only_validated_search_filters_and_page(): void
+    {
+        foreach (['en' => 'ar', 'ar' => 'en'] as $lang => $other) {
+            $response = $this->get(route('public.blog', [
+                'lang' => $lang,
+                'q' => 'verified knowledge',
+                'category' => 'database',
+                'page' => 2,
+                'redirect' => 'https://untrusted.example.test/secret',
+            ]))->assertOk();
+            $expected = route('public.blog', [
+                'lang' => $other,
+                'q' => 'verified knowledge',
+                'category' => 'database',
+                'page' => 2,
+            ]);
+
+            $response->assertSee(
+                'class="t012-sr-only t012-locale-switch" lang="'.$other.'" hreflang="'.$other.'" href="'.e($expected).'"',
+                false
+            )->assertDontSee('untrusted.example.test');
+        }
+    }
+
+    public function test_reference_blog_language_switch_omits_empty_filters_and_page_one(): void
+    {
+        foreach (['en' => 'ar', 'ar' => 'en'] as $lang => $other) {
+            $this->get(route('public.blog', ['lang' => $lang]))->assertOk()
+                ->assertSee(
+                    'class="t012-sr-only t012-locale-switch" lang="'.$other.'" hreflang="'.$other.'" href="'.e(route('public.blog', ['lang' => $other])).'"',
+                    false
+                );
+        }
+    }
 }
