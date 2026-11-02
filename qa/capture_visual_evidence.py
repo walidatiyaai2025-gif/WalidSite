@@ -30,6 +30,53 @@ class CaptureError(ValueError):
     pass
 
 
+
+def verified_source_checkout(root: Path, commit: str) -> bool:
+    """Bind capture provenance to the REAL Git tree, not a supplied SHA alone.
+
+    Resumable evidence may dirty only the evidence ledger and already-captured
+    canonical PNGs. An altered or untracked renderer, Blade/Flutter source,
+    contract, script, or fixture invalidates the claimed Git commit.
+    """
+    if not isinstance(commit, str) or re.fullmatch(r"[0-9a-f]{40}", commit) is None:
+        return False
+    root = root.resolve()
+    try:
+        head = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=root, check=True,
+            capture_output=True, text=True, timeout=10,
+        ).stdout.strip()
+        if head != commit:
+            return False
+        status = subprocess.run(
+            ["git", "status", "--porcelain=v1", "-z", "--untracked-files=all"],
+            cwd=root, check=True, capture_output=True, timeout=10,
+        ).stdout.decode("utf-8", errors="strict")
+    except (OSError, UnicodeError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        return False
+
+    entries = status.split("\0")
+    if entries[-1] != "":
+        return False
+    for item in entries[:-1]:
+        if len(item) < 4 or item[2] != " ":
+            return False
+        code, path = item[:2], item[3:]
+        # A rename/copy has extra porcelain path records and can hide source
+        # changes; never treat it as an authorized screenshot-only update.
+        if any(flag in code for flag in "RC") or code == "!!":
+            return False
+        if path == "design/visual-fidelity-evidence.json":
+            if code == "??":
+                return False
+        elif re.fullmatch(
+            r"qa/visual-captures/(?:WEB-(?:0[1-9]|1[0-4])|ADMIN-(?:0[1-9]|1[0-3])|MOBILE-(?:0[1-9]|1[0-3]))\.png",
+            path,
+        ) is None:
+            return False
+    return True
+
+
 def _route_matches(contract_route: str, actual: str) -> bool:
     if not isinstance(actual, str) or not actual.startswith("/") or "?" in actual or "#" in actual:
         return False
@@ -49,6 +96,9 @@ def capture(root: Path, screen_id: str, *, commit: str, locale: str,
         raise CaptureError("Supply a runtime renderer command, not an original reference")
     if not isinstance(timeout, int) or isinstance(timeout, bool) or timeout <= 0 or timeout > 3600:
         raise CaptureError("Capture timeout must be between 1 and 3600 seconds")
+    if not verified_source_checkout(root, commit):
+        raise CaptureError("Renderer checkout SHA differs or source tree is modified; capture not verifiable")
+
     if any("\n" in arg or "\r" in arg for arg in command):
         raise CaptureError("Multiline capture commands are not auditable")
     errors, _, _ = audit(root)
@@ -111,6 +161,9 @@ def capture(root: Path, screen_id: str, *, commit: str, locale: str,
         # This is a guardrail, not independent attestation of renderer identity.
         if incoming.read_bytes() == approved.read_bytes():
             raise CaptureError("Capture bytes are identical to the immutable source artwork")
+
+        if not verified_source_checkout(root, commit):
+            raise CaptureError("Renderer changed Git source or checkout during capture")
 
         relative = f"qa/visual-captures/{screen_id}.png"
         destination = root / relative
