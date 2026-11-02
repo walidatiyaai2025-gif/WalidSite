@@ -93,6 +93,7 @@
     ],
 ])
 @php($copy = ($t007ReferenceReady ? $referenceCopy : $safeCopy)[$screen])
+@php($t007Ui = $t007Ar ? ['explore' => 'استكشف', 'evidence' => 'عرض الأدلة', 'details' => 'عرض التفاصيل', 'download' => 'عرض السيرة العامة', 'projects' => 'أدلة المشاريع'] : ['explore' => 'Explore', 'evidence' => 'View evidence', 'details' => 'View details', 'download' => 'View public profile', 'projects' => 'Project evidence'])
 @push('styles')
 <style>
 body:has(.t007-reference-stage){margin:0;background:#f5f9fc;color:#184876;overflow-x:hidden}
@@ -150,8 +151,8 @@ body:has(.t007-reference-stage) .site-footer{margin-top:0}
         <h1>{{ $copy['title'] }}</h1>
         <p class="t007-reference-subtitle">{{ $copy['subtitle'] }}</p>
         <div class="t007-reference-actions">
-            <a class="t007-reference-action primary" href="#t007-primary-content">Explore</a>
-            <a class="t007-reference-action secondary" href="{{ route('public.projects', ['lang' => $locale]) }}">View evidence</a>
+            <a class="t007-reference-action primary" href="#t007-primary-content">{{ $t007Ui['explore'] }}</a>
+            <a class="t007-reference-action secondary" href="{{ route('public.projects', ['lang' => $locale]) }}">{{ $t007Ui['evidence'] }}</a>
         </div>
         <div class="t007-visual-stack {{ $copy['portrait'] ? 'portrait' : '' }}" aria-hidden="true">
             <div class="tile one"><span>{ }</span></div>
@@ -190,8 +191,8 @@ body:has(.t007-reference-stage) .site-footer{margin-top:0}
                 ] as $card)
                     <article class="t007-hire-card">
                         <h2>{{ $card[0] }}</h2><p>{{ $card[1] }}</p>
-                        <a href="{{ route('public.resume', ['lang' => $locale]) }}">Download profile</a>
-                        <a href="{{ route('public.projects', ['lang' => $locale]) }}">Project evidence&nbsp;&nbsp;&gt;</a>
+                        <a href="{{ route('public.resume', ['lang' => $locale]) }}">{{ $t007Ui['download'] }}</a>
+                        <a href="{{ route('public.projects', ['lang' => $locale]) }}">{{ $t007Ui['projects'] }}&nbsp;&nbsp;&gt;</a>
                     </article>
                 @endforeach
             </div>
@@ -203,7 +204,7 @@ body:has(.t007-reference-stage) .site-footer{margin-top:0}
                         <h2>{{ $card['title'] }}</h2>
                         <p>{{ $card['text'] }}</p>
                         <div class="t007-card-rule" aria-hidden="true"></div>
-                        <a class="t007-card-link" href="{{ $card['href'] }}">View details&nbsp;&nbsp;&gt;</a>
+                        <a class="t007-card-link" href="{{ $card['href'] }}">{{ $t007Ui['details'] }}&nbsp;&nbsp;&gt;</a>
                     </article>
                 @endforeach
             </div>
