@@ -144,8 +144,14 @@ class _MobilePreferencesScreenState extends State<MobilePreferencesScreen> {
     // or an earlier source's verification from a previous widget instance.
     // A local picker change already updated _arabic: the parent's echo must
     // not trigger a second API read or invoke its language callback again.
-    if (_arabic != widget.arabic || widget.fetch != oldWidget.fetch) {
-      _arabic = widget.arabic;
+    // Compare successive parent props, NOT the locally selected value.
+    // A pushed Navigator route may rebuild with its original captured locale
+    // after the root MaterialApp changes language. Reverting _arabic merely
+    // because it differs from that unchanged prop undoes the user's choice.
+    final parentLocaleChanged = widget.arabic != oldWidget.arabic;
+    final sourceChanged = widget.fetch != oldWidget.fetch;
+    if (parentLocaleChanged || sourceChanged) {
+      if (parentLocaleChanged) _arabic = widget.arabic;
       _clearMessage = null;
       _capabilities = _configured
           ? (widget.fetch ?? const MobilePreferenceReader().load)(_arabic)
