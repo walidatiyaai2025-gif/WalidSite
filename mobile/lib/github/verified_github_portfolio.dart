@@ -247,6 +247,7 @@ class _VerifiedGithubPortfolioScreenState
   Set<String> _followed = const {};
   bool _followLoading = true;
   bool _followSaving = false;
+  int _followStoreEpoch = 0;
   String? _followError;
   GithubFollowStore get _followStore => widget.followStore ?? const FileGithubFollowStore();
   bool get _configured =>
@@ -269,19 +270,40 @@ class _VerifiedGithubPortfolioScreenState
   }
 
   Future<void> _loadFollowed() async {
-    setState(() { _followLoading = true; _followError = null; });
+    // A widget can switch storage providers while either a read or a write
+    // is in flight. Every new read invalidates responses from the old source.
+    // Do not render a previous store's private follow selections while the
+    // active store is unverified.
+    final epoch = ++_followStoreEpoch;
+    final store = _followStore;
+    setState(() {
+      _followed = const <String>{};
+      _followLoading = true;
+      _followSaving = false;
+      _followError = null;
+    });
     try {
-      final saved = await _followStore.load();
-      if (!mounted) return;
-      setState(() { _followed = saved; _followLoading = false; });
+      final saved = await store.load();
+      if (!mounted || epoch != _followStoreEpoch) return;
+      setState(() {
+        _followed = saved;
+        _followLoading = false;
+      });
     } catch (_) {
-      if (!mounted) return;
-      setState(() { _followLoading = false; _followError = widget.arabic ? 'تعذر قراءة قائمة المتابعة المحلية. أعد المحاولة.' : 'Could not read the on-device follow list. Retry.'; });
+      if (!mounted || epoch != _followStoreEpoch) return;
+      setState(() {
+        _followLoading = false;
+        _followError = widget.arabic
+            ? 'تعذر قراءة قائمة المتابعة المحلية. أعد المحاولة.'
+            : 'Could not read the on-device follow list. Retry.';
+      });
     }
   }
 
   Future<void> _toggleFollow(VerifiedGithubRepository repository) async {
     if (_followLoading || _followSaving || _followError != null) return;
+    final epoch = _followStoreEpoch;
+    final store = _followStore;
     final key = repository.fullName.toLowerCase();
     final next = Set<String>.of(_followed);
     if (!next.remove(key)) {
@@ -293,14 +315,18 @@ class _VerifiedGithubPortfolioScreenState
     }
     setState(() { _followSaving = true; _followError = null; });
     try {
-      await _followStore.save(next);
-      if (!mounted) return;
+      await store.save(next);
+      // A save to a former store may still finish on disk; it can never
+      // change the current store's UI or claim success for this source.
+      if (!mounted || epoch != _followStoreEpoch) return;
       setState(() => _followed = next);
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || epoch != _followStoreEpoch) return;
       setState(() => _followError = widget.arabic ? 'تعذر حفظ التغيير على هذا الجهاز. لم تتغير القائمة.' : 'Could not save this change on the device. The list is unchanged.');
     } finally {
-      if (mounted) setState(() => _followSaving = false);
+      if (mounted && epoch == _followStoreEpoch) {
+        setState(() => _followSaving = false);
+      }
     }
   }
 
