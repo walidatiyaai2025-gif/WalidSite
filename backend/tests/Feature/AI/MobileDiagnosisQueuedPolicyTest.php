@@ -78,7 +78,7 @@ final class MobileDiagnosisQueuedPolicyTest extends TestCase
         ]];
     }
 
-    private function reviewedCatalog(): void
+    private function reviewedCatalog(): string
     {
         $id = (string) Str::uuid();
         $reviewed = now()->subMinutes(10);
@@ -100,6 +100,7 @@ final class MobileDiagnosisQueuedPolicyTest extends TestCase
             'checksum' => hash('sha256', '# Recovery\nUse the reviewed procedure.'),
             'created_at' => $reviewed->copy()->subMinute(),
         ]);
+        return $id;
     }
 
     private function rejectWithoutProviderCall(AiDiagnosisRequest $diagnosis, object $job): void
@@ -115,6 +116,106 @@ final class MobileDiagnosisQueuedPolicyTest extends TestCase
         $this->assertNull($diagnosis->fresh()->request_blob);
         $this->assertNull($diagnosis->fresh()->selected_runbook_id);
         $this->assertDatabaseMissing('ai_usage', ['job_id' => $job->id]);
+    }
+
+    public function test_account_disabled_during_paid_provider_reply_cannot_publish_selection_but_cost_is_recorded(): void
+    {
+        [, , , $diagnosis, $job] = $this->queuedPaidDiagnosis();
+        $runbookId = $this->reviewedCatalog();
+        $queue = app(DurableAiQueue::class);
+        $this->assertSame($job->id, $queue->claimNext('test-worker')?->id);
+        $sent = 0;
+        Http::fake(function ($request) use ($diagnosis, $runbookId, &$sent) {
+            $sent++;
+            $this->assertSame('https://provider.example.test/v1/chat/completions',
+                $request->url());
+            $this->assertStringContainsString('Private database question',
+                $request['messages'][0]['content']);
+
+            // The account is valid at the last outbound boundary but is
+            // deactivated while the external model is generating a response.
+            User::query()->findOrFail($diagnosis->user_id)->update([
+                'status' => 'pending_activation',
+            ]);
+
+            return Http::response([
+                'choices' => [['message' => ['content' => json_encode([
+                    'runbook_id' => $runbookId,
+                ], JSON_THROW_ON_ERROR)]]],
+                'usage' => ['prompt_tokens' => 23, 'completion_tokens' => 5],
+            ], 200);
+        });
+
+        try {
+            app(MobileDiagnosisDispatcher::class)->execute($job, 'classify', 'test-worker');
+            $this->fail('A disabled requester must not receive a late provider result.');
+        } catch (RuntimeException $exception) {
+            $this->assertSame('Mobile diagnosis failed safely.', $exception->getMessage());
+            $this->assertStringNotContainsString('Private database question',
+                $exception->getMessage());
+        }
+        $this->assertSame(1, $sent);
+        Http::assertSentCount(1);
+        $this->assertNull($diagnosis->fresh()->selected_runbook_id);
+        $this->assertNull($diagnosis->fresh()->request_blob);
+        // The provider call DID occur: suppressing the paid receipt would
+        // release its budget and permit another unaccounted external call.
+        $this->assertDatabaseHas('ai_usage', [
+            'job_id' => $job->id,
+            'cost_minor' => 25,
+            'cost_currency' => 'USD',
+        ]);
+    }
+
+    public function test_account_disabled_during_no_match_reply_does_not_finalize_as_success(): void
+    {
+        [, , , $diagnosis, $job] = $this->queuedPaidDiagnosis();
+        $this->reviewedCatalog();
+        $this->assertSame($job->id,
+            app(DurableAiQueue::class)->claimNext('test-worker')?->id);
+        Http::fake(function () use ($diagnosis) {
+            User::query()->findOrFail($diagnosis->user_id)->update([
+                'status' => 'pending_activation',
+            ]);
+            return Http::response([
+                'choices' => [['message' => ['content' => '{"runbook_id":null}']]],
+                'usage' => ['prompt_tokens' => 17, 'completion_tokens' => 4],
+            ], 200);
+        });
+
+        try {
+            app(MobileDiagnosisDispatcher::class)->execute($job, 'classify', 'test-worker');
+            $this->fail('A deactivated requester must not finalize even no-match output.');
+        } catch (RuntimeException $exception) {
+            $this->assertSame('Mobile diagnosis failed safely.', $exception->getMessage());
+        }
+        Http::assertSentCount(1);
+        $this->assertNull($diagnosis->fresh()->request_blob);
+        $this->assertNull($diagnosis->fresh()->selected_runbook_id);
+        $this->assertDatabaseHas('ai_usage', ['job_id' => $job->id, 'cost_minor' => 25]);
+    }
+
+    public function test_active_requester_still_receives_verified_provider_selection_with_paid_receipt(): void
+    {
+        [, , , $diagnosis, $job] = $this->queuedPaidDiagnosis();
+        $runbookId = $this->reviewedCatalog();
+        $this->assertSame($job->id,
+            app(DurableAiQueue::class)->claimNext('test-worker')?->id);
+        Http::fake(['https://provider.example.test/v1/chat/completions' => Http::response([
+            'choices' => [['message' => ['content' => json_encode([
+                'runbook_id' => $runbookId,
+            ], JSON_THROW_ON_ERROR)]]],
+            'usage' => ['prompt_tokens' => 23, 'completion_tokens' => 5],
+        ], 200)]);
+
+        $ref = app(MobileDiagnosisDispatcher::class)->execute(
+            $job, 'classify', 'test-worker'
+        );
+        $this->assertSame('mobile/solutions/'.$runbookId, $ref);
+        $this->assertSame($runbookId, $diagnosis->fresh()->selected_runbook_id);
+        $this->assertNull($diagnosis->fresh()->request_blob);
+        $this->assertDatabaseHas('ai_usage', ['job_id' => $job->id, 'cost_minor' => 25]);
+        Http::assertSentCount(1);
     }
 
     public function test_inactive_account_cannot_transmit_already_queued_private_diagnosis(): void
