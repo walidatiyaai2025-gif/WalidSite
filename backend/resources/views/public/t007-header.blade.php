@@ -22,9 +22,11 @@
         @php($t007SwitchArgs['track'] = is_string($t007RawTrack) && in_array($t007RawTrack, ['all', 'database', 'software', 'delivery'], true) ? $t007RawTrack : 'all')
     @endif
     @if($t007Current === 'public.expertise')
-        {{-- Keep a valid expertise category across locales; discard arrays and unknown values. --}}
-        @php($t007RawCategory = request()->query()['category'] ?? 'all')
-        @php($t007SwitchArgs['category'] = is_string($t007RawCategory) && in_array($t007RawCategory, ['all', 'database', 'integration', 'security', 'delivery'], true) ? $t007RawCategory : 'all')
+        {{-- Mirror canonical SEO's allowlist: invalid or all means an unfiltered URL. --}}
+        @php($t007RawCategory = request()->query()['category'] ?? null)
+        @if(is_string($t007RawCategory) && in_array($t007RawCategory, ['database', 'integration', 'security', 'delivery'], true))
+            @php($t007SwitchArgs['category'] = $t007RawCategory)
+        @endif
     @endif
     {{-- Language selection must be visible and keyboard-operable, not screen-reader-only.
          Preserve the recruiter track only after validating its public allowlist. --}}
