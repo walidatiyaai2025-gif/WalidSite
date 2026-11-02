@@ -1436,16 +1436,23 @@ Route::get('/contact', function (Request $request) {
     $privacyTopic = $reportArticle === null && $reportProject === null
         && ! array_key_exists('article', $request->query())
         && ! array_key_exists('project', $request->query())
-        && is_string($rawTopic) && $rawTopic === 'privacy';
+        && is_string($rawTopic)
+        && in_array($rawTopic, ['privacy', 'privacy-access', 'privacy-correction', 'privacy-export', 'privacy-deletion', 'privacy-notifications'], true);
+    $privacySubjects = [
+        'privacy' => ['طلب متعلق بالخصوصية أو البيانات', 'Privacy or personal data request'],
+        'privacy-access' => ['طلب الاطلاع على البيانات', 'Personal data access request'],
+        'privacy-correction' => ['طلب تصحيح البيانات', 'Personal data correction request'],
+        'privacy-export' => ['طلب تصدير البيانات', 'Personal data export request'],
+        'privacy-deletion' => ['طلب حذف البيانات', 'Personal data deletion request'],
+        'privacy-notifications' => ['طلب إلغاء موافقة الإشعارات', 'Notification consent revocation request'],
+    ];
     $suggestedSubject = $reportArticle !== null
         ? ($locale === 'ar' ? 'ملاحظة بشأن المقال: ' : 'Article issue: ')
             .mb_substr($reportArticle->slug, 0, 100)
         : ($reportProject !== null
             ? ($locale === 'ar' ? 'استفسار عن المشروع: ' : 'Project inquiry: ')
                 .mb_substr($reportProject['slug'], 0, 100)
-            : ($privacyTopic ? ($locale === 'ar'
-                ? 'طلب متعلق بالخصوصية أو البيانات'
-                : 'Privacy or personal data request') : ''));
+            : ($privacyTopic ? $privacySubjects[$rawTopic][$locale === 'ar' ? 0 : 1] : ''));
 
     $recipient = config('mail.contact_recipient');
     $available = is_string($recipient) && filter_var($recipient, FILTER_VALIDATE_EMAIL)
