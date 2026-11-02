@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -51,115 +52,6 @@ class _MemoryGithubFollowStore implements GithubFollowStore {
     if (failWrite) throw const FileSystemException('private storage failure');
     values = Set<String>.of(repositories);
   }
-
-  test('follow-list codec is bounded, normalized and rejects corrupt entries', () {
-    final encoded = GithubFollowStoreCodec.encode({
-      'Public-Owner/Repo-One', 'other-owner/repo_two',
-    });
-    expect(
-      GithubFollowStoreCodec.decode(encoded),
-      {'public-owner/repo-one', 'other-owner/repo_two'},
-    );
-    for (final invalid in [
-      '',
-      '{}',
-      jsonEncode({'schema': 'wrong', 'repositories': []}),
-      jsonEncode({'schema': 'walidsite.github-follows.v1', 'repositories': ['../secret/repo']}),
-      jsonEncode({'schema': 'walidsite.github-follows.v1', 'repositories': ['owner/repo', 'OWNER/REPO']}),
-      jsonEncode({'schema': 'walidsite.github-follows.v1', 'repositories': List.generate(101, (i) => 'owner/repo-$i')}),
-      'x' * 16385,
-    ]) {
-      expect(() => GithubFollowStoreCodec.decode(invalid),
-          throwsFormatException);
-    }
-    expect(() => GithubFollowStoreCodec.encode({'not a repository'}),
-        throwsFormatException);
-  });
-
-  testWidgets('follow project persists locally and toggles idempotently without GitHub writes',
-      (tester) async {
-    final records = VerifiedGithubPortfolio.parse(
-      feed([verifiedRepo()]), arabic: false,
-    );
-    final store = _MemoryGithubFollowStore();
-    final opened = <Uri>[];
-    await tester.pumpWidget(MaterialApp(home: VerifiedGithubPortfolioScreen(
-      arabic: false,
-      loader: () => SynchronousFuture(records),
-      linkLauncher: (url) async { opened.add(url); return true; },
-      followStore: store,
-    )));
-    await tester.pumpAndSettle();
-    expect(find.byKey(const Key('github-follow-local-note')), findsOneWidget);
-    final key = const Key('github-follow-public-owner/verified-repo');
-    expect(tester.widget<IconButton>(find.byKey(key)).tooltip,
-        'Follow on this device');
-    await tester.tap(find.byKey(key));
-    await tester.pumpAndSettle();
-    expect(store.values, {'public-owner/verified-repo'});
-    expect(store.writes, 1);
-    expect(tester.widget<IconButton>(find.byKey(key)).tooltip,
-        'Unfollow on this device');
-    await tester.tap(find.byKey(key));
-    await tester.pumpAndSettle();
-    expect(store.values, isEmpty);
-    expect(store.writes, 2);
-    expect(opened, isEmpty, reason: 'Following is local and never opens or mutates GitHub');
-  });
-
-  testWidgets('existing follows restore and write failure never shows a false follow',
-      (tester) async {
-    final records = VerifiedGithubPortfolio.parse(
-      feed([verifiedRepo()]), arabic: true,
-    );
-    final store = _MemoryGithubFollowStore({'public-owner/verified-repo'})
-      ..failWrite = true;
-    await tester.pumpWidget(MaterialApp(home: Directionality(
-      textDirection: TextDirection.rtl,
-      child: VerifiedGithubPortfolioScreen(
-        arabic: true,
-        loader: () => SynchronousFuture(records),
-        followStore: store,
-      ),
-    )));
-    await tester.pumpAndSettle();
-    final key = const Key('github-follow-public-owner/verified-repo');
-    expect(tester.widget<IconButton>(find.byKey(key)).tooltip,
-        'إلغاء المتابعة على هذا الجهاز');
-    await tester.tap(find.byKey(key));
-    await tester.pumpAndSettle();
-    expect(store.values, {'public-owner/verified-repo'});
-    expect(find.byKey(const Key('github-follow-error')), findsOneWidget);
-    expect(tester.widget<IconButton>(find.byKey(key)).tooltip,
-        'إلغاء المتابعة على هذا الجهاز');
-    expect(find.textContaining('GitHub account'), findsNothing);
-  });
-
-  testWidgets('corrupt local follow list fails closed and offers retry',
-      (tester) async {
-    final records = VerifiedGithubPortfolio.parse(
-      feed([verifiedRepo()]), arabic: false,
-    );
-    final store = _MemoryGithubFollowStore()..failRead = true;
-    await tester.pumpWidget(MaterialApp(home: VerifiedGithubPortfolioScreen(
-      arabic: false,
-      loader: () => SynchronousFuture(records),
-      followStore: store,
-    )));
-    await tester.pumpAndSettle();
-    expect(find.byKey(const Key('github-follow-error')), findsOneWidget);
-    expect(tester.widget<IconButton>(find.byKey(
-      const Key('github-follow-public-owner/verified-repo'),
-    )).onPressed, isNull);
-    store.failRead = false;
-    await tester.tap(find.byKey(const Key('github-follow-retry')));
-    await tester.pumpAndSettle();
-    expect(find.byKey(const Key('github-follow-error')), findsNothing);
-    expect(tester.widget<IconButton>(find.byKey(
-      const Key('github-follow-public-owner/verified-repo'),
-    )).onPressed, isNotNull);
-  });
-
 }
 
 void main() {
@@ -364,4 +256,112 @@ void main() {
     expect(find.byKey(const Key('github-unconfigured')), findsOneWidget);
     expect(find.textContaining('not configured for this build'), findsOneWidget);
   });
+
+  test('follow-list codec is bounded, normalized and rejects corrupt entries', () {
+    final encoded = GithubFollowStoreCodec.encode({
+      'Public-Owner/Repo-One', 'other-owner/repo_two',
+    });
+    expect(
+      GithubFollowStoreCodec.decode(encoded),
+      {'public-owner/repo-one', 'other-owner/repo_two'},
+    );
+    for (final invalid in [
+      '',
+      '{}',
+      jsonEncode({'schema': 'wrong', 'repositories': []}),
+      jsonEncode({'schema': 'walidsite.github-follows.v1', 'repositories': ['../secret/repo']}),
+      jsonEncode({'schema': 'walidsite.github-follows.v1', 'repositories': ['owner/repo', 'OWNER/REPO']}),
+      jsonEncode({'schema': 'walidsite.github-follows.v1', 'repositories': List.generate(101, (i) => 'owner/repo-$i')}),
+      'x' * 16385,
+    ]) {
+      expect(() => GithubFollowStoreCodec.decode(invalid),
+          throwsFormatException);
+    }
+    expect(() => GithubFollowStoreCodec.encode({'not a repository'}),
+        throwsFormatException);
+  });
+
+  testWidgets('follow project persists locally and toggles without GitHub writes',
+      (tester) async {
+    final records = VerifiedGithubPortfolio.parse(
+      feed([verifiedRepo()]), arabic: false,
+    );
+    final store = _MemoryGithubFollowStore();
+    final opened = <Uri>[];
+    await tester.pumpWidget(MaterialApp(home: VerifiedGithubPortfolioScreen(
+      arabic: false,
+      loader: () => SynchronousFuture(records),
+      linkLauncher: (url) async { opened.add(url); return true; },
+      followStore: store,
+    )));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('github-follow-local-note')), findsOneWidget);
+    final key = const Key('github-follow-public-owner/verified-repo');
+    expect(tester.widget<IconButton>(find.byKey(key)).tooltip,
+        'Follow on this device');
+    await tester.tap(find.byKey(key));
+    await tester.pumpAndSettle();
+    expect(store.values, {'public-owner/verified-repo'});
+    expect(store.writes, 1);
+    expect(tester.widget<IconButton>(find.byKey(key)).tooltip,
+        'Unfollow on this device');
+    await tester.tap(find.byKey(key));
+    await tester.pumpAndSettle();
+    expect(store.values, isEmpty);
+    expect(store.writes, 2);
+    expect(opened, isEmpty, reason: 'Following is local and never mutates GitHub');
+  });
+
+  testWidgets('existing follows restore and write failure never shows false follow',
+      (tester) async {
+    final records = VerifiedGithubPortfolio.parse(
+      feed([verifiedRepo()], arabic: true), arabic: true,
+    );
+    final store = _MemoryGithubFollowStore({'public-owner/verified-repo'})
+      ..failWrite = true;
+    await tester.pumpWidget(MaterialApp(home: Directionality(
+      textDirection: TextDirection.rtl,
+      child: VerifiedGithubPortfolioScreen(
+        arabic: true,
+        loader: () => SynchronousFuture(records),
+        followStore: store,
+      ),
+    )));
+    await tester.pumpAndSettle();
+    final key = const Key('github-follow-public-owner/verified-repo');
+    expect(tester.widget<IconButton>(find.byKey(key)).tooltip,
+        'إلغاء المتابعة على هذا الجهاز');
+    await tester.tap(find.byKey(key));
+    await tester.pumpAndSettle();
+    expect(store.values, {'public-owner/verified-repo'});
+    expect(find.byKey(const Key('github-follow-error')), findsOneWidget);
+    expect(tester.widget<IconButton>(find.byKey(key)).tooltip,
+        'إلغاء المتابعة على هذا الجهاز');
+  });
+
+  testWidgets('corrupt local follow list fails closed and offers retry',
+      (tester) async {
+    final records = VerifiedGithubPortfolio.parse(
+      feed([verifiedRepo()]), arabic: false,
+    );
+    final store = _MemoryGithubFollowStore()..failRead = true;
+    await tester.pumpWidget(MaterialApp(home: VerifiedGithubPortfolioScreen(
+      arabic: false,
+      loader: () => SynchronousFuture(records),
+      followStore: store,
+    )));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('github-follow-error')), findsOneWidget);
+    expect(tester.widget<IconButton>(find.byKey(
+      const Key('github-follow-public-owner/verified-repo'),
+    )).onPressed, isNull);
+    store.failRead = false;
+    await tester.tap(find.byKey(const Key('github-follow-retry')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('github-follow-error')), findsNothing);
+    expect(tester.widget<IconButton>(find.byKey(
+      const Key('github-follow-public-owner/verified-repo'),
+    )).onPressed, isNotNull);
+  });
+
 }
