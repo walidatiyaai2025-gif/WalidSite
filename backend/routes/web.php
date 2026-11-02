@@ -1446,6 +1446,7 @@ Route::get('/contact', function (Request $request) {
         'privacy-deletion' => ['طلب حذف البيانات', 'Personal data deletion request'],
         'privacy-notifications' => ['طلب إلغاء موافقة الإشعارات', 'Notification consent revocation request'],
     ];
+    $privacyRight = $privacyTopic && $rawTopic !== 'privacy' ? $rawTopic : null;
     $suggestedSubject = $reportArticle !== null
         ? ($locale === 'ar' ? 'ملاحظة بشأن المقال: ' : 'Article issue: ')
             .mb_substr($reportArticle->slug, 0, 100)
@@ -1458,7 +1459,9 @@ Route::get('/contact', function (Request $request) {
     $available = is_string($recipient) && filter_var($recipient, FILTER_VALIDATE_EMAIL)
         && in_array(config('mail.default'), ['smtp', 'sendmail', 'ses', 'ses-v2', 'postmark', 'resend'], true);
 
-    return view('public.contact', compact('available', 'reportArticle', 'reportProject', 'suggestedSubject'));
+    return view('public.contact', compact(
+        'available', 'reportArticle', 'reportProject', 'suggestedSubject', 'privacyRight'
+    ));
 })->name('public.contact');
 
 Route::post('/contact', function (Request $request) {
