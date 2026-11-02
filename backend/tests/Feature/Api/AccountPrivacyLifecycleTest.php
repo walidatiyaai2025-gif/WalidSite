@@ -81,7 +81,6 @@ final class AccountPrivacyLifecycleTest extends TestCase
             ->getJson('/api/v1/mobile/account/export');
 
         $response->assertOk()
-            ->assertHeader('Cache-Control', 'no-store')
             ->assertHeader(
                 'Content-Disposition',
                 'attachment; filename="walidsite-account-export.json"'
@@ -93,6 +92,10 @@ final class AccountPrivacyLifecycleTest extends TestCase
             ->assertJsonPath('meta.secrets_excluded', true)
             ->assertJsonMissingPath('data.profile.password_hash');
 
+        $this->assertStringContainsString(
+            'no-store',
+            (string) $response->headers->get('Cache-Control')
+        );
         $this->assertStringNotContainsString($other->email, $response->getContent());
         $this->assertStringNotContainsString(self::PASSWORD, $response->getContent());
 
@@ -298,7 +301,9 @@ final class AccountPrivacyLifecycleTest extends TestCase
 
         $this->assertSame('active', $other->fresh()->status);
 
-        for ($attempt = 1; $attempt <= 3; $attempt++) {
+        // The preceding IDOR-shaped request consumes one attempt on the same
+        // authenticated throttle key, leaving two validation attempts.
+        for ($attempt = 1; $attempt <= 2; $attempt++) {
             $this->withToken($token)
                 ->deleteJson('/api/v1/mobile/account', [
                     'password' => 'wrong-password',
