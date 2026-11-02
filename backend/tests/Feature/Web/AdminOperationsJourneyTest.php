@@ -83,9 +83,11 @@ final class AdminOperationsJourneyTest extends TestCase
                     ->assertSee('href="#content"', false)
                     ->assertSee('tabindex="-1"', false)
                     ->assertSee('family=Tajawal', false)
+                    // Audience and analytics also preserve their validated
+                    // segment/day filters; the locale is the leading query.
                     ->assertSee('href="'.route('admin.operations.'.$screen, [
                         'lang' => $lang === 'ar' ? 'en' : 'ar',
-                    ]).'"', false);
+                    ]), false);
             }
         }
         Http::assertNothingSent();
