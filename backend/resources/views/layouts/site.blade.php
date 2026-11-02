@@ -1,4 +1,5 @@
 @php($locale = request()->query('lang') === 'ar' ? 'ar' : 'en')
+@php($t007ReferenceRoute = request()->routeIs('home', 'public.about', 'public.expertise', 'public.ai-engineering', 'public.hire'))
 <!doctype html>
 <html lang="{{ $locale }}" dir="{{ $locale === 'ar' ? 'rtl' : 'ltr' }}">
 <head>
@@ -11,7 +12,7 @@
          URLs. WEB-03 expertise categories and WEB-12 recruiter tracks each
          have different allowlists; never echo raw or array-valued query data. --}}
     @php($seoPage = request()->route()?->getName())
-    @if (in_array($seoPage, ['home', 'public.about', 'public.expertise', 'public.hire', 'public.privacy', 'public.terms'], true))
+    @if (in_array($seoPage, ['home', 'public.about', 'public.expertise', 'public.ai-engineering', 'public.hire', 'public.privacy', 'public.terms'], true))
         @php($seoRawTrack = request()->query()['track'] ?? null)
         @php($seoRawCategory = request()->query()['category'] ?? null)
         @php($seoFilters = $seoPage === 'public.hire' && is_string($seoRawTrack)
@@ -87,6 +88,9 @@
 </head>
 <body>
     <a class="skip-link" href="#main-content">{{ $locale === 'ar' ? 'تجاوز إلى المحتوى' : 'Skip to content' }}</a>
+    @if($t007ReferenceRoute)
+        @include('public.t007-header')
+    @else
     <header class="site-header">
         <div class="site-wrap header-row">
             <a class="brand" href="{{ route('home', ['lang' => $locale]) }}" aria-label="{{ $locale === 'ar' ? 'الصفحة الرئيسية — وليد عطية' : 'Home — Waleed Atiya' }}"@if(request()->routeIs('home')) aria-current="page"@endif>
@@ -198,6 +202,7 @@
             </nav>
         </div>
     </header>
+    @endif
     <main class="site-main" id="main-content" tabindex="-1">@yield('content')</main>
     <footer class="site-footer">
         <div class="site-wrap footer-row">
