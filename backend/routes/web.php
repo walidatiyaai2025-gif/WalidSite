@@ -1437,21 +1437,36 @@ Route::get('/contact', function (Request $request) {
         && ! array_key_exists('article', $request->query())
         && ! array_key_exists('project', $request->query())
         && is_string($rawTopic) && $rawTopic === 'privacy';
+    // Only fixed rights categories, never an arbitrary subject supplied by GET.
+    // A mail inquiry does not itself execute export/deletion/unsubscription.
+    $rightsLabels = [
+        'access' => ['ar' => 'طلب الاطلاع على بياناتي', 'en' => 'Personal data access request'],
+        'export' => ['ar' => 'طلب تصدير بياناتي', 'en' => 'Personal data export request'],
+        'correction' => ['ar' => 'طلب تصحيح بياناتي', 'en' => 'Personal data correction request'],
+        'deletion' => ['ar' => 'طلب حذف بياناتي', 'en' => 'Personal data deletion request'],
+        'revoke' => ['ar' => 'طلب سحب الموافقة على الإشعارات', 'en' => 'Notification consent revocation inquiry'],
+    ];
+    $rawRight = $request->query()['request'] ?? null;
+    $privacyRight = $privacyTopic && is_string($rawRight)
+        && array_key_exists($rawRight, $rightsLabels) ? $rawRight : null;
     $suggestedSubject = $reportArticle !== null
         ? ($locale === 'ar' ? 'ملاحظة بشأن المقال: ' : 'Article issue: ')
             .mb_substr($reportArticle->slug, 0, 100)
         : ($reportProject !== null
             ? ($locale === 'ar' ? 'استفسار عن المشروع: ' : 'Project inquiry: ')
                 .mb_substr($reportProject['slug'], 0, 100)
-            : ($privacyTopic ? ($locale === 'ar'
-                ? 'طلب متعلق بالخصوصية أو البيانات'
-                : 'Privacy or personal data request') : ''));
+            : ($privacyTopic ? ($privacyRight !== null
+                ? $rightsLabels[$privacyRight][$locale]
+                : ($locale === 'ar' ? 'طلب متعلق بالخصوصية أو البيانات'
+                    : 'Privacy or personal data request')) : ''));
 
     $recipient = config('mail.contact_recipient');
     $available = is_string($recipient) && filter_var($recipient, FILTER_VALIDATE_EMAIL)
         && in_array(config('mail.default'), ['smtp', 'sendmail', 'ses', 'ses-v2', 'postmark', 'resend'], true);
 
-    return view('public.contact', compact('available', 'reportArticle', 'reportProject', 'suggestedSubject'));
+    return view('public.contact', compact(
+        'available', 'reportArticle', 'reportProject', 'suggestedSubject', 'privacyRight'
+    ));
 })->name('public.contact');
 
 Route::post('/contact', function (Request $request) {
