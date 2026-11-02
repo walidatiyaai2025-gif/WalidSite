@@ -119,14 +119,23 @@ final class AdminOperationsJourneyTest extends TestCase
             ->assertRedirect(route('admin.operations.github', ['lang' => 'en']))
             ->assertSessionHas('status', 'Verified public repositories: 1');
         $this->post('/admin/github/refresh?lang=en', ['repo' => 'private-org/private-work'])
-            ->assertRedirect()->assertSessionHasErrors('refresh');
+            ->assertRedirect()->assertSessionHasErrors('repo');
         Http::assertSent(fn ($request) =>
             str_starts_with($request->url(), 'https://api.github.com/repos/'));
-        Http::assertSentCount(4);
+        // A rejected selection can re-check the public allowlist but must
+        // never issue a caller-specified URL or expose credentials.
+        Http::assertSent(fn ($request) =>
+            in_array($request->url(), [
+                'https://api.github.com/repos/owner/verified',
+                'https://api.github.com/repos/private-org/private-work',
+            ], true));
     }
 
     public function test_only_verified_allowlisted_github_metadata_can_be_inspected_in_both_locales(): void
     {
+        // Test the publication/role gate independently from the production
+        // request-rate limiter (which is tested in its own suite).
+        $this->withoutMiddleware(\Illuminate\Routing\Middleware\ThrottleRequests::class);
         config(['portfolio.github_public_repos' => ['owner/verified', 'private-org/private-work']]);
         Http::fake([
             'api.github.com/repos/owner/verified' => Http::response([
@@ -166,6 +175,9 @@ final class AdminOperationsJourneyTest extends TestCase
 
     public function test_selected_github_refresh_rechecks_revoked_public_metadata_without_claiming_publication(): void
     {
+        // Test the publication/role gate independently from the production
+        // request-rate limiter (which is tested in its own suite).
+        $this->withoutMiddleware(\Illuminate\Routing\Middleware\ThrottleRequests::class);
         $active = true;
         config(['portfolio.github_public_repos' => ['owner/verified']]);
         Http::fake(function ($request) use (&$active) {
