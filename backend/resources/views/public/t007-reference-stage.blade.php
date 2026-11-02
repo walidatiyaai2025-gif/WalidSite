@@ -53,7 +53,7 @@
     'hire' => [
         'pill' => 'HIRING VIEW',
         'title' => 'Recruiter Mode',
-        'subtitle' => 'Evaluate capabilities, relevant case studies and CV fit.',
+        'subtitle' => 'Review published capabilities, case studies and public CV details.',
         'portrait' => true,
     ],
 ])
