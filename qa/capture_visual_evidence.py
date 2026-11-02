@@ -17,13 +17,13 @@ from pathlib import Path
 from PIL import Image, UnidentifiedImageError
 
 try:
-    from qa.validate_visual_fidelity import audit
+    from qa.validate_visual_fidelity import audit, _route_matches
 except ModuleNotFoundError as exc:
     # python3 qa/capture_visual_evidence.py puts qa/ first on sys.path.
     # The module form (python3 -m qa.capture_visual_evidence) uses qa.*.
     if exc.name != "qa":
         raise
-    from validate_visual_fidelity import audit
+    from validate_visual_fidelity import audit, _route_matches
 
 
 class CaptureError(ValueError):
@@ -75,14 +75,6 @@ def verified_source_checkout(root: Path, commit: str) -> bool:
         ) is None:
             return False
     return True
-
-
-def _route_matches(contract_route: str, actual: str) -> bool:
-    if not isinstance(actual, str) or not actual.startswith("/") or "?" in actual or "#" in actual:
-        return False
-    pattern = re.escape(contract_route)
-    pattern = re.sub(r"\\\{[^{}]+\\\}", r"[^/]+", pattern)
-    return re.fullmatch(pattern, actual) is not None
 
 
 def capture(root: Path, screen_id: str, *, commit: str, locale: str,
