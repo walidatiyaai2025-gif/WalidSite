@@ -309,4 +309,62 @@ final class T012ReferenceStageTest extends TestCase
             }
         }
     }
+
+
+    public function test_all_four_reference_navbars_link_to_real_tech_lab_and_offer_a_language_switch(): void
+    {
+        $article = $this->article(
+            'accessible-reference-nav',
+            'Accessible reviewed content',
+            "## Reviewed check\\n\\nPublished engineering steps."
+        );
+
+        foreach (['en' => 'ar', 'ar' => 'en'] as $lang => $other) {
+            $pages = [
+                route('public.blog', ['lang' => $lang]),
+                route('public.article', ['slug' => $article->slug, 'lang' => $lang]),
+                route('public.lab', ['lang' => $lang]),
+                route('public.search', ['lang' => $lang, 'q' => 'reviewed', 'type' => 'articles']),
+            ];
+            $labLink = 'href="'.e(route('public.lab', ['lang' => $lang])).'">'
+                .($lang === 'ar' ? 'المختبر التقني' : 'Tech Lab').'</a>';
+
+            foreach ($pages as $url) {
+                $response = $this->get($url)->assertOk()
+                    ->assertSee($labLink, false)
+                    ->assertSee(
+                        'class="t012-sr-only t012-locale-switch" lang="'.$other.'" hreflang="'.$other.'"',
+                        false
+                    )
+                    ->assertSee('.t012-nav-shell>.t012-locale-switch:focus-visible', false)
+                    ->assertSee('min-width:88px!important', false)
+                    ->assertSee('id="main-content"', false);
+
+                $this->assertStringNotContainsString(
+                    'href="'.e(route('public.expertise', ['lang' => $lang])).'">AI Lab</a>',
+                    $response->getContent()
+                );
+                $this->assertStringNotContainsString(
+                    'href="'.e(route('public.expertise', ['lang' => $lang])).'">مختبر AI</a>',
+                    $response->getContent()
+                );
+            }
+        }
+    }
+
+    public function test_search_reference_keeps_keyboard_submit_and_visible_focus_in_both_locales(): void
+    {
+        foreach (['en', 'ar'] as $lang) {
+            $this->get(route('public.search', [
+                'lang' => $lang, 'q' => 'reviewed', 'type' => 'articles',
+            ]))->assertOk()
+                ->assertSee('name="q" type="search"', false)
+                ->assertSee('value="reviewed"', false)
+                ->assertSee('name="type" value="articles"', false)
+                ->assertSee('.t012-search-box input:focus-visible', false)
+                ->assertSee('<button class="t012-sr-only" type="submit">', false)
+                ->assertSee('role="search"', false)
+                ->assertSee('<html lang="'.$lang.'" dir="'.($lang === 'ar' ? 'rtl' : 'ltr').'">', false);
+        }
+    }
 }
