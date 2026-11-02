@@ -98,14 +98,14 @@ final class PrivacyPolicyJourneyTest extends TestCase
     public function test_privacy_disclosure_distinguishes_authenticated_controls_from_contact_consent(): void
     {
         $this->get('/privacy?lang=en')->assertOk()
-            ->assertSee('notification preference opt-in and revocation')
-            ->assertSee('contact consent is not marketing consent')
-            ->assertSee('deletion requires password confirmation')
-            ->assertSee('Public contact requests are not automated fulfillment');
+            ->assertSee('independently opt in to account activity')
+            ->assertSee('does not subscribe you to marketing or notifications')
+            ->assertSee('after re-entering your password and typing DELETE')
+            ->assertSee('An inquiry does not automatically delete or export data');
         $this->get('/privacy?lang=ar')->assertOk()
-            ->assertSee('موافقة التواصل ليست موافقة تسويقية')
-            ->assertSee('يتطلب الحذف تأكيد كلمة المرور')
-            ->assertSee('طلبات التواصل العامة ليست تنفيذًا آليًا');
+            ->assertSee('لا تنشئ اشتراكًا ولا تمنح موافقة على التسويق')
+            ->assertSee('بعد إعادة إدخال كلمة المرور وكتابة DELETE')
+            ->assertSee('لا ينفذ إرسال الاستفسار حذفًا أو تصديرًا تلقائيًا');
     }
 
 
