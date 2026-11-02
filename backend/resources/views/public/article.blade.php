@@ -93,7 +93,8 @@
 </style>
 @endpush
 @section('content')
-<article class="site-wrap article-shell" aria-labelledby="article-title">
+@include('public.t012-reference-stage', ['screen' => 'article'])
+<article class="site-wrap article-shell t012-functional" id="t012-functional" aria-labelledby="article-title">
     <nav class="article-nav" aria-label="{{ $locale === 'ar' ? 'تنقل المقال' : 'Article navigation' }}">
         <a href="{{ route($articleBackRoute, $articleBackArgs) }}">{{ $locale === 'ar'
             ? ($articleBackRoute === 'public.search' ? 'العودة إلى نتائج البحث' : 'العودة إلى نتائج المدونة')
