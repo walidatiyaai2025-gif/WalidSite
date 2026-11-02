@@ -37,7 +37,7 @@ The source-defined Flutter AppBar headings currently distinguish eight screens:
 | --- | --- | --- |
 | MOBILE-02 | /home | Waleed Tech Companion |
 | MOBILE-03 | /tools/ai-troubleshooter | AI Troubleshooter |
-| MOBILE-05 | /runbooks | Offline runbook library |
+| MOBILE-05 | /runbooks | Verified runbooks |
 | MOBILE-07 | /articles | Technical articles |
 | MOBILE-08 | /learn | Learning paths |
 | MOBILE-09 | /learn/interview | Interview trainer |
@@ -59,8 +59,8 @@ screencap -p. No caller can supply a made-up identifier through environment.
 | MOBILE-01 | /welcome | walidsite.mobile.01 | Visible localized Welcome screen |
 | MOBILE-04 | /solutions/{id} | walidsite.mobile.04 | Matching reviewed UUID detail loaded, not withdrawn |
 | MOBILE-06 | /runbooks/{id}/offline | walidsite.mobile.06 | Real offline guide detail and localized heading |
-| MOBILE-11 | /saved | walidsite.mobile.11 | Authenticated Saved tab selected |
-| MOBILE-12 | /profile | walidsite.mobile.12 | Authenticated Profile tab selected |
+| MOBILE-11 | /saved | walidsite.mobile.11 | Authenticated Saved Resources surface selected |
+| MOBILE-12 | /profile | walidsite.mobile.12 | Authenticated Personal Profile surface selected |
 
 MOBILE-11/12 intentionally expose only walidsite.mobile.account.locked
 before login, after sign-out, after session expiry or when the private profile
