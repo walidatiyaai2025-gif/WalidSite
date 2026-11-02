@@ -297,6 +297,12 @@ class EditorialPipelineTest extends TestCase
         $this->assertSame('unverified', $asset->rights_status);
         $this->assertFalse($asset->isPubliclyUsable());
         $this->assertSame('image/png', $asset->mime_type);
+        $variant = $asset->hasMany(\App\Models\AssetVariant::class, 'asset_id')
+            ->where('size_key', 'source')->firstOrFail();
+        $this->assertSame($asset->storage_key, $variant->storage_key);
+        $this->assertSame(2, $variant->width);
+        $this->assertSame(2, $variant->height);
+        $this->assertSame('png', $variant->format);
         Storage::disk('local')->assertExists($asset->storage_key);
         Storage::disk('local')->assertExists($asset->storage_key.'.provenance.json');
         $meta = json_decode(Storage::disk('local')->get(
