@@ -63,7 +63,7 @@ def main() -> int:
     }
 
     with sync_playwright() as playwright:
-        browser = playwright.chromium.launch(headless=True, args=["--disable-lcd-text"])
+        browser = playwright.chromium.launch(headless=True)
         try:
             for screen_id in SCREEN_IDS:
                 screen = screens[screen_id]
