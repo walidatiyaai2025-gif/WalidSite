@@ -21,7 +21,9 @@
         @php($t007RawTrack = request()->query()['track'] ?? 'all')
         @php($t007SwitchArgs['track'] = is_string($t007RawTrack) && in_array($t007RawTrack, ['all', 'database', 'software', 'delivery'], true) ? $t007RawTrack : 'all')
     @endif
-    <a class="t007-sr-only" href="{{ route($t007SwitchRoute, $t007SwitchArgs) }}">
+    {{-- Language selection must be visible and keyboard-operable, not screen-reader-only.
+         Preserve the recruiter track only after validating its public allowlist. --}}
+    <a class="t007-contact t007-language-switch" lang="{{ $t007Locale === 'ar' ? 'en' : 'ar' }}" hreflang="{{ $t007Locale === 'ar' ? 'en' : 'ar' }}" aria-label="{{ $t007Locale === 'ar' ? 'Switch to English' : 'التبديل إلى العربية' }}" href="{{ route($t007SwitchRoute, $t007SwitchArgs) }}">
         {{ $t007Locale === 'ar' ? 'English' : 'العربية' }}
     </a>
     @if($t007Current === 'public.hire')
