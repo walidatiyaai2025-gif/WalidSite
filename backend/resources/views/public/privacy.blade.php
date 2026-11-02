@@ -33,5 +33,25 @@
 <a href="{{ route('public.contact', ['lang'=>$locale, 'topic'=>'privacy']) }}">{{ $locale === 'ar' ? 'طلب بيانات زائر' : 'Visitor data request' }}</a>
 <a href="{{ route('public.terms', ['lang'=>$locale]) }}">{{ $locale === 'ar' ? 'عرض الشروط' : 'View terms' }}</a>
 </nav>
+<article aria-labelledby="privacy-rights-heading">
+<h2 id="privacy-rights-heading">{{ $locale === 'ar' ? 'اختر نوع طلب البيانات' : 'Choose a data rights request' }}</h2>
+<p>{{ $locale === 'ar'
+? 'هذه الروابط تملأ موضوع رسالة التواصل فقط. تتطلب الرسالة موافقة صريحة وإعداد بريد عامل. إرسال طلب لا يعني تنفيذ حذف أو تصدير أو إلغاء اشتراك.'
+: 'These links only prefill a contact subject. Sending requires affirmative consent and a configured mail transport. An inquiry does not complete deletion, export, or unsubscribe.' }}</p>
+<ul>
+@foreach([
+    'access' => ['ar' => 'الاطلاع على البيانات', 'en' => 'Access my data'],
+    'export' => ['ar' => 'طلب نسخة للتصدير', 'en' => 'Request a data export'],
+    'correction' => ['ar' => 'تصحيح المعلومات', 'en' => 'Correct my information'],
+    'deletion' => ['ar' => 'طلب الحذف', 'en' => 'Request deletion'],
+    'revoke' => ['ar' => 'طلب سحب موافقة الإشعارات', 'en' => 'Request notification consent revocation'],
+] as $right => $labels)
+<li><a href="{{ route('public.contact', ['lang' => $locale, 'topic' => 'privacy', 'request' => $right]) }}">{{ $labels[$locale] }}</a></li>
+@endforeach
+</ul>
+<p>{{ $locale === 'ar'
+? 'إذا كنت تملك حسابًا، فإجراءات التصدير والحذف وتفضيلات الإشعارات الفعلية متاحة عبر واجهات الحساب الموثقة عندما تكون الخدمة مهيأة. لا ترسل كلمة المرور أو رمز الدخول عبر البريد.'
+: 'Authenticated account APIs provide actual export, deletion and notification preference controls when available. Do not send passwords or access tokens by email.' }}</p>
+</article>
 </section>
 @endsection
