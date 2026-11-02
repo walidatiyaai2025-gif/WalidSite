@@ -172,9 +172,10 @@ def main() -> int:
         encoding="utf-8",
     )
     print(report_path.read_text(encoding="utf-8"))
-    # Diagnostic capture intentionally does not gate the PR. Final acceptance
-    # remains qa/capture_visual_evidence.py + --require-complete evidence.
-    return 0
+    # Diagnostics are non-certifying, but renderer failures must never be green.
+    # Pixel mismatches remain reported rather than accepted as exact parity.
+    return 1 if any(row["status"] in ("render_failed", "wrong_dimensions")
+                    for row in report["screens"].values()) else 0
 
 
 if __name__ == "__main__":
