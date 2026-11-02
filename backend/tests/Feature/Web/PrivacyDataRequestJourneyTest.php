@@ -173,6 +173,23 @@ final class PrivacyDataRequestJourneyTest extends TestCase
         Mail::assertNothingSent();
     }
 
+    public function test_unconfigured_contact_delivery_rejects_post_even_with_affirmative_consent(): void
+    {
+        Mail::fake();
+        config(['mail.contact_recipient' => null, 'mail.default' => 'smtp']);
+
+        $this->post('/contact?lang=en&topic=privacy&request=deletion', [
+            'name' => 'Privacy Visitor',
+            'email' => 'visitor@example.test',
+            'subject' => 'Personal data deletion request',
+            'message' => 'Please review my privacy inquiry.',
+            'privacy_consent' => '1',
+            'website' => '',
+        ])->assertStatus(503);
+
+        Mail::assertNothingSent();
+    }
+
     public function test_english_and_arabic_terms_distinguish_auth_actions_from_external_notification_delivery(): void
     {
         $this->get('/terms?lang=en')->assertOk()
