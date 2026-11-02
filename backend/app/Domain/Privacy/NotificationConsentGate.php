@@ -26,15 +26,18 @@ final class NotificationConsentGate
             return false;
         }
 
-        $preference = NotificationPreference::query()
+        // Consult persisted account state instead of a potentially stale User
+        // object. Suspension/deletion must revoke eligibility immediately.
+        // A non-null *future* timestamp is not proof of consent yet.
+        return NotificationPreference::query()
             ->where('user_id', $user->id)
             ->where('purpose', $purpose)
             ->where('channel', $channel)
-            ->first();
-
-        return $preference !== null
-            && $preference->enabled === true
-            && $preference->consented_at !== null
-            && $preference->revoked_at === null;
+            ->whereHas('user', static fn ($query) => $query->where('status', 'active'))
+            ->where('enabled', true)
+            ->whereNotNull('consented_at')
+            ->where('consented_at', '<=', now('UTC'))
+            ->whereNull('revoked_at')
+            ->exists();
     }
 }
