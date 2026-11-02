@@ -97,6 +97,24 @@ def execute(root: Path, plan: object, commit: str, *,
                     locale=item["locale"], dpr=item["dpr"], route=item["route"],
                     command=item["renderer_command"], timeout=item["timeout"],
                 )
+                # A renderer return code is NOT a visual acceptance receipt.
+                # Re-open the canonical ledger and audit the admitted capture
+                # before recording success; this prevents false 40/40 reports
+                # when an adapter silently succeeds without admitting pixels.
+                if not verified_head(root, commit):
+                    raise CaptureError("Source checkout changed after capture")
+                try:
+                    confirmed = json.loads(
+                        (root / "design/visual-fidelity-evidence.json").read_text(encoding="utf-8")
+                    )
+                    matched = confirmed["screens"][screen_id]["status"] == "matched"
+                except (OSError, ValueError, KeyError, TypeError):
+                    matched = False
+                if not matched:
+                    raise CaptureError("Capture returned without matched evidence in canonical ledger")
+                post_errors, _, _ = audit(root)
+                if post_errors:
+                    raise CaptureError("Post-capture evidence audit failed: " + "; ".join(post_errors))
                 result["captured"].append(screen_id)
             except CaptureError as exc:
                 # Independent screens may continue; failures never get matched.

@@ -296,4 +296,31 @@ final class AdminOperationsJourneyTest extends TestCase
         }
         Http::assertNothingSent();
     }
+    public function test_admin_project_and_audience_filters_have_translated_labels_but_stable_values(): void
+    {
+        Http::fake();
+        $this->project();
+        $this->actingAs($this->account('owner'), 'web');
+
+        $this->get('/admin/projects?lang=ar&status=research&visibility=private')->assertOk()
+            ->assertSee('value="research"', false)
+            ->assertSee('بحث')
+            ->assertSee('خاص')
+            ->assertDontSee('>research</option>', false);
+        $this->get('/admin/projects?lang=en&status=research&visibility=private')->assertOk()
+            ->assertSee('Research')
+            ->assertSee('Private');
+
+        $this->get('/admin/audience?lang=ar&purpose=editorial_updates&channel=push')->assertOk()
+            ->assertSee('تحديثات المحتوى')
+            ->assertSee('إشعار فوري')
+            ->assertSee('value="editorial_updates"', false)
+            ->assertSee('value="push"', false);
+        $this->get('/admin/audience?lang=en&purpose=editorial_updates&channel=push')->assertOk()
+            ->assertSee('Editorial updates')
+            ->assertSee('Push notification');
+        Http::assertNothingSent();
+    }
+
+
 }

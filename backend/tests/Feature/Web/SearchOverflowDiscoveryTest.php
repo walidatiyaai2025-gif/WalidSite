@@ -123,7 +123,7 @@ final class SearchOverflowDiscoveryTest extends TestCase
                 ->assertSee('href="'.e(route('public.blog', [
                     'lang' => $locale, 'q' => $term,
                 ])).'"', false);
-            $this->assertSame(10, substr_count($articlesOnly->getContent(), 'data-testid="search-article-result"'));
+            $this->assertSame(10, substr_count($articlesOnly->getContent(), '/blog/overflow-article-'));
             $articlesOnly->assertDontSee('Browse all matching projects');
 
             $projectsOnly = $this->get(route('public.search', [
@@ -136,13 +136,13 @@ final class SearchOverflowDiscoveryTest extends TestCase
                 ->assertSee('href="'.e(route('public.projects', [
                     'lang' => $locale, 'q' => $term,
                 ])).'"', false);
-            $this->assertSame(10, substr_count($projectsOnly->getContent(), 'data-testid="search-project-result"'));
+            $this->assertSame(10, substr_count($projectsOnly->getContent(), '/projects/overflow-project-'));
             $projectsOnly->assertDontSee('Browse all matching articles');
 
             // Quick search intentionally remains bounded to ten valid rows.
             // The full filtered listings must not silently lose the 11th.
-            $this->assertSame(10, substr_count($response->getContent(), 'data-testid="search-article-result"'));
-            $this->assertSame(10, substr_count($response->getContent(), 'data-testid="search-project-result"'));
+            $this->assertSame(10, substr_count($response->getContent(), '/blog/overflow-article-'));
+            $this->assertSame(10, substr_count($response->getContent(), '/projects/overflow-project-'));
 
             $this->get(route('public.blog', [
                 'lang' => $locale, 'q' => $term, 'page' => 2,

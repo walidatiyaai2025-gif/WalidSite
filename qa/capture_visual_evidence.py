@@ -17,13 +17,13 @@ from pathlib import Path
 from PIL import Image, UnidentifiedImageError
 
 try:
-    from qa.validate_visual_fidelity import audit
+    from qa.validate_visual_fidelity import audit, _route_matches
 except ModuleNotFoundError as exc:
     # python3 qa/capture_visual_evidence.py puts qa/ first on sys.path.
     # The module form (python3 -m qa.capture_visual_evidence) uses qa.*.
     if exc.name != "qa":
         raise
-    from validate_visual_fidelity import audit
+    from validate_visual_fidelity import audit, _route_matches
 
 
 class CaptureError(ValueError):
@@ -77,20 +77,12 @@ def verified_source_checkout(root: Path, commit: str) -> bool:
     return True
 
 
-def _route_matches(contract_route: str, actual: str) -> bool:
-    if not isinstance(actual, str) or not actual.startswith("/") or "?" in actual or "#" in actual:
-        return False
-    pattern = re.escape(contract_route)
-    pattern = re.sub(r"\\\{[^{}]+\\\}", r"[^/]+", pattern)
-    return re.fullmatch(pattern, actual) is not None
-
-
 def capture(root: Path, screen_id: str, *, commit: str, locale: str,
             dpr: float, route: str, command: list[str], timeout: int = 240):
     root = root.resolve()
     if not re.fullmatch(r"[0-9a-f]{40}", commit):
         raise CaptureError("Renderer commit must be a full lowercase SHA")
-    if locale not in ("ar", "en") or not isinstance(dpr, (int, float)) or not 0 < dpr <= 8:
+    if locale not in ("ar", "en") or type(dpr) not in (int, float) or not 0.5 <= dpr <= 8:
         raise CaptureError("Invalid locale or device pixel ratio")
     if not command or any("assets/screen-reference" in part for part in command):
         raise CaptureError("Supply a runtime renderer command, not an original reference")
@@ -121,6 +113,8 @@ def capture(root: Path, screen_id: str, *, commit: str, locale: str,
     with Image.open(approved) as reference:
         expected = reference.convert("RGBA")
         width, height = expected.size
+    if any(size / dpr != int(size / dpr) for size in (width, height)):
+        raise CaptureError("Reference physical width and height must be divisible by DPR")
 
     # Only the renderer writes the temporary output. No pre-existing screenshot
     # is trusted, and the immutable approved image is never an input to it.

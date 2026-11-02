@@ -61,6 +61,8 @@ python3 qa/capture_visual_batch.py --plan /tmp/walidsite-all-40.json --commit "$
 python3 qa/validate_visual_fidelity.py --require-complete
 ```
 
+**Evidence identity is binding:** every `matched` record must point to `qa/visual-captures/<SCREEN-ID>.png` for its own screen ID, use the contracted route (including only a single safe segment for each `{slug}` or `{id}` placeholder), report a lowercase 40-character checked-out SHA, and use a DPR of 0.5–8 which divides both original PNG dimensions exactly. Encoded path escapes, control characters, cross-screen capture filenames and noncanonical routes are rejected even if a synthetic image happens to have matching pixels. This additional integrity check does **not** establish whether a capture came from a real UI; real renderer/device proof is still mandatory.
+
 The second command is the definitive strict evidence gate. It fails with pending entries, invalid captured image provenance, or a single differing decoded RGBA pixel. Do not close #481 or T024 because the batch runner exists or its synthetic unit tests pass. Separate AR/EN, responsive width, empty/error, keyboard, accessibility and role/authorization QA remain required. Attach actual capture SHA, commands, CI and device/browser evidence in the Issue, not invented success totals.
 
 ## Inspect actual visual differences without claiming acceptance

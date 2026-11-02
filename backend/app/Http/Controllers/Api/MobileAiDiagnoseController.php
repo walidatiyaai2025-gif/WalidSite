@@ -66,7 +66,13 @@ final class MobileAiDiagnoseController extends Controller
         }
 
         $diagnosis = DB::transaction(function () use ($user, $input, $selected, $queue): AiDiagnosisRequest {
-            User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
+            // Route/provider admission and catalog verification happen after
+            // authentication and can be slow. Suspension or account deletion
+            // may complete in between. The locked row, not the stale bearer
+            // model, is authoritative before reserving any paid AI work.
+            $lockedAccount = User::query()->whereKey($user->id)
+                ->lockForUpdate()->first();
+            abort_unless($lockedAccount !== null && $lockedAccount->status === 'active', 403);
 
             $minuteCount = AiDiagnosisRequest::query()
                 ->where('user_id', $user->id)
