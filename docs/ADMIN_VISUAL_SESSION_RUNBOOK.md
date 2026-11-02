@@ -52,12 +52,15 @@ export WALIDSITE_CAPTURE_STORAGE_STATE=/private/temporary/path/storage-state.jso
 export WALIDSITE_RENDER_BASE_URL=http://127.0.0.1:8000
 sha="$(git rev-parse HEAD)"
 # Use a trusted local plan with canonical ADMIN-08..11 route/locale/DPR entries,
-# each renderer_command = ["python3", "qa/render_web_screenshot.py"].
+# each renderer_command = ["python3", "qa/render_admin_screenshot.py"].
 python3 qa/visual_diagnostics.py --plan /private/temporary/admin-plan.json --commit "$sha"
 # A mismatch diagnostic is NOT a passed visual comparison or an admitted capture.
+# The same trusted plan is eligible for strict zero-difference evidence admission
+# only after the real renderer is proven correct:
+# python3 qa/capture_visual_batch.py --plan /private/temporary/admin-plan.json --commit "$sha"
 ```
 
-The actual renderer `qa/render_web_screenshot.py` requires
+The independently merged-on-this-branch Admin renderer `qa/render_admin_screenshot.py` requires
 `WALIDSITE_CAPTURE_STORAGE_STATE` to render protected pages. Never share its
 contents. No renderer is allowed to reinterpret a login screen as an Admin
 screenshot. Run the strict visual evidence admission only once a genuine
