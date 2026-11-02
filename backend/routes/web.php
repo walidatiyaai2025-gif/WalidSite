@@ -2264,12 +2264,129 @@ Route::middleware('auth:web')->prefix('admin')->group(function (): void {
             ->where('visibility', 'private')->whereNull('verified_at')
             ->orderByDesc('created_at')->orderByDesc('id')
             ->paginate(10)->appends(['lang' => $locale]);
+        $verifiedEvidenceCount = \App\Models\ProjectEvidence::query()
+            ->where('project_id', $draft->id)
+            ->where('visibility', 'public')->whereNotNull('verified_at')
+            ->where('verified_at', '<=', now('UTC'))->count();
         return response()->view('admin.project-evidence-review', compact(
-            'draft', 'evidence', 'locale'
+            'draft', 'evidence', 'locale', 'verifiedEvidenceCount'
         ))->header('Cache-Control', 'no-store, private')
             ->header('X-Content-Type-Options', 'nosniff');
     })->whereUuid('project')->name('admin.operations.projects.evidence.review')
         ->middleware('throttle:30,1');
+
+    // ADMIN-09: explicit owner review is the only transition from a private
+    // candidate to verified public evidence. The application never fetches the
+    // candidate URL here: source and publication rights are confirmed manually.
+    Route::post('/projects/{project}/evidence/{evidence}/approve', function (Request $request, string $project, string $evidence) {
+        abort_unless($request->user()?->canAccessAdmin() && $request->user()->hasRole('owner'), 403);
+        $input = $request->validate([
+            'lang' => ['sometimes', 'in:ar,en'],
+            'page' => ['sometimes', 'integer', 'between:1,10000'],
+            'source_reviewed' => ['accepted'],
+            'publication_rights_confirmed' => ['accepted'],
+        ]);
+        if (array_diff(array_keys($request->request->all()), [
+            '_token', 'source_reviewed', 'publication_rights_confirmed',
+        ]) !== []) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'evidence' => 'Unsupported evidence approval fields.',
+            ]);
+        }
+
+        \Illuminate\Support\Facades\DB::transaction(function () use ($project, $evidence, $request): void {
+            $draft = \App\Models\Project::query()->whereKey($project)->lockForUpdate()->firstOrFail();
+            abort_unless($draft->visibility === 'private' && $draft->published_at === null, 409);
+
+            $candidate = \App\Models\ProjectEvidence::query()
+                ->whereKey($evidence)->where('project_id', $draft->id)
+                ->lockForUpdate()->firstOrFail();
+            abort_unless($candidate->visibility === 'private' && $candidate->verified_at === null, 409);
+
+            $candidate->forceFill([
+                'visibility' => 'public',
+                'verified_at' => now('UTC'),
+            ])->save();
+
+            // Identifier-only audit: never log the private source URL or request payload.
+            \Illuminate\Support\Facades\Log::notice('admin.project_evidence.approved', [
+                'project_id' => $draft->id,
+                'evidence_id' => $candidate->id,
+                'actor_id' => $request->user()->id,
+                'source_reviewed' => true,
+                'publication_rights_confirmed' => true,
+            ]);
+        }, 3);
+
+        $ar = ($input['lang'] ?? 'en') === 'ar';
+        return redirect()->route('admin.operations.projects.evidence.review', [
+            'project' => $project,
+            'lang' => $ar ? 'ar' : 'en',
+            'page' => $input['page'] ?? 1,
+        ])->with('status', $ar
+            ? 'تم اعتماد الدليل للمشاركة العامة بعد تأكيد مراجعة المصدر وحقوق النشر. بقي المشروع خاصاً حتى خطوة النشر المنفصلة.'
+            : 'Evidence approved for public use after source and publication-rights confirmation. The project remains private until the separate publish step.');
+    })->whereUuid('project')->whereUuid('evidence')
+        ->name('admin.operations.projects.evidence.approve')->middleware('throttle:10,1');
+
+    // Publishing is a separate, explicit transition. It cannot create or
+    // approve evidence and fails closed unless a currently verified public
+    // source exists and the bilingual project record is complete.
+    Route::post('/projects/{project}/publish', function (Request $request, string $project) {
+        abort_unless($request->user()?->canAccessAdmin() && $request->user()->hasRole('owner'), 403);
+        $input = $request->validate([
+            'lang' => ['sometimes', 'in:ar,en'],
+            'publication_confirmed' => ['accepted'],
+        ]);
+        if (array_diff(array_keys($request->request->all()), [
+            '_token', 'publication_confirmed',
+        ]) !== []) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'project' => 'Unsupported project publication fields.',
+            ]);
+        }
+
+        \Illuminate\Support\Facades\DB::transaction(function () use ($project, $request): void {
+            $draft = \App\Models\Project::query()->whereKey($project)->lockForUpdate()->firstOrFail();
+            abort_unless($draft->visibility === 'private' && $draft->published_at === null, 409);
+
+            foreach (['title', 'summary_en', 'summary_ar', 'role_en', 'role_ar'] as $field) {
+                $value = $draft->{$field};
+                if (! is_string($value) || trim($value) === '') {
+                    throw \Illuminate\Validation\ValidationException::withMessages([
+                        'project' => 'Bilingual project content and role fields must be complete before publication.',
+                    ]);
+                }
+            }
+
+            $hasVerifiedEvidence = \App\Models\ProjectEvidence::query()
+                ->where('project_id', $draft->id)
+                ->where('visibility', 'public')->whereNotNull('verified_at')
+                ->where('verified_at', '<=', now('UTC'))->exists();
+            if (! $hasVerifiedEvidence) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'project' => 'At least one independently reviewed public evidence source is required before publication.',
+                ]);
+            }
+
+            $draft->forceFill([
+                'visibility' => 'public',
+                'published_at' => now('UTC'),
+            ])->save();
+
+            \Illuminate\Support\Facades\Log::notice('admin.project.published', [
+                'project_id' => $draft->id,
+                'actor_id' => $request->user()->id,
+            ]);
+        }, 3);
+
+        $ar = ($input['lang'] ?? 'en') === 'ar';
+        return redirect()->route('admin.operations.projects', ['lang' => $ar ? 'ar' : 'en'])
+            ->with('status', $ar
+                ? 'تم نشر المشروع بعد اجتياز بوابة الدليل المعتمد والمحتوى الثنائي.'
+                : 'Project published after verified-evidence and bilingual-content gates passed.');
+    })->whereUuid('project')->name('admin.operations.projects.publish')
+        ->middleware('throttle:5,1');
 
     Route::patch('/projects/{project}', function (Request $request, string $project) {
         abort_unless($request->user()?->canAccessAdmin() && $request->user()->hasRole('owner'), 403);
