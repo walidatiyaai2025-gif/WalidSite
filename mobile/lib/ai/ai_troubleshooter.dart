@@ -8,6 +8,8 @@ import 'package:flutter/material.dart';
 import '../articles/verified_articles.dart';
 import 'diagnosis_report.dart';
 import '../runbooks/verified_online_runbooks.dart';
+import '../runbooks/offline_runbooks.dart';
+import '../solutions/offline_solution_finder.dart';
 import '../theme/waleed_theme.dart';
 
 class MobileAiHttpException implements Exception {
@@ -39,6 +41,9 @@ class MobileAiJob {
   static final RegExp _uuid = RegExp(
     r'^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$',
   );
+
+  /// Validate a user-held job reference before any authenticated status GET.
+  static bool isValidId(String value) => _uuid.hasMatch(value);
 
   static MobileAiJob parse(String raw) {
     if (raw.length > 128 * 1024) {
@@ -222,7 +227,13 @@ class MobileAiClient {
     required String question,
     required String technology,
     required String codeSnippet,
+    required bool consentToProcess,
   }) async {
+    // Never assert consent in the HTTP adapter on a caller's behalf.
+    // A direct caller must supply affirmative per-request consent.
+    if (!consentToProcess) {
+      throw const FormatException('Explicit diagnosis consent required');
+    }
     if (token.isEmpty || token.length > 8192) {
       throw const FormatException('Invalid bearer token');
     }
@@ -234,7 +245,7 @@ class MobileAiClient {
         'question': question.trim(),
         'technology': technology.trim(),
         'code_snippet': codeSnippet,
-        'consent_to_process': true,
+        'consent_to_process': consentToProcess,
       },
     );
     if (response.key != HttpStatus.ok) {
@@ -247,7 +258,7 @@ class MobileAiClient {
   Future<MobileAiJob> readJob(String token, String jobId) async {
     if (token.isEmpty ||
         token.length > 8192 ||
-        !MobileAiJob._uuid.hasMatch(jobId)) {
+        !MobileAiJob.isValidId(jobId)) {
       throw const FormatException('Invalid diagnosis job identity');
     }
     final response = await _jsonRequest(
@@ -344,6 +355,7 @@ class AiTroubleshooterScreen extends StatefulWidget {
     this.saveAction,
     this.reportAction,
     this.detailLoader,
+    this.offlinePack,
     this.nowUtc,
     super.key,
   });
@@ -356,6 +368,9 @@ class AiTroubleshooterScreen extends StatefulWidget {
   final MobileSaveAction? saveAction;
   final DiagnosisReportAction? reportAction;
   final Future<ReviewedRunbook> Function(String id)? detailLoader;
+  /// The production route loads verified signed snapshots (or warns about
+  /// bundled educational content). Tests may supply a deterministic pack.
+  final Future<OfflineRunbookPack>? offlinePack;
   /// Injectable clock for deterministic session-expiry regression tests.
   final DateTime Function()? nowUtc;
 
@@ -370,6 +385,7 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
   final _technology = TextEditingController();
   final _question = TextEditingController();
   final _code = TextEditingController();
+  final _resumeId = TextEditingController();
 
   String? _token;
   DateTime? _expiresAt;
@@ -393,6 +409,7 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
     _technology.dispose();
     _question.dispose();
     _code.dispose();
+    _resumeId.dispose();
     super.dispose();
   }
 
@@ -412,6 +429,7 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
       _resetPollCooldown();
       _saved = false;
       _consent = false;
+      _resumeId.clear();
       _message = _expiredSessionMessage;
     });
     return false;
@@ -484,6 +502,7 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
             question: question,
             technology: technology,
             codeSnippet: codeSnippet,
+            consentToProcess: _consent,
           );
 
   MobileJobStatusAction get _readStatus => widget.jobStatusAction ??
@@ -586,6 +605,7 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
       _technology.clear();
       _question.clear();
       _code.clear();
+      _resumeId.clear();
       _message = widget.arabic
           ? 'جارٍ إلغاء الجلسة على الخادم...'
           : 'Revoking the session on the server...';
@@ -716,6 +736,58 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
     }
   }
 
+  /// Recover a previously issued job after navigation/network loss. The ID
+  /// alone conveys no access: the backend still checks the current bearer.
+  /// No prompt is replayed and no AI budget is reserved by this GET.
+  Future<void> _resumeExistingJob() async {
+    if (_busyDiagnosis || _busyPoll || _busySave || _job != null ||
+        !_requireActiveSession()) return;
+    final id = _resumeId.text.trim();
+    if (!MobileAiJob.isValidId(id)) {
+      setState(() => _message = widget.arabic
+          ? 'أدخل معرّف مهمة صالحًا من 36 حرفًا.'
+          : 'Enter a valid 36-character diagnosis job ID.');
+      return;
+    }
+    final token = _token!;
+    setState(() {
+      _busyPoll = true;
+      _message = null;
+    });
+    try {
+      final job = await _readStatus(token, id);
+      if (!mounted || _token != token || !_requireActiveSession()) return;
+      if (job.id.toLowerCase() != id.toLowerCase()) {
+        throw const FormatException('Mismatched diagnosis job identity');
+      }
+      setState(() {
+        _job = job;
+        _saved = false;
+        _resumeId.clear();
+        _respectPollDelay(job);
+        _message = _jobMessage(job);
+      });
+    } catch (error) {
+      if (!mounted || _token != token) return;
+      setState(() {
+        if (error is MobileAiHttpException &&
+            (error.statusCode == 401 || error.statusCode == 403)) {
+          _token = null;
+          _expiresAt = null;
+          _consent = false;
+          _resumeId.clear();
+        }
+        _message = error is MobileAiHttpException && error.statusCode == 404
+            ? (widget.arabic
+                ? 'المهمة غير متاحة أو انتهت صلاحيتها. ابدأ تشخيصًا جديدًا.'
+                : 'Job not available or expired. Start a new diagnosis.')
+            : _genericError(error);
+      });
+    } finally {
+      if (mounted) setState(() => _busyPoll = false);
+    }
+  }
+
   Future<void> _saveResult() async {
     final id = _job?.reviewedRunbookId();
     if (_busySave || id == null || !_requireActiveSession()) return;
@@ -778,6 +850,61 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
     ));
   }
 
+  // Never pass question, code, bearer or AI result into the local finder.
+  // The user must initiate their own offline keyword search.
+  void _openOfflineRecovery() {
+    Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => Directionality(
+        textDirection: widget.arabic ? TextDirection.rtl : TextDirection.ltr,
+        child: OfflineSolutionFinder(
+          arabic: widget.arabic,
+          bundledPack: widget.offlinePack,
+        ),
+      ),
+    ));
+  }
+
+  void _openReviewedCatalog() {
+    if (ReviewedRunbookReader.configuredOrigin() == null) return;
+    Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => Directionality(
+        textDirection: widget.arabic ? TextDirection.rtl : TextDirection.ltr,
+        child: ReviewedRunbookLibrary(arabic: widget.arabic),
+      ),
+    ));
+  }
+
+  Widget _recoveryActions() {
+    final ar = widget.arabic;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          ar
+              ? 'يمكنك البحث يدويًا في الأدلة المحلية دون إرسال السؤال أو الكود إلى أي خادم. النتائج النصية ليست تشخيصًا بالذكاء الاصطناعي.'
+              : 'Search offline guides manually without sending your question or code to a server. Keyword matches are not AI diagnoses.',
+          key: const Key('ai-recovery-disclaimer'),
+        ),
+        const SizedBox(height: 12),
+        OutlinedButton.icon(
+          key: const Key('ai-offline-recovery'),
+          onPressed: _openOfflineRecovery,
+          icon: const Icon(Icons.offline_bolt_outlined),
+          label: Text(ar ? 'ابحث في الأدلة المحلية' : 'Search offline guides'),
+        ),
+        if (ReviewedRunbookReader.configuredOrigin() != null) ...[
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            key: const Key('ai-reviewed-catalog'),
+            onPressed: _openReviewedCatalog,
+            icon: const Icon(Icons.fact_check_outlined),
+            label: Text(ar ? 'تصفح الأدلة المنشورة المراجعة' : 'Browse reviewed online guides'),
+          ),
+        ],
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final ar = widget.arabic;
@@ -791,14 +918,21 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
         body: SafeArea(
         child: !_apiConfigured
             ? Center(
-                child: Padding(
+                child: SingleChildScrollView(
                   padding: const EdgeInsets.all(24),
-                  child: Text(
-                    ar
-                        ? 'خادم التشخيص الآمن غير مهيأ في هذا الإصدار.'
-                        : 'The secure diagnosis server is not configured for this build.',
-                    key: const Key('ai-unconfigured'),
-                    textAlign: TextAlign.center,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        ar
+                            ? 'خادم التشخيص الآمن غير مهيأ في هذا الإصدار.'
+                            : 'The secure diagnosis server is not configured for this build.',
+                        key: const Key('ai-unconfigured'),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 20),
+                      _recoveryActions(),
+                    ],
                   ),
                 ),
               )
@@ -973,6 +1107,10 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
                       ),
                     ),
                   ],
+                  if (_message != null || (_job != null && !_isPending && resultId == null)) ...[
+                    const SizedBox(height: 16),
+                    _recoveryActions(),
+                  ],
                   if (_job != null) ...[
                     const SizedBox(height: 16),
                     Card(
@@ -1060,9 +1198,43 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
                                   ? 'الإبلاغ عن مشكلة التشخيص'
                                   : 'Report a diagnosis issue'),
                             ),
+                            Text(ar
+                                ? 'احتفظ بمعرّف المهمة لاسترجاعها بعد تسجيل الدخول مرة أخرى:'
+                                : 'Keep this ID to resume after signing in again:'),
+                            SelectableText(
+                              _job!.id,
+                              key: const Key('ai-job-reference'),
+                            ),
                           ],
                         ),
                       ),
+                    ),
+                  ],
+                  if (_token != null && _job == null) ...[
+                    const SizedBox(height: 12),
+                    Text(ar
+                        ? 'استرجاع تشخيص سابق (يتطلب صلاحية حسابك)'
+                        : 'Resume an earlier diagnosis (account access required)'),
+                    const SizedBox(height: 8),
+                    TextField(
+                      key: const Key('ai-resume-id'),
+                      controller: _resumeId,
+                      maxLength: 36,
+                      autocorrect: false,
+                      enableSuggestions: false,
+                      decoration: InputDecoration(
+                        labelText: ar ? 'معرّف مهمة التشخيص' : 'Diagnosis job ID',
+                        border: const OutlineInputBorder(),
+                      ),
+                    ),
+                    OutlinedButton.icon(
+                      key: const Key('ai-resume-submit'),
+                      onPressed: _busyDiagnosis || _busyPoll || _busySave ||
+                              _job != null ? null : _resumeExistingJob,
+                      icon: const Icon(Icons.history),
+                      label: Text(_busyPoll
+                          ? (ar ? 'جارٍ الاسترجاع...' : 'Restoring...')
+                          : (ar ? 'استرجاع الحالة' : 'Restore status')),
                     ),
                   ],
                 ],

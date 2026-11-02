@@ -5,11 +5,28 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:waleed_tech_companion/ai/ai_troubleshooter.dart';
 import 'package:waleed_tech_companion/runbooks/verified_online_runbooks.dart';
+import 'package:waleed_tech_companion/runbooks/offline_runbooks.dart';
+import 'package:waleed_tech_companion/solutions/offline_solution_finder.dart';
 
 void main() {
   const token = '1|test-mobile-bearer-token';
   const jobId = '11111111-1111-4111-8111-111111111111';
   const runbookId = '22222222-2222-4222-8222-222222222222';
+  const offlineFixture = OfflineRunbookPack(
+    version: 'local-fixture-1',
+    source: 'Bundled educational draft',
+    lastSynced: null,
+    verifiedAt: null,
+    items: [
+      OfflineRunbook(
+        id: 'database-recovery',
+        titleEn: 'Database recovery checklist',
+        titleAr: 'قائمة استعادة قاعدة البيانات',
+        stepsEn: ['Verify the local database backup'],
+        stepsAr: ['تحقق من النسخة المحلية لقاعدة البيانات'],
+      ),
+    ],
+  );
 
   Future<void> pumpScreen(
     WidgetTester tester, {
@@ -21,6 +38,7 @@ void main() {
     MobileSaveAction? save,
     Future<ReviewedRunbook> Function(String id)? detail,
     DateTime Function()? nowUtc,
+    Future<OfflineRunbookPack>? offlinePack,
   }) async {
     await tester.pumpWidget(MaterialApp(
       home: AiTroubleshooterScreen(
@@ -32,6 +50,7 @@ void main() {
         saveAction: save,
         detailLoader: detail,
         nowUtc: nowUtc,
+        offlinePack: offlinePack,
       ),
     ));
   }
@@ -389,6 +408,10 @@ void main() {
     await reveal(tester, const Key('ai-job-status'));
     expect(find.textContaining('Retry after about 30 seconds'), findsOneWidget);
     expect(find.byKey(const Key('ai-open-solution')), findsNothing);
+    // Reach the actual offscreen control and assert the real disabled state.
+    // Silently skipping the assertion when lazy scrolling unmounts the button
+    // would conceal a duplicate paid AI submission regression.
+    await revealAbove(tester, const Key('ai-diagnose-submit'));
     expect(tester.widget<FilledButton>(
       find.byKey(const Key('ai-diagnose-submit')),
     ).onPressed, isNull);
@@ -1065,5 +1088,193 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.widget<FilledButton>(
         find.byKey(const Key('ai-login-submit'))).onPressed, isNotNull);
+  });
+
+  testWidgets('unconfigured AI offers honest offline search without login',
+      (tester) async {
+    await pumpScreen(
+      tester,
+      offlinePack: Future<OfflineRunbookPack>.value(offlineFixture),
+    );
+    expect(find.byKey(const Key('ai-unconfigured')), findsOneWidget);
+    expect(find.byKey(const Key('ai-offline-recovery')), findsOneWidget);
+    expect(find.byKey(const Key('ai-reviewed-catalog')), findsNothing);
+
+    await tester.tap(find.byKey(const Key('ai-offline-recovery')));
+    await tester.pumpAndSettle();
+    expect(find.byType(OfflineSolutionFinder), findsOneWidget);
+    expect(find.byKey(const Key('solution-pack-provenance')), findsOneWidget);
+    expect(find.text('Bundled educational copy — unverified'), findsOneWidget);
+    expect(find.byKey(const Key('solution-search-hint')), findsOneWidget);
+
+    await tester.enterText(
+        find.byKey(const Key('solution-search-input')), 'database backup');
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('solution-database-recovery')), findsOneWidget);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('ai-unconfigured')), findsOneWidget);
+  });
+
+  testWidgets('provider outage recovers offline without forwarding private prompt',
+      (tester) async {
+    var attempts = 0;
+    await pumpScreen(
+      tester,
+      login: (_, __) async =>
+          const MobileAiSession(token: token, expiresAt: null),
+      diagnose: (_, __, ___, ____) async {
+        attempts++;
+        throw const MobileAiHttpException(503);
+      },
+      offlinePack: Future<OfflineRunbookPack>.value(offlineFixture),
+    );
+    await login(tester);
+    await tester.enterText(
+        find.byKey(const Key('ai-technology')), 'SQL Server');
+    await tester.enterText(
+        find.byKey(const Key('ai-question')), 'PRIVATE_REQUEST_NEVER_AUTO_SEARCH');
+    await tester.enterText(
+        find.byKey(const Key('ai-code')), 'PRIVATE_CODE_NEVER_AUTO_SEARCH');
+    await reveal(tester, const Key('ai-consent'));
+    await tester.tap(find.byKey(const Key('ai-consent')));
+    await reveal(tester, const Key('ai-diagnose-submit'));
+    await tester.tap(find.byKey(const Key('ai-diagnose-submit')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('AI diagnosis is currently unavailable.'), findsOneWidget);
+    await reveal(tester, const Key('ai-offline-recovery'));
+    await tester.tap(find.byKey(const Key('ai-offline-recovery')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(OfflineSolutionFinder), findsOneWidget);
+    expect(find.byKey(const Key('solution-search-hint')), findsOneWidget);
+    expect(find.text('PRIVATE_REQUEST_NEVER_AUTO_SEARCH'), findsNothing);
+    expect(find.text('PRIVATE_CODE_NEVER_AUTO_SEARCH'), findsNothing);
+    expect(find.text(token), findsNothing);
+    expect(attempts, 1);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    await revealAbove(tester, const Key('ai-diagnose-submit'));
+    expect(find.byKey(const Key('ai-diagnose-submit')), findsOneWidget);
+    expect(attempts, 1);
+  });
+
+  testWidgets('Arabic quota failure keeps RTL and an unverified offline warning',
+      (tester) async {
+    await pumpScreen(
+      tester,
+      arabic: true,
+      login: (_, __) async =>
+          const MobileAiSession(token: token, expiresAt: null),
+      diagnose: (_, __, ___, ____) async =>
+          throw const MobileAiHttpException(429),
+      offlinePack: Future<OfflineRunbookPack>.value(offlineFixture),
+    );
+    await login(tester);
+    await tester.enterText(
+        find.byKey(const Key('ai-technology')), 'قاعدة بيانات');
+    await tester.enterText(
+        find.byKey(const Key('ai-question')), 'لماذا فشل الاتصال بالخادم؟');
+    await reveal(tester, const Key('ai-consent'));
+    await tester.tap(find.byKey(const Key('ai-consent')));
+    await reveal(tester, const Key('ai-diagnose-submit'));
+    await tester.tap(find.byKey(const Key('ai-diagnose-submit')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('تم بلوغ حد الاستخدام. حاول لاحقًا.'), findsOneWidget);
+    await reveal(tester, const Key('ai-offline-recovery'));
+    await tester.tap(find.byKey(const Key('ai-offline-recovery')));
+    await tester.pumpAndSettle();
+    expect(find.byType(OfflineSolutionFinder), findsOneWidget);
+    expect(Directionality.of(tester.element(find.byType(OfflineSolutionFinder))),
+        TextDirection.rtl);
+    expect(find.text('حزمة تعليمية مرفقة غير معتمدة'), findsOneWidget);
+    await tester.enterText(
+        find.byKey(const Key('solution-search-input')), 'قاعدة البيانات');
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('solution-database-recovery')), findsOneWidget);
+  });
+
+  testWidgets('no reviewed AI result offers manual recovery without a second paid POST',
+      (tester) async {
+    var submissions = 0;
+    await pumpScreen(
+      tester,
+      login: (_, __) async =>
+          const MobileAiSession(token: token, expiresAt: null),
+      diagnose: (_, __, ___, ____) async {
+        submissions++;
+        return const MobileAiJob(
+          id: jobId, status: 'completed', progressPercent: 100,
+          resultUrl: null, retryAfterSeconds: null,
+        );
+      },
+      offlinePack: Future<OfflineRunbookPack>.value(offlineFixture),
+    );
+    await login(tester);
+    await tester.enterText(find.byKey(const Key('ai-technology')), 'Laravel');
+    await tester.enterText(
+        find.byKey(const Key('ai-question')), 'Why did my request time out?');
+    await reveal(tester, const Key('ai-consent'));
+    await tester.tap(find.byKey(const Key('ai-consent')));
+    await reveal(tester, const Key('ai-diagnose-submit'));
+    await tester.tap(find.byKey(const Key('ai-diagnose-submit')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('ai-open-solution')), findsNothing);
+    await reveal(tester, const Key('ai-offline-recovery'));
+    await tester.tap(find.byKey(const Key('ai-offline-recovery')));
+    await tester.pumpAndSettle();
+    expect(find.byType(OfflineSolutionFinder), findsOneWidget);
+    expect(submissions, 1);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    await reveal(tester, const Key('ai-job-status'));
+    expect(find.textContaining('Completed'), findsOneWidget);
+    expect(submissions, 1);
+  });
+
+  testWidgets('pending AI job remains available after browsing offline safely',
+      (tester) async {
+    var submissions = 0;
+    var polls = 0;
+    await pumpScreen(
+      tester,
+      login: (_, __) async =>
+          const MobileAiSession(token: token, expiresAt: null),
+      diagnose: (_, __, ___, ____) async {
+        submissions++;
+        return const MobileAiJob(
+          id: jobId, status: 'queued', progressPercent: 0,
+          resultUrl: null, retryAfterSeconds: 30,
+        );
+      },
+      poll: (_, __) async {
+        polls++;
+        throw StateError('No polling without manual refresh');
+      },
+      offlinePack: Future<OfflineRunbookPack>.value(offlineFixture),
+    );
+    await login(tester);
+    await tester.enterText(find.byKey(const Key('ai-technology')), 'API');
+    await tester.enterText(
+        find.byKey(const Key('ai-question')), 'Why does the job stay queued?');
+    await reveal(tester, const Key('ai-consent'));
+    await tester.tap(find.byKey(const Key('ai-consent')));
+    await reveal(tester, const Key('ai-diagnose-submit'));
+    await tester.tap(find.byKey(const Key('ai-diagnose-submit')));
+    await tester.pumpAndSettle();
+
+    await reveal(tester, const Key('ai-offline-recovery'));
+    await tester.tap(find.byKey(const Key('ai-offline-recovery')));
+    await tester.pumpAndSettle();
+    expect(find.byType(OfflineSolutionFinder), findsOneWidget);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    await reveal(tester, const Key('ai-job-status'));
+    expect(find.textContaining('Queued'), findsOneWidget);
+    expect(submissions, 1);
+    expect(polls, 0);
   });
 }
