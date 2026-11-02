@@ -90,8 +90,20 @@ final class DurableAiQueue
         // queued jobs for disabled/failed/archived providers can starve all
         // healthy work indefinitely. Admission is still rechecked under the
         // provider row lock below, so a concurrent admin change stays safe.
+        // Exclude saturated providers BEFORE the bounded 20-job scan.
+        // Otherwise 20 old queued jobs behind a busy one-slot provider can
+        // hide a runnable job on another provider. This is only a scheduling
+        // hint: each candidate is still checked under its provider row lock.
+        $runningCounts = DB::table('ai_jobs as active_jobs')
+            ->select('active_jobs.provider_id')
+            ->selectRaw('COUNT(*) AS running_count')
+            ->where('active_jobs.status', 'running')
+            ->groupBy('active_jobs.provider_id');
+
         $ids = DB::table('ai_jobs')
             ->join('ai_providers', 'ai_providers.id', '=', 'ai_jobs.provider_id')
+            ->leftJoinSub($runningCounts, 'provider_running',
+                fn ($join) => $join->on('provider_running.provider_id', '=', 'ai_providers.id'))
             // An open provider circuit cannot admit work until cooldown.
             // Excluding it before LIMIT prevents a large frozen backlog from
             // starving eligible providers; lock-time verification stays below.
@@ -105,6 +117,10 @@ final class DurableAiQueue
             // a request for the default one-worker slot. Exclude such a
             // backlog before LIMIT to avoid starving healthy providers.
             ->where('ai_providers.concurrent_limit', '>', 0)
+            ->whereRaw('COALESCE(provider_running.running_count, 0) < ai_providers.concurrent_limit')
+            // Only installed adapters are executable; an unknown provider
+            // type must never occupy all candidate slots or receive a lease.
+            ->whereIn('ai_providers.provider_type', ['ollama-compatible', 'openai-compatible'])
             // Managed jobs without a reservation cannot be admitted. Likewise
             // a reservation over the configured daily ceiling is impossible
             // until an admin increases that ceiling. Exclude both before the
@@ -134,7 +150,8 @@ final class DurableAiQueue
                     // Raw query builder bypasses AiProvider's SoftDeletes scope.
                     // Archived providers must never start new AI executions.
                     $provider->deleted_at !== null ||
-                    ! $provider->enabled || $provider->health_status !== 'healthy') {
+                    ! $provider->enabled || $provider->health_status !== 'healthy' ||
+                    ! in_array($provider->provider_type, ['ollama-compatible', 'openai-compatible'], true)) {
                     return null;
                 }
                 $circuit = DB::table('ai_provider_circuits')
