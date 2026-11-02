@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -251,6 +252,8 @@ void main() {
     expect(find.byKey(const Key('account-login')), findsOneWidget);
     expect(find.byKey(const Key('account-profile-email')), findsNothing);
     expect(find.text(bearer), findsNothing);
+    expect(tester.widget<TextField>(find.byKey(const Key('account-email'))
+        .controller!.text, isEmpty);
   });
 
   testWidgets('failed remote revoke clears local session but does not claim success',
@@ -332,6 +335,168 @@ void main() {
     expect(find.byKey(const Key('account-profile-email')), findsNothing);
     expect(find.text(bearer), findsNothing);
     expect(find.text('current-password'), findsNothing);
+    expect(tester.widget<TextField>(find.byKey(const Key('account-email'))
+        .controller!.text, isEmpty);
+  });
+
+
+  for (final arabic in [false, true]) {
+    testWidgets('logout scrubs protected data before remote reply and isolates a second account: ' +
+        (arabic ? 'Arabic' : 'English'), (tester) async {
+      final remoteLogout = Completer<void>();
+      const secondEmail = 'other-account@example.org';
+      const secondBearer = '2|other-private-session';
+      var loginCount = 0;
+      var logoutCount = 0;
+
+      await tester.pumpWidget(MaterialApp(
+        home: Directionality(
+          textDirection: arabic ? TextDirection.rtl : TextDirection.ltr,
+          child: MobileAccountJourney(
+            arabic: arabic,
+            loginAction: (address, _) async {
+              loginCount++;
+              if (address == email) {
+                return const MobileAiSession(token: bearer, expiresAt: null);
+              }
+              if (address == secondEmail) {
+                return const MobileAiSession(token: secondBearer, expiresAt: null);
+              }
+              throw const FormatException('Unexpected account');
+            },
+            profileAction: (token) async => token == bearer
+                ? const MobileAccount(articleId, email)
+                : const MobileAccount(runbookId, secondEmail),
+            savedAction: (token, _, n) async => MobileSavedPage.parse(
+              page(n, token == bearer ? [article()] : [runbook()]), n,
+            ),
+            logoutAction: (token) async {
+              expect(token, bearer);
+              logoutCount++;
+              await remoteLogout.future;
+            },
+          ),
+        ),
+      ));
+      await login(tester);
+      expect(find.text('Source-verified Laravel guide'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('account-profile-tab')));
+      await tester.pumpAndSettle();
+      expect(find.text(email), findsOneWidget);
+      await tester.ensureVisible(find.byKey(const Key('account-signout')));
+      await tester.tap(find.byKey(const Key('account-signout')));
+      await tester.pump();
+
+      // A network-stalled logout must not leave the prior account's data
+      // visible, even for one frame, and cannot admit another login yet.
+      expect(logoutCount, 1);
+      expect(find.byKey(const Key('account-profile-email')), findsNothing);
+      expect(find.text('Source-verified Laravel guide'), findsNothing);
+      expect(find.text(email), findsNothing);
+      final emailField = tester.widget<TextField>(
+        find.byKey(const Key('account-email')),
+      );
+      expect(emailField.controller!.text, isEmpty);
+      expect(tester.widget<TextField>(
+        find.byKey(const Key('account-password')),
+      ).controller!.text, isEmpty);
+      expect(tester.widget<FilledButton>(
+        find.byKey(const Key('account-login')),
+      ).onPressed, isNull);
+      expect(find.text(arabic
+          ? 'جارٍ إكمال تسجيل الخروج...'
+          : 'Finishing sign-out...'), findsOneWidget);
+      expect(find.text(bearer), findsNothing);
+
+      remoteLogout.complete();
+      await tester.pumpAndSettle();
+      expect(find.text(arabic
+          ? 'تم تسجيل الخروج من الجهاز.'
+          : 'Signed out of this device.'), findsOneWidget);
+      expect(tester.widget<TextField>(
+        find.byKey(const Key('account-email')),
+      ).controller!.text, isEmpty);
+
+      await tester.enterText(
+        find.byKey(const Key('account-email')), secondEmail,
+      );
+      await tester.enterText(
+        find.byKey(const Key('account-password')), 'other-fixture-password',
+      );
+      await tester.tap(find.byKey(const Key('account-login')));
+      await tester.pumpAndSettle();
+      expect(loginCount, 2);
+      expect(find.text('Reviewed recovery runbook'), findsOneWidget);
+      expect(find.text('Source-verified Laravel guide'), findsNothing);
+      await tester.tap(find.byKey(const Key('account-profile-tab')));
+      await tester.pumpAndSettle();
+      expect(find.text(secondEmail), findsOneWidget);
+      expect(find.text(email), findsNothing);
+      expect(find.text(secondBearer), findsNothing);
+      expect(Directionality.of(tester.element(find.byKey(
+        const Key('account-profile-email'),
+      ))), arabic ? TextDirection.rtl : TextDirection.ltr);
+    });
+  }
+
+  testWidgets('failed delayed server revocation never restores prior email, profile or saved items',
+      (tester) async {
+    final pending = Completer<void>();
+    await tester.pumpWidget(MaterialApp(
+      home: MobileAccountJourney(
+        arabic: false,
+        loginAction: (_, __) async =>
+            const MobileAiSession(token: bearer, expiresAt: null),
+        profileAction: (_) async => const MobileAccount(articleId, email),
+        savedAction: (_, __, n) async =>
+            MobileSavedPage.parse(page(n, [article()]), n),
+        logoutAction: (_) => pending.future,
+      ),
+    ));
+    await login(tester);
+    await tester.tap(find.byKey(const Key('account-profile-tab')));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const Key('account-signout')));
+    await tester.tap(find.byKey(const Key('account-signout')));
+    await tester.pump();
+    expect(find.text(email), findsNothing);
+    expect(find.byKey(const Key('account-profile-email')), findsNothing);
+    pending.completeError(const FormatException('PRIVATE_SMTP_OR_TOKEN'));
+    await tester.pumpAndSettle();
+    expect(find.text('Local session cleared; server sign-out unconfirmed.'),
+        findsOneWidget);
+    expect(find.textContaining('PRIVATE_SMTP_OR_TOKEN'), findsNothing);
+    expect(find.text(email), findsNothing);
+    expect(tester.widget<TextField>(
+      find.byKey(const Key('account-email')),
+    ).controller!.text, isEmpty);
+  });
+
+  testWidgets('saved pagination authorization loss also scrubs account email',
+      (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      home: MobileAccountJourney(
+        arabic: false,
+        loginAction: (_, __) async =>
+            const MobileAiSession(token: bearer, expiresAt: null),
+        profileAction: (_) async => const MobileAccount(articleId, email),
+        savedAction: (_, __, pageNumber) async {
+          if (pageNumber == 1) {
+            return MobileSavedPage.parse(page(1, [article()], more: true), 1);
+          }
+          throw const MobileAiHttpException(401);
+        },
+      ),
+    ));
+    await login(tester);
+    await tester.tap(find.byKey(const Key('account-load-more')));
+    await tester.pumpAndSettle();
+    expect(find.text(email), findsNothing);
+    expect(find.text('Source-verified Laravel guide'), findsNothing);
+    expect(tester.widget<TextField>(
+      find.byKey(const Key('account-email')),
+    ).controller!.text, isEmpty);
+    expect(find.byKey(const Key('account-login')), findsOneWidget);
   });
 
   testWidgets('main app opens real account screen with truthful unavailable state',
