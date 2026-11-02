@@ -136,6 +136,23 @@ class _MobilePreferencesScreenState extends State<MobilePreferencesScreen> {
     _read();
   }
 
+  @override
+  void didUpdateWidget(covariant MobilePreferencesScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // The parent owns the actual app locale and may replace the trusted
+    // capability reader without navigating away. Do not keep text, direction
+    // or an earlier source's verification from a previous widget instance.
+    // A local picker change already updated _arabic: the parent's echo must
+    // not trigger a second API read or invoke its language callback again.
+    if (_arabic != widget.arabic || widget.fetch != oldWidget.fetch) {
+      _arabic = widget.arabic;
+      _clearMessage = null;
+      _capabilities = _configured
+          ? (widget.fetch ?? const MobilePreferenceReader().load)(_arabic)
+          : null;
+    }
+  }
+
   void _changeLanguage(bool arabic) {
     if (arabic == _arabic) return;
     setState(() {
