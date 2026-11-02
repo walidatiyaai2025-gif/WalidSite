@@ -39,7 +39,7 @@ String bootstrap({
         'server_saved_resources': true,
         'saved_resources_requires_auth': true,
       },
-      'privacy_policy_url': privacy ?? '/privacy?lang=$locale',
+      'privacy_policy_url': privacy,
     },
   });
 }
@@ -55,7 +55,7 @@ void main() {
     expect(en.locale, 'en');
     expect(en.defaultLocale, 'en');
     expect(en.aiDiagnosisAvailable, isTrue);
-    expect(en.privacyUri, Uri.parse('$origin/privacy?lang=en'));
+    expect(en.privacyUri, isNull);
 
     final ar = MobileBootstrapCapabilities.parse(
       bootstrap(arabic: true, aiAvailable: false),
@@ -65,15 +65,12 @@ void main() {
     expect(ar.appName, 'رفيق وليد التقني');
     expect(ar.locale, 'ar');
     expect(ar.aiDiagnosisAvailable, isFalse);
-    expect(ar.privacyUri, Uri.parse('$origin/privacy?lang=ar'));
+    expect(ar.privacyUri, isNull);
   });
 
   test('MOBILE-01 bootstrap parser rejects unsafe or stale capability claims', () {
     final invalid = <String>[
-      bootstrap().replaceFirst(
-        '\"privacy_policy_url\":\"/privacy?lang=en\"',
-        '\"privacy_policy_url\":null',
-      ),
+      bootstrap(privacy: 17),
       bootstrap(privacy: 'https://evil.example/privacy?lang=en'),
       bootstrap(privacy: '/terms?lang=en'),
       bootstrap(privacy: '/privacy?lang=ar'),
@@ -99,7 +96,7 @@ void main() {
       bootstrap().replaceFirst('"guest_entry_allowed":true',
           '"guest_entry_allowed":false'),
       bootstrap().replaceFirst('"locale":"en"', '"locale":"fr"'),
-      bootstrap().replaceFirst(
+      bootstrap(privacy: '/privacy?lang=en').replaceFirst(
         '"privacy_policy_url":"/privacy?lang=en"',
         '"privacy_policy_url":"/privacy?lang=en","private_key":"SECRET"',
       ),
@@ -131,7 +128,32 @@ void main() {
     expect(find.byType(CompanionHome), findsOneWidget);
   });
 
-  testWidgets('verified bootstrap exposes real privacy destination and AI state',
+  testWidgets('canonical null privacy stays ready with truthful unavailable state',
+      (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: MobileBootstrapPanel(
+          arabic: false,
+          fetch: (_) async => MobileBootstrapCapabilities.parse(
+            bootstrap(
+              aiAvailable: true,
+              privacy: '/privacy?lang=en',
+            ),
+            false,
+            Uri.parse(origin),
+          ),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('welcome-bootstrap-ready')), findsOneWidget);
+    expect(find.byKey(const Key('welcome-privacy-unavailable')), findsOneWidget);
+    expect(find.byKey(const Key('welcome-privacy')), findsNothing);
+    expect(find.textContaining('has not been published yet'), findsOneWidget);
+  });
+
+  testWidgets('future verified privacy route is validated before opening',
       (tester) async {
     Uri? opened;
     await tester.pumpWidget(MaterialApp(
@@ -202,7 +224,7 @@ void main() {
         body: MobileBootstrapPanel(
           arabic: false,
           fetch: (_) async => MobileBootstrapCapabilities.parse(
-            bootstrap(),
+            bootstrap(privacy: '/privacy?lang=en'),
             false,
             Uri.parse(origin),
           ),
