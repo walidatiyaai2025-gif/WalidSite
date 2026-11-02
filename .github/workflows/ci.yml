@@ -240,6 +240,7 @@ jobs:
           # untracked build caches. Remove exact generated paths; never reset or
           # clean arbitrary source before provenance attestation.
           git clean -fd -- backend/composer.lock qa/__pycache__ qa/tests/__pycache__
+          export PYTHONDONTWRITEBYTECODE=1
           dirty_status="$(git status --porcelain=v1 --untracked-files=all)"
           if test -n "$dirty_status"; then
             echo "Visual attestation found repository changes before capture (status/path only):"
@@ -276,11 +277,49 @@ jobs:
           print('MISMATCH COUNTS: ' + json.dumps(mismatches, sort_keys=True))
           PY
 
+          # Real Web diagnostics reuse this already-verified local Laravel
+          # server. The two dynamic pages require actual published source data;
+          # static pages never substitute invented project/article records.
+          web_plan_path="$plan_dir/web-plan.json"
+          python3 -B qa/build_web_visual_plan.py --locale en --dpr 1 --timeout 120 --output "$web_plan_path"
+          set +e
+          python3 -B qa/visual_diagnostics.py --plan "$web_plan_path" --commit "$tested_sha" --group web
+          web_exit=$?
+          set -e
+          if test "$web_exit" -gt 1; then
+            echo "Web visual diagnostics failed before producing comparable runtime pixels"
+            exit "$web_exit"
+          fi
+          REPORT_PATH="qa/visual-diagnostics/$tested_sha-web/report.json" python3 -B - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          report = json.loads(Path(os.environ["REPORT_PATH"]).read_text(encoding="utf-8"))
+          screens = report.get("screens", {})
+          expected = {f"WEB-{i:02d}" for i in range(1, 15)} - {"WEB-05", "WEB-06", "WEB-08"}
+          if set(screens) != expected:
+              raise SystemExit("Web diagnostics must cover exactly 11 routable public Web pages")
+          allowed = {"mismatch", "exact_pixels_unattested"}
+          invalid = {sid: row.get("status") for sid, row in screens.items()
+                     if row.get("status") not in allowed}
+          if invalid:
+              raise SystemExit("Web renderer/runtime failure: " + json.dumps(invalid, sort_keys=True))
+          if any(row.get("runtime_size") != row.get("reference_size") for row in screens.values()):
+              raise SystemExit("Web runtime PNG dimensions disagree with immutable references")
+          print("REAL WEB RUNTIME CAPTURES VERIFIED: 11/11 currently routable static pages")
+          print("WEB ZERO-RGBA MATCHES: " + str(sum(
+              row.get("mismatching_rgba_pixels", 0) == 0 for row in screens.values()
+          )) + "/11")
+          print("WEB-06 missing on main: blocked by T007 #8 draft; not fabricated")
+          print("DYNAMIC WEB-05/08: pending approved published slugs; not fabricated")
+          PY
+
       - name: Upload Issue 481 Admin runtime visual diagnostics
         if: ${{ always() && github.event_name == 'pull_request' && startsWith(github.head_ref, 'feat/481-') }}
         uses: actions/upload-artifact@v4
         with:
-          name: issue-481-admin-runtime-visual-diagnostics
+          name: issue-481-admin-and-web-runtime-visual-diagnostics
           path: qa/visual-diagnostics/
           if-no-files-found: warn
           retention-days: 7
