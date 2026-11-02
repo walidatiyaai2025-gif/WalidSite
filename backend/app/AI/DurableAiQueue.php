@@ -94,9 +94,19 @@ final class DurableAiQueue
         // Otherwise 20 old queued jobs behind a busy one-slot provider can
         // hide a runnable job on another provider. This is only a scheduling
         // hint: each candidate is still checked under its provider row lock.
+        // Running reservations include any amount not yet receipted.
+        // Aggregate receipts per job FIRST to avoid multiplying the same
+        // reservation when a job emitted more than one usage receipt.
+        $receiptTotals = DB::table('ai_usage as job_receipts')
+            ->select('job_receipts.job_id')
+            ->selectRaw('SUM(job_receipts.cost_minor) AS recorded_minor')
+            ->groupBy('job_receipts.job_id');
         $runningCounts = DB::table('ai_jobs as active_jobs')
+            ->leftJoinSub($receiptTotals, 'receipt_totals',
+                fn ($join) => $join->on('receipt_totals.job_id', '=', 'active_jobs.id'))
             ->select('active_jobs.provider_id')
             ->selectRaw('COUNT(*) AS running_count')
+            ->selectRaw('SUM(CASE WHEN active_jobs.reserved_budget_minor > COALESCE(receipt_totals.recorded_minor, 0) THEN active_jobs.reserved_budget_minor - COALESCE(receipt_totals.recorded_minor, 0) ELSE 0 END) AS outstanding_minor')
             ->where('active_jobs.status', 'running')
             ->groupBy('active_jobs.provider_id');
 
@@ -139,11 +149,11 @@ final class DurableAiQueue
             ->where(fn ($q) => $q->where('ai_providers.provider_type', '!=', 'openai-compatible')
                 ->orWhere('ai_jobs.reserved_budget_minor', '>', 0))
             ->whereColumn('ai_jobs.reserved_budget_minor', '<=', 'ai_providers.daily_budget_minor')
-            // An exhausted paid provider's 20+ queued jobs should not hide a
-            // zero-cost local job. This is a preliminary filter only:
-            // in-flight reservations and receipt currency are still checked
-            // transactionally under the provider lock.
-            ->whereRaw('COALESCE(provider_spend.spent_today, 0) + ai_jobs.reserved_budget_minor <= ai_providers.daily_budget_minor')
+            // Today's paid receipts plus unreceipted running reservations
+            // must leave enough headroom for this candidate. A frozen
+            // over-budget backlog cannot hide unrelated runnable work.
+            // Currency consistency and races remain lock-time checks.
+            ->whereRaw('COALESCE(provider_spend.spent_today, 0) + COALESCE(provider_running.outstanding_minor, 0) + ai_jobs.reserved_budget_minor <= ai_providers.daily_budget_minor')
             ->when($jobTypes !== null, fn ($query) => $query->whereIn('ai_jobs.job_type', $jobTypes))
             ->whereIn('ai_jobs.status', ['queued', 'retry'])
             ->where(fn ($q) => $q->whereNull('ai_jobs.next_attempt_at')
