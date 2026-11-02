@@ -43,6 +43,71 @@ final class PrivacyPolicyJourneyTest extends TestCase
         }
     }
 
+    public function test_bilingual_account_self_service_disclosure_is_truthful_and_navigable(): void
+    {
+        foreach (['ar', 'en'] as $lang) {
+            $response = $this->get('/privacy?lang='.$lang)->assertOk()
+                ->assertSee('id="account-controls"', false)
+                ->assertSee('href="#account-controls"', false)
+                ->assertSee('href="'.e(route('public.contact', [
+                    'lang' => $lang, 'topic' => 'privacy',
+                ])).'"', false)
+                ->assertDontSee('type="password"', false)
+                ->assertDontSee('Authorization: Bearer', false);
+
+            if ($lang === 'ar') {
+                $response->assertSee('معطلة افتراضيًا')
+                    ->assertSee('إعادة إدخال كلمة المرور')
+                    ->assertSee('إتاحة التطبيق وخادم الإنتاج لم تُتحقق بعد');
+                $this->get('/terms?lang=ar')->assertOk()
+                    ->assertSee('إتاحتها على خادم الإنتاج لم تُتحقق بعد');
+            } else {
+                $response->assertSee('default to off')
+                    ->assertSee('password reauthentication')
+                    ->assertSee('Production app/server availability is not yet verified');
+                $this->get('/terms?lang=en')->assertOk()
+                    ->assertSee('production availability has not been verified');
+            }
+        }
+    }
+
+    public function test_public_policy_cannot_expose_private_account_actions_without_authentication(): void
+    {
+        $this->getJson('/api/v1/mobile/account/export')->assertUnauthorized();
+        $this->getJson('/api/v1/mobile/notification-preferences')->assertUnauthorized();
+        $this->putJson('/api/v1/mobile/notification-preferences', [
+            'preferences' => [[
+                'purpose' => 'product_updates', 'channel' => 'email', 'enabled' => true,
+            ]],
+        ])->assertUnauthorized();
+        $this->deleteJson('/api/v1/mobile/account', [
+            'password' => 'not-authorized', 'confirmation' => 'DELETE',
+        ])->assertUnauthorized();
+    }
+
+    public function test_privacy_contact_request_cannot_send_on_refusal_or_honeypot(): void
+    {
+        config(['mail.contact_recipient' => 'approved@example.test', 'mail.default' => 'smtp']);
+        Mail::fake();
+
+        $data = [
+            'name' => 'Visitor', 'email' => 'visitor@example.test',
+            'subject' => 'Privacy or personal data request',
+            'message' => 'Please explain the handling of my information.',
+        ];
+        foreach (['en', 'ar'] as $lang) {
+            $this->from('/contact?lang='.$lang)->post('/contact?lang='.$lang, $data)
+                ->assertSessionHasErrors('privacy_consent');
+            $this->from('/contact?lang='.$lang)->post('/contact?lang='.$lang,
+                $data + ['privacy_consent' => '0'])
+                ->assertSessionHasErrors('privacy_consent');
+        }
+        $this->post('/contact?lang=en', $data + [
+            'privacy_consent' => '1', 'website' => 'automated-spam.example',
+        ])->assertRedirect('/contact?lang=en');
+        Mail::assertNothingSent();
+    }
+
     public function test_unapproved_policies_are_not_discovered_in_sitemap(): void
     {
         $this->get('/sitemap.xml')->assertOk()
