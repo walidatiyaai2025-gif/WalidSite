@@ -113,7 +113,7 @@ default => $locale === 'ar' ? 'الموضوع' : 'Subject' } }}</label>
 <textarea id="contact-message" name="message" required maxlength="3000" @error('message') aria-invalid="true" aria-describedby="contact-message-error" @enderror>{{ is_string(old('message')) ? old('message') : '' }}</textarea>
 @error('message')<p id="contact-message-error" class="contact-error" role="alert">{{ $message }}</p>@enderror
 <label class="contact-consent" for="contact-privacy-consent">
-<input id="contact-privacy-consent" type="checkbox" name="privacy_consent" value="1" @checked(old('privacy_consent') === '1') @error('privacy_consent') aria-invalid="true" aria-describedby="contact-privacy-consent-error" @enderror>
+<input id="contact-privacy-consent" type="checkbox" name="privacy_consent" value="1" required aria-required="true" @checked(old('privacy_consent') === '1') @error('privacy_consent') aria-invalid="true" aria-describedby="contact-privacy-consent-error" @enderror>
 <span>{{ $locale === 'ar' ? 'أوافق على استخدام اسمي وبريدي الإلكتروني ونص الرسالة للرد على استفساري فقط.' : 'I consent to using my name, email address and message solely to respond to my inquiry.' }} <a href="{{ route('public.privacy', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'تفاصيل معالجة البيانات' : 'Data handling details' }}</a></span>
 </label>
 @error('privacy_consent')<p id="contact-privacy-consent-error" class="contact-error" role="alert">{{ $message }}</p>@enderror
