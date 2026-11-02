@@ -20,6 +20,7 @@ final class LegacyContentImporterTest extends TestCase
     private function validSql(): string
     {
         return <<<'SQL'
+-- walidsite-legacy-schema: 1
 INSERT INTO legacy_articles (legacy_key, slug, title_en, title_ar, canonical_lang, body_md, citations_json) VALUES ('article-1', 'legacy-arabic-guide', 'Legacy reviewed later', 'دليل عربي قديم', 'ar', '# خطوات عربية آمنة', '["https://docs.example.org/legacy-guide"]');
 INSERT INTO legacy_projects (legacy_key, slug, title, summary_en, summary_ar, role_en, role_ar, status) VALUES ('project-1', 'legacy-project', 'Legacy Project', 'Imported privately for later review.', 'تم الاستيراد بشكل خاص للمراجعة اللاحقة.', 'Engineer', 'مهندس', 'completed');
 INSERT INTO legacy_project_evidence (legacy_key, project_slug, evidence_type, url) VALUES ('evidence-1', 'legacy-project', 'documentation', 'https://docs.example.org/legacy-project');
@@ -34,6 +35,7 @@ SQL;
         $dry = $importer->dryRunSql($this->validSql(), 'approved-export.sql');
 
         $this->assertTrue($dry['dry_run']);
+        $this->assertSame(1, $dry['schema_version']);
         $this->assertSame(4, $dry['parsed_rows']);
         $this->assertSame(0, $dry['rejected_count']);
         $this->assertSame([
@@ -57,6 +59,19 @@ SQL;
             'runbook' => 1,
         ], $applied['created']);
         $this->assertDatabaseCount('legacy_import_receipts', 4);
+        $articleReceipt = DB::table('legacy_import_receipts')
+            ->where('source_table', 'legacy_articles')
+            ->first();
+        $this->assertNotNull($articleReceipt);
+        $this->assertSame(1, (int) $articleReceipt->source_schema_version);
+        $this->assertSame(
+            hash('sha256', 'approved-export.sql'),
+            $articleReceipt->source_name_hash
+        );
+        $this->assertSame(
+            hash('sha256', 'article-1'),
+            $articleReceipt->source_key_hash
+        );
 
         $article = Article::query()->where('slug', 'legacy-arabic-guide')->firstOrFail();
         $this->assertSame('دليل عربي قديم', $article->title_ar);
@@ -109,6 +124,7 @@ SQL;
         ]);
 
         $sql = <<<'SQL'
+-- walidsite-legacy-schema: 1
 INSERT INTO users (email, password_hash) VALUES ('attacker@example.test', 'secret');
 DROP TABLE users;
 INSERT INTO legacy_projects (slug, title, summary_en, summary_ar, status, password) VALUES ('bad-columns', 'Bad', 'Bad', 'سيئ', 'research', 'secret');
@@ -156,6 +172,7 @@ SQL;
         ]);
 
         $sql = <<<'SQL'
+-- walidsite-legacy-schema: 1
 INSERT INTO legacy_projects (slug, title, summary_en, summary_ar, status) VALUES ('verified-existing', 'Overwrite attempt', 'No', 'لا', 'completed');
 INSERT INTO legacy_project_evidence (project_slug, evidence_type, url) VALUES ('missing-project', 'documentation', 'https://docs.example.org/missing');
 INSERT INTO legacy_articles (slug, title_en, title_ar, canonical_lang, body_md, citations_json) VALUES ('signed-citation', 'Signed', 'رابط موقع', 'en', 'Body', '["https://docs.example.org/private?access_token=secret"]');
@@ -173,13 +190,85 @@ SQL;
         app(LegacyContentImporter::class)->importSql($sql, 'conflicts.sql');
     }
 
+    public function test_schema_version_is_required_and_unsupported_versions_fail_closed(): void
+    {
+        $missing = preg_replace(
+            '/\\A-- walidsite-legacy-schema: 1\\R/',
+            '',
+            $this->validSql(),
+            1
+        );
+        $this->assertIsString($missing);
+
+        $missingReport = app(LegacyContentImporter::class)
+            ->dryRunSql($missing, 'missing-version.sql');
+        $this->assertSame(1, $missingReport['rejected_count']);
+        $this->assertSame(
+            'schema_version_missing',
+            $missingReport['rejections'][0]['reason']
+        );
+
+        $unsupported = str_replace(
+            '-- walidsite-legacy-schema: 1',
+            '-- walidsite-legacy-schema: 2',
+            $this->validSql()
+        );
+        $unsupportedReport = app(LegacyContentImporter::class)
+            ->dryRunSql($unsupported, 'unsupported-version.sql');
+        $this->assertSame(1, $unsupportedReport['rejected_count']);
+        $this->assertSame(
+            'schema_version_unsupported',
+            $unsupportedReport['rejections'][0]['reason']
+        );
+
+        try {
+            app(LegacyContentImporter::class)
+                ->importSql($unsupported, 'unsupported-version.sql');
+            $this->fail('Unsupported legacy schema must never be applied.');
+        } catch (DomainException) {
+            $this->assertDatabaseCount('legacy_import_receipts', 0);
+        }
+    }
+
+    public function test_unexpected_write_failure_rolls_back_the_whole_import(): void
+    {
+        $dispatcher = Article::getEventDispatcher();
+        $originalDispatcher = $dispatcher === null ? null : clone $dispatcher;
+
+        Article::creating(static function (): void {
+            throw new DomainException('synthetic_write_failure');
+        });
+
+        try {
+            app(LegacyContentImporter::class)
+                ->importSql($this->validSql(), 'rollback.sql');
+            $this->fail('Synthetic write failure should abort the import.');
+        } catch (DomainException $exception) {
+            $this->assertSame('synthetic_write_failure', $exception->getMessage());
+        } finally {
+            if ($originalDispatcher !== null) {
+                Article::setEventDispatcher($originalDispatcher);
+            } else {
+                Article::unsetEventDispatcher();
+            }
+        }
+
+        $this->assertDatabaseCount('articles', 0);
+        $this->assertDatabaseCount('article_revisions', 0);
+        $this->assertDatabaseCount('projects', 0);
+        $this->assertDatabaseCount('project_evidence', 0);
+        $this->assertDatabaseCount('runbooks', 0);
+        $this->assertDatabaseCount('runbook_versions', 0);
+        $this->assertDatabaseCount('legacy_import_receipts', 0);
+    }
+
     public function test_literal_parser_rejects_expressions_comments_and_ambiguous_escapes(): void
     {
         $sources = [
-            "INSERT INTO legacy_runbooks (slug, title, body_md, version) VALUES ('expr', NOW(), 'Body', 1);",
-            "-- comment\nINSERT INTO legacy_runbooks (slug, title, body_md, version) VALUES ('commented', 'Title', 'Body', 1);",
-            "INSERT INTO legacy_runbooks (slug, title, body_md, version) VALUES ('escape', 'Title', 'path\\\\name', 1);",
-            "INSERT INTO legacy_runbooks (slug, title, body_md, version) VALUES ('missing-end', 'Title', 'Body', 1)",
+            "-- walidsite-legacy-schema: 1\nINSERT INTO legacy_runbooks (slug, title, body_md, version) VALUES ('expr', NOW(), 'Body', 1);",
+            "-- walidsite-legacy-schema: 1\n-- comment\nINSERT INTO legacy_runbooks (slug, title, body_md, version) VALUES ('commented', 'Title', 'Body', 1);",
+            "-- walidsite-legacy-schema: 1\nINSERT INTO legacy_runbooks (slug, title, body_md, version) VALUES ('escape', 'Title', 'path\\\\name', 1);",
+            "-- walidsite-legacy-schema: 1\nINSERT INTO legacy_runbooks (slug, title, body_md, version) VALUES ('missing-end', 'Title', 'Body', 1)",
         ];
 
         foreach ($sources as $index => $sql) {
@@ -266,6 +355,7 @@ SQL;
     public function test_conflicting_rows_for_same_target_are_reported_before_writes(): void
     {
         $sql = <<<'SQL'
+-- walidsite-legacy-schema: 1
 INSERT INTO legacy_runbooks (slug, title, body_md, version) VALUES ('same-target', 'One', 'Body one', 1), ('same-target', 'Two', 'Body two', 2);
 SQL;
 
