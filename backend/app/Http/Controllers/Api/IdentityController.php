@@ -70,7 +70,11 @@ class IdentityController extends Controller
     public function me(Request $request): JsonResponse
     {
         $user = $request->user();
-        if (! $user || $user->status !== 'active' || ! $user->tokenCan('mobile')) {
+        $token = $user?->currentAccessToken();
+        // Sanctum web-session TransientToken claims every ability. Mobile
+        // account identity must require an actually issued mobile bearer.
+        if (! $user || $user->status !== 'active'
+            || ! $token instanceof PersonalAccessToken || ! $token->can('mobile')) {
             abort(403);
         }
 
