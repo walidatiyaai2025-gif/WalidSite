@@ -109,4 +109,31 @@ final class PrivacyPolicyJourneyTest extends TestCase
     }
 
 
+    public function test_privacy_request_actions_are_allowlisted_bilingual_and_non_submitting(): void
+    {
+        \Illuminate\Support\Facades\Mail::fake();
+        config(['mail.contact_recipient' => 'reviewed@example.test', 'mail.default' => 'smtp']);
+        $topics = [
+            'privacy-access' => ['Request access', 'Personal data access request', 'طلب الاطلاع على البيانات'],
+            'privacy-correction' => ['Request correction', 'Personal data correction request', 'طلب تصحيح البيانات'],
+            'privacy-export' => ['Request export', 'Personal data export request', 'طلب تصدير البيانات'],
+            'privacy-deletion' => ['Request deletion', 'Personal data deletion request', 'طلب حذف البيانات'],
+            'privacy-notifications' => ['Request notification revocation', 'Notification consent revocation request', 'طلب إلغاء موافقة الإشعارات'],
+        ];
+        foreach ($topics as $topic => [$label, $englishSubject, $arabicSubject]) {
+            $url = route('public.contact', ['lang' => 'en', 'topic' => $topic]);
+            $this->get('/privacy?lang=en')->assertOk()->assertSee(e($url), false)->assertSee($label);
+            $this->get($url)->assertOk()->assertSee($englishSubject)
+                ->assertSee('name="privacy_consent"', false);
+            $this->get(route('public.contact', ['lang' => 'ar', 'topic' => $topic]))
+                ->assertOk()->assertSee($arabicSubject);
+        }
+        $this->get('/contact?lang=en&topic=privacy-deletion&article=unknown')
+            ->assertOk()->assertDontSee('Personal data deletion request');
+        $this->get('/contact?lang=en&topic%5B%5D=privacy-export')
+            ->assertOk()->assertDontSee('Personal data export request');
+        \Illuminate\Support\Facades\Mail::assertNothingSent();
+    }
+
+
 }
