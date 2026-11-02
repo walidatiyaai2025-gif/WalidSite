@@ -50,7 +50,7 @@ final class PrivacyInquiryDeliveryBoundaryTest extends TestCase
         // Merely navigating to a rights request is not consent to send data.
         $this->get('/privacy?lang=en')->assertOk()
             ->assertSee('Revoke notification consent')
-            ->assertSee('Personal data deletion request');
+            ->assertSee('Request deletion');
         $this->get('/contact?lang=en&topic=privacy&request=revoke')->assertOk()
             ->assertSee('value="Notification consent revocation inquiry"', false)
             ->assertSee('id="privacy-request-disclosure"', false)
