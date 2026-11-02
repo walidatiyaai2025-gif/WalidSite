@@ -310,6 +310,7 @@ class _MobileAccountJourneyState extends State<MobileAccountJourney> {
   int _page = 1;
   int _epoch = 0;
   bool _busy = false;
+  bool _busyLogout = false;
   bool _loadingMore = false;
   bool _showProfile = false;
   bool _editingProfile = false;
@@ -343,7 +344,9 @@ class _MobileAccountJourneyState extends State<MobileAccountJourney> {
     _saved = const [];
     _page = 1;
     _hasMore = false;
+    _showProfile = false;
     _editingProfile = false;
+    _email.clear();
     _password.clear();
     _profileEmail.clear();
     _profilePassword.clear();
@@ -380,6 +383,9 @@ class _MobileAccountJourneyState extends State<MobileAccountJourney> {
         _saved = saved.items;
         _page = 1;
         _hasMore = saved.hasMore;
+        // The authenticated identity lives in _profile; never retain the
+        // login-form address for another user on passive token expiry.
+        _email.clear();
         _password.clear();
       });
     } catch (_) {
@@ -609,7 +615,17 @@ class _MobileAccountJourneyState extends State<MobileAccountJourney> {
   Future<void> _signOut() async {
     if (_busy || !_requireSession()) return;
     final bearer = _session!.token;
-    setState(() { _busy = true; _message = null; });
+    // Scrub the complete account view BEFORE waiting on the network. A slow
+    // or failed logout cannot keep private saved cards or identity visible.
+    setState(() {
+      _clearSession();
+      _busy = true;
+      _busyLogout = true;
+      _message = _label(
+        'Local session cleared. Confirming server sign-out...',
+        'تم مسح الجلسة محليًا. جارٍ تأكيد تسجيل الخروج على الخادم...',
+      );
+    });
     var revoked = false;
     try {
       await _revoke(bearer);
@@ -619,8 +635,8 @@ class _MobileAccountJourneyState extends State<MobileAccountJourney> {
     } finally {
       if (mounted) {
         setState(() {
-          _clearSession();
           _busy = false;
+          _busyLogout = false;
           _message = revoked
               ? _label('Signed out of this device.', 'تم تسجيل الخروج من الجهاز.')
               : _label('Local session cleared; server sign-out unconfirmed.',
@@ -672,7 +688,9 @@ class _MobileAccountJourneyState extends State<MobileAccountJourney> {
                     key: const Key('account-login'),
                     onPressed: _busy ? null : _signIn,
                     child: Text(_busy
-                        ? _label('Signing in...', 'جارٍ تسجيل الدخول...')
+                        ? (_busyLogout
+                            ? _label('Finishing sign-out...', 'جارٍ إكمال تسجيل الخروج...')
+                            : _label('Signing in...', 'جارٍ تسجيل الدخول...'))
                         : _label('Sign in', 'تسجيل الدخول')),
                   ),
                   Text(_label('Credentials and session are not stored on this device.',
