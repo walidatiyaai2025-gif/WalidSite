@@ -17,6 +17,14 @@
     'software' => $locale === 'ar' ? 'هندسة البرمجيات والبنية التحتية' : 'Software and infrastructure engineering',
     'delivery' => $locale === 'ar' ? 'إدارة وتسليم المشاريع' : 'Project delivery',
 ])
+@php($privacyRequest = $privacyRequest ?? null)
+@php($privacyRequestLabels = [
+    'access' => ['Data access inquiry', 'استفسار عن الاطلاع على البيانات'],
+    'correction' => ['Data correction inquiry', 'استفسار عن تصحيح البيانات'],
+    'export' => ['Data export inquiry', 'استفسار عن تصدير البيانات'],
+    'deletion' => ['Account deletion inquiry', 'استفسار عن حذف الحساب'],
+    'notifications' => ['Notification consent revocation inquiry', 'استفسار عن إلغاء موافقة الإشعارات'],
+])
 @php($suggestedSubject = $suggestedSubject ?? '')
 @php($suggestedSubject = $suggestedSubject !== '' ? $suggestedSubject
     : ($contactTrack ? ($locale === 'ar' ? 'استفسار عن مجال: ' : 'Inquiry about: ')
@@ -42,6 +50,14 @@
 <h1 id="contact-heading">{{ $locale === 'ar' ? 'التواصل' : 'Contact' }}</h1>
 <p>{{ $locale === 'ar' ? 'تُستخدم بيانات الرسالة فقط للرد على طلب التواصل، ولا تنشر على الموقع.' : 'Messages are used only to reply to the inquiry; they are not published.' }}
 <a href="{{ route('public.privacy', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'اقرأ إشعار الخصوصية والبيانات (مسودة غير معتمدة).' : 'Read the privacy and data disclosure (unapproved draft).' }}</a></p>
+@if($privacyRequest && isset($privacyRequestLabels[$privacyRequest]))
+<div class="contact-notice" role="status">
+<strong>{{ $privacyRequestLabels[$privacyRequest][$locale === 'ar' ? 1 : 0] }}</strong>
+<p>{{ $locale === 'ar'
+    ? 'هذا نموذج استفسار وليس طلبًا مصادقًا عليه لتنفيذ أي عملية. إرسال الرسالة لا يصدّر أو يحذف حسابًا ولا يغيّر موافقات الإشعارات. يجب التحقق من هوية صاحب الحساب قبل معالجة بياناته.'
+    : 'This is an inquiry form, not an authenticated action. Submitting it does not export or delete an account or revoke notifications. Identity must be verified before account data is disclosed or changed.' }}</p>
+</div>
+@endif
 @if($reportArticle)
 <p class="contact-article-context">
     {{ $locale === 'ar' ? 'الإبلاغ عن مشكلة في المقال المنشور:' : 'Reporting an issue in the published article:' }}
