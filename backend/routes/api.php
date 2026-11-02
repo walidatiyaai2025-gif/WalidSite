@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\IdentityController;
+use App\Http\Controllers\Api\AccountPrivacyController;
 use App\Http\Controllers\Api\AiProviderController;
 use App\Http\Controllers\Api\AdminDashboardController;
 use App\Http\Controllers\Api\AdminAiRouteController;
@@ -35,6 +36,15 @@ Route::post('/auth/login', [IdentityController::class, 'login'])
 // Block insecure bearer-token requests before Sanctum or privileged handlers.
 Route::middleware([RequireSecureApiTransport::class, 'auth:sanctum'])->group(function (): void {
     Route::get('/mobile/me', [IdentityController::class, 'me']);
+    // MOBILE-12/13 + G-16: self-service privacy lifecycle. Missing consent is deny.
+    Route::get('/mobile/account/export', [AccountPrivacyController::class, 'export'])
+        ->name('api.mobile.account.export')->middleware('throttle:10,1');
+    Route::delete('/mobile/account', [AccountPrivacyController::class, 'deleteAccount'])
+        ->name('api.mobile.account.delete')->middleware('throttle:3,60');
+    Route::get('/mobile/notification-preferences', [AccountPrivacyController::class, 'preferences'])
+        ->name('api.mobile.notification-preferences')->middleware('throttle:30,1');
+    Route::put('/mobile/notification-preferences', [AccountPrivacyController::class, 'updatePreferences'])
+        ->name('api.mobile.notification-preferences.update')->middleware('throttle:10,1');
     // MOBILE-11: token-scoped, own-account saved resources. Live publication
     // authorization is checked again before every saved item is returned.
     Route::get('/mobile/saved', [MobileSavedController::class, 'index'])
