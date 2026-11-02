@@ -17,9 +17,10 @@ final class PrivacyRightsRequestJourneyTest extends TestCase
         'correction' => ['en' => 'Personal data correction request', 'ar' => 'طلب تصحيح بياناتي'],
         'deletion' => ['en' => 'Personal data deletion request', 'ar' => 'طلب حذف بياناتي'],
         'revoke' => ['en' => 'Notification consent revocation inquiry', 'ar' => 'طلب سحب الموافقة على الإشعارات'],
+        'notifications' => ['en' => 'Privacy notification consent revocation request', 'ar' => 'طلب إلغاء الموافقة على الإشعارات'],
     ];
 
-    public function test_all_five_rights_are_linked_to_consent_based_bilingual_contact(): void
+    public function test_all_six_rights_are_linked_to_consent_based_bilingual_contact(): void
     {
         config(['mail.contact_recipient' => 'legal-reviewed@example.test', 'mail.default' => 'smtp']);
         Mail::fake();
