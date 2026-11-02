@@ -16,11 +16,10 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  Future<void> resume(WidgetTester tester, String id,
-      {bool fromBelow = false}) async {
+  Future<void> resume(WidgetTester tester, String id) async {
     await tester.scrollUntilVisible(
       find.byKey(const Key('ai-resume-id')),
-      fromBelow ? -200 : 200,
+      200,
       scrollable: find.byType(Scrollable).first,
     );
     await tester.enterText(find.byKey(const Key('ai-resume-id')), id);
@@ -74,9 +73,8 @@ void main() {
     await signIn(tester);
     await resume(tester, jobId);
     expect(gets, 1);
-    expect(find.byKey(const Key('ai-resume-id')), findsOneWidget);
-    expect(tester.widget<OutlinedButton>(
-        find.byKey(const Key('ai-resume-submit'))).onPressed, isNull);
+    // Restoring a job replaces the form with the real status card.
+    expect(find.byKey(const Key('ai-resume-id')), findsNothing);
     await tester.scrollUntilVisible(
       find.byKey(const Key('ai-message')),
       200,
@@ -119,7 +117,7 @@ void main() {
     );
     expect(find.textContaining('معرّف مهمة صالحًا'), findsOneWidget);
 
-    await resume(tester, jobId, fromBelow: true);
+    await resume(tester, jobId);
     expect(gets, 1);
     expect(find.byKey(const Key('ai-job-card')), findsNothing);
     await tester.scrollUntilVisible(
@@ -153,7 +151,7 @@ void main() {
     );
     expect(find.textContaining('Job not available or expired'), findsOneWidget);
 
-    await resume(tester, jobId, fromBelow: true);
+    await resume(tester, jobId);
     expect(gets, 2);
     expect(find.byKey(const Key('ai-login-submit')), findsOneWidget);
     expect(find.byKey(const Key('ai-resume-id')), findsNothing);
