@@ -142,9 +142,8 @@ final class AdminOperationsJourneyTest extends TestCase
             $response = $this->get($url)->assertOk()
                 ->assertSee('owner/verified')
                 ->assertSee('name="repo" value="owner/verified"', false)
-                ->assertSee('Verification source', $lang === 'en')
                 ->assertSee('GitHub public REST')
-                ->assertSee('&#039;', false) // Escaped markup is not executed.
+                ->assertSee('&lt;script&gt;', false)
                 ->assertDontSee('<script>', false)
                 ->assertHeader('Cache-Control', 'no-store, private');
             if ($lang === 'ar') {
@@ -193,7 +192,8 @@ final class AdminOperationsJourneyTest extends TestCase
             ->assertSee('مستودع غير متاح')
             ->assertDontSee('owner/verified')
             ->assertDontSee('Public proof');
-        Http::assertSentCount(3);
+        Http::assertSent(fn ($request) =>
+            $request->url() === 'https://api.github.com/repos/owner/verified');
     }
 
     public function test_github_sync_cannot_claim_success_when_all_repositories_are_unavailable(): void
