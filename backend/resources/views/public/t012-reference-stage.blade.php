@@ -35,7 +35,7 @@ body:has(.t012-reference-stage) .site-header{display:none!important}
 body:has(.t012-reference-stage) .site-main{min-height:0}
 body:has(.t012-reference-stage) .site-footer{margin-top:0}
 .t012-nav-shell{height:100px;background:#184876;display:flex;align-items:center;padding:0 59px 0 55px;color:#fff}
-.t012-brand{display:flex;align-items:center;text-decoration:none;white-space:nowrap;margin-right:47px;transform:translateY(3px)}
+.t012-brand{display:flex;align-items:center;text-decoration:none;white-space:nowrap;margin-right:47px;transform:translate(-2px,2px)}
 .t012-brand span{font-size:40px;font-weight:800;line-height:1;color:#0a9a8c;letter-spacing:-1.2px}
 .t012-brand strong{display:inline-block;font-size:25px;font-weight:800;color:#fff;margin-left:4px;letter-spacing:0;transform:translateY(-3px)}
 .t012-nav-links{height:100%;display:flex;align-items:center;flex:1;min-width:0;transform:translateY(3px)}
@@ -56,9 +56,9 @@ body:has(.t012-reference-stage) .site-footer{margin-top:0}
 .t012-screen-article .t012-reference-hero h1{transform:translate(-1px,3px) scale(1.01,.89);transform-origin:left top}
 .t012-screen-lab .t012-reference-hero h1{transform:translate(-1px,1px) scale(.972,.943);transform-origin:left top}
 .t012-screen-search .t012-reference-hero h1{transform:translate(2px,1px) scale(.986,.943);transform-origin:left top}
-.t012-screen-blog .t012-reference-subtitle{transform:translateY(-1px) scale(1.01,.9);transform-origin:left top}
-.t012-screen-article .t012-reference-subtitle{transform:scale(1.006,.85);transform-origin:left top}
-.t012-screen-lab .t012-reference-subtitle{transform:translate(-1px,-1px) scale(1.01,.9);transform-origin:left top}
+.t012-screen-blog .t012-reference-subtitle{transform:translate(-3px,-1px) scale(1.01,.9);transform-origin:left top}
+.t012-screen-article .t012-reference-subtitle{transform:translate(-1px,1px) scale(1.006,.85);transform-origin:left top}
+.t012-screen-lab .t012-reference-subtitle{transform:translate(-2px,-1px) scale(1.01,.9);transform-origin:left top}
 .t012-screen-search .t012-reference-subtitle{transform:translateY(-1px) scale(1.004,.9);transform-origin:left top}
 .t012-reference-actions{display:flex;gap:19px;margin-top:27px}
 .t012-reference-action{height:63px;width:245px;border-radius:16px;display:flex;align-items:center;padding-left:29px;text-decoration:none;color:#184876;font-size:23px;font-weight:700;letter-spacing:1px}
