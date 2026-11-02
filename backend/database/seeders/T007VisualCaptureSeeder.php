@@ -36,10 +36,17 @@ final class T007VisualCaptureSeeder extends Seeder
             || $repo->json('full_name') !== self::REPOSITORY) {
             throw new RuntimeException('T007 visual fixture requires live public GitHub evidence.');
         }
+        $commit = Http::acceptJson()
+            ->withHeaders(['User-Agent' => 'WalidSite-T007-visual-fixture'])
+            ->connectTimeout(5)->timeout(10)
+            ->get('https://api.github.com/repos/'.self::REPOSITORY.'/commits/'.$sha);
+        if (! $commit->successful() || $commit->json('sha') !== $sha) {
+            throw new RuntimeException('T007 visual fixture requires the exact public renderer commit.');
+        }
 
         $this->call(OwnerCvBaselineSeeder::class);
 
-        DB::transaction(function () use ($sha): void {
+        DB::transaction(function (): void {
             $user = User::query()->where('email', 'lido825@hotmail.com')->firstOrFail();
             $user->forceFill(['status' => 'active'])->save();
             $owner = Role::firstOrCreate(['name' => 'owner']);
@@ -79,51 +86,6 @@ final class T007VisualCaptureSeeder extends Seeder
                 'skill_id' => $ai->id,
             ]);
 
-            // PublicPortfolioController intentionally rejects github.com as a
-            // generic claim-evidence host. Pin raw source files to the exact
-            // checked-out SHA so the screenshot fixture passes the SAME public
-            // URL policy as production without weakening that policy.
-            $rawBase = 'https://raw.githubusercontent.com/'.self::REPOSITORY.'/'.$sha.'/';
-            $cvEvidence = $rawBase.'contracts/owner-cv-baseline.json';
-            $repoEvidence = $rawBase.'backend/app/AI/ProviderRouter.php';
-
-            foreach ([
-                [
-                    'en' => 'Engineering reliable enterprise systems with practical AI.',
-                    'ar' => 'هندسة أنظمة مؤسسية موثوقة مع استخدام عملي للذكاء الاصطناعي.',
-                    'url' => $repoEvidence,
-                    'refs' => ['cv_dba', 'cv_pm', 'github:WalidSite@'.$sha],
-                ],
-                [
-                    'en' => 'Technology Leadership / SQL / AI',
-                    'ar' => 'القيادة التقنية / SQL / الذكاء الاصطناعي',
-                    'url' => $cvEvidence,
-                    'refs' => ['cv_dba', 'cv_pm', 'github:WalidSite@'.$sha],
-                ],
-                [
-                    'en' => 'Enterprise & Royal Authority Systems',
-                    'ar' => 'أنظمة المؤسسات والجهات الأميرية',
-                    'url' => $cvEvidence,
-                    'refs' => ['cv_dba', 'cv_pm'],
-                ],
-                [
-                    'en' => 'PAAET / Diyar - Delivery & Engineering',
-                    'ar' => 'PAAET / Diyar - التسليم والهندسة',
-                    'url' => $cvEvidence,
-                    'refs' => ['cv_dba', 'cv_pm'],
-                ],
-            ] as $claim) {
-                ProfessionalClaim::updateOrCreate(
-                    ['profile_id' => $profile->id, 'claim_en' => $claim['en']],
-                    [
-                        'claim_ar' => $claim['ar'],
-                        'evidence_url' => $claim['url'],
-                        'status' => 'approved',
-                        'is_public' => true,
-                        'source_refs_json' => $claim['refs'],
-                    ]
-                );
-            }
         });
     }
 }
