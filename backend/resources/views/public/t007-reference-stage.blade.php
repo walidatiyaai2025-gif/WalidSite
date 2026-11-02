@@ -93,6 +93,65 @@
     ],
 ])
 @php($copy = ($t007ReferenceReady ? $referenceCopy : $safeCopy)[$screen])
+{{-- Localize the *selected* evidence-gated copy; do not upgrade safe fallbacks
+     into unverified professional claims. English reference pixels stay unchanged. --}}
+@if($t007Ar)
+    @php($t007Translations = [
+        'PERSONAL BRAND' => 'الهوية المهنية',
+        'CAREER STORY' => 'المسيرة المهنية',
+        'CAPABILITIES' => 'القدرات المهنية',
+        'AI PRACTICE' => 'تطبيقات الذكاء الاصطناعي',
+        'HIRING VIEW' => 'عرض التوظيف',
+        'Waleed Atiya' => 'وليد عطية',
+        'About' => 'نبذة',
+        'Expertise' => 'الخبرات',
+        'AI Engineering' => 'هندسة الذكاء الاصطناعي',
+        'Recruiter Mode' => 'مساحة التوظيف',
+        'Engineering reliable enterprise systems with practical AI.' => 'هندسة أنظمة مؤسسية موثوقة باستخدام الذكاء الاصطناعي العملي.',
+        'A career built across databases, government systems and delivery.' => 'مسيرة مهنية في قواعد البيانات والأنظمة الحكومية وتسليم المشاريع.',
+        'Evidence-led expertise: AI, SQL, software and technical leadership.' => 'خبرات مدعومة بالأدلة في الذكاء الاصطناعي وقواعد البيانات والبرمجيات والقيادة التقنية.',
+        'AI-assisted engineering with measurable safeguards.' => 'هندسة مدعومة بالذكاء الاصطناعي مع ضوابط قابلة للقياس.',
+        'Review published capabilities, case studies and public CV details.' => 'راجع القدرات المنشورة ودراسات الحالة والسيرة المهنية العامة.',
+        'Evidence-gated software, data and AI engineering work.' => 'أعمال هندسية في البرمجيات والبيانات والذكاء الاصطناعي، لا تُنشر إلا بعد التحقق.',
+        'Only career records that passed publication review are shown.' => 'تُعرض فقط السجلات المهنية التي اجتازت مراجعة النشر.',
+        'Only evidence-reviewed skills are presented as personal expertise.' => 'لا تُعرض الخبرات الشخصية إلا بعد التحقق من أدلتها.',
+        'Review published skills, case studies and the public CV before contact.' => 'راجع المهارات ودراسات الحالة المنشورة والسيرة العامة قبل التواصل.',
+        'Enterprise Delivery' => 'تسليم أنظمة المؤسسات',
+        'Government & enterprise systems' => 'أنظمة حكومية ومؤسسية',
+        'Provider-neutral automation' => 'أتمتة لا تعتمد على مزوّد واحد',
+        'Technical Knowledge' => 'المعرفة التقنية',
+        'Solutions and practical guides' => 'حلول وأدلة عملية',
+        'Database Engineering' => 'هندسة قواعد البيانات',
+        'AlwaysOn / SQL / HA-DR' => 'توافر عالٍ وتعافٍ من الكوارث وقواعد بيانات SQL',
+        'Architecture & Delivery' => 'العمارة والتسليم',
+        'System design / DevOps / APIs' => 'تصميم الأنظمة والتشغيل الآلي وواجهات البرمجة',
+        'Agents / guardrails / evaluation' => 'وكلاء وضوابط وتقييم',
+        'AI Workflow Design' => 'تصميم سير عمل الذكاء الاصطناعي',
+        'Research to validation to publication' => 'من البحث إلى التحقق ثم النشر',
+        'Multi-provider AI' => 'ذكاء اصطناعي متعدد المزوّدين',
+        'Self-hosted + paid providers' => 'نماذج محلية ومزوّدون مدفوعون',
+        'Delivery Evidence' => 'أدلة التسليم',
+        'PR, CI, test and review traces' => 'سجلات مراجعة الكود والاختبارات والمراجعات',
+        'Verified Projects' => 'مشاريع تم التحقق منها',
+        'Published case studies only' => 'دراسات الحالة المنشورة فقط',
+        'Evidence-gated capabilities' => 'قدرات اجتازت التحقق من الأدلة',
+        'Database & Reliability' => 'قواعد البيانات والموثوقية',
+        'Published skills only' => 'مهارات منشورة فقط',
+        'Project Delivery' => 'تسليم المشاريع',
+        'Evidence-reviewed skills only' => 'مهارات تم التحقق من أدلتها فقط',
+        'Evidence-approved capabilities only' => 'قدرات معتمدة بالأدلة فقط',
+    ])
+    @php($copy['pill'] = $t007Translations[$copy['pill']] ?? $copy['pill'])
+    @php($copy['title'] = $t007Translations[$copy['title']] ?? $copy['title'])
+    @php($copy['subtitle'] = $t007Translations[$copy['subtitle']] ?? $copy['subtitle'])
+    @if(isset($copy['cards']))
+        @php($copy['cards'] = array_map(static fn (array $card): array => [
+            ...$card,
+            'title' => $t007Translations[$card['title']] ?? $card['title'],
+            'text' => $t007Translations[$card['text']] ?? $card['text'],
+        ], $copy['cards']))
+    @endif
+@endif
 @php($t007Ui = $t007Ar ? ['explore' => 'استكشف', 'evidence' => 'عرض الأدلة', 'details' => 'عرض التفاصيل', 'download' => 'عرض السيرة العامة', 'projects' => 'أدلة المشاريع'] : ['explore' => 'Explore', 'evidence' => 'View evidence', 'details' => 'View details', 'download' => 'View public profile', 'projects' => 'Project evidence'])
 @push('styles')
 <style>
@@ -116,6 +175,19 @@ body:has(.t007-reference-stage) .site-footer{margin-top:0}
 .t007-language-switch:focus-visible,.t007-nav-shell a:focus-visible{outline:3px solid #fff;outline-offset:3px}
 .t007-sr-only{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
 .t007-reference-stage{height:760px;background:#f5f9fc}
+/* RTL uses logical reading order and keeps the decorative stack clear of text. */
+:lang(ar) .t007-reference-hero{text-align:right;direction:rtl}
+:lang(ar) .t007-reference-actions{justify-content:flex-start}
+:lang(ar) .t007-reference-action{padding-left:12px;padding-right:29px;letter-spacing:0}
+:lang(ar) .t007-pill{transform:none;letter-spacing:0}
+:lang(ar) .t007-reference-hero h1{letter-spacing:0}
+:lang(ar) .t007-visual-stack{left:55px;right:auto}
+:lang(ar) .t007-reference-cards,:lang(ar) .t007-hire-cards,:lang(ar) .t007-about-rows{direction:rtl}
+:lang(ar) .t007-about-row strong{margin-left:0;margin-right:32px;letter-spacing:0}
+:lang(ar) .t007-about-period{padding-left:0;padding-right:14px;letter-spacing:0}
+:lang(ar) .t007-card-link{left:auto;right:26px;letter-spacing:0}
+:lang(ar) .t007-reference-card h2,:lang(ar) .t007-reference-card p{letter-spacing:0}
+
 .t007-reference-hero{height:326px;background:#edf7fc;position:relative;padding:35px 56px}
 .t007-pill{height:39px;min-width:259px;width:max-content;border-radius:16px;background:#dcf6f1;color:#0a9a8c;display:flex;align-items:center;padding:0 15px;font-size:18px;font-weight:700;letter-spacing:.6px;transform:translateX(-4px)}
 .t007-pill span{display:block;transform:translate(-1px,-2px)}
@@ -152,6 +224,7 @@ body:has(.t007-reference-stage) .site-footer{margin-top:0}
 @media(max-width:900px){.t007-reference-actions{flex-wrap:wrap}.t007-reference-action{max-width:100%;width:auto;min-width:0;padding-inline:22px}.t007-reference-subtitle{max-width:100%}.t007-visual-stack{max-width:100%;transform:scale(.78);transform-origin:top left}.t007-about-row{height:auto;min-height:98px;gap:12px;flex-wrap:wrap;padding-block:16px}.t007-about-row strong{margin-left:0;font-size:clamp(17px,4vw,26px);overflow-wrap:anywhere}.t007-about-period{flex-shrink:0}.t007-hire-card p{white-space:normal;overflow-wrap:anywhere}.t007-reference-card h2{overflow-wrap:anywhere}}
 @media(max-width:900px){.t007-language-switch{margin-left:10px;margin-right:0;flex-shrink:0}.t007-nav-links{scrollbar-width:thin;scrollbar-color:#0a9a8c #184876}.t007-nav-links a:focus-visible{outline-offset:-5px}}
 @media(max-width:900px){.t007-nav-shell{height:auto;min-height:100px;padding:18px 24px;flex-wrap:wrap}.t007-nav-links{order:3;width:100%;overflow:auto}.t007-nav-links a{margin-right:28px}.t007-contact{margin-left:auto}.t007-reference-stage{height:auto}.t007-reference-hero{height:auto;min-height:420px;padding:32px 28px}.t007-visual-stack{position:relative;left:auto;top:auto;margin:35px auto 0}.t007-reference-body{height:auto;padding:28px}.t007-reference-cards,.t007-hire-cards{grid-template-columns:1fr}.t007-reference-card,.t007-hire-card{width:100%}}
+@media(max-width:900px){:lang(ar) .t007-visual-stack{left:auto;right:auto}:lang(ar) .t007-about-row strong{margin-right:0}}
 </style>
 @endpush
 <section class="t007-reference-stage" aria-label="{{ $copy['title'] }}">
