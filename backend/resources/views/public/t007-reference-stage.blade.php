@@ -142,6 +142,7 @@ body:has(.t007-reference-stage) .site-footer{margin-top:0}
 .t007-hire-card h2{font-size:30px;margin:0 0 34px;line-height:1.2}.t007-hire-card p{font-size:20px;margin:0 0 34px;color:#254a68;white-space:nowrap}
 .t007-hire-card a{display:block;text-decoration:none;color:#254a68;font-size:20px;margin:0 0 31px}
 .t007-functional{background:#fff;padding-top:48px}
+@media(min-width:901px) and (max-width:1399px){.t007-nav-shell{padding-inline:24px}.t007-brand{margin-right:24px}.t007-nav-links a,.t007-nav-links a:nth-child(n){margin-right:clamp(8px,1.4vw,20px);font-size:14px}.t007-reference-cards,.t007-hire-cards{grid-template-columns:repeat(3,minmax(0,1fr));gap:20px}.t007-reference-hero{padding-inline:36px}.t007-visual-stack{left:auto;right:30px;transform:scale(.78);transform-origin:top right}.t007-reference-subtitle{max-width:65%}.t007-reference-body{padding-inline:36px}.t007-hire-card p{white-space:normal;overflow-wrap:anywhere}}
 @media(max-width:900px){.t007-nav-shell{height:auto;min-height:100px;padding:18px 24px;flex-wrap:wrap}.t007-nav-links{order:3;width:100%;overflow:auto}.t007-nav-links a{margin-right:28px}.t007-contact{margin-left:auto}.t007-reference-stage{height:auto}.t007-reference-hero{height:auto;min-height:420px;padding:32px 28px}.t007-visual-stack{position:relative;left:auto;top:auto;margin:35px auto 0}.t007-reference-body{height:auto;padding:28px}.t007-reference-cards,.t007-hire-cards{grid-template-columns:1fr}.t007-reference-card,.t007-hire-card{width:100%}}
 </style>
 @endpush
