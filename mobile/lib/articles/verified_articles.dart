@@ -582,27 +582,30 @@ class VerifiedArticleDetail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text(article.title)),
-      body: ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
-          Text(
-            arabic
-                ? 'محتوى منشور موثق بمراجع؛ ليس تقرير اختبار عملي.'
-                : 'Published source-verified reading, not a tested execution report.',
-          ),
-          const SizedBox(height: 16),
-          SelectableText(article.body, key: const Key('verified-article-body')),
-          const SizedBox(height: 24),
-          Text(arabic ? 'المراجع' : 'Citations',
-              style: Theme.of(context).textTheme.titleLarge),
-          for (final citation in article.citations)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: SelectableText(citation),
+    return Directionality(
+      textDirection: arabic ? TextDirection.rtl : TextDirection.ltr,
+      child: Scaffold(
+        appBar: AppBar(title: Text(article.title)),
+        body: ListView(
+          padding: const EdgeInsets.all(20),
+          children: [
+            Text(
+              arabic
+                  ? 'محتوى منشور موثق بمراجع؛ ليس تقرير اختبار عملي.'
+                  : 'Published source-verified reading, not a tested execution report.',
             ),
-        ],
+            const SizedBox(height: 16),
+            SelectableText(article.body, key: const Key('verified-article-body')),
+            const SizedBox(height: 24),
+            Text(arabic ? 'المراجع' : 'Citations',
+                style: Theme.of(context).textTheme.titleLarge),
+            for (final citation in article.citations)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: SelectableText(citation),
+              ),
+          ],
+        ),
       ),
     );
   }
