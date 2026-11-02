@@ -114,6 +114,52 @@ final class PublicLearningPathTest extends TestCase
         $second->assertDontSee('a-private-');
     }
 
+    public function test_malformed_published_uuids_do_not_break_flutter_catalog_or_consume_page_slots(): void
+    {
+        // The mobile decoder fail-closes an entire page on a single invalid
+        // row ID, even when that row is marked published and has valid lessons.
+        // Such legacy/imported rows must be filtered by the same server gate
+        // that authenticated interview practice uses.
+        $badIds = ['legacy-not-a-uuid', str_repeat('a', 32)];
+        foreach ($badIds as $i => $id) {
+            DB::table('learning_paths')->insert([
+                'id' => $id,
+                'slug' => sprintf('a-corrupt-%02d', $i),
+                'title' => 'Never display corrupted track '.$i,
+                'published' => true,
+                'outline_json' => json_encode([
+                    ['title' => 'Valid lesson shape', 'description' => 'But invalid path ID'],
+                ], JSON_THROW_ON_ERROR),
+            ]);
+            $this->assertNull(app(\App\Http\Controllers\Api\PublicLearningPathController::class)
+                ->verifiedTrack($id));
+        }
+
+        $good = [];
+        for ($i = 1; $i <= 21; $i++) {
+            $good[] = $this->path(sprintf('z-verified-%02d', $i));
+        }
+
+        foreach (['en', 'ar'] as $lang) {
+            $one = $this->getJson('/api/v1/mobile/learn?lang='.$lang.'&page=1')
+                ->assertOk()->assertJsonCount(20, 'data')
+                ->assertJsonPath('meta.has_more_pages', true);
+            $two = $this->getJson('/api/v1/mobile/learn?lang='.$lang.'&page=2')
+                ->assertOk()->assertJsonCount(1, 'data')
+                ->assertJsonPath('meta.has_more_pages', false);
+            $this->assertSame($good, array_merge(
+                array_column($one->json('data'), 'id'),
+                array_column($two->json('data'), 'id')
+            ));
+            foreach ($badIds as $id) {
+                $one->assertDontSee($id);
+                $two->assertDontSee($id);
+            }
+            $one->assertDontSee('Never display corrupted track');
+            $two->assertDontSee('Never display corrupted track');
+        }
+    }
+
     public function test_invalid_query_is_rejected_and_private_progress_never_reaches_guest(): void
     {
         foreach (['?page=0', '?page=10001', '?page=abc', '?lang=fr'] as $query) {

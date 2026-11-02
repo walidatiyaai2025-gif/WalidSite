@@ -6,6 +6,12 @@
 @php($purposeLabels = ['account_activity' => ['Account activity', 'نشاط الحساب'], 'editorial_updates' => ['Editorial updates', 'تحديثات المحتوى'], 'product_updates' => ['Product updates', 'تحديثات المنتج']])
 @php($channelLabels = ['email' => ['Email', 'البريد الإلكتروني'], 'push' => ['Push notification', 'إشعار فوري']])
 @php($title = $titles[$section][$ar ? 1 : 0])
+@php($subtitles = [
+    'github' => ['Verified public repository ingestion', 'مراجعة المستودعات العامة المتحقق منها'],
+    'projects' => ['Portfolio, evidence and resume publishing', 'إدارة المشاريع والأدلة والسيرة المهنية'],
+    'audience' => ['Segments, consent and notification rules', 'شرائح الجمهور والموافقات وقواعد الإشعارات'],
+    'analytics' => ['Recorded technical and operational metrics', 'المؤشرات التقنية والتشغيلية المحفوظة'],
+])
 <!doctype html>
 <html lang="{{ $locale }}" dir="{{ $ar ? 'rtl' : 'ltr' }}">
 <head>
@@ -13,27 +19,55 @@
 <meta name="robots" content="noindex,nofollow">
 <title>{{ $title }} — WalidSite</title>
 <style>
-:root{--nav:#163B66;--ink:#142E4D;--muted:#55718B;--bg:#F5F9FC;--edge:#D3E3ED;--link:#126DE1;--accent:#00A999}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 Inter,Arial,sans-serif}
-:lang(ar) body{font-family:Tajawal,Arial,sans-serif}.layout{display:grid;grid-template-columns:minmax(190px,230px) minmax(0,1fr);min-height:100vh}
-aside{background:var(--nav);color:#fff;padding:24px}aside a{display:block;color:#fff;padding:8px 0;min-height:44px}
-aside a[aria-current=page]{font-weight:700;text-decoration:underline;text-decoration-thickness:3px}
-main{padding:clamp(16px,4vw,48px);min-width:0}.top{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px}
-.panel{background:white;border:1px solid var(--edge);border-radius:16px;padding:clamp(16px,3vw,24px);margin:20px 0}
-.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,190px),1fr));gap:12px}
-.card{background:var(--bg);border:1px solid var(--edge);padding:16px;border-radius:12px;min-width:0;overflow-wrap:anywhere}
-.card strong{display:block;font-size:24px}.muted{color:var(--muted)}.alert{border-inline-start:4px solid #BF7F12}
-.filters{display:flex;flex-wrap:wrap;gap:12px;align-items:end}.filters > div{flex:1 1 180px}
+:root{--nav:#1c4974;--nav-active:#194b58;--ink:#194976;--muted:#476583;--bg:#f3f8fc;--edge:#d8e6ee;--link:#126de1;--accent:#10a999}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 Inter,Arial,sans-serif}
+:lang(ar) body{font-family:Tajawal,Arial,sans-serif}
+.layout{display:grid;grid-template-columns:300px minmax(0,1fr);min-height:100vh}
+aside{background:var(--nav);color:#fff;padding:18px 15px 24px;min-width:0}
+.brand{display:block;margin:0 15px 36px;color:var(--accent);font-size:27px;font-weight:800;letter-spacing:.025em;line-height:1.7}
+.brand span{margin-inline-start:13px}
+aside nav{display:flex;flex-direction:column;gap:2px}
+aside a{display:flex;align-items:center;color:#eaf4fd;text-decoration:none;padding:10px 20px;min-height:52px;border-radius:14px;font-size:17px}
+aside a:hover{background:#275d82}
+aside a[aria-current=page]{font-weight:700;background:var(--nav-active);color:var(--accent)}
+aside .signout{margin:18px 20px 0}
+.workspace{min-width:0}
+.workspace-header{height:90px;padding:15px 44px;background:#fff;display:flex;align-items:center;justify-content:space-between;gap:12px}
+.workspace-header .workspace-name{margin:0;font-size:27px;font-weight:800;letter-spacing:.01em}
+.health-unverified{border-radius:15px;padding:8px 14px;background:#eef4f7;color:#45617b;font-size:13px;font-weight:700;text-align:center}
+main{padding:32px 42px 56px;min-width:0}
+.top{display:flex;align-items:start;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:26px}
+.top h1{font-size:38px;line-height:1.2;font-weight:800;margin:0 0 8px}
+.page-heading p{margin:0;font-size:17px}
+.locale-switch{display:inline-flex;align-items:center;min-height:44px}
+.panel{background:#fff;border:1px solid var(--edge);border-radius:20px;padding:clamp(18px,3vw,28px);margin:20px 0}
+.panel h2{margin-top:0;font-size:22px}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,210px),1fr));gap:20px}
+.card{background:#f5f9fc;border:1px solid var(--edge);padding:20px;border-radius:16px;min-width:0;overflow-wrap:anywhere}
+.card strong{display:block;font-size:25px;margin-top:10px}.muted{color:var(--muted)}.alert{border-inline-start:4px solid #bf7f12}
+.filters{display:flex;flex-wrap:wrap;gap:12px;align-items:end}.filters>div{flex:1 1 180px}
 label{font-weight:700;display:block;margin-bottom:5px}
-input,select,textarea{width:100%;font:inherit;border:1px solid #97B4C8;border-radius:8px;padding:8px;min-height:44px;color:var(--ink);background:#fff}
-textarea{min-height:90px}button,.button{display:inline-flex;justify-content:center;align-items:center;background:var(--nav);color:#fff;min-height:44px;border:0;border-radius:8px;padding:9px 16px;font:inherit;cursor:pointer;text-decoration:none}
+input,select,textarea{width:100%;font:inherit;border:1px solid #97b4c8;border-radius:8px;padding:8px;min-height:44px;color:var(--ink);background:#fff}
+textarea{min-height:90px}
+button,.button{display:inline-flex;justify-content:center;align-items:center;background:var(--nav);color:#fff;min-height:44px;border:0;border-radius:8px;padding:9px 16px;font:inherit;cursor:pointer;text-decoration:none}
 a{color:var(--link)}a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible,summary:focus-visible{outline:3px solid var(--accent);outline-offset:3px}
-.scroll{overflow-x:auto}table{width:100%;border-collapse:collapse;min-width:580px}th,td{padding:11px;text-align:start;border-bottom:1px solid var(--edge);vertical-align:top;overflow-wrap:anywhere}
-.skip{position:absolute;top:-100px;inset-inline-start:12px;background:white;padding:12px}.skip:focus{top:10px}
-.inline-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.safe{color:#176B4D}.warn{color:#8B2C2C}
-details{border:1px solid var(--edge);padding:10px;border-radius:8px}details[open]{background:var(--bg)}summary{cursor:pointer;min-height:44px;padding:8px}
+.scroll{overflow-x:auto}
+table{width:100%;border-collapse:collapse;min-width:580px}
+th,td{padding:16px;text-align:start;border-bottom:1px solid var(--edge);vertical-align:top;overflow-wrap:anywhere}
+th{background:var(--bg)}tbody tr:last-child td{border-bottom:0}
+.skip{position:absolute;top:-120px;inset-inline-start:12px;background:#fff;padding:12px;z-index:10}.skip:focus{top:10px}
+.inline-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.safe{color:#176b4d}.warn{color:#8b2c2c}
+details{border:1px solid var(--edge);padding:10px;border-radius:8px}details[open]{background:var(--bg)}
+summary{cursor:pointer;min-height:44px;padding:8px}
 .field-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,245px),1fr));gap:12px;margin-block:12px}
-@media(max-width:720px){.layout{grid-template-columns:1fr}aside{padding:12px}aside nav{display:flex;flex-wrap:wrap;gap:8px}aside nav a{display:inline-flex;padding:8px}}
+.workflow-steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px 32px;list-style:none;padding:0;margin:20px 0}
+.workflow-steps li{background:#f1f8fa;border:1px solid #c0e0df;border-radius:16px;min-height:148px;padding:16px;min-width:0}
+.workflow-steps .sequence{display:inline-block;background:#164952;color:var(--accent);border-radius:14px;padding:2px 14px;font-weight:800}
+.workflow-steps strong{display:block;font-size:22px;margin:14px 0 4px}
+.workflow-steps .state{font-size:14px;color:var(--muted)}
+@media(max-width:1040px){.layout{grid-template-columns:230px minmax(0,1fr)}.workspace-header{padding-inline:24px}main{padding:24px}.workflow-steps{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:720px){.layout{grid-template-columns:1fr}aside{padding:12px}.brand{font-size:22px;margin:0 10px 8px}aside nav{flex-direction:row;flex-wrap:wrap;gap:4px}aside a{padding:8px 12px;font-size:14px;min-height:44px}.workspace-header{height:auto;min-height:72px}.workspace-header .workspace-name{font-size:21px}.top h1{font-size:31px}.workflow-steps{grid-template-columns:1fr}.panel{padding:16px}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;scroll-behavior:auto!important;transition:none!important}}
 </style>
 @include('partials.web-fonts')
@@ -41,18 +75,28 @@ details{border:1px solid var(--edge);padding:10px;border-radius:8px}details[open
 <body>
 <a class="skip" href="#content">{{ $ar ? 'انتقل إلى المحتوى' : 'Skip to content' }}</a>
 <div class="layout"><aside>
-<h2>{{ $ar ? 'لوحة إدارة وليد سايت' : 'WalidSite Admin' }}</h2>
+<div class="brand" aria-label="{{ $ar ? 'لوحة تحكم وليد سايت' : 'WalidSite control' }}">WA <span>CONTROL</span></div>
 <nav aria-label="{{ $ar ? 'التنقل الإداري' : 'Admin navigation' }}">
-<a href="{{ route('admin.home', ['lang'=>$locale]) }}">{{ $ar ? 'الرئيسية' : 'Overview' }}</a>
+<a href="{{ route('admin.home', ['lang'=>$locale]) }}">{{ $ar ? 'نظرة عامة' : 'Overview' }}</a>
+<a href="{{ route('admin.content.index', ['lang'=>$locale]) }}">{{ $ar ? 'استوديو المحتوى' : 'Content Studio' }}</a>
+<a href="{{ route('admin.providers.index', ['lang'=>$locale]) }}">{{ $ar ? 'مزودو الذكاء الاصطناعي' : 'AI Providers' }}</a>
+<a href="{{ route('admin.routing.index', ['lang'=>$locale]) }}">{{ $ar ? 'توجيه الذكاء الاصطناعي' : 'AI Routing' }}</a>
+<a href="{{ route('admin.media.index', ['lang'=>$locale]) }}">{{ $ar ? 'استوديو الصور' : 'Image Studio' }}</a>
+<a href="{{ route('admin.quality.index', ['lang'=>$locale]) }}">{{ $ar ? 'بوابات الجودة' : 'Quality Gates' }}</a>
 @foreach(['github','projects','audience','analytics'] as $nav)
-<a href="{{ route('admin.operations.'.$nav, ['lang'=>$locale]) }}" @if($nav===$section) aria-current="page" @endif>{{ $titles[$nav][$ar ? 1 : 0] }}</a>
+<a href="{{ route('admin.operations.'.$nav, ['lang'=>$locale]) }}" @if($nav===$section) aria-current="page" @endif>{{ $nav==='audience' ? ($ar ? 'الجمهور والإشعارات' : 'Audience / Push') : ($nav==='analytics' ? ($ar ? 'التحليلات' : 'Analytics') : $titles[$nav][$ar ? 1 : 0]) }}</a>
 @endforeach
-<a href="{{ route('admin.content.index', ['lang'=>$locale]) }}">{{ $ar ? 'المحتوى والموافقات' : 'Editorial & approvals' }}</a>
-<a href="{{ route('admin.audit.index', ['lang'=>$locale]) }}">{{ $ar ? 'سجل التدقيق' : 'Audit & security' }}</a>
+<a href="{{ route('admin.approvals.index', ['lang'=>$locale]) }}">{{ $ar ? 'الموافقات' : 'Approvals' }}</a>
+<a href="{{ route('admin.audit.index', ['lang'=>$locale]) }}">{{ $ar ? 'التدقيق والأمان' : 'Audit & Security' }}</a>
 </nav>
-<form method="post" action="{{ route('admin.logout') }}">@csrf<button type="submit">{{ $ar ? 'تسجيل الخروج' : 'Sign out' }}</button></form>
-</aside><main id="content" tabindex="-1">
-<div class="top"><h1>{{ $title }}</h1><a href="{{ route('admin.operations.'.$section, array_merge(['lang'=>$ar ? 'en' : 'ar'], $section==='projects' ? array_filter(['status'=>$statusFilter ?? null, 'visibility'=>$visibilityFilter ?? null]) : ($section==='audience' ? ['purpose'=>$purpose,'channel'=>$channel] : ($section==='analytics' ? ['day'=>$day,'window'=>$window] : ($section==='github' ? array_filter(['repo'=>$selectedRepo['full_name'] ?? null]) : []))))) }}" lang="{{ $ar ? 'en' : 'ar' }}" hreflang="{{ $ar ? 'en' : 'ar' }}">{{ $ar ? 'English' : 'العربية' }}</a></div>
+<form class="signout" method="post" action="{{ route('admin.logout') }}">@csrf<button type="submit">{{ $ar ? 'تسجيل الخروج' : 'Sign out' }}</button></form>
+</aside><div class="workspace">
+<header class="workspace-header" role="banner">
+<p class="workspace-name">{{ $ar ? 'عمليات وليد للذكاء الاصطناعي' : 'Waleed AI Operations' }}</p>
+<span class="health-unverified" role="status">{{ $ar ? 'حالة النظام غير متحقّق منها' : 'SYSTEM STATUS UNVERIFIED' }}</span>
+</header>
+<main id="content" tabindex="-1">
+<div class="top"><div class="page-heading"><h1>{{ $title }}</h1><p>{{ $subtitles[$section][$ar ? 1 : 0] }}</p></div><a class="locale-switch" href="{{ route('admin.operations.'.$section, array_merge(['lang'=>$ar ? 'en' : 'ar'], $section==='projects' ? array_filter(['status'=>$statusFilter ?? null, 'visibility'=>$visibilityFilter ?? null]) : ($section==='audience' ? ['purpose'=>$purpose,'channel'=>$channel] : ($section==='analytics' ? ['day'=>$day,'window'=>$window] : ($section==='github' ? array_filter(['repo'=>$selectedRepo['full_name'] ?? null]) : []))))) }}" lang="{{ $ar ? 'en' : 'ar' }}" hreflang="{{ $ar ? 'en' : 'ar' }}">{{ $ar ? 'English' : 'العربية' }}</a></div>
 @if(session('status'))<div role="status" class="panel safe">{{ session('status') }}</div>@endif
 @if(session('warning'))<div role="alert" class="panel alert">{{ $ar ? 'تعذر التحقق من بيانات GitHub العامة.' : session('warning') }}</div>@endif
 @if($errors->any())<div role="alert" class="panel warn"><strong>{{ $ar ? 'تعذر حفظ العملية' : 'The operation was not saved' }}</strong><ul>@foreach($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></div>@endif
@@ -103,6 +147,45 @@ details{border:1px solid var(--edge);padding:10px;border-radius:8px}details[open
 <section class="panel" aria-labelledby="projects-title">
 <h2 id="projects-title">{{ $ar ? 'سجل المشاريع والدليل' : 'Project & evidence register' }} ({{ $projects->total() }})</h2>
 <p class="muted">{{ $ar ? 'تعديل المسودات الخاصة فقط. لا يوجد زر نشر يتجاوز مراجعة الادعاءات والدليل.' : 'Only unpublished private drafts may be edited. Publication and professional claims require independent evidence review.' }}</p>
+{{-- ADMIN-09: review the exact published owner CV, never private drafts
+     or self-reported claims from an unrelated/inactive account. The public
+     preview and downloadable binary use the same evidence-gated routes as
+     WEB-11; no second editable CV data store is invented here. --}}
+@php($cvPublicResponse = app(\App\Http\Controllers\Api\PublicPortfolioController::class)->profile(request())->getData(true))
+@php($publicCvAvailable = isset($cvPublicResponse['data']) && $cvPublicResponse['data'] !== null)
+<section class="panel" aria-labelledby="cv-review-title">
+<h3 id="cv-review-title">{{ $ar ? 'مراجعة السيرة المهنية المنشورة' : 'Published CV review' }}</h3>
+<p class="muted">{{ $ar
+    ? 'تستخدم المعاينة والتنزيل مسارات السيرة العامة نفسها مع بوابة التحقق من الأدلة. لن تُعرض مسودات المالك أو بيانات حساب آخر أو أي شهادات غير معتمدة.'
+    : 'Preview and download use the same evidence-gated public CV endpoints. Owner drafts, other accounts and unverified credentials are never disclosed.' }}</p>
+@if(!$publicCvAvailable)
+<p role="status" class="muted">{{ $ar
+    ? 'لم تُنشر سيرة مهنية معتمدة لمالك نشط بعد. المعاينات العامة تظهر حالة المراجعة؛ تنزيل PDF غير متاح.'
+    : 'No published CV for an active owner is available. Public previews show the pending state; PDF downloads are unavailable.' }}</p>
+@endif
+<div class="cards" role="list">
+@foreach([
+'all' => $ar ? 'جميع المسارات' : 'All verified tracks',
+'database' => $ar ? 'قواعد البيانات والموثوقية' : 'Database & reliability',
+'software' => $ar ? 'البرمجيات والتكامل' : 'Software & integration',
+'delivery' => $ar ? 'إدارة وتسليم المشاريع' : 'Project delivery',
+] as $focus => $cvLabel)
+<div class="card" role="listitem">
+<strong>{{ $cvLabel }}</strong>
+<div class="inline-actions" style="margin-top:12px">
+<a class="button" href="{{ route('public.resume', ['lang' => $locale, 'track' => $focus]) }}">{{ $ar ? 'معاينة عامة' : 'Public preview' }}</a>
+@if($publicCvAvailable)
+<a class="button" href="{{ route('public.resume.pdf', ['lang' => $locale, 'track' => $focus]) }}">{{ $ar ? 'تنزيل PDF المعتمد' : 'Download verified PDF' }}</a>
+@endif
+</div>
+</div>
+@endforeach
+</div>
+<div class="inline-actions" style="margin-top:20px">
+<a href="{{ route('admin.approvals.index', ['lang' => $locale]) }}">{{ $ar ? 'مراجعة الموافقات الفعلية' : 'Review recorded approvals' }}</a>
+<a href="{{ route('admin.audit.index', ['lang' => $locale]) }}">{{ $ar ? 'فتح سجل التدقيق' : 'Open audit trail' }}</a>
+</div>
+</section>
 <form method="get" action="{{ route('admin.operations.projects') }}" class="filters" role="search">
 <input type="hidden" name="lang" value="{{ $locale }}">
 <div><label for="visibility">{{ $ar ? 'الظهور' : 'Visibility' }}</label><select name="visibility" id="visibility"><option value="">{{ $ar ? 'الكل' : 'All' }}</option>@foreach(['public','private'] as $option)<option value="{{ $option }}" @selected($visibilityFilter===$option)>{{ $visibilityLabels[$option][$ar ? 1 : 0] }}</option>@endforeach</select></div>
@@ -162,6 +245,21 @@ details{border:1px solid var(--edge);padding:10px;border-radius:8px}details[open
 @if($project->evidence_count > $project->evidence->count())<p class="muted">{{ $ar ? 'تُعرض أحدث عشرة أدلة خاصة معلقة فقط.' : 'Only the ten newest pending private candidates are shown.' }}</p>@endif
 @endif
 </details>
+@elseif(auth()->user()?->hasRole('owner') && $project->visibility==='public' && $project->published_at!==null)
+<details><summary>{{ $ar ? 'سحب المشروع المنشور' : 'Withdraw published project' }}</summary>
+<p class="muted">{{ $ar ? 'سيتوقف ظهور المشروع فوراً في الصفحات العامة. تظل أدلته المعتمدة محفوظة، ولا يعاد نشره تلقائياً.' : 'This immediately removes the project from public pages. Previously approved evidence remains saved; it is never republished automatically.' }}</p>
+<form method="post" action="{{ route('admin.operations.projects.withdraw', ['project'=>$project->id,'lang'=>$locale]) }}">
+@csrf
+<fieldset>
+<legend>{{ $ar ? 'تأكيد السحب من العرض العام' : 'Confirm public withdrawal' }}</legend>
+<label for="withdraw-{{ $project->id }}">
+<input id="withdraw-{{ $project->id }}" type="checkbox" name="withdrawal_confirmed" value="1" required>
+{{ $ar ? 'أؤكد سحب هذا المشروع المنشور من الموقع العام.' : 'I confirm this published project must be hidden from public view.' }}
+</label>
+<button type="submit">{{ $ar ? 'سحب المشروع من النشر' : 'Withdraw public project' }}</button>
+</fieldset>
+</form>
+</details>
 @else <span class="muted">{{ $ar ? 'مراجعة دليل مطلوبة' : 'Evidence review required' }}</span>
 @endif
 </td></tr>
@@ -173,6 +271,22 @@ details{border:1px solid var(--edge);padding:10px;border-radius:8px}details[open
 
 @if($section === 'audience')
 <section class="panel" aria-labelledby="audience-title">
+<ol class="workflow-steps" aria-label="{{ $ar ? 'مراحل الإشعار' : 'Notification workflow stages' }}">
+@foreach([
+  ['Segment', 'الشريحة', 'preview'],
+  ['Message', 'الرسالة', 'unavailable'],
+  ['Review', 'المراجعة', 'unavailable'],
+  ['Schedule', 'الجدولة', 'unavailable'],
+  ['Send', 'الإرسال', 'unavailable'],
+  ['Metrics', 'القياس', 'unavailable'],
+] as $index=>$stage)
+<li>
+<span class="sequence">{{ str_pad((string) ($index + 1), 2, '0', STR_PAD_LEFT) }}</span>
+<strong>{{ $stage[$ar ? 1 : 0] }}</strong>
+<span class="state">{{ $stage[2] === 'preview' ? ($ar ? 'معاينة الموافقات فقط' : 'Consent preview only') : ($ar ? 'غير متاح، لم يُرسل شيء' : 'Unavailable — nothing sent') }}</span>
+</li>
+@endforeach
+</ol>
 <h2 id="audience-title">{{ $ar ? 'معاينة جمهور وافق بالفعل' : 'Consented audience preview' }}</h2>
 <p class="muted">{{ $ar ? 'العدد من تفضيلات الموافقة المحفوظة لمستخدمين نشطين فقط. المستلمون غير الموافقين أو الملغين غير محسوبين. لا توجد خدمة إرسال متاحة من هذه الشاشة.' : 'Only active accounts with unrevoked explicit consent count. No emails or identifiers are listed, and this screen cannot send a push notification.' }}</p>
 <form method="get" action="{{ route('admin.operations.audience') }}" class="filters" role="search">
@@ -221,5 +335,5 @@ details{border:1px solid var(--edge);padding:10px;border-radius:8px}details[open
 </tbody></table></div>@endif
 </section>
 @endif
-</main></div>
+</main></div></div>
 </body></html>

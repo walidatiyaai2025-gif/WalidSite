@@ -277,6 +277,14 @@ jobs:
           print('MISMATCH COUNTS: ' + json.dumps(mismatches, sort_keys=True))
           PY
 
+          # Read-only Admin AR/EN desktop/mobile accessibility diagnostics.
+          # Defects stay recorded; pixel parity is never inferred from CI.
+          set +e
+          python3 -B qa/audit_admin_runtime.py --provider-id "$provider_id" --commit "$tested_sha" --output "/home/runner/work/WalidSite/WalidSite/qa/visual-diagnostics/$tested_sha/admin-runtime-a11y.json"
+          a11y_exit=$?
+          set -e
+          if test "$a11y_exit" -gt 1; then exit "$a11y_exit"; fi
+
           # Real Web diagnostics reuse this already-verified local Laravel
           # server. The two dynamic pages require actual published source data;
           # static pages never substitute invented project/article records.

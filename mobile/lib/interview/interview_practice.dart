@@ -180,6 +180,7 @@ class _InterviewPracticeState extends State<InterviewPracticeScreen> {
   String? _error;
   bool _busy = false;
   bool _consent = false;
+  bool _catalogReady = false;
   bool _hasMore = false;
   int _page = 1;
   int _epoch = 0;
@@ -218,6 +219,7 @@ class _InterviewPracticeState extends State<InterviewPracticeScreen> {
     setState(() {
       _session = null;
       _tracks.clear();
+      _catalogReady = false;
       _active = null;
       _feedback = null;
       _consent = false;
@@ -227,6 +229,8 @@ class _InterviewPracticeState extends State<InterviewPracticeScreen> {
     return false;
   }
 
+  // The login bearer is real server-side state. Retain it immediately after
+  // validation so a failed catalog fetch cannot orphan an unrevocable token.
   Future<void> _signIn() async {
     if (_busy) return;
     if (_email.text.trim().isEmpty || _password.text.isEmpty) {
@@ -245,24 +249,67 @@ class _InterviewPracticeState extends State<InterviewPracticeScreen> {
               !signed.expiresAt!.isAfter(DateTime.now().toUtc()))) {
         throw const FormatException('Expired bearer');
       }
-      final catalog = await _readTracks(widget.arabic, 1);
-      if (!mounted || epoch != _epoch) return;
       setState(() {
         _session = signed;
+        _catalogReady = false;
+        _tracks.clear();
+        _page = 1;
+        _hasMore = false;
+        _active = null;
+        _feedback = null;
+        _consent = false;
+      });
+      final catalog = await _readTracks(widget.arabic, 1);
+      if (!mounted || epoch != _epoch) return;
+      if (catalog.currentPage != 1) {
+        throw const FormatException('Wrong first catalog page');
+      }
+      setState(() {
+        _tracks.addAll(catalog.tracks);
+        _hasMore = catalog.hasMorePages;
+        _catalogReady = true;
+      });
+    } catch (_) {
+      if (mounted && epoch == _epoch) {
+        setState(() => _error = _session != null
+            ? t('Signed in, but verified lessons could not load. '
+                'Retry loading or sign out.',
+                'تم تسجيل الدخول لكن تعذر تحميل الدروس المراجعة. '
+                'أعد التحميل أو سجل الخروج.')
+            : t('Could not sign in. Try again.',
+                'تعذر تسجيل الدخول. أعد المحاولة.'));
+      }
+    } finally {
+      _password.clear();
+      if (mounted && epoch == _epoch) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _retryCatalog() async {
+    if (_busy || _session == null || _catalogReady || !_tokenValid()) return;
+    final epoch = ++_epoch;
+    setState(() { _busy = true; _error = null; });
+    try {
+      final catalog = await _readTracks(widget.arabic, 1);
+      if (!mounted || epoch != _epoch) return;
+      if (catalog.currentPage != 1) {
+        throw const FormatException('Wrong first catalog page');
+      }
+      setState(() {
         _tracks
           ..clear()
           ..addAll(catalog.tracks);
         _page = 1;
         _hasMore = catalog.hasMorePages;
+        _catalogReady = true;
       });
     } catch (_) {
       if (mounted && epoch == _epoch) {
         setState(() => _error = t(
-            'Could not sign in or load verified lessons. Try again.',
-            'تعذر الدخول أو تحميل الدروس المراجعة. أعد المحاولة.'));
+            'Verified lessons still unavailable. Retry loading or sign out.',
+            'الدروس المراجعة ما زالت غير متاحة. أعد التحميل أو سجل الخروج.'));
       }
     } finally {
-      _password.clear();
       if (mounted && epoch == _epoch) setState(() => _busy = false);
     }
   }
@@ -360,6 +407,7 @@ class _InterviewPracticeState extends State<InterviewPracticeScreen> {
       setState(() {
         _session = null;
         _tracks.clear();
+        _catalogReady = false;
         _active = null;
         _feedback = null;
         _consent = false;
@@ -413,6 +461,21 @@ class _InterviewPracticeState extends State<InterviewPracticeScreen> {
               child: Text(_busy ? t('Loading...', 'جارٍ التحميل...')
                   : t('Sign in to practice', 'الدخول إلى التدريب'))),
           ] else if (_active == null) ...[
+            if (!_catalogReady) ...[
+              Text(t(
+                'Signed in. Verified lessons have not loaded; '
+                'practice is disabled until they are available.',
+                'تم تسجيل الدخول لكن الدروس المراجعة لم تُحمّل. '
+                'التدريب معطل حتى تتوفر الدروس.',
+              ), key: const Key('interview-catalog-unavailable')),
+              if (_busy)
+                const LinearProgressIndicator(key: Key('interview-catalog-loading')),
+              FilledButton(
+                key: const Key('interview-retry-tracks'),
+                onPressed: _busy ? null : _retryCatalog,
+                child: Text(t('Retry verified lessons', 'إعادة تحميل الدروس المراجعة')),
+              ),
+            ] else ...[
             Text(t('Choose a verified lesson', 'اختر درسًا تمت مراجعته'),
                 style: Theme.of(context).textTheme.titleMedium),
             if (_tracks.isEmpty)
@@ -434,6 +497,7 @@ class _InterviewPracticeState extends State<InterviewPracticeScreen> {
               TextButton(key: const Key('interview-more'),
                 onPressed: _busy ? null : _loadMore,
                 child: Text(t('More verified lessons', 'المزيد من الدروس المراجعة'))),
+            ],
           ] else ...[
             Text(_active!.question, key: const Key('interview-question'),
                 style: Theme.of(context).textTheme.titleLarge),
