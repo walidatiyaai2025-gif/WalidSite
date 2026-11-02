@@ -89,6 +89,7 @@ body:has(.t012-reference-stage) .site-footer{margin-top:0}
 .t012-search-body{padding:33px 55px 44px}
 .t012-search-box{height:72px;width:1316px;max-width:100%;background:#fff;border-radius:16px;margin-bottom:28px;display:flex;align-items:center;padding:0 33px}
 .t012-search-box input{width:100%;border:0;outline:0;background:transparent;font:inherit;font-size:23px;letter-spacing:.5px;color:#315471;transform:translateY(2px) scaleY(.96);transform-origin:left top}
+.t012-search-box input::placeholder{color:#5c7b91;opacity:1}
 .t012-search-grid{display:grid;grid-template-columns:repeat(3,411px);gap:27px}
 .t012-search-card{height:256px;border-radius:18px;background:#fff;padding:18px 25px;position:relative}
 .t012-search-badge{display:inline-flex;min-width:188px;height:33px;align-items:center;padding:0 14px;border-radius:15px;background:#e9f7f5;color:#078e80;font-size:16px;font-weight:700;transform:translate(-5px,1px)}
