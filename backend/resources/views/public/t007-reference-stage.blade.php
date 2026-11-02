@@ -110,6 +110,10 @@ body:has(.t007-reference-stage) .site-footer{margin-top:0}
 .t007-nav-links a:nth-child(4){margin-right:45px}.t007-nav-links a:nth-child(5){margin-right:61px}
 .t007-nav-links a:nth-child(6){margin-right:71px}.t007-nav-links a:nth-child(7){margin-right:55px}.t007-nav-links a:nth-child(8){margin-right:0}
 .t007-contact{display:flex;width:161px;height:50px;align-items:center;justify-content:center;border-radius:18px;background:#0a9a8c;color:#184876;text-decoration:none;font-size:18px;font-weight:800;white-space:nowrap;margin-left:auto;transform:translateY(2px)}
+.t007-nav-links{min-width:0}
+.t007-contact{flex-shrink:0}
+.t007-language-switch{width:auto;min-width:82px;height:42px;padding:0 10px;margin-left:10px;background:transparent;border:1px solid rgba(255,255,255,.7);color:#fff;font-size:14px;transform:none}
+.t007-language-switch:focus-visible,.t007-nav-shell a:focus-visible{outline:3px solid #fff;outline-offset:3px}
 .t007-sr-only{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
 .t007-reference-stage{height:760px;background:#f5f9fc}
 .t007-reference-hero{height:326px;background:#edf7fc;position:relative;padding:35px 56px}
