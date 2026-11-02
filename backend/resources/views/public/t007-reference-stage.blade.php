@@ -232,7 +232,7 @@ body:has(.t007-reference-stage) .site-footer{margin-top:0}
 /* Keyboard users must SEE the supplemental navigation when it gains focus. */
 .t007-sr-only:focus-visible{
     position:fixed!important;inset-block-start:12px!important;inset-inline-start:12px!important;
-    left:auto!important;top:auto!important;width:auto!important;height:auto!important;
+    width:auto!important;height:auto!important;
     margin:0!important;padding:10px 16px!important;overflow:visible!important;
     clip:auto!important;clip-path:none!important;white-space:normal!important;
     background:#fff!important;color:#163B66!important;border:3px solid #126DE1!important;
