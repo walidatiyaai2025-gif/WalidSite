@@ -114,7 +114,7 @@ aside button{background:transparent;border:1px solid #fff;color:#fff;padding:8px
 <td>@if($ready)<a href="{{ route('public.project', ['slug'=>$project->slug,'lang'=>$locale]) }}">{{ $locale === 'ar' ? 'عرض الحالة العامة' : 'Open verified case' }}</a>
 @else<span class="muted">{{ $locale === 'ar' ? 'غير جاهز للنشر' : 'Not public-ready' }}</span>@endif</td></tr>
 @endforeach</tbody></table></div><nav aria-label="{{ $locale === 'ar' ? 'صفحات المشاريع' : 'Project pages' }}">{{ $projects->links() }}</nav>@endif
-<p class="warning">{{ $locale === 'ar' ? 'تعديل المشاريع أو مراجعة ادعاءات السيرة غير متاح قبل توصيل API كتابة وتدقيق فعلي. لم يتم نشر أي سجل.' : 'Project/CV editing is unavailable until an audited write and review API is implemented. No record is published by this screen.' }}</p>
+<p class="warning" role="status">{{ $locale === 'ar' ? 'يمكن للمالك تعديل مسودات المشاريع الخاصة عبر صفحة التحرير المرتبطة أدناه. النشر ومراجعة ادعاءات السيرة يتطلبان مسار الموافقة والتحقق المستقل؛ هذه الشاشة للعرض فقط.' : 'Owners can edit private project drafts through the linked editor below. Publishing and CV claim approval require separate verification and review; this screen remains read-only.' }}</p>
 <a href="{{ route('public.resume', ['lang'=>$locale]) }}">{{ $locale === 'ar' ? 'عرض السيرة العامة المنشورة' : 'View published resume' }}</a>
 </section>
 @elseif($section === 'audience')
