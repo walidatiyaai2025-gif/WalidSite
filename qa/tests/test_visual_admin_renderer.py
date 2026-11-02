@@ -1,4 +1,6 @@
 """Admin authenticated screenshot renderer contract; mocks are NOT visual proof."""
+import io
+import json
 import os
 import stat
 import tempfile
@@ -7,8 +9,10 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
 
+from PIL import Image
+
 from qa.admin_visual_session import AdminSessionError
-from qa.render_admin_screenshot import render
+from qa.render_admin_screenshot import render, STATIC_HEADINGS, expected_heading, PROVIDER_EDITOR_HEADINGS
 
 
 class AdminScreenshotRendererTest(unittest.TestCase):
@@ -22,6 +26,9 @@ class AdminScreenshotRendererTest(unittest.TestCase):
         self.state.write_text('{"cookies":[{"name":"laravel_session","value":"secret"}],"origins":[]}')
         os.chmod(self.state, 0o600)
         self.output = self.root / "runtime.png"
+        buf = io.BytesIO()
+        Image.new("RGB", (1440, 860), (244, 250, 255)).save(buf, "PNG")
+        self.fake_png = buf.getvalue()
         self.env = {
             "WALIDSITE_RENDER_BASE_URL": "http://127.0.0.1:8000",
             "WALIDSITE_CAPTURE_ROUTE": "/admin/github",
@@ -34,7 +41,8 @@ class AdminScreenshotRendererTest(unittest.TestCase):
         }
 
     def fake(self, *, status=200, redirected=False, language="en",
-             direction="ltr", missing_main=False):
+             direction="ltr", missing_main=False, missing_heading=False,
+             wrong_heading=False, png=None):
         page = Mock()
         target = "http://127.0.0.1:8000" + self.env["WALIDSITE_CAPTURE_ROUTE"] + "?lang=" + self.env["WALIDSITE_CAPTURE_LOCALE"]
         page.goto.return_value = SimpleNamespace(status=status)
