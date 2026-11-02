@@ -16,6 +16,8 @@ from pathlib import Path
 from PIL import Image, ImageChops, ImageEnhance
 
 SCREEN_IDS = ("WEB-01", "WEB-02", "WEB-03", "WEB-06", "WEB-12")
+RESPONSIVE_VIEWPORTS = ((390, 844), (768, 1024), (1024, 768), (1280, 800))
+RESPONSIVE_LOCALES = ("ar", "en")
 
 # WEB-06 currently renders the same visible copy/geometry as its reference, so
 # it is the cleanest probe for Chromium/font rasterization. These candidates
@@ -232,8 +234,8 @@ def responsive_browser_audit(base_url: str, screens: dict) -> dict:
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)
         try:
-            for width, height in ((390, 844), (768, 1024), (1024, 768), (1280, 800)):
-                for lang in ("ar", "en"):
+            for width, height in RESPONSIVE_VIEWPORTS:
+                for lang in RESPONSIVE_LOCALES:
                     context = browser.new_context(
                         viewport={"width": width, "height": height},
                         device_scale_factor=1,
@@ -529,7 +531,7 @@ def main() -> int:
     report["summary"] = {
         "expected_screens": len(SCREEN_IDS),
         "responsive_checks": len(report["responsive_audit"]),
-        "responsive_ok": (len(report["responsive_audit"]) == 20 and
+        "responsive_ok": (len(report["responsive_audit"]) == len(SCREEN_IDS) * len(RESPONSIVE_VIEWPORTS) * len(RESPONSIVE_LOCALES) and
             all(row["passed"] for row in report["responsive_audit"].values())),
         "captured_screens": sum(row["status"] in ("exact", "mismatch")
                                 for row in report["screens"].values()),
