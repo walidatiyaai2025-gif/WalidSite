@@ -8,6 +8,8 @@ import 'package:flutter/material.dart';
 import '../articles/verified_articles.dart';
 import 'diagnosis_report.dart';
 import '../runbooks/verified_online_runbooks.dart';
+import '../runbooks/offline_runbooks.dart';
+import '../solutions/offline_solution_finder.dart';
 import '../theme/waleed_theme.dart';
 
 class MobileAiHttpException implements Exception {
@@ -344,6 +346,7 @@ class AiTroubleshooterScreen extends StatefulWidget {
     this.saveAction,
     this.reportAction,
     this.detailLoader,
+    this.offlinePack,
     this.nowUtc,
     super.key,
   });
@@ -356,6 +359,9 @@ class AiTroubleshooterScreen extends StatefulWidget {
   final MobileSaveAction? saveAction;
   final DiagnosisReportAction? reportAction;
   final Future<ReviewedRunbook> Function(String id)? detailLoader;
+  /// The production route loads verified signed snapshots (or warns about
+  /// bundled educational content). Tests may supply a deterministic pack.
+  final Future<OfflineRunbookPack>? offlinePack;
   /// Injectable clock for deterministic session-expiry regression tests.
   final DateTime Function()? nowUtc;
 
@@ -778,6 +784,55 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
     ));
   }
 
+  // Never pass question, code, bearer or AI result into the local finder.
+  // The user must initiate their own offline keyword search.
+  void _openOfflineRecovery() {
+    Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => OfflineSolutionFinder(
+        arabic: widget.arabic,
+        bundledPack: widget.offlinePack,
+      ),
+    ));
+  }
+
+  void _openReviewedCatalog() {
+    if (ReviewedRunbookReader.configuredOrigin() == null) return;
+    Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => ReviewedRunbookLibrary(arabic: widget.arabic),
+    ));
+  }
+
+  Widget _recoveryActions() {
+    final ar = widget.arabic;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          ar
+              ? 'يمكنك البحث يدويًا في الأدلة المحلية دون إرسال السؤال أو الكود إلى أي خادم. النتائج النصية ليست تشخيصًا بالذكاء الاصطناعي.'
+              : 'Search offline guides manually without sending your question or code to a server. Keyword matches are not AI diagnoses.',
+          key: const Key('ai-recovery-disclaimer'),
+        ),
+        const SizedBox(height: 12),
+        OutlinedButton.icon(
+          key: const Key('ai-offline-recovery'),
+          onPressed: _openOfflineRecovery,
+          icon: const Icon(Icons.offline_bolt_outlined),
+          label: Text(ar ? 'ابحث في الأدلة المحلية' : 'Search offline guides'),
+        ),
+        if (ReviewedRunbookReader.configuredOrigin() != null) ...[
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            key: const Key('ai-reviewed-catalog'),
+            onPressed: _openReviewedCatalog,
+            icon: const Icon(Icons.fact_check_outlined),
+            label: Text(ar ? 'تصفح الأدلة المنشورة المراجعة' : 'Browse reviewed online guides'),
+          ),
+        ],
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final ar = widget.arabic;
@@ -791,14 +846,21 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
         body: SafeArea(
         child: !_apiConfigured
             ? Center(
-                child: Padding(
+                child: SingleChildScrollView(
                   padding: const EdgeInsets.all(24),
-                  child: Text(
-                    ar
-                        ? 'خادم التشخيص الآمن غير مهيأ في هذا الإصدار.'
-                        : 'The secure diagnosis server is not configured for this build.',
-                    key: const Key('ai-unconfigured'),
-                    textAlign: TextAlign.center,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        ar
+                            ? 'خادم التشخيص الآمن غير مهيأ في هذا الإصدار.'
+                            : 'The secure diagnosis server is not configured for this build.',
+                        key: const Key('ai-unconfigured'),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 20),
+                      _recoveryActions(),
+                    ],
                   ),
                 ),
               )
@@ -972,6 +1034,10 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
                         key: const Key('ai-message'),
                       ),
                     ),
+                  ],
+                  if (_message != null || (_job != null && !_isPending && resultId == null)) ...[
+                    const SizedBox(height: 16),
+                    _recoveryActions(),
                   ],
                   if (_job != null) ...[
                     const SizedBox(height: 16),
