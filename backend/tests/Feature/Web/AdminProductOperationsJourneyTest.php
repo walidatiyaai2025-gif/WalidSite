@@ -254,6 +254,7 @@ final class AdminProductOperationsJourneyTest extends TestCase
             ['USD', 250, now('UTC'), 'usage-usd'],
             ['KWD', 19, now('UTC'), 'usage-kwd'],
             ['USD', 1000, now('UTC')->subDays(40), 'usage-old'],
+            ['USD', 9999, now('UTC')->addDay(), 'usage-future'],
         ] as [$currency,$minor,$created,$key]) {
             DB::table('ai_usage')->insert([
                 'id'=>(string) Str::uuid(),
@@ -283,6 +284,9 @@ final class AdminProductOperationsJourneyTest extends TestCase
         $this->assertStringContainsString('ai_usage,7d,KWD,19,minor_currency_units', $export);
         $this->assertStringNotContainsString('NEVER_EXPOSE_PRIVATE_TOKEN', $export);
         $this->assertStringNotContainsString('1000,minor_currency_units', $export);
+        $this->assertStringNotContainsString('9999,minor_currency_units', $export);
+        $this->get('/admin/analytics?period=all')->assertOk()
+            ->assertDontSee('>11249</td>', false);
         foreach (['period=week','period[]=7d','format=pdf','lang=xx'] as $query) {
             $this->get('/admin/analytics?'.$query)->assertRedirect()->assertSessionHasErrors();
         }
