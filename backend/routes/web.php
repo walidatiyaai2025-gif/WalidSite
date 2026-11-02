@@ -419,6 +419,8 @@ Route::middleware('auth:web')->group(function (): void {
         };
         $jobs = \Illuminate\Support\Facades\DB::table('ai_jobs')
             ->when($from, fn ($q) => $q->where('created_at', '>=', $from))
+            ->where('created_at', '<=', $utc)
+            ->where('created_at', '<=', $utc)
             ->select('status')->selectRaw('COUNT(*) AS total')
             ->groupBy('status')->orderBy('status')->get();
         $usage = \Illuminate\Support\Facades\DB::table('ai_usage')
@@ -453,7 +455,7 @@ Route::middleware('auth:web')->group(function (): void {
                 fclose($stream);
             }, 'walidsite-analytics-'.now('UTC')->format('Ymd').'.csv', [
                 'Content-Type' => 'text/csv; charset=UTF-8',
-                'Cache-Control' => 'no-store',
+                'Cache-Control' => 'no-store, private',
                 'X-Content-Type-Options' => 'nosniff',
             ]);
         }
