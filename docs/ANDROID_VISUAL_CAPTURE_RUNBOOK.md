@@ -86,7 +86,9 @@ the current focused app from \`dumpsys window windows\`, checks Android
 \`uiautomator dump /dev/tty\` for the exact localized AppBar text in the upper
 fifth of the screen, and captures fresh native bytes with
 \`adb -s SERIAL exec-out screencap -p\`. It validates PNG integrity and exact
-source image size, then writes the fresh temporary PNG exclusively.
+source image size, **then rechecks the foreground app and localized visible title
+after capture** to reject a mid-screenshot app or page transition. Only then
+does it write the fresh temporary PNG exclusively.
 It neither logs Android XML containing user content nor stores private UI
 metadata in source control.
 
