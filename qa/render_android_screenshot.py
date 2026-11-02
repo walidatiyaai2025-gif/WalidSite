@@ -43,9 +43,9 @@ NATIVE_SCREENS = {
     "/runbooks/{id}/offline": ("walidsite.mobile.06",
                               ("General guidance steps", "خطوات توضيحية عامة"), False),
     "/saved": ("walidsite.mobile.11",
-               ("Saved & profile", "المحفوظات والحساب"), True),
+               ("Saved resources", "المحفوظات"), True),
     "/profile": ("walidsite.mobile.12",
-                 ("Saved & profile", "المحفوظات والحساب"), True),
+                 ("Personal profile", "الملف الشخصي"), True),
 }
 MAX_CAPTURE_BYTES = 64 * 1024 * 1024
 MAX_ACCESSIBILITY_BYTES = 8 * 1024 * 1024

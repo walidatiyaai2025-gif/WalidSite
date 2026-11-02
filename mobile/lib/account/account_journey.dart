@@ -271,10 +271,14 @@ class MobileAccountClient {
   }
 }
 
-/// MOBILE-11 + MOBILE-12: one authenticated flow, never two local logins.
+/// MOBILE-11 + MOBILE-12 share one secure account implementation while
+/// exposing independently identifiable canonical Saved and Profile surfaces.
+enum MobileAccountSection { saved, profile }
+
 class MobileAccountJourney extends StatefulWidget {
   const MobileAccountJourney({
     required this.arabic,
+    this.initialSection = MobileAccountSection.saved,
     this.loginAction,
     this.profileAction,
     this.profileUpdateAction,
@@ -286,6 +290,7 @@ class MobileAccountJourney extends StatefulWidget {
   });
 
   final bool arabic;
+  final MobileAccountSection initialSection;
   final AccountLogin? loginAction;
   final AccountReadProfile? profileAction;
   final AccountUpdateProfile? profileUpdateAction;
@@ -312,7 +317,7 @@ class _MobileAccountJourneyState extends State<MobileAccountJourney> {
   bool _busy = false;
   bool _busyLogout = false;
   bool _loadingMore = false;
-  bool _showProfile = false;
+  late bool _showProfile;
   bool _editingProfile = false;
   String? _message;
 
@@ -344,12 +349,18 @@ class _MobileAccountJourneyState extends State<MobileAccountJourney> {
     _saved = const [];
     _page = 1;
     _hasMore = false;
-    _showProfile = false;
+    _showProfile = widget.initialSection == MobileAccountSection.profile;
     _editingProfile = false;
     _email.clear();
     _password.clear();
     _profileEmail.clear();
     _profilePassword.clear();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _showProfile = widget.initialSection == MobileAccountSection.profile;
   }
 
   @override
@@ -649,13 +660,13 @@ class _MobileAccountJourneyState extends State<MobileAccountJourney> {
   @override
   Widget build(BuildContext context) {
     return Semantics(
-      // No account-specific route may be attested before a real active
-      // authenticated profile is loaded; signed-out pages remain unidentifiable.
       identifier: _validSession && _profile != null
           ? (_showProfile ? 'walidsite.mobile.12' : 'walidsite.mobile.11')
           : 'walidsite.mobile.account.locked',
       child: Scaffold(
-        appBar: AppBar(title: Text(_label('Saved & profile', 'المحفوظات والحساب'))),
+        appBar: AppBar(title: Text(_showProfile
+          ? _label('Personal profile', 'الملف الشخصي')
+          : _label('Saved resources', 'المحفوظات'))),
       body: SafeArea(child: !_configured
           ? Center(child: Padding(
               padding: const EdgeInsets.all(20),
