@@ -162,6 +162,61 @@ class AdminScreenshotRendererTest(unittest.TestCase):
             self.assertEqual(expected_heading(route, "en"), values[0])
             self.assertEqual(expected_heading(route, "ar"), values[1])
 
+    def test_invalid_png_or_wrong_pixel_size_never_creates_capture(self):
+        wrong = io.BytesIO()
+        Image.new("RGB", (800, 600)).save(wrong, "PNG")
+        for payload in (b"invalid png", wrong.getvalue(), b""):
+            with self.subTest(size=len(payload)):
+                manager, page, _, _ = self.fake(png=payload)
+                with self.assertRaises(AdminSessionError):
+                    render(self.env, manager)
+                page.screenshot.assert_called_once()
+                self.assertFalse(self.output.exists())
+
+    def test_late_url_or_heading_change_after_png_rejects_capture(self):
+        for mode in ("redirect", "wrong-heading"):
+            with self.subTest(mode=mode):
+                manager, page, _, _ = self.fake()
+                png = page.screenshot.return_value
+
+                def after_screenshot(**kwargs):
+                    if mode == "redirect":
+                        page.url = "http://127.0.0.1:8000/admin/login"
+                    else:
+                        page.locator("main#content h1").inner_text.return_value = "Login"
+                    return png
+
+                page.screenshot.side_effect = after_screenshot
+                with self.assertRaises(AdminSessionError):
+                    render(self.env, manager)
+                self.assertFalse(self.output.exists())
+
+    def test_existing_destination_or_symlink_directory_is_not_overwritten(self):
+        self.output.write_bytes(b"preserve existing content")
+        manager, _, _, _ = self.fake()
+        with self.assertRaises(AdminSessionError):
+            render(self.env, manager)
+        self.assertEqual(self.output.read_bytes(), b"preserve existing content")
+        self.output.unlink()
+        actual = self.root / "real-output"
+        actual.mkdir()
+        linked = self.root / "linked-output"
+        linked.symlink_to(actual, target_is_directory=True)
+        env = dict(self.env, WALIDSITE_CAPTURE_PATH=str(linked / "runtime.png"))
+        with self.assertRaises(AdminSessionError):
+            render(env, manager)
+        self.assertFalse((actual / "runtime.png").exists())
+
+    def test_all_static_admin_routes_render_the_correct_arabic_title(self):
+        self.env["WALIDSITE_CAPTURE_LOCALE"] = "ar"
+        for route in STATIC_HEADINGS:
+            with self.subTest(route=route):
+                self.env["WALIDSITE_CAPTURE_ROUTE"] = route
+                manager, _, _, _ = self.fake(language="ar", direction="rtl")
+                self.assertEqual(render(self.env, manager), self.output)
+                self.assertEqual(self.output.read_bytes(), self.fake_png)
+                self.output.unlink()
+
     def test_arabic_viewport_direction_and_dpr(self):
         env = dict(self.env, WALIDSITE_CAPTURE_LOCALE="ar",
                    WALIDSITE_CAPTURE_DPR="2",
