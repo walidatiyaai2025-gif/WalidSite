@@ -45,7 +45,14 @@ a{color:#126DE1}a:focus-visible,button:focus-visible{outline:3px solid var(--foc
 <p><a href="{{ route('admin.operations.projects',['lang'=>$locale]) }}">{{ $ar ? 'العودة إلى المشاريع' : 'Back to projects' }}</a></p>
 <section class="panel" aria-labelledby="queue-title">
 <h2 id="queue-title">{{ $draft->title }} — {{ $ar ? 'أدلة تحتاج إلى مراجعة' : 'Evidence awaiting review' }} ({{ $evidence->total() }})</h2>
-<p class="muted">{{ $ar ? 'هذه روابط خاصة غير متحقق منها. لا تُفتح تلقائياً ولا تُمثّل إثباتاً أو موافقة للنشر. الرفض يحذف العنصر فقط.' : 'These are private, unverified URLs. They are never fetched or treated as proof or publication approval. Discard only removes the candidate.' }}</p>
+<p class="muted">{{ $ar ? 'هذه روابط خاصة غير متحقق منها. لا تُفتح تلقائياً ولا تُمثّل إثباتاً أو موافقة للنشر. الاعتماد يتطلب تأكيداً صريحاً لمراجعة المصدر وحقوق النشر، ثم تبقى عملية نشر المشروع خطوة منفصلة.' : 'These are private, unverified URLs. They are never fetched or treated as proof or publication approval. Approval requires explicit source and publication-rights confirmation, and project publication remains a separate step.' }}</p>
+<p><strong>{{ $ar ? 'الأدلة العامة المعتمدة لهذا المشروع' : 'Approved public evidence for this project' }}:</strong> {{ $verifiedEvidenceCount }}</p>
+<p><strong>{{ $ar ? 'روابط الأدلة الصالحة للعرض العام' : 'Usable public evidence links' }}:</strong> {{ $usablePublicEvidenceCount }}</p>
+@if($verifiedEvidenceCount > 0 && $usablePublicEvidenceCount === 0)
+<p role="status" class="muted">{{ $ar
+    ? 'الأدلة المعتمدة الحالية لا تصلح لصفحة مشروع عامة، أو أن مسار المشروع غير صالح. أضف رابط دليل عام مطابقًا للسياسة أو صحح مسار المشروع في بياناته قبل النشر.'
+    : 'Approved evidence cannot currently appear on a public case study, or the project slug is not route-safe. Add an allowed public evidence link or correct the project slug before publishing.' }}</p>
+@endif
 @if(session('status'))<p role="status">{{ session('status') }}</p>@endif
 @if($errors->any())<div role="alert"><strong>{{ $ar ? 'لم تُنفذ العملية' : 'Action not saved' }}</strong></div>@endif
 @if($evidence->isEmpty())
@@ -58,15 +65,37 @@ a{color:#126DE1}a:focus-visible,button:focus-visible{outline:3px solid var(--foc
 <tr>
 <td>{{ $candidate->evidence_type }}</td>
 <td><code>{{ $candidate->url }}</code></td>
-<td><form method="post" action="{{ route('admin.operations.projects.evidence.discard',['project'=>$draft->id,'evidence'=>$candidate->id,'lang'=>$locale,'return'=>'review','page'=>$evidence->currentPage()]) }}">
+<td>
+<form method="post" action="{{ route('admin.operations.projects.evidence.approve',['project'=>$draft->id,'evidence'=>$candidate->id,'lang'=>$locale,'page'=>$evidence->currentPage()]) }}">
+@csrf
+<fieldset>
+<legend>{{ $ar ? 'اعتماد الدليل' : 'Approve evidence' }}</legend>
+<label class="inline"><input type="checkbox" name="source_reviewed" value="1" required> <span>{{ $ar ? 'راجعت المصدر نفسه وتأكدت أنه يدعم هذا المشروع.' : 'I reviewed the source itself and confirmed it supports this project.' }}</span></label>
+<label class="inline"><input type="checkbox" name="publication_rights_confirmed" value="1" required> <span>{{ $ar ? 'تأكدت من صلاحية مشاركة هذا المصدر علناً.' : 'I confirmed this source may be shared publicly.' }}</span></label>
+<button type="submit">{{ $ar ? 'اعتماد الدليل' : 'Approve evidence' }}</button>
+</fieldset>
+</form>
+<form method="post" action="{{ route('admin.operations.projects.evidence.discard',['project'=>$draft->id,'evidence'=>$candidate->id,'lang'=>$locale,'return'=>'review','page'=>$evidence->currentPage()]) }}">
 @csrf @method('DELETE')
 <button class="danger" type="submit">{{ $ar ? 'رفض الدليل غير المعتمد' : 'Discard unverified evidence' }}</button>
-</form></td>
+</form>
+</td>
 </tr>
 @endforeach
 </tbody></table></div>
 @endif
 <nav aria-label="{{ $ar ? 'صفحات مراجعة الأدلة' : 'Evidence review pages' }}">{{ $evidence->links() }}</nav>
+@if($usablePublicEvidenceCount > 0)
+<section class="panel" aria-labelledby="publish-title">
+<h2 id="publish-title">{{ $ar ? 'بوابة نشر المشروع' : 'Project publication gate' }}</h2>
+<p class="muted">{{ $ar ? 'وجود دليل معتمد لا ينشر المشروع تلقائياً. راجع العنوان والملخص والدور بالعربية والإنجليزية، ثم أكد النشر في خطوة مستقلة.' : 'Approved evidence never publishes the project automatically. Review the title, summaries and role in both languages, then confirm publication separately.' }}</p>
+<form method="post" action="{{ route('admin.operations.projects.publish',['project'=>$draft->id,'lang'=>$locale]) }}">
+@csrf
+<label class="inline"><input type="checkbox" name="publication_confirmed" value="1" required> <span>{{ $ar ? 'أؤكد أن محتوى المشروع والدليل المعتمد صالحان للنشر العام.' : 'I confirm the project content and approved evidence are ready for public publication.' }}</span></label>
+<button type="submit">{{ $ar ? 'نشر المشروع' : 'Publish project' }}</button>
+</form>
+</section>
+@endif
 </section>
 </main></div>
 </body></html>

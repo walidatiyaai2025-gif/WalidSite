@@ -1628,6 +1628,111 @@ Route::get('/resume', function (Request $request) {
 })->name('public.resume');
 
 /*
+ * WEB-11: downloadable PDF of the SAME evidence-gated public CV data.
+ * Only embedded escaped text is rendered: no remote assets, HTML images,
+ * submitted URLs, scripts, or privately held evidence reach the renderer.
+ * This is not the browser's print-to-PDF approximation.
+ */
+Route::get('/resume/pdf', function (Request $request) {
+    $input = $request->validate([
+        'lang' => ['sometimes', 'in:ar,en'],
+        'track' => ['sometimes', \Illuminate\Validation\Rule::in([
+            'all', 'database', 'software', 'delivery',
+        ])],
+    ]);
+    $locale = $input['lang'] ?? 'en';
+    $track = $input['track'] ?? 'all';
+    $tracks = [
+        'all' => [],
+        'database' => ['Database & Reliability'],
+        'software' => ['Software & Integration', 'Infrastructure & Security'],
+        'delivery' => ['Project Delivery'],
+    ];
+    $profile = \App\Models\Profile::query()->published()
+        ->whereHas('user', fn ($q) => $q->where('status', 'active')
+            ->whereHas('roles', fn ($r) => $r->where('name', 'owner')))
+        ->firstOrFail();
+
+    $positions = \App\Models\CareerPosition::query()->publiclyVerified()
+        ->where('profile_id', $profile->id)
+        ->orderByDesc('started_on')->limit(250)->get();
+    $certifications = \App\Models\Certification::query()->publiclyVerified()
+        ->where('profile_id', $profile->id)->orderBy('title')->limit(250)->get();
+    $skillsQuery = \App\Models\Skill::query()->withVerifiedEvidence()
+        ->whereIn('id', \Illuminate\Support\Facades\DB::table('profile_skill')
+            ->where('profile_id', $profile->id)->select('skill_id'));
+    if ($track !== 'all') {
+        $skillsQuery->whereIn('category', $tracks[$track]);
+    }
+    $skills = $skillsQuery->orderBy('category')->orderBy('name_en')->limit(250)->get();
+
+    // Do not pass user-controlled HTML or URL references to the PDF engine.
+    // HTML-escape every value and use only a fixed, embedded stylesheet.
+    $esc = static fn ($value): string => htmlspecialchars(
+        mb_substr((string) ($value ?? ''), 0, 320),
+        ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'
+    );
+    $ar = $locale === 'ar';
+    $title = $ar ? 'السيرة المهنية العامة' : 'Public professional resume';
+    $html = '<style>body{font-family:freeserif;font-size:12pt;color:#142E4D}'
+        .'h1{color:#163B66;font-size:20pt}h2{color:#163B66;font-size:15pt}'
+        .'p{margin:3mm 0}.item{margin-bottom:5mm}</style>'
+        .'<h1>'.$esc($title).'</h1><h2>'.$esc($profile->public_name).'</h2>'
+        .'<p>'.$esc($ar
+            ? 'تعرض هذه الوثيقة البيانات المنشورة والمتحقق من أدلتها فقط.'
+            : 'This document includes only evidence-verified public records.').'</p>';
+    $html .= '<h2>'.$esc($ar ? 'الخبرات المعتمدة' : 'Verified experience').'</h2>';
+    foreach ($positions as $entry) {
+        $period = ($entry->started_on?->format('Y') ?? '')
+            .' – '.($entry->ended_on?->format('Y') ?? ($ar ? 'حتى الآن' : 'Present'));
+        $html .= '<div class="item"><b>'.$esc($ar ? $entry->role_ar : $entry->role_en)
+            .'</b><p>'.$esc($entry->org_name).' — '.$esc($period).'</p></div>';
+    }
+    if ($positions->isEmpty()) {
+        $html .= '<p>'.$esc($ar ? 'لا توجد خبرات معتمدة بعد.' : 'No verified experience available.').'</p>';
+    }
+    $html .= '<h2>'.$esc($ar ? 'الشهادات المتحقق منها' : 'Verified credentials').'</h2>';
+    foreach ($certifications as $entry) {
+        $html .= '<div class="item"><b>'.$esc($entry->title).'</b>'
+            .'<p>'.$esc($entry->issuer).'</p></div>';
+    }
+    if ($certifications->isEmpty()) {
+        $html .= '<p>'.$esc($ar ? 'لا توجد شهادات معتمدة بعد.' : 'No verified credentials available.').'</p>';
+    }
+    $html .= '<h2>'.$esc($ar ? 'المهارات المهنية الموثقة' : 'Verified skills').'</h2>';
+    foreach ($skills as $entry) {
+        $html .= '<div class="item"><b>'.$esc($ar ? $entry->name_ar : $entry->name_en)
+            .'</b><p>'.$esc($entry->category).'</p></div>';
+    }
+    if ($skills->isEmpty()) {
+        $html .= '<p>'.$esc($ar ? 'لا توجد مهارات موثقة لهذا المسار بعد.'
+            : 'No verified skills for this focus yet.').'</p>';
+    }
+
+    $pdf = new \TCPDF('P', 'mm', 'A4', true, 'UTF-8', false);
+    $pdf->setPrintHeader(false);
+    $pdf->setPrintFooter(false);
+    $pdf->SetMargins(16, 18, 16);
+    $pdf->SetAutoPageBreak(true, 18);
+    $pdf->SetCreator('WalidSite');
+    $pdf->SetTitle($title);
+    $pdf->AddPage();
+    $pdf->setRTL($ar);
+    // FreeSerif is bundled with the installed TCPDF package and supports Arabic.
+    $pdf->SetFont('freeserif', '', 12);
+    $pdf->writeHTML($html, true, false, true, false, '');
+
+    $bytes = $pdf->Output('', 'S');
+    $filename = 'waleed-verified-cv-'.$track.'-'.$locale.'.pdf';
+    return response($bytes, 200, [
+        'Content-Type' => 'application/pdf',
+        'Content-Disposition' => 'attachment; filename="'.$filename.'"',
+        'Cache-Control' => 'no-store, private',
+        'X-Content-Type-Options' => 'nosniff',
+    ]);
+})->name('public.resume.pdf')->middleware('throttle:20,1');
+
+/*
  * Secure-by-default contact flow. The recipient is intentionally not stored
  * in source or exposed to the browser; activation requires verified mail
  * delivery and a configured contact recipient on the server.
@@ -2032,22 +2137,70 @@ Route::get('/search', function (Request $request) {
 Route::middleware('auth:web')->prefix('admin')->group(function (): void {
     Route::get('/github', function (Request $request, \App\Integrations\GitHub\PublicRepositoryDirectory $directory) {
         abort_unless($request->user()?->canAccessAdmin(), 403);
-        $request->validate(['lang' => ['sometimes', 'in:ar,en']]);
+        $input = $request->validate([
+            'lang' => ['sometimes', 'in:ar,en'],
+            'repo' => ['sometimes', 'string', 'max:140'],
+        ]);
         $repos = collect($directory->repositories());
+        // Inspect only metadata that has ALREADY passed the public allowlist
+        // and live verification gate. A private/missing repo is indistinguishable
+        // from an unknown name; never render the requested slug unverified.
+        $selectedRepo = null;
+        if (isset($input['repo'])) {
+            $selectedRepo = $repos->first(static fn (array $item): bool =>
+                ($item['status'] ?? null) === 'verified'
+                && is_string($item['full_name'] ?? null)
+                && strcasecmp($item['full_name'], $input['repo']) === 0
+            );
+            abort_if($selectedRepo === null, 404);
+        }
         return response()->view('admin.operations', [
             'section' => 'github',
             'repos' => $repos,
+            'selectedRepo' => $selectedRepo,
             'configuredCount' => min(20, count(config('portfolio.github_public_repos', []))),
         ])->header('Cache-Control', 'no-store, private');
     })->name('admin.operations.github')->middleware('throttle:30,1');
 
     Route::post('/github/refresh', function (Request $request, \App\Integrations\GitHub\PublicRepositoryDirectory $directory) {
         abort_unless($request->user()?->canAccessAdmin(), 403);
-        $request->validate(['lang' => ['sometimes', 'in:ar,en']]);
-        if (array_diff(array_keys($request->request->all()), ['_token']) !== []) {
+        $input = $request->validate([
+            'lang' => ['sometimes', 'in:ar,en'],
+            'repo' => ['sometimes', 'string', 'max:140'],
+        ]);
+        if (array_diff(array_keys($request->request->all()), ['_token', 'repo']) !== []) {
             throw \Illuminate\Validation\ValidationException::withMessages([
                 'refresh' => 'Unrecognized synchronization input.',
             ]);
+        }
+        // A submitted slug alone is NOT permission to query GitHub. Restrict
+        // individual refreshes to CURRENTLY verified public allowlist entries.
+        if (isset($input['repo'])) {
+            $verifiedRepo = collect($directory->repositories())->first(static fn (array $item): bool =>
+                ($item['status'] ?? null) === 'verified'
+                && is_string($item['full_name'] ?? null)
+                && strcasecmp($item['full_name'], $input['repo']) === 0
+            );
+            if ($verifiedRepo === null) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'repo' => 'Selected repository is not verified public.',
+                ]);
+            }
+            $slug = $verifiedRepo['full_name'];
+            \Illuminate\Support\Facades\Cache::forget('public-github:'.hash('sha256', strtolower($slug)));
+            $updated = collect($directory->repositories())->first(static fn (array $item): bool =>
+                ($item['status'] ?? null) === 'verified'
+                && is_string($item['full_name'] ?? null)
+                && strcasecmp($item['full_name'], $slug) === 0
+            );
+            $lang = ($input['lang'] ?? 'en') === 'ar' ? 'ar' : 'en';
+            // If the source is withdrawn during refresh, never preserve an
+            // inspect link or claim verification success from old cached data.
+            return redirect()->route('admin.operations.github', $updated === null
+                ? ['lang' => $lang] : ['lang' => $lang, 'repo' => $updated['full_name']])
+                ->with($updated === null ? 'warning' : 'status', $updated === null
+                    ? 'Selected repository is no longer publicly verified.'
+                    : 'Selected public repository verified from GitHub.');
         }
         foreach (array_slice(config('portfolio.github_public_repos', []), 0, 20) as $slug) {
             if (is_string($slug)) {
@@ -2058,7 +2211,7 @@ Route::middleware('auth:web')->prefix('admin')->group(function (): void {
         $verified = $repos->filter(static fn (array $item): bool => $item['status'] === 'verified')->count();
         $configured = min(20, count(config('portfolio.github_public_repos', [])));
         // A failed verification is not a successful synchronization.
-        return redirect()->route('admin.operations.github', ['lang' => $request->query('lang') === 'ar' ? 'ar' : 'en'])
+        return redirect()->route('admin.operations.github', ['lang' => ($input['lang'] ?? 'en') === 'ar' ? 'ar' : 'en'])
             ->with($configured && !$verified ? 'warning' : 'status',
                 $configured && !$verified ? 'No configured public repository could be verified.' :
                 'Verified public repositories: '.$verified);
@@ -2111,12 +2264,137 @@ Route::middleware('auth:web')->prefix('admin')->group(function (): void {
             ->where('visibility', 'private')->whereNull('verified_at')
             ->orderByDesc('created_at')->orderByDesc('id')
             ->paginate(10)->appends(['lang' => $locale]);
+        $verifiedEvidenceCount = \App\Models\ProjectEvidence::query()
+            ->where('project_id', $draft->id)
+            ->where('visibility', 'public')->whereNotNull('verified_at')
+            ->where('verified_at', '<=', now('UTC'))->count();
+        // The publish action must not appear for a reviewed but unusable URL.
+        // Share its actual public serializer gate (including URL allowlist and
+        // route-safe slug), not a separate approximation from DB flags.
+        $publicProof = app(\App\Http\Controllers\Api\PublicPortfolioController::class)
+            ->publicProjectData($draft, $request);
+        $usablePublicEvidenceCount = count($publicProof['evidence_urls']);
         return response()->view('admin.project-evidence-review', compact(
-            'draft', 'evidence', 'locale'
+            'draft', 'evidence', 'locale', 'verifiedEvidenceCount',
+            'usablePublicEvidenceCount'
         ))->header('Cache-Control', 'no-store, private')
             ->header('X-Content-Type-Options', 'nosniff');
     })->whereUuid('project')->name('admin.operations.projects.evidence.review')
         ->middleware('throttle:30,1');
+
+    // ADMIN-09: explicit owner review is the only transition from a private
+    // candidate to verified public evidence. The application never fetches the
+    // candidate URL here: source and publication rights are confirmed manually.
+    Route::post('/projects/{project}/evidence/{evidence}/approve', function (Request $request, string $project, string $evidence) {
+        abort_unless($request->user()?->canAccessAdmin() && $request->user()->hasRole('owner'), 403);
+        $input = $request->validate([
+            'lang' => ['sometimes', 'in:ar,en'],
+            'page' => ['sometimes', 'integer', 'between:1,10000'],
+            'source_reviewed' => ['accepted'],
+            'publication_rights_confirmed' => ['accepted'],
+        ]);
+        if (array_diff(array_keys($request->request->all()), [
+            '_token', 'source_reviewed', 'publication_rights_confirmed',
+        ]) !== []) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'evidence' => 'Unsupported evidence approval fields.',
+            ]);
+        }
+
+        \Illuminate\Support\Facades\DB::transaction(function () use ($project, $evidence, $request): void {
+            $draft = \App\Models\Project::query()->whereKey($project)->lockForUpdate()->firstOrFail();
+            abort_unless($draft->visibility === 'private' && $draft->published_at === null, 409);
+
+            $candidate = \App\Models\ProjectEvidence::query()
+                ->whereKey($evidence)->where('project_id', $draft->id)
+                ->lockForUpdate()->firstOrFail();
+            abort_unless($candidate->visibility === 'private' && $candidate->verified_at === null, 409);
+
+            $candidate->forceFill([
+                'visibility' => 'public',
+                'verified_at' => now('UTC'),
+            ])->save();
+
+            // Identifier-only audit: never log the private source URL or request payload.
+            \Illuminate\Support\Facades\Log::notice('admin.project_evidence.approved', [
+                'project_id' => $draft->id,
+                'evidence_id' => $candidate->id,
+                'actor_id' => $request->user()->id,
+                'source_reviewed' => true,
+                'publication_rights_confirmed' => true,
+            ]);
+        }, 3);
+
+        $ar = ($input['lang'] ?? 'en') === 'ar';
+        return redirect()->route('admin.operations.projects.evidence.review', [
+            'project' => $project,
+            'lang' => $ar ? 'ar' : 'en',
+            'page' => $input['page'] ?? 1,
+        ])->with('status', $ar
+            ? 'تم اعتماد الدليل للمشاركة العامة بعد تأكيد مراجعة المصدر وحقوق النشر. بقي المشروع خاصاً حتى خطوة النشر المنفصلة.'
+            : 'Evidence approved for public use after source and publication-rights confirmation. The project remains private until the separate publish step.');
+    })->whereUuid('project')->whereUuid('evidence')
+        ->name('admin.operations.projects.evidence.approve')->middleware('throttle:10,1');
+
+    // Publishing is a separate, explicit transition. It cannot create or
+    // approve evidence and fails closed unless a currently verified public
+    // source exists and the bilingual project record is complete.
+    Route::post('/projects/{project}/publish', function (Request $request, string $project) {
+        abort_unless($request->user()?->canAccessAdmin() && $request->user()->hasRole('owner'), 403);
+        $input = $request->validate([
+            'lang' => ['sometimes', 'in:ar,en'],
+            'publication_confirmed' => ['accepted'],
+        ]);
+        if (array_diff(array_keys($request->request->all()), [
+            '_token', 'publication_confirmed',
+        ]) !== []) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'project' => 'Unsupported project publication fields.',
+            ]);
+        }
+
+        \Illuminate\Support\Facades\DB::transaction(function () use ($project, $request): void {
+            $draft = \App\Models\Project::query()->whereKey($project)->lockForUpdate()->firstOrFail();
+            abort_unless($draft->visibility === 'private' && $draft->published_at === null, 409);
+
+            foreach (['title', 'summary_en', 'summary_ar', 'role_en', 'role_ar'] as $field) {
+                $value = $draft->{$field};
+                if (! is_string($value) || trim($value) === '') {
+                    throw \Illuminate\Validation\ValidationException::withMessages([
+                        'project' => 'Bilingual project content and role fields must be complete before publication.',
+                    ]);
+                }
+            }
+
+            // A review flag alone is not proof of a reachable public case study.
+            // Use the same live URL, GitHub and route-safe slug checks that
+            // public /projects and /projects/{slug} apply before publishing.
+            $publicProof = app(\App\Http\Controllers\Api\PublicPortfolioController::class)
+                ->publicProjectData($draft, $request);
+            if (empty($publicProof['evidence_urls'])) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'project' => 'A usable public evidence link and route-safe project slug are required before publication.',
+                ]);
+            }
+
+            $draft->forceFill([
+                'visibility' => 'public',
+                'published_at' => now('UTC'),
+            ])->save();
+
+            \Illuminate\Support\Facades\Log::notice('admin.project.published', [
+                'project_id' => $draft->id,
+                'actor_id' => $request->user()->id,
+            ]);
+        }, 3);
+
+        $ar = ($input['lang'] ?? 'en') === 'ar';
+        return redirect()->route('admin.operations.projects', ['lang' => $ar ? 'ar' : 'en'])
+            ->with('status', $ar
+                ? 'تم نشر المشروع بعد اجتياز بوابة الدليل المعتمد والمحتوى الثنائي.'
+                : 'Project published after verified-evidence and bilingual-content gates passed.');
+    })->whereUuid('project')->name('admin.operations.projects.publish')
+        ->middleware('throttle:5,1');
 
     Route::patch('/projects/{project}', function (Request $request, string $project) {
         abort_unless($request->user()?->canAccessAdmin() && $request->user()->hasRole('owner'), 403);
@@ -2302,31 +2580,40 @@ Route::middleware('auth:web')->prefix('admin')->group(function (): void {
 
     Route::get('/analytics', function (Request $request) {
         abort_unless($request->user()?->canAccessAdmin(), 403);
+        // Only bounded UTC calendar windows. Never infer a rolling local 24h
+        // interval, and never mix currencies across the selected period.
+        $utcToday = now('UTC')->toDateString();
+        $oldest = now('UTC')->subDays(365)->toDateString();
         $input = $request->validate([
             'lang' => ['sometimes', 'in:ar,en'],
-            'day' => ['sometimes', 'date_format:Y-m-d', 'before_or_equal:today'],
-            'format' => ['sometimes', 'in:csv'],
+            'day' => ['sometimes', 'date_format:Y-m-d',
+                'after_or_equal:'.$oldest, 'before_or_equal:'.$utcToday],
+            'window' => ['sometimes', 'integer', \Illuminate\Validation\Rule::in([1, 7, 30])],
+            'format' => ['sometimes', 'in:csv,jobs-csv'],
         ]);
-        $day = $input['day'] ?? now('UTC')->toDateString();
-        $from = \Illuminate\Support\Carbon::parse($day, 'UTC')->startOfDay();
-        $to = $from->copy()->addDay();
+        $day = $input['day'] ?? $utcToday;
+        $window = (int) ($input['window'] ?? 1);
+        $endDay = \Carbon\CarbonImmutable::parse($day, 'UTC')->startOfDay();
+        $from = $endDay->subDays($window - 1);
+        $to = $endDay->addDay();
+        $startDay = $from->toDateString();
         $usage = \Illuminate\Support\Facades\DB::table('ai_usage')
             ->where('created_at', '>=', $from)->where('created_at', '<', $to)
             ->select('cost_currency')->selectRaw('COUNT(*) AS receipts, SUM(cost_minor) AS cost_minor')
             ->groupBy('cost_currency')->orderBy('cost_currency')->get();
         if (($input['format'] ?? null) === 'csv') {
-            return response()->streamDownload(static function () use ($usage, $day): void {
+            return response()->streamDownload(static function () use ($usage, $startDay, $day): void {
                 $stream = fopen('php://output', 'wb');
                 fwrite($stream, "\xEF\xBB\xBF");
-                fputcsv($stream, ['UTC day', 'Currency', 'Receipts', 'Cost (minor units)']);
+                fputcsv($stream, ['UTC period start', 'UTC period end', 'Currency', 'Receipts', 'Cost (minor units)']);
                 foreach ($usage as $line) {
                     // An imported database currency is not trusted CSV code.
                     $currency = preg_match('/\A[A-Z]{3}\z/D', (string) $line->cost_currency)
                         ? $line->cost_currency : 'INVALID';
-                    fputcsv($stream, [$day, $currency, (int) $line->receipts, (int) $line->cost_minor]);
+                    fputcsv($stream, [$startDay, $day, $currency, (int) $line->receipts, (int) $line->cost_minor]);
                 }
                 fclose($stream);
-            }, 'ai-usage-'.$day.'.csv', [
+            }, 'ai-usage-'.$startDay.'-to-'.$day.'.csv', [
                 'Cache-Control' => 'no-store, private',
                 'X-Content-Type-Options' => 'nosniff',
             ]);
@@ -2335,8 +2622,27 @@ Route::middleware('auth:web')->prefix('admin')->group(function (): void {
             ->where('created_at', '>=', $from)->where('created_at', '<', $to)
             ->select('status')->selectRaw('COUNT(*) AS total')
             ->groupBy('status')->orderBy('status')->get();
+        if (($input['format'] ?? null) === 'jobs-csv') {
+            return response()->streamDownload(static function () use ($jobs, $startDay, $day): void {
+                $stream = fopen('php://output', 'wb');
+                fwrite($stream, "\xEF\xBB\xBF");
+                fputcsv($stream, ['UTC period start', 'UTC period end', 'AI job status', 'Recorded jobs']);
+                foreach ($jobs as $job) {
+                    // Imported job-status values are not trusted spreadsheet code.
+                    $status = preg_match('/\A[a-z][a-z0-9_]{0,24}\z/D', (string) $job->status) === 1
+                        ? $job->status : 'INVALID';
+                    fputcsv($stream, [$startDay, $day, $status, (int) $job->total]);
+                }
+                fclose($stream);
+            }, 'ai-jobs-'.$startDay.'-to-'.$day.'.csv', [
+                'Content-Type' => 'text/csv; charset=UTF-8',
+                'Cache-Control' => 'no-store, private',
+                'X-Content-Type-Options' => 'nosniff',
+            ]);
+        }
         return response()->view('admin.operations', [
-            'section' => 'analytics', 'day' => $day, 'usage' => $usage,
+            'section' => 'analytics', 'day' => $day, 'startDay' => $startDay,
+            'window' => $window, 'usage' => $usage,
             'jobs' => $jobs,
             'publicProjects' => \App\Models\Project::query()->publiclyVerified()->count(),
             'publicArticles' => \App\Models\Article::query()->publiclyVisible()->count(),

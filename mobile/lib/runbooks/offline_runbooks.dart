@@ -329,7 +329,9 @@ class _OfflineRunbookDetailState extends State<OfflineRunbookDetail> {
     final pack = widget.pack;
     final arabic = widget.arabic;
     final steps = item.steps(arabic);
-    return Scaffold(
+    return Semantics(
+      identifier: 'walidsite.mobile.06',
+      child: Scaffold(
       appBar: AppBar(title: Text(item.title(arabic))),
       body: ListView(
         key: const Key('offline-runbook-detail'),
@@ -386,6 +388,7 @@ class _OfflineRunbookDetailState extends State<OfflineRunbookDetail> {
               ),
             ),
         ],
+      ),
       ),
     );
   }

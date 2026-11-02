@@ -134,9 +134,14 @@ final class MobileAiDiagnoseController extends Controller
             'running' => 50,
             default => 0,
         };
-        $resultUrl = $status === 'completed' && $diagnosis->selected_runbook_id !== null
-            ? route('api.mobile.solution', ['id' => $diagnosis->selected_runbook_id], false)
-            : null;
+        // A historical AI selection is not a publication grant. Re-run the
+        // exact current reviewed-runbook gate before advertising a destination:
+        // the source may have been withdrawn after worker selection.
+        $resultUrl = $status === 'completed'
+            && $diagnosis->selected_runbook_id !== null
+            && $runbooks->verifiedData((string) $diagnosis->selected_runbook_id) !== null
+                ? route('api.mobile.solution', ['id' => $diagnosis->selected_runbook_id], false)
+                : null;
 
         return response()->json([
             'data' => [

@@ -676,7 +676,9 @@ class _ReviewedRunbookDetailState extends State<ReviewedRunbookDetail> {
                 ));
               }
               final item = snapshot.data!;
-              return ListView(
+              return Semantics(
+                identifier: 'walidsite.mobile.04',
+                child: ListView(
                 padding: const EdgeInsets.all(20),
                 children: [
                   Text(
@@ -757,6 +759,7 @@ class _ReviewedRunbookDetailState extends State<ReviewedRunbookDetail> {
                       ? 'المصدر: نسخة عامة مُعتمدة من الخادم، وليست حزمة دون إنترنت موقّعة.'
                       : 'Source: server-reviewed public edition, not a signed offline package.'),
                 ],
+                ),
               );
             },
           ),

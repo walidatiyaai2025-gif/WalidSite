@@ -499,18 +499,29 @@ void main() {
     expect(find.byKey(const Key('account-login')), findsOneWidget);
   });
 
-  testWidgets('main app opens real account screen with truthful unavailable state',
+  testWidgets('main app exposes distinct saved and profile account surfaces',
       (tester) async {
-    await tester.pumpWidget(const WaleedTechApp());
-    await tester.scrollUntilVisible(
-      find.byKey(const Key('account-saved-profile-entry')), 145,
+    Future<void> openSurface(Key entry, String title, String rootKey) async {
+      await tester.pumpWidget(WaleedTechApp(
+        initiallyStarted: true,
+        key: ValueKey<String>(rootKey),
+      ));
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(find.byKey(entry), 145);
+      await tester.ensureVisible(find.byKey(entry));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(entry));
+      await tester.pumpAndSettle();
+      expect(find.text(title), findsOneWidget);
+      expect(find.byKey(const Key('account-unconfigured')), findsOneWidget);
+      expect(find.text('Account services are not configured.'), findsOneWidget);
+    }
+
+    await openSurface(
+      const Key('account-saved-entry'), 'Saved resources', 'saved-surface',
     );
-    await tester.ensureVisible(
-        find.byKey(const Key('account-saved-profile-entry')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('account-saved-profile-entry')));
-    await tester.pumpAndSettle();
-    expect(find.byKey(const Key('account-unconfigured')), findsOneWidget);
-    expect(find.text('Account services are not configured.'), findsOneWidget);
+    await openSurface(
+      const Key('account-profile-entry'), 'Personal profile', 'profile-surface',
+    );
   });
 }

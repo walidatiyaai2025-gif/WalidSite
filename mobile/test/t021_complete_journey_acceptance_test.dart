@@ -16,7 +16,7 @@ void main() {
       // canonical destination. Re-pumping the same WaleedTechApp instance
       // would retain the previously pushed route and stop exercising Home.
       await tester.pumpWidget(
-        WaleedTechApp(key: ValueKey<String>('t021-$caseId')),
+        WaleedTechApp(initiallyStarted: true, key: ValueKey<String>('t021-$caseId')),
       );
       await tester.pumpAndSettle();
 
@@ -56,9 +56,14 @@ void main() {
       find.byKey(const Key('github-unconfigured')),
     );
     await openDestination(
-      'account',
-      const Key('account-saved-profile-entry'),
-      find.byKey(const Key('account-unconfigured')),
+      'saved',
+      const Key('account-saved-entry'),
+      find.text('Saved resources'),
+    );
+    await openDestination(
+      'profile',
+      const Key('account-profile-entry'),
+      find.text('Personal profile'),
     );
     await openDestination(
       'preferences',

@@ -44,12 +44,12 @@ class VisualDiagnosticsTest(unittest.TestCase):
             }],
         }
 
-    def run_diagnostics(self, runner, plan=None, dry_run=False):
+    def run_diagnostics(self, runner, plan=None, dry_run=False, group=None):
         with patch("qa.visual_diagnostics.verified_head", return_value=True), patch(
             "qa.visual_diagnostics.audit", return_value=([], 0, 40)
         ):
             return diagnose(self.root, self.plan if plan is None else plan,
-                            self.sha, runner=runner, dry_run=dry_run)
+                            self.sha, runner=runner, dry_run=dry_run, group=group)
 
     def test_dry_run_validates_without_writing_files_or_running_renderer(self):
         def no_run(*args, **kwargs):
@@ -140,6 +140,74 @@ class VisualDiagnosticsTest(unittest.TestCase):
         (self.root / "qa/visual-diagnostics").symlink_to(other, target_is_directory=True)
         with self.assertRaisesRegex(CapturePlanError, "unsafe"):
             self.run_diagnostics(lambda *args, **kwargs: None)
+
+    def test_renderer_mutating_source_rejects_successful_screenshot_before_comparison(self):
+        def rendered(command, *, env, **kwargs):
+            Image.new("RGBA", (2, 2), (3, 4, 5, 255)).save(
+                env["WALIDSITE_CAPTURE_PATH"]
+            )
+            return subprocess.CompletedProcess(command, 0)
+
+        original = self.ledger.read_bytes()
+        with patch("qa.visual_diagnostics.verified_head",
+                   side_effect=[True, False]) as checkout, patch(
+                "qa.visual_diagnostics.audit", return_value=([], 0, 40)):
+            with self.assertRaisesRegex(CapturePlanError, "modified checked-out Git source"):
+                diagnose(self.root, self.plan, self.sha, runner=rendered)
+
+        self.assertEqual(checkout.call_count, 2)
+        self.assertEqual(self.ledger.read_bytes(), original)
+        output = self.root / "qa/visual-diagnostics" / self.sha
+        self.assertFalse((output / "WEB-01.runtime.png").exists())
+        self.assertFalse((output / "report.json").exists())
+
+    def test_timed_out_renderer_mutating_source_also_aborts_batch(self):
+        def timeout(command, *, timeout, **kwargs):
+            raise subprocess.TimeoutExpired(command, timeout)
+
+        with patch("qa.visual_diagnostics.verified_head",
+                   side_effect=[True, False]), patch(
+                "qa.visual_diagnostics.audit", return_value=([], 0, 40)):
+            with self.assertRaisesRegex(CapturePlanError, "modified checked-out Git source"):
+                diagnose(self.root, self.plan, self.sha, runner=timeout)
+
+        self.assertFalse((self.root / "qa/visual-diagnostics" /
+                          self.sha / "report.json").exists())
+
+    def test_timed_out_renderer_with_clean_source_remains_unverified_not_fatal(self):
+        def timeout(command, *, timeout, **kwargs):
+            raise subprocess.TimeoutExpired(command, timeout)
+
+        report = self.run_diagnostics(timeout)
+        self.assertEqual(report["screens"]["WEB-01"]["status"], "renderer_failed")
+        self.assertFalse(report["evidence_admitted"])
+
+    def test_grouped_web_diagnostics_preserve_existing_admin_artifacts(self):
+        # Grouped reports coexist; neither existing artifact nor reference/ledger
+        # is overwritten. Synthetic fixture remains unit-test-only evidence.
+        admin = self.root / "qa/visual-diagnostics" / self.sha
+        admin.mkdir(parents=True)
+        existing = admin / "report.json"
+        existing.write_text('{"admin":true}\n', encoding="utf-8")
+
+        def renderer(command, *, env, **kwargs):
+            image = Image.new("RGBA", (2, 2), (42, 0, 0, 255))
+            image.save(env["WALIDSITE_CAPTURE_PATH"])
+            return subprocess.CompletedProcess(command, 0)
+
+        report = self.run_diagnostics(renderer, group="web")
+        path = self.root / "qa/visual-diagnostics" / (self.sha + "-web")
+        self.assertEqual(report["screens"]["WEB-01"]["status"], "mismatch")
+        self.assertTrue((path / "WEB-01.runtime.png").exists())
+        self.assertTrue((path / "report.json").exists())
+        self.assertEqual(existing.read_text(), '{"admin":true}\n')
+        self.assertEqual(self.ledger.read_text(), '{"screens": {}}\n')
+
+    def test_invalid_group_rejected_without_path_creation(self):
+        with self.assertRaisesRegex(CapturePlanError, "Unknown diagnostic"):
+            self.run_diagnostics(lambda *args, **kwargs: self.fail("called"),
+                                 group="../escape")
+        self.assertFalse((self.root / "qa/visual-diagnostics").exists())
 
     def test_binary_rgba_diagnostic_does_not_miss_alpha_channel(self):
         with tempfile.TemporaryDirectory() as tmp:

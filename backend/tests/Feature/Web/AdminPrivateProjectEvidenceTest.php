@@ -304,4 +304,251 @@ final class AdminPrivateProjectEvidenceTest extends TestCase
             ->assertSee('لا توجد أدلة معلقة في هذه الصفحة.');
         Http::assertNothingSent();
     }
+
+    public function test_owner_explicitly_approves_source_and_rights_before_evidence_becomes_public(): void
+    {
+        // These matrices exercise validation/authorization repeatedly; keep the
+        // production throttle enabled on the route but isolate it from feature assertions.
+        $this->withoutMiddleware(\Illuminate\Routing\Middleware\ThrottleRequests::class);
+        Http::fake();
+        $project = $this->project();
+        $candidate = $project->evidence()->create([
+            'evidence_type' => 'repository',
+            'url' => 'https://github.com/verified-owner/reviewed-public-project',
+            'visibility' => 'private',
+            'verified_at' => null,
+        ]);
+        $path = '/admin/projects/'.$project->id.'/evidence/'.$candidate->id.'/approve';
+        $confirmation = [
+            'source_reviewed' => '1',
+            'publication_rights_confirmed' => '1',
+        ];
+
+        $this->actingAs($this->account('admin'), 'web')
+            ->post($path, $confirmation)->assertForbidden();
+        $this->assertDatabaseHas('project_evidence', [
+            'id' => $candidate->id, 'visibility' => 'private', 'verified_at' => null,
+        ]);
+
+        $this->actingAs($this->account('owner'), 'web');
+        $this->get('/admin/projects/'.$project->id.'/evidence?lang=en')->assertOk()
+            ->assertSee('Approve evidence')
+            ->assertSee('I reviewed the source itself and confirmed it supports this project.')
+            ->assertSee('I confirmed this source may be shared publicly.')
+            ->assertSee('Approved public evidence for this project');
+
+        $this->post($path, ['source_reviewed' => '1'])
+            ->assertRedirect()->assertSessionHasErrors('publication_rights_confirmed');
+        $this->assertSame('private', $candidate->fresh()->visibility);
+        $this->assertNull($candidate->fresh()->verified_at);
+
+        $this->post($path.'?lang=ar&page=1', $confirmation)
+            ->assertRedirect(route('admin.operations.projects.evidence.review', [
+                'project' => $project->id, 'lang' => 'ar', 'page' => 1,
+            ]))
+            ->assertSessionHas('status', 'تم اعتماد الدليل للمشاركة العامة بعد تأكيد مراجعة المصدر وحقوق النشر. بقي المشروع خاصاً حتى خطوة النشر المنفصلة.');
+
+        $candidate->refresh();
+        $this->assertSame('public', $candidate->visibility);
+        $this->assertNotNull($candidate->verified_at);
+        $this->assertSame('private', $project->fresh()->visibility);
+        $this->assertNull($project->fresh()->published_at);
+        $this->get('/admin/projects/'.$project->id.'/evidence?lang=en')->assertOk()
+            ->assertSee('Approved public evidence for this project')
+            ->assertSee('Usable public evidence links')
+            ->assertSee('Approved evidence cannot currently appear on a public case study')
+            ->assertDontSee('Project publication gate')
+            ->assertDontSee('Publish project')
+            ->assertDontSee('reviewed-public-project');
+        Http::assertNothingSent();
+    }
+
+    public function test_project_publication_requires_owner_confirmation_verified_evidence_and_complete_bilingual_content(): void
+    {
+        // These matrices exercise validation/authorization repeatedly; keep the
+        // production throttle enabled on the route but isolate it from feature assertions.
+        $this->withoutMiddleware(\Illuminate\Routing\Middleware\ThrottleRequests::class);
+        Http::fake();
+        $project = $this->project();
+        $project->forceFill([
+            'role_en' => 'Database and delivery engineering',
+            'role_ar' => 'هندسة قواعد البيانات والتسليم',
+        ])->save();
+        $path = '/admin/projects/'.$project->id.'/publish';
+
+        $this->actingAs($this->account('owner'), 'web');
+        $this->post($path, ['publication_confirmed' => '1'])
+            ->assertRedirect()->assertSessionHasErrors('project');
+        $this->assertSame('private', $project->fresh()->visibility);
+
+        $candidate = $project->evidence()->create([
+            'evidence_type' => 'document',
+            'url' => 'https://docs.example.org/reviewed-project-proof',
+            'visibility' => 'public',
+            'verified_at' => now()->subMinute(),
+        ]);
+
+        $this->actingAs($this->account('admin'), 'web')
+            ->post($path, ['publication_confirmed' => '1'])->assertForbidden();
+        $this->assertSame('private', $project->fresh()->visibility);
+
+        $this->actingAs($this->account('owner'), 'web');
+        $this->get('/admin/projects/'.$project->id.'/evidence?lang=en')->assertOk()
+            ->assertSee('Project publication gate')
+            ->assertSee('I confirm the project content and approved evidence are ready for public publication.');
+        $this->post($path)->assertRedirect()
+            ->assertSessionHasErrors('publication_confirmed');
+
+        $this->post($path.'?lang=ar', ['publication_confirmed' => '1'])
+            ->assertRedirect(route('admin.operations.projects', ['lang' => 'ar']))
+            ->assertSessionHas('status', 'تم نشر المشروع بعد اجتياز بوابة الدليل المعتمد والمحتوى الثنائي.');
+
+        $project->refresh();
+        $this->assertSame('public', $project->visibility);
+        $this->assertNotNull($project->published_at);
+        $this->assertTrue(Project::query()->publiclyVerified()->whereKey($project->id)->exists());
+        $this->assertDatabaseHas('project_evidence', [
+            'id' => $candidate->id, 'visibility' => 'public',
+        ]);
+        $this->get('/admin/projects/'.$project->id.'/evidence')->assertStatus(409);
+        Http::assertNothingSent();
+    }
+
+    public function test_evidence_approval_and_project_publication_fail_closed_on_extra_fields_cross_project_or_incomplete_content(): void
+    {
+        // These matrices exercise validation/authorization repeatedly; keep the
+        // production throttle enabled on the route but isolate it from feature assertions.
+        $this->withoutMiddleware(\Illuminate\Routing\Middleware\ThrottleRequests::class);
+        Http::fake();
+        $this->actingAs($this->account('owner'), 'web');
+        $project = $this->project();
+        $other = $this->project();
+        $candidate = $project->evidence()->create([
+            'evidence_type' => 'publication',
+            'url' => 'https://example.org/source-reviewed-proof',
+            'visibility' => 'private',
+            'verified_at' => null,
+        ]);
+        $confirmation = [
+            'source_reviewed' => '1',
+            'publication_rights_confirmed' => '1',
+        ];
+        $approve = '/admin/projects/'.$project->id.'/evidence/'.$candidate->id.'/approve';
+
+        $this->post($approve, $confirmation + ['verified_at' => now()->toIso8601String()])
+            ->assertRedirect()->assertSessionHasErrors('evidence');
+        $this->post('/admin/projects/'.$other->id.'/evidence/'.$candidate->id.'/approve', $confirmation)
+            ->assertNotFound();
+        $this->assertSame('private', $candidate->fresh()->visibility);
+        $this->assertNull($candidate->fresh()->verified_at);
+
+        $this->post($approve, $confirmation)->assertRedirect();
+        $candidate->refresh();
+        $this->post($approve, $confirmation)->assertStatus(409);
+
+        // Evidence approval alone is insufficient: the draft still lacks
+        // bilingual role fields, so publication must remain fail-closed.
+        $this->post('/admin/projects/'.$project->id.'/publish', [
+            'publication_confirmed' => '1',
+        ])->assertRedirect()->assertSessionHasErrors('project');
+        $this->post('/admin/projects/'.$project->id.'/publish', [
+            'publication_confirmed' => '1',
+            'visibility' => 'public',
+        ])->assertRedirect()->assertSessionHasErrors('project');
+        $this->assertSame('private', $project->fresh()->visibility);
+        $this->assertNull($project->fresh()->published_at);
+        Http::assertNothingSent();
+    }
+
+    public function test_project_publish_requires_reachable_proof_not_merely_reviewed_database_flags(): void
+    {
+        $this->withoutMiddleware(\Illuminate\Routing\Middleware\ThrottleRequests::class);
+        Http::fake();
+        $project = $this->project();
+        $project->forceFill([
+            'role_en' => 'Engineer',
+            'role_ar' => 'مهندس',
+        ])->save();
+
+        // An approved GitHub URL alone has not passed the public repository
+        // allowlist, and is excluded by the public portfolio serializer.
+        $project->evidence()->create([
+            'evidence_type' => 'repository',
+            'url' => 'https://github.com/not-reviewed/private-repo',
+            'visibility' => 'public',
+            'verified_at' => now()->subMinute(),
+        ]);
+        $this->actingAs($this->account('owner'), 'web');
+        $path = '/admin/projects/'.$project->id.'/publish';
+        $confirm = ['publication_confirmed' => '1'];
+
+        $this->post($path, $confirm)->assertRedirect()->assertSessionHasErrors('project');
+        $this->assertSame('private', $project->fresh()->visibility);
+        $this->assertNull($project->fresh()->published_at);
+
+        $project->evidence()->create([
+            'evidence_type' => 'document',
+            'url' => 'https://docs.example.org/reviewed-project-proof',
+            'visibility' => 'public',
+            'verified_at' => now()->subMinute(),
+        ]);
+        $validSlug = $project->slug;
+        $project->update(['slug' => 'invalid_slug']);
+        $this->post($path, $confirm)->assertRedirect()->assertSessionHasErrors('project');
+        $this->assertSame('private', $project->fresh()->visibility);
+        $project->update(['slug' => $validSlug]);
+
+        $this->post($path, $confirm)->assertRedirect()->assertSessionHas('status');
+        $this->get('/projects/'.$validSlug)->assertOk()
+            ->assertSee('https://docs.example.org/reviewed-project-proof')
+            ->assertDontSee('not-reviewed/private-repo');
+        Http::assertNothingSent();
+    }
+
+    public function test_publish_action_reflects_public_evidence_and_route_policy_in_both_locales(): void
+    {
+        Http::fake();
+        $project = $this->project();
+        $project->evidence()->create([
+            'evidence_type' => 'repository',
+            'url' => 'https://github.com/unknown-owner/unreviewed-repo',
+            'visibility' => 'public',
+            'verified_at' => now()->subMinute(),
+        ]);
+        $this->actingAs($this->account('owner'), 'web');
+        $base = '/admin/projects/'.$project->id.'/evidence';
+
+        $this->get($base.'?lang=en')->assertOk()
+            ->assertSee('Usable public evidence links')
+            ->assertSee('Approved evidence cannot currently appear on a public case study')
+            ->assertDontSee('Project publication gate')
+            ->assertDontSee('Publish project');
+
+        $this->get($base.'?lang=ar')->assertOk()
+            ->assertSee('dir="rtl"', false)
+            ->assertSee('روابط الأدلة الصالحة للعرض العام')
+            ->assertSee('الأدلة المعتمدة الحالية لا تصلح لصفحة مشروع عامة')
+            ->assertDontSee('بوابة نشر المشروع')
+            ->assertDontSee('>نشر المشروع</button>', false);
+
+        $project->evidence()->create([
+            'evidence_type' => 'document',
+            'url' => 'https://docs.example.org/source-reviewed-and-safe',
+            'visibility' => 'public',
+            'verified_at' => now()->subMinute(),
+        ]);
+        $this->get($base.'?lang=en')->assertOk()
+            ->assertSee('Project publication gate')
+            ->assertSee('Publish project')
+            ->assertDontSee('Approved evidence cannot currently appear on a public case study');
+
+        $project->update(['slug' => 'unrouteable_slug']);
+        $this->get($base.'?lang=en')->assertOk()
+            ->assertSee('Approved evidence cannot currently appear on a public case study')
+            ->assertDontSee('Project publication gate')
+            ->assertDontSee('Publish project');
+        $this->assertSame('private', $project->fresh()->visibility);
+        Http::assertNothingSent();
+    }
+
 }
