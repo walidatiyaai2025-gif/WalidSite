@@ -2160,22 +2160,70 @@ Route::get('/search', function (Request $request) {
 Route::middleware('auth:web')->prefix('admin')->group(function (): void {
     Route::get('/github', function (Request $request, \App\Integrations\GitHub\PublicRepositoryDirectory $directory) {
         abort_unless($request->user()?->canAccessAdmin(), 403);
-        $request->validate(['lang' => ['sometimes', 'in:ar,en']]);
+        $input = $request->validate([
+            'lang' => ['sometimes', 'in:ar,en'],
+            'repo' => ['sometimes', 'string', 'max:140'],
+        ]);
         $repos = collect($directory->repositories());
+        // Inspect only metadata that has ALREADY passed the public allowlist
+        // and live verification gate. A private/missing repo is indistinguishable
+        // from an unknown name; never render the requested slug unverified.
+        $selectedRepo = null;
+        if (isset($input['repo'])) {
+            $selectedRepo = $repos->first(static fn (array $item): bool =>
+                ($item['status'] ?? null) === 'verified'
+                && is_string($item['full_name'] ?? null)
+                && strcasecmp($item['full_name'], $input['repo']) === 0
+            );
+            abort_if($selectedRepo === null, 404);
+        }
         return response()->view('admin.operations', [
             'section' => 'github',
             'repos' => $repos,
+            'selectedRepo' => $selectedRepo,
             'configuredCount' => min(20, count(config('portfolio.github_public_repos', []))),
         ])->header('Cache-Control', 'no-store, private');
     })->name('admin.operations.github')->middleware('throttle:30,1');
 
     Route::post('/github/refresh', function (Request $request, \App\Integrations\GitHub\PublicRepositoryDirectory $directory) {
         abort_unless($request->user()?->canAccessAdmin(), 403);
-        $request->validate(['lang' => ['sometimes', 'in:ar,en']]);
-        if (array_diff(array_keys($request->request->all()), ['_token']) !== []) {
+        $input = $request->validate([
+            'lang' => ['sometimes', 'in:ar,en'],
+            'repo' => ['sometimes', 'string', 'max:140'],
+        ]);
+        if (array_diff(array_keys($request->request->all()), ['_token', 'repo']) !== []) {
             throw \Illuminate\Validation\ValidationException::withMessages([
                 'refresh' => 'Unrecognized synchronization input.',
             ]);
+        }
+        // A submitted slug alone is NOT permission to query GitHub. Restrict
+        // individual refreshes to CURRENTLY verified public allowlist entries.
+        if (isset($input['repo'])) {
+            $verifiedRepo = collect($directory->repositories())->first(static fn (array $item): bool =>
+                ($item['status'] ?? null) === 'verified'
+                && is_string($item['full_name'] ?? null)
+                && strcasecmp($item['full_name'], $input['repo']) === 0
+            );
+            if ($verifiedRepo === null) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'repo' => 'Selected repository is not verified public.',
+                ]);
+            }
+            $slug = $verifiedRepo['full_name'];
+            \Illuminate\Support\Facades\Cache::forget('public-github:'.hash('sha256', strtolower($slug)));
+            $updated = collect($directory->repositories())->first(static fn (array $item): bool =>
+                ($item['status'] ?? null) === 'verified'
+                && is_string($item['full_name'] ?? null)
+                && strcasecmp($item['full_name'], $slug) === 0
+            );
+            $lang = ($input['lang'] ?? 'en') === 'ar' ? 'ar' : 'en';
+            // If the source is withdrawn during refresh, never preserve an
+            // inspect link or claim verification success from old cached data.
+            return redirect()->route('admin.operations.github', $updated === null
+                ? ['lang' => $lang] : ['lang' => $lang, 'repo' => $updated['full_name']])
+                ->with($updated === null ? 'warning' : 'status', $updated === null
+                    ? 'Selected repository is no longer publicly verified.'
+                    : 'Selected public repository verified from GitHub.');
         }
         foreach (array_slice(config('portfolio.github_public_repos', []), 0, 20) as $slug) {
             if (is_string($slug)) {
@@ -2186,7 +2234,7 @@ Route::middleware('auth:web')->prefix('admin')->group(function (): void {
         $verified = $repos->filter(static fn (array $item): bool => $item['status'] === 'verified')->count();
         $configured = min(20, count(config('portfolio.github_public_repos', [])));
         // A failed verification is not a successful synchronization.
-        return redirect()->route('admin.operations.github', ['lang' => $request->query('lang') === 'ar' ? 'ar' : 'en'])
+        return redirect()->route('admin.operations.github', ['lang' => ($input['lang'] ?? 'en') === 'ar' ? 'ar' : 'en'])
             ->with($configured && !$verified ? 'warning' : 'status',
                 $configured && !$verified ? 'No configured public repository could be verified.' :
                 'Verified public repositories: '.$verified);

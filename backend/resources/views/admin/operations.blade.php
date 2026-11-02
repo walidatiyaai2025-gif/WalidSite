@@ -52,7 +52,7 @@ details{border:1px solid var(--edge);padding:10px;border-radius:8px}details[open
 </nav>
 <form method="post" action="{{ route('admin.logout') }}">@csrf<button type="submit">{{ $ar ? 'تسجيل الخروج' : 'Sign out' }}</button></form>
 </aside><main id="content" tabindex="-1">
-<div class="top"><h1>{{ $title }}</h1><a href="{{ route('admin.operations.'.$section, array_merge(['lang'=>$ar ? 'en' : 'ar'], $section==='projects' ? array_filter(['status'=>$statusFilter ?? null, 'visibility'=>$visibilityFilter ?? null]) : ($section==='audience' ? ['purpose'=>$purpose,'channel'=>$channel] : ($section==='analytics' ? ['day'=>$day,'window'=>$window] : [])))) }}" lang="{{ $ar ? 'en' : 'ar' }}" hreflang="{{ $ar ? 'en' : 'ar' }}">{{ $ar ? 'English' : 'العربية' }}</a></div>
+<div class="top"><h1>{{ $title }}</h1><a href="{{ route('admin.operations.'.$section, array_merge(['lang'=>$ar ? 'en' : 'ar'], $section==='projects' ? array_filter(['status'=>$statusFilter ?? null, 'visibility'=>$visibilityFilter ?? null]) : ($section==='audience' ? ['purpose'=>$purpose,'channel'=>$channel] : ($section==='analytics' ? ['day'=>$day,'window'=>$window] : ($section==='github' ? array_filter(['repo'=>$selectedRepo['full_name'] ?? null]) : []))))) }}" lang="{{ $ar ? 'en' : 'ar' }}" hreflang="{{ $ar ? 'en' : 'ar' }}">{{ $ar ? 'English' : 'العربية' }}</a></div>
 @if(session('status'))<div role="status" class="panel safe">{{ session('status') }}</div>@endif
 @if(session('warning'))<div role="alert" class="panel alert">{{ $ar ? 'تعذر التحقق من بيانات GitHub العامة.' : session('warning') }}</div>@endif
 @if($errors->any())<div role="alert" class="panel warn"><strong>{{ $ar ? 'تعذر حفظ العملية' : 'The operation was not saved' }}</strong><ul>@foreach($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></div>@endif
@@ -71,15 +71,30 @@ details{border:1px solid var(--edge);padding:10px;border-radius:8px}details[open
 </form>
 <p class="muted">{{ $ar ? 'لا يغيّر التحقق الصلاحيات أو ينشر مستودعًا. يجب اعتماد أي تغيير على قائمة السماح بصورة منفصلة.' : 'Refreshing does not grant access or publish a repository. Allowlist changes require separate governance.' }}</p>
 @if($repos->isEmpty())<p role="status">{{ $ar ? 'لا توجد مستودعات مهيأة.' : 'No repositories are configured.' }}</p>@else
-<div class="scroll"><table><thead><tr><th scope="col">{{ $ar ? 'المستودع' : 'Repository' }}</th><th scope="col">{{ $ar ? 'الحالة' : 'Status' }}</th><th scope="col">{{ $ar ? 'آخر تحقق' : 'Verified at' }}</th></tr></thead><tbody>
+<div class="scroll"><table><thead><tr><th scope="col">{{ $ar ? 'المستودع' : 'Repository' }}</th><th scope="col">{{ $ar ? 'الحالة' : 'Status' }}</th><th scope="col">{{ $ar ? 'آخر تحقق' : 'Verified at' }}</th><th scope="col">{{ $ar ? 'مراجعة' : 'Inspect' }}</th></tr></thead><tbody>
 @foreach($repos as $repo)
 <tr>@if($repo['status']==='verified' && is_string($repo['full_name'] ?? null))
 <td><a href="{{ $repo['url'] }}" target="_blank" rel="noopener noreferrer">{{ $repo['full_name'] }}</a></td>
-<td class="safe">{{ $ar ? 'عام ومتحقق منه' : 'Verified public' }}</td><td><time>{{ $repo['verified_at'] }}</time></td>
+<td class="safe">{{ $ar ? 'عام ومتحقق منه' : 'Verified public' }}</td><td><time datetime="{{ $repo['verified_at'] }}">{{ $repo['verified_at'] }}</time></td><td><a href="{{ route('admin.operations.github', ['lang'=>$locale,'repo'=>$repo['full_name']]) }}">{{ $ar ? 'فحص البيانات' : 'Inspect metadata' }}</a></td>
 @else
-<td>{{ $ar ? 'مستودع غير متاح' : 'Repository unavailable' }}</td><td class="warn">{{ $ar ? 'تعذر التحقق' : 'Verification unavailable' }}</td><td>—</td>
+<td>{{ $ar ? 'مستودع غير متاح' : 'Repository unavailable' }}</td><td class="warn">{{ $ar ? 'تعذر التحقق' : 'Verification unavailable' }}</td><td>—</td><td>—</td>
 @endif</tr>
 @endforeach</tbody></table></div>
+@endif
+@if($selectedRepo !== null)
+<section class="panel" aria-labelledby="selected-repository-title">
+<h3 id="selected-repository-title">{{ $ar ? 'مراجعة بيانات مستودع عام متحقق منه' : 'Selected verified public repository' }}</h3>
+<p><strong>{{ $selectedRepo['full_name'] }}</strong></p>
+<p>{{ $selectedRepo['description'] ?? ($ar ? 'لا يوجد وصف عام' : 'No public description provided') }}</p>
+<dl><dt>{{ $ar ? 'اللغة' : 'Language' }}</dt><dd>{{ $selectedRepo['language'] ?? '—' }}</dd>
+<dt>{{ $ar ? 'مصدر الإثبات' : 'Verification source' }}</dt><dd>GitHub public REST</dd>
+<dt>{{ $ar ? 'آخر تحقق' : 'Verified at' }}</dt><dd><time datetime="{{ $selectedRepo['verified_at'] }}">{{ $selectedRepo['verified_at'] }}</time></dd></dl>
+<form method="post" action="{{ route('admin.operations.github.refresh', ['lang'=>$locale]) }}">
+@csrf <input type="hidden" name="repo" value="{{ $selectedRepo['full_name'] }}">
+<button type="submit">{{ $ar ? 'أعد فحص هذا المستودع فقط' : 'Recheck selected public repository' }}</button>
+</form>
+<p class="muted">{{ $ar ? 'المراجعة لا تنشر المستودع ولا تعدل قائمة السماح.' : 'Inspection never publishes a repository or changes its allowlist status.' }}</p>
+</section>
 @endif
 </section>
 @endif
