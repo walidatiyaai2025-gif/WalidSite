@@ -12,6 +12,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from urllib.parse import parse_qs, urljoin, urlsplit
 
 from PIL import Image, ImageChops, ImageEnhance
 
@@ -222,6 +223,102 @@ def style_geometry_sweep(base_url: str, reference_path: Path, out: Path) -> dict
 
     best = select_best_raster_candidate(rows)
     return {"candidates": rows, "best": best}
+
+
+def navigation_browser_audit(base_url: str, screens: dict) -> dict:
+    """Follow real T007 hero actions; verify all visible internal links.
+
+    A 200 from a browser navigation is not pixel parity. The links must stay
+    same-origin, preserve the selected language, avoid login redirects and
+    resolve without inventing projects, CV entries or AI provider data.
+    """
+    from playwright.sync_api import sync_playwright
+
+    if not base_url.startswith(("https://", "http://127.0.0.1:", "http://localhost:")):
+        raise ValueError("T007 link audit needs an approved HTTPS or loopback origin")
+
+    origin = urlsplit(base_url)
+    results = {}
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        try:
+            for lang in RESPONSIVE_LOCALES:
+                context = browser.new_context(
+                    viewport={"width": 1440, "height": 860},
+                    device_scale_factor=1,
+                    locale="ar-KW" if lang == "ar" else "en-US",
+                    reduced_motion="reduce",
+                )
+                try:
+                    for screen_id in SCREEN_IDS:
+                        key = f"{screen_id}:{lang}"
+                        page = context.new_page()
+                        try:
+                            route = screens[screen_id]["route"]
+                            url = base_url.rstrip("/") + route + "?lang=" + lang
+                            response = page.goto(url, wait_until="domcontentloaded", timeout=30000)
+                            if response is None or response.status != 200:
+                                raise RuntimeError("Source screen not accessible")
+                            if page.locator("html").get_attribute("lang") != lang:
+                                raise RuntimeError("Source screen locale mismatch")
+                            links = page.locator(
+                                ".t007-nav-links a, .t007-reference-card a, "
+                                ".t007-hire-card a, .t007-reference-action.secondary"
+                            ).evaluate_all("(nodes) => nodes.map(n => n.getAttribute('href'))")
+                            if len(links) < 9 or any(not href for href in links):
+                                raise RuntimeError("Visible navigation link missing destination")
+                            for href in links:
+                                destination = urlsplit(urljoin(url, href))
+                                if (destination.scheme, destination.netloc) != (origin.scheme, origin.netloc):
+                                    raise RuntimeError("T007 navigation escaped its public origin")
+                                # A link between bilingual public screens must
+                                # preserve the selected language on the wire.
+                                if parse_qs(destination.query).get("lang") != [lang]:
+                                    raise RuntimeError("T007 destination lost the locale")
+                                fetched = context.request.get(
+                                    urljoin(url, href), timeout=20000, max_redirects=0
+                                )
+                                if fetched.status != 200:
+                                    raise RuntimeError("Destination returned non-200")
+                                if urlsplit(fetched.url).path != destination.path:
+                                    raise RuntimeError("Destination changed route")
+                            # Actually operate both hero CTAs with Chromium,
+                            # not merely inspect their href strings.
+                            page.locator(".t007-reference-action.primary").click()
+                            if urlsplit(page.url).fragment != "t007-primary-content":
+                                raise RuntimeError("Explore action did not reach main content")
+                            target = page.locator("#t007-primary-content")
+                            if target.count() != 1 or target.get_attribute("tabindex") != "-1":
+                                raise RuntimeError("Explore anchor cannot receive keyboard focus")
+                            page.goto(url, wait_until="domcontentloaded")
+                            page.locator(".t007-reference-action.secondary").click()
+                            arrived = urlsplit(page.url)
+                            if arrived.path != "/projects" or parse_qs(arrived.query).get("lang") != [lang]:
+                                raise RuntimeError("Evidence CTA did not reach localized projects")
+                            if page.locator("main#main-content").count() != 1:
+                                raise RuntimeError("Evidence destination missing landmark")
+                            results[key] = {"passed": True, "checked_links": len(links),
+                                            "hero_actions": 2}
+                        except Exception as exc:
+                            results[key] = {"passed": False, "error": type(exc).__name__,
+                                            "reason": str(exc)[:140]}
+                        finally:
+                            page.close()
+                finally:
+                    context.close()
+        finally:
+            browser.close()
+    return results
+
+
+def navigation_audit_complete(rows: dict) -> bool:
+    expected = {f"{screen_id}:{lang}" for screen_id in SCREEN_IDS
+                for lang in RESPONSIVE_LOCALES}
+    return (set(rows) == expected
+            and all(isinstance(row, dict) and row.get("passed") is True
+                    and isinstance(row.get("checked_links"), int)
+                    and row["checked_links"] >= 9 and row.get("hero_actions") == 2
+                    for row in rows.values()))
 
 
 def responsive_browser_audit(base_url: str, screens: dict) -> dict:
@@ -536,6 +633,16 @@ def main() -> int:
     except Exception as exc:
         report["font_probe"] = {"error": type(exc).__name__}
 
+    # Interactive E2E proof complements (but cannot replace) screenshot parity.
+    try:
+        report["navigation_audit"] = navigation_browser_audit(
+            os.environ.get("WALIDSITE_RENDER_BASE_URL", ""), screens
+        )
+    except Exception as exc:
+        report["navigation_audit"] = {"setup": {
+            "passed": False, "error": type(exc).__name__
+        }}
+
     # Browser evidence is for responsive/keyboard behavior, not pixel-parity
     # approval. Fail if an AR/EN mobile or tablet route is inaccessible.
     try:
@@ -551,6 +658,8 @@ def main() -> int:
         "expected_screens": len(SCREEN_IDS),
         "responsive_checks": len(report["responsive_audit"]),
         "responsive_ok": responsive_audit_complete(report["responsive_audit"]),
+        "navigation_checks": len(report["navigation_audit"]),
+        "navigation_ok": navigation_audit_complete(report["navigation_audit"]),
         "captured_screens": sum(row["status"] in ("exact", "mismatch")
                                 for row in report["screens"].values()),
         "exact_screens": sum(row["status"] == "exact"
@@ -579,7 +688,8 @@ def main() -> int:
                  or any(row["status"] not in ("exact", "mismatch")
                         for row in report["screens"].values())
                  or not report["summary"]["font_probe_ok"]
-                 or not report["summary"]["responsive_ok"]) else 0
+                 or not report["summary"]["responsive_ok"]
+                 or not report["summary"]["navigation_ok"]) else 0
 
 
 if __name__ == "__main__":

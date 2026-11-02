@@ -23,7 +23,7 @@ class T007DiagnosticExitTest(unittest.TestCase):
 
         screen_ids = ("WEB-01", "WEB-02", "WEB-03", "WEB-06", "WEB-12")
 
-        def exit_code(statuses, font_probe=None, responsive_ok=True):
+        def exit_code(statuses, font_probe=None, responsive_ok=True, navigation_ok=True):
             report = {
                 "screens": {sid: {"status": status} for sid, status in zip(screen_ids, statuses)},
                 "font_probe": {"inter_400": True, "inter_800": True} if font_probe is None else font_probe,
@@ -32,7 +32,7 @@ class T007DiagnosticExitTest(unittest.TestCase):
                 and "error" not in report["font_probe"]
                 and report["font_probe"].get("inter_400") is True
                 and report["font_probe"].get("inter_800") is True),
-                "responsive_ok": responsive_ok}
+                "responsive_ok": responsive_ok, "navigation_ok": navigation_ok}
             return eval(check, {"report": report, "SCREEN_IDS": screen_ids})
 
         self.assertEqual(exit_code(["exact"] * 4 + ["mismatch"]), 0)
@@ -44,6 +44,7 @@ class T007DiagnosticExitTest(unittest.TestCase):
         self.assertEqual(exit_code(["exact"] * 5, {}), 1)
         self.assertEqual(exit_code(["exact"] * 5, {"inter_400": True, "inter_800": False}), 1)
         self.assertEqual(exit_code(["exact"] * 5, responsive_ok=False), 1)
+        self.assertEqual(exit_code(["exact"] * 5, navigation_ok=False), 1)
         self.assertEqual(exit_code(["mismatch"] * 5, responsive_ok=True), 0)
 
     def test_rasterization_sweep_is_diagnostic_only(self):
@@ -128,6 +129,29 @@ class T007DiagnosticExitTest(unittest.TestCase):
         unknown = rows.copy()
         unknown["WEB-01:ar:390"] = {"status": "pending"}
         self.assertFalse(complete(unknown))
+
+
+    def test_navigation_audit_fail_closed_for_missing_locales_or_dead_actions(self):
+        source = Path(__file__).resolve().parents[1] / "capture_t007_diagnostics.py"
+        tree = ast.parse(source.read_text(encoding="utf-8"))
+        helper = next(n for n in tree.body if isinstance(n, ast.FunctionDef)
+                      and n.name == "navigation_audit_complete")
+        module = ast.Module(body=[helper], type_ignores=[])
+        ast.fix_missing_locations(module)
+        scope = {"SCREEN_IDS": ("WEB-01", "WEB-02", "WEB-03", "WEB-06", "WEB-12"),
+                 "RESPONSIVE_LOCALES": ("ar", "en")}
+        exec(compile(module, str(source), "exec"), scope)
+        valid = {f"{screen}:{lang}": {"passed": True, "checked_links": 9, "hero_actions": 2}
+                 for screen in scope["SCREEN_IDS"] for lang in scope["RESPONSIVE_LOCALES"]}
+        self.assertTrue(scope["navigation_audit_complete"](valid))
+        missing = valid.copy()
+        del missing["WEB-06:ar"]
+        self.assertFalse(scope["navigation_audit_complete"](missing))
+        failed = valid.copy()
+        failed["WEB-01:en"] = {"passed": True, "checked_links": 8, "hero_actions": 2}
+        self.assertFalse(scope["navigation_audit_complete"](failed))
+        failed["WEB-01:en"] = {"passed": False, "checked_links": 9, "hero_actions": 2}
+        self.assertFalse(scope["navigation_audit_complete"](failed))
 
 
 
