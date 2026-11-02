@@ -225,6 +225,78 @@ def style_geometry_sweep(base_url: str, reference_path: Path, out: Path) -> dict
     return {"candidates": rows, "best": best}
 
 
+def capture_arabic_runtime(base_url: str, screens: dict, root: Path, out: Path) -> dict:
+    """Capture genuine Arabic RTL browser pixels at each original viewport.
+
+    English source PNGs are NOT Arabic design references: keep separate
+    screenshots and never count them as zero-RGBA parity evidence.
+    """
+    from playwright.sync_api import sync_playwright
+
+    if not base_url.startswith(("https://", "http://127.0.0.1:", "http://localhost:")):
+        raise ValueError("RTL capture requires approved HTTPS or loopback")
+    results = {}
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        try:
+            for screen_id in SCREEN_IDS:
+                ref = root / screens[screen_id]["reference_image"]
+                with Image.open(ref) as img:
+                    width, height = img.size
+                destination = out / f"{screen_id}.ar.runtime.png"
+                context = browser.new_context(
+                    viewport={"width": width, "height": height},
+                    device_scale_factor=1,
+                    locale="ar-KW",
+                    reduced_motion="reduce",
+                    color_scheme="light",
+                )
+                try:
+                    page = context.new_page()
+                    response = page.goto(
+                        base_url.rstrip("/") + screens[screen_id]["route"] + "?lang=ar",
+                        wait_until="domcontentloaded", timeout=30000,
+                    )
+                    if response is None or response.status != 200:
+                        raise RuntimeError("Arabic route did not return 200")
+                    page.evaluate("() => document.fonts.ready")
+                    if (page.locator("html").get_attribute("lang") != "ar"
+                        or page.locator("html").get_attribute("dir") != "rtl"
+                        or page.locator("main#main-content").count() != 1
+                        or page.locator(".t007-reference-stage h1").count() != 1):
+                        raise RuntimeError("RTL identity or landmarks failed")
+                    page.screenshot(
+                        path=str(destination), full_page=False,
+                        animations="disabled", caret="hide", type="png",
+                    )
+                    with Image.open(destination) as screen:
+                        actual_size = list(screen.size)
+                    results[screen_id] = {
+                        "status": "captured" if actual_size == [width, height] else "wrong_dimensions",
+                        "locale": "ar", "direction": "rtl", "size": actual_size,
+                        "reference_viewport": [width, height],
+                        "pixel_parity": "not_comparable_to_english_reference",
+                    }
+                except Exception as exc:
+                    results[screen_id] = {
+                        "status": "capture_failed", "error": type(exc).__name__
+                    }
+                finally:
+                    context.close()
+        finally:
+            browser.close()
+    return results
+
+
+def arabic_capture_complete(rows: dict) -> bool:
+    return (set(rows) == set(SCREEN_IDS)
+            and all(isinstance(row, dict) and row.get("status") == "captured"
+                    and row.get("locale") == "ar" and row.get("direction") == "rtl"
+                    and row.get("size") == row.get("reference_viewport")
+                    and row.get("pixel_parity") == "not_comparable_to_english_reference"
+                    for row in rows.values()))
+
+
 def navigation_browser_audit(base_url: str, screens: dict) -> dict:
     """Follow real T007 hero actions; verify all visible internal links.
 
@@ -555,6 +627,17 @@ def main() -> int:
             "mismatch_ratio": mismatches / total,
         }
 
+    # Real Arabic captures are UX/provenance evidence only. The immutable
+    # English PNGs remain the sole exact visual comparison targets.
+    try:
+        report["arabic_screens"] = capture_arabic_runtime(
+            os.environ.get("WALIDSITE_RENDER_BASE_URL", ""), screens, root, out
+        )
+    except Exception as exc:
+        report["arabic_screens"] = {"setup": {
+            "status": "capture_failed", "error": type(exc).__name__
+        }}
+
     try:
         report["rasterization_sweep"] = rasterization_sweep(
             os.environ.get("WALIDSITE_RENDER_BASE_URL", "").rstrip("/"),
@@ -660,6 +743,9 @@ def main() -> int:
         "responsive_ok": responsive_audit_complete(report["responsive_audit"]),
         "navigation_checks": len(report["navigation_audit"]),
         "navigation_ok": navigation_audit_complete(report["navigation_audit"]),
+        "arabic_captures": sum(row.get("status") == "captured"
+                               for row in report["arabic_screens"].values()),
+        "arabic_capture_ok": arabic_capture_complete(report["arabic_screens"]),
         "captured_screens": sum(row["status"] in ("exact", "mismatch")
                                 for row in report["screens"].values()),
         "exact_screens": sum(row["status"] == "exact"
@@ -689,7 +775,8 @@ def main() -> int:
                         for row in report["screens"].values())
                  or not report["summary"]["font_probe_ok"]
                  or not report["summary"]["responsive_ok"]
-                 or not report["summary"]["navigation_ok"]) else 0
+                 or not report["summary"]["navigation_ok"]
+                 or not report["summary"]["arabic_capture_ok"]) else 0
 
 
 if __name__ == "__main__":
