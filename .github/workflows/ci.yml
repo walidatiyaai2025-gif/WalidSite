@@ -168,6 +168,12 @@ jobs:
             sleep 1
           done
           curl --fail --silent --show-error http://127.0.0.1:8000/blog >/dev/null
+          # Reference typography uses Inter. CI cannot rely on Google Fonts network
+          # availability, so install the distro-packaged Inter family before Chromium
+          # captures instead of silently accepting an Arial fallback.
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends fonts-inter
+          fc-match Inter | grep -qi 'Inter'
           python -m pip install --disable-pip-version-check --quiet playwright==1.55.0
           python -m playwright install --with-deps chromium
           python qa/capture_t012_diagnostics.py --commit "$(git rev-parse HEAD)" --base-url http://127.0.0.1:8000 --locale en --dpr 1
