@@ -21,9 +21,11 @@ SCREEN_IDS = ("WEB-01", "WEB-02", "WEB-03", "WEB-06", "WEB-12")
 # it is the cleanest probe for Chromium/font rasterization. These candidates
 # are diagnostics only: the best mismatch count is never promoted to evidence.
 RASTER_CANDIDATES = {
-    "current": ["--disable-lcd-text"],
+    "baseline_disable_lcd": ["--disable-lcd-text"],
     "no_hint": ["--disable-lcd-text", "--font-render-hinting=none"],
-    "slight_hint": ["--disable-lcd-text", "--font-render-hinting=slight"],
+    "current_slight_hint": ["--disable-lcd-text", "--font-render-hinting=slight"],
+    "medium_hint": ["--disable-lcd-text", "--font-render-hinting=medium"],
+    "full_hint": ["--disable-lcd-text", "--font-render-hinting=full"],
     "default": [],
 }
 
