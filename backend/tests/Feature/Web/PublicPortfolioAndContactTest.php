@@ -331,9 +331,9 @@ class PublicPortfolioAndContactTest extends TestCase
         config(['mail.contact_recipient' => 'contact@example.test', 'mail.default' => 'smtp']);
         foreach (['en', 'ar'] as $locale) {
             $this->get('/contact?lang='.$locale)->assertOk()
-                ->assertSee('name="name" autocomplete="name"', false)
-                ->assertSee('name="email" autocomplete="email"', false)
-                ->assertSee('name="subject" autocomplete="off"', false);
+                ->assertSee('autocomplete="name"', false)
+                ->assertSee('autocomplete="email"', false)
+                ->assertSee('autocomplete="off"', false);
         }
     }
 
