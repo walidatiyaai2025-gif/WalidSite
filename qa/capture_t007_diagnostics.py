@@ -172,10 +172,13 @@ def main() -> int:
         encoding="utf-8",
     )
     print(report_path.read_text(encoding="utf-8"))
-    # Diagnostics are non-certifying, but renderer failures must never be green.
-    # Pixel mismatches remain reported rather than accepted as exact parity.
-    return 1 if any(row["status"] in ("render_failed", "wrong_dimensions")
-                    for row in report["screens"].values()) else 0
+    # A diagnostic run is only healthy if all five real captures were made and
+    # the font probe executed. A pixel mismatch is a measured failure of visual
+    # parity, not an infrastructure failure; it remains visible in the report.
+    return 1 if (set(report["screens"]) != set(SCREEN_IDS)
+                 or any(row["status"] not in ("exact", "mismatch")
+                        for row in report["screens"].values())
+                 or "error" in report.get("font_probe", {})) else 0
 
 
 if __name__ == "__main__":
