@@ -17,6 +17,11 @@ void main() {
   }
 
   Future<void> resume(WidgetTester tester, String id) async {
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('ai-resume-id')),
+      -200,
+      scrollable: find.byType(Scrollable).first,
+    );
     await tester.enterText(find.byKey(const Key('ai-resume-id')), id);
     await tester.ensureVisible(find.byKey(const Key('ai-resume-submit')));
     await tester.tap(find.byKey(const Key('ai-resume-submit')));
@@ -69,10 +74,15 @@ void main() {
     expect(find.byKey(const Key('ai-resume-id')), findsOneWidget);
     await resume(tester, jobId);
     expect(gets, 1);
-    expect(find.textContaining('Diagnosis completed'), findsOneWidget);
     expect(find.byKey(const Key('ai-resume-id')), findsOneWidget);
     expect(tester.widget<OutlinedButton>(
         find.byKey(const Key('ai-resume-submit'))).onPressed, isNull);
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('ai-message')),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.textContaining('Diagnosis completed'), findsOneWidget);
     expect(find.text(token), findsNothing);
     expect(find.text('testing-secret'), findsNothing);
   });
@@ -102,11 +112,21 @@ void main() {
         TextDirection.rtl);
     await resume(tester, 'not-a-job-id');
     expect(gets, 0);
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('ai-message')),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
     expect(find.textContaining('معرّف مهمة صالحًا'), findsOneWidget);
 
     await resume(tester, jobId);
     expect(gets, 1);
     expect(find.byKey(const Key('ai-job-card')), findsNothing);
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('ai-message')),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
     expect(find.textContaining('تعذر الاتصال بالخدمة بأمان'), findsOneWidget);
   });
 
@@ -126,8 +146,12 @@ void main() {
     ));
     await signIn(tester);
     await resume(tester, jobId);
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('ai-message')),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
     expect(find.textContaining('Job not available or expired'), findsOneWidget);
-    expect(find.byKey(const Key('ai-resume-id')), findsOneWidget);
 
     await resume(tester, jobId);
     expect(gets, 2);
