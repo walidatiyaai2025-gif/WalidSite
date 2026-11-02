@@ -101,6 +101,8 @@ Route::middleware([RequireSecureApiTransport::class, 'auth:sanctum'])->group(fun
     // ADMIN-02: edit queue metadata only, never expose raw drafts or citations.
     Route::get('/admin/articles', [AdminArticleController::class, 'index'])
         ->name('api.admin.articles')->middleware('throttle:60,1');
+    Route::post('/admin/articles', [AdminArticleController::class, 'store'])
+        ->name('api.admin.articles.store')->middleware('throttle:10,1');
 
     // Canonical ADMIN-02/06..13 API contracts. These routes expose only
     // bounded persisted projections and re-run domain safety gates on writes.

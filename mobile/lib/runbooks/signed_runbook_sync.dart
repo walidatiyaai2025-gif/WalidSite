@@ -214,6 +214,11 @@ class OfflineRunbookRepository {
   final RunbookSnapshotStore store;
   final Future<OfflineRunbookPack> Function() bundled;
 
+  // Reserve an in-order slot synchronously before the first await. Otherwise
+  // two valid signed downloads may both inspect an obsolete cached snapshot
+  // and the slower, older write can replace the newer revision.
+  Future<void> _syncBarrier = Future<void>.value();
+
   // Retain the exact signed envelope alongside its verified payload.
   // A timestamp alone cannot establish an ordering between two different
   // publisher-signed packs stamped at the same instant.
@@ -233,7 +238,26 @@ class OfflineRunbookRepository {
   Future<OfflineRunbookPack> load() async =>
       (await _trustedSnapshot())?.pack ?? await bundled();
 
-  Future<OfflineRunbookPack> sync() async {
+  Future<OfflineRunbookPack> sync() {
+    final prior = _syncBarrier;
+    final completed = Completer<void>();
+    _syncBarrier = completed.future;
+    return _syncAfter(prior, completed);
+  }
+
+  Future<OfflineRunbookPack> _syncAfter(
+      Future<void> prior, Completer<void> completed) async {
+    try {
+      await prior;
+      return await _syncOnce();
+    } finally {
+      // Never strand queued updates if fetching, signature verification or
+      // persistence fails. The barrier itself must not complete with error.
+      completed.complete();
+    }
+  }
+
+  Future<OfflineRunbookPack> _syncOnce() async {
     if (!source.configured) {
       throw const FormatException('Signed runbook updates not configured');
     }

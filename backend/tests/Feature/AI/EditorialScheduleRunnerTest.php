@@ -120,6 +120,68 @@ class EditorialScheduleRunnerTest extends TestCase
         $this->getJson('/api/v1/public/articles/'.$article->slug)->assertOk();
     }
 
+    public function test_admin_disable_after_due_scan_prevents_publishing_and_preserves_pending_schedule(): void
+    {
+        $actor = $this->actor();
+        $article = $this->article();
+        $this->enable($actor);
+        $this->schedule($actor, $article);
+        $this->travel(2)->minutes();
+
+        // The runner already read enabled=true before scanning the due IDs.
+        // The admin flips OFF as the due-query returns, before publishOne()
+        // begins its transactional publication decision.
+        $disabledDuringScan = false;
+        DB::listen(function ($query) use (&$disabledDuringScan): void {
+            $sql = strtolower(trim($query->sql));
+            if (! $disabledDuringScan
+                && str_starts_with($sql, 'select')
+                && str_contains($sql, 'editorial_schedules')
+                && str_contains($sql, 'due_at')) {
+                $disabledDuringScan = true;
+                DB::table('editorial_policies')->where('id', 1)->update([
+                    'enabled' => false,
+                    'updated_at' => now(),
+                ]);
+            }
+        });
+
+        $runner = app(EditorialScheduleRunner::class);
+        $result = $runner->run();
+
+        $this->assertTrue($disabledDuringScan, 'The due schedule must actually be scanned.');
+        $this->assertSame(0, $result['published']);
+        $this->assertSame(0, $result['checked']);
+        $this->assertSame('draft', $article->fresh()->status);
+        $this->assertNull($article->fresh()->published_revision_no);
+        $this->assertSame('validated', $article->revisions()->firstOrFail()->status);
+        $this->assertDatabaseHas('editorial_schedules', [
+            'article_id' => $article->id,
+            'status' => 'pending',
+            'refresh_due_at' => null,
+        ]);
+        $this->assertDatabaseCount('editorial_events', 2);
+        $this->assertSame(0, DB::table('editorial_events')
+            ->where('action', 'published')->count());
+
+        // The admin can later re-enable without recreating an approved
+        // schedule. Existing exactly-once and evidence gates still apply.
+        DB::table('editorial_policies')->where('id', 1)->update([
+            'enabled' => true,
+            'updated_at' => now(),
+        ]);
+        $published = $runner->run();
+        $this->assertSame(1, $published['checked']);
+        $this->assertSame(1, $published['published']);
+        $this->assertSame('published', $article->fresh()->status);
+        $this->assertDatabaseHas('editorial_schedules', [
+            'article_id' => $article->id,
+            'status' => 'published',
+        ]);
+        $this->assertSame(0, $runner->run()['published']);
+        $this->assertDatabaseCount('editorial_events', 3);
+    }
+
     public function test_risky_and_unapproved_articles_never_enter_auto_publish_queue(): void
     {
         $actor = $this->actor();
