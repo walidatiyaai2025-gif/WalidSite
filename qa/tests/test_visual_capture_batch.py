@@ -88,7 +88,8 @@ class VisualCaptureBatchTest(unittest.TestCase):
             {"locale": "fr"}, {"timeout": True}, {"timeout": -1},
             {"timeout": 3601}, {"renderer_command": []},
             {"renderer_command": ["cp", "assets/screen-reference/web_home.png", "x"]},
-            {"renderer_command": ["python3", "bad\ncommand"]},
+            {"renderer_command": ["python3", "bad
+command"]},
         ]
         for change in invalid:
             with self.subTest(change=change), self.assertRaises(CapturePlanError):
@@ -137,7 +138,24 @@ class VisualCaptureBatchTest(unittest.TestCase):
                         capture_action=renderer)
         renderer.assert_not_called()
 
-    def test_full_batch_partial_capture_is_never_complete(self):\n        from qa.capture_visual_batch import main\n        from unittest.mock import patch\n        plan_file = self.root / "plan.json"\n        plan_file.write_text(json.dumps(self.plan(*(self.row(i) for i in range(1, 41)))))\n        partial = {"captured": ["WEB-01"], "already_matched": [],\n                   "planned_only": [], "failed": []}\n        with patch("qa.capture_visual_batch.execute", return_value=partial):\n            self.assertEqual(main(["--plan", str(plan_file), "--commit", self.sha,\n                                   "--require-all"]), 1)\n            self.assertEqual(main(["--plan", str(plan_file), "--commit", self.sha,\n                                   "--require-all", "--dry-run"]), 0)\n        complete = {**partial, "captured": [f"WEB-{i:02d}" for i in range(1, 41)]}\n        with patch("qa.capture_visual_batch.execute", return_value=complete):\n            self.assertEqual(main(["--plan", str(plan_file), "--commit", self.sha,\n                                   "--require-all"]), 0)\n\n    def test_head_verification_delegates_to_shared_strict_checkout_guard(self):
+    def test_full_batch_partial_capture_is_never_complete(self):
+        from qa.capture_visual_batch import main
+        from unittest.mock import patch
+        plan_file = self.root / "plan.json"
+        plan_file.write_text(json.dumps(self.plan(*(self.row(i) for i in range(1, 41)))))
+        partial = {"captured": ["WEB-01"], "already_matched": [],
+                   "planned_only": [], "failed": []}
+        with patch("qa.capture_visual_batch.execute", return_value=partial):
+            self.assertEqual(main(["--plan", str(plan_file), "--commit", self.sha,
+                                   "--require-all"]), 1)
+            self.assertEqual(main(["--plan", str(plan_file), "--commit", self.sha,
+                                   "--require-all", "--dry-run"]), 0)
+        complete = {**partial, "captured": [f"WEB-{i:02d}" for i in range(1, 41)]}
+        with patch("qa.capture_visual_batch.execute", return_value=complete):
+            self.assertEqual(main(["--plan", str(plan_file), "--commit", self.sha,
+                                   "--require-all"]), 0)
+
+    def test_head_verification_delegates_to_shared_strict_checkout_guard(self):
         with patch("qa.capture_visual_batch.verified_source_checkout", return_value=True) as guard:
             self.assertTrue(verified_head(self.root, self.sha))
             guard.assert_called_once_with(self.root, self.sha)
