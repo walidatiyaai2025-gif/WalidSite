@@ -14,19 +14,18 @@ void main() {
   testWidgets('MOBILE-01 native screen ID disappears on Start into Home',
       (tester) async {
     final handle = tester.ensureSemantics();
-    addTearDown(handle.dispose);
     await tester.pumpWidget(const WaleedTechApp());
     expect(find.bySemanticsIdentifier('walidsite.mobile.01'), findsOneWidget);
     await tester.tap(find.byKey(const Key('welcome-start')));
     await tester.pumpAndSettle();
     expect(find.bySemanticsIdentifier('walidsite.mobile.01'), findsNothing);
     expect(find.text('Waleed Tech Companion'), findsWidgets);
+    handle.dispose();
   });
 
   testWidgets('MOBILE-06 native ID is attached to genuine offline detail',
       (tester) async {
     final handle = tester.ensureSemantics();
-    addTearDown(handle.dispose);
     const guide = OfflineRunbook(
       id: 'offline-only',
       titleEn: 'Offline recovery',
@@ -44,12 +43,12 @@ void main() {
     expect(find.bySemanticsIdentifier('walidsite.mobile.06'), findsOneWidget);
     expect(find.text('General guidance steps'), findsOneWidget);
     expect(find.bySemanticsIdentifier('walidsite.mobile.04'), findsNothing);
+    handle.dispose();
   });
 
   testWidgets('MOBILE-04 ID exists only after reviewed solution data loads',
       (tester) async {
     final handle = tester.ensureSemantics();
-    addTearDown(handle.dispose);
     final reviewed = ReviewedRunbook(
       id: _id, title: 'Reviewed technical recovery',
       markdown: '# Only reviewed steps',
@@ -78,14 +77,14 @@ void main() {
     expect(find.bySemanticsIdentifier('walidsite.mobile.04'), findsNothing);
     expect(find.byKey(const Key('online-runbook-detail-unavailable')),
         findsOneWidget);
+    handle.dispose();
   });
 
   for (final arabic in [false, true]) {
     testWidgets('MOBILE-11/12 IDs reflect only authenticated selected tab: $arabic',
         (tester) async {
       final handle = tester.ensureSemantics();
-      addTearDown(handle.dispose);
-      final page = jsonEncode({
+        final page = jsonEncode({
         'data': <Object>[],
         'meta': {'current_page': 1, 'has_more_pages': false},
       });
@@ -125,6 +124,7 @@ void main() {
       expect(find.bySemanticsIdentifier('walidsite.mobile.12'), findsNothing);
       expect(find.bySemanticsIdentifier('walidsite.mobile.account.locked'),
           findsOneWidget);
+      handle.dispose();
     });
   }
 }
