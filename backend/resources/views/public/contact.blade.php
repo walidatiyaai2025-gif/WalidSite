@@ -42,6 +42,15 @@
 <h1 id="contact-heading">{{ $locale === 'ar' ? 'التواصل' : 'Contact' }}</h1>
 <p>{{ $locale === 'ar' ? 'تُستخدم بيانات الرسالة فقط للرد على طلب التواصل، ولا تنشر على الموقع.' : 'Messages are used only to reply to the inquiry; they are not published.' }}
 <a href="{{ route('public.privacy', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'اقرأ إشعار الخصوصية والبيانات (مسودة غير معتمدة).' : 'Read the privacy and data disclosure (unapproved draft).' }}</a></p>
+@if(isset($privacyRight) && $privacyRight !== null)
+<div class="contact-notice" role="note" id="privacy-rights-inquiry-notice">
+<strong>{{ $locale === 'ar' ? 'طلب مراجعة متعلق بالبيانات' : 'Data-rights inquiry for review' }}</strong>
+<p>{{ $locale === 'ar'
+? 'نوع طلبك محدد في الموضوع ويمكن تعديله. إرسال هذه الرسالة لا يحذف بياناتك ولا يلغي اشتراكًا ولا ينشئ ملف تصدير. يلزم موافقة مستقلة على نموذج التواصل قبل الإرسال.'
+: 'Your inquiry category is prefilled in the editable subject. Sending this message does not delete account data, revoke a subscription or generate an export. Separate contact consent is required before submission.' }}</p>
+<p><a href="{{ route('public.privacy', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'تفاصيل الخصوصية وحقوق البيانات' : 'Privacy and data rights details' }}</a></p>
+</div>
+@endif
 @if($reportArticle)
 <p class="contact-article-context">
     {{ $locale === 'ar' ? 'الإبلاغ عن مشكلة في المقال المنشور:' : 'Reporting an issue in the published article:' }}

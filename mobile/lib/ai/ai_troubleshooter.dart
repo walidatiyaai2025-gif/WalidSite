@@ -419,17 +419,30 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
       ? 'انتهت صلاحية الجلسة. سجّل الدخول مرة أخرى.'
       : 'Session expired. Sign in again.';
 
+  /// Clear every piece of account-bound diagnosis state on ANY session loss,
+  /// not only on explicit logout. Controllers survive the unauthenticated
+  /// form and would otherwise reveal a previous user's code after re-login.
+  /// Caller owns setState so this also works inside an async error handler.
+  void _scrubPrivateSession() {
+    _token = null;
+    _expiresAt = null;
+    _job = null;
+    _saved = false;
+    _consent = false;
+    _resetPollCooldown();
+    _email.clear();
+    _password.clear();
+    _technology.clear();
+    _question.clear();
+    _code.clear();
+    _resumeId.clear();
+  }
+
   bool _requireActiveSession() {
     if (_token == null) return false;
     if (_expiresAt == null || _expiresAt!.isAfter(_nowUtc)) return true;
     setState(() {
-      _token = null;
-      _expiresAt = null;
-      _job = null;
-      _resetPollCooldown();
-      _saved = false;
-      _consent = false;
-      _resumeId.clear();
+      _scrubPrivateSession();
       _message = _expiredSessionMessage;
     });
     return false;
@@ -594,18 +607,7 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
     final token = _token!;
     setState(() {
       _busyLogout = true;
-      _token = null;
-      _expiresAt = null;
-      _job = null;
-      _saved = false;
-      _consent = false;
-      _resetPollCooldown();
-      _email.clear();
-      _password.clear();
-      _technology.clear();
-      _question.clear();
-      _code.clear();
-      _resumeId.clear();
+      _scrubPrivateSession();
       _message = widget.arabic
           ? 'جارٍ إلغاء الجلسة على الخادم...'
           : 'Revoking the session on the server...';
@@ -672,10 +674,7 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
       }
       if (error is MobileAiHttpException &&
           (error.statusCode == 401 || error.statusCode == 403)) {
-        _token = null;
-        _expiresAt = null;
-        _job = null;
-        _resetPollCooldown();
+        _scrubPrivateSession();
       }
       setState(() => _message = _genericError(error));
     } finally {
@@ -712,11 +711,7 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
       setState(() {
         if (error is MobileAiHttpException &&
             (error.statusCode == 401 || error.statusCode == 403)) {
-          _token = null;
-          _expiresAt = null;
-          _job = null;
-          _consent = false;
-          _resetPollCooldown();
+          _scrubPrivateSession();
         } else if (error is MobileAiHttpException &&
             error.statusCode == 404) {
           _job = null;
@@ -772,10 +767,7 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
       setState(() {
         if (error is MobileAiHttpException &&
             (error.statusCode == 401 || error.statusCode == 403)) {
-          _token = null;
-          _expiresAt = null;
-          _consent = false;
-          _resumeId.clear();
+          _scrubPrivateSession();
         }
         _message = error is MobileAiHttpException && error.statusCode == 404
             ? (widget.arabic
@@ -815,9 +807,7 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
       }
       if (error is MobileAiHttpException &&
           (error.statusCode == 401 || error.statusCode == 403)) {
-        _token = null;
-        _expiresAt = null;
-        _job = null;
+        _scrubPrivateSession();
       }
       setState(() => _message = _genericError(error));
     } finally {

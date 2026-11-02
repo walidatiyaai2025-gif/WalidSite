@@ -4,29 +4,29 @@
     'home' => [
         'pill' => 'PERSONAL BRAND',
         'title' => 'Waleed Atiya',
-        'subtitle' => 'Engineering reliable enterprise systems with practical AI.',
+        'subtitle' => 'Evidence-gated software, data and AI engineering work.',
         'portrait' => true,
         'cards' => [
-            ['icon' => '<>', 'title' => 'Enterprise Delivery', 'text' => 'Government & enterprise systems', 'href' => route('public.projects', ['lang' => $locale])],
-            ['icon' => 'AI', 'title' => 'AI Engineering', 'text' => 'Provider-neutral automation', 'href' => route('public.ai-engineering', ['lang' => $locale])],
+            ['icon' => '<>', 'title' => 'Verified Projects', 'text' => 'Published case studies only', 'href' => route('public.projects', ['lang' => $locale])],
+            ['icon' => 'AI', 'title' => 'AI Engineering', 'text' => 'Evidence-gated capabilities', 'href' => route('public.ai-engineering', ['lang' => $locale])],
             ['icon' => 'DB', 'title' => 'Technical Knowledge', 'text' => 'Solutions and practical guides', 'href' => route('public.lab', ['lang' => $locale])],
         ],
     ],
     'about' => [
         'pill' => 'CAREER STORY',
         'title' => 'About',
-        'subtitle' => 'A career built across databases, government systems and delivery.',
+        'subtitle' => 'Only career records that passed publication review are shown.',
         'portrait' => true,
     ],
     'expertise' => [
         'pill' => 'CAPABILITIES',
         'title' => 'Expertise',
-        'subtitle' => 'Evidence-led expertise: AI, SQL, software and technical leadership.',
+        'subtitle' => 'Only evidence-reviewed skills are presented as personal expertise.',
         'portrait' => false,
         'cards' => [
-            ['icon' => '<>', 'title' => 'Database Engineering', 'text' => 'AlwaysOn / SQL / HA-DR', 'href' => route('public.expertise', ['lang' => $locale, 'category' => 'database'])],
-            ['icon' => 'AI', 'title' => 'Architecture & Delivery', 'text' => 'System design / DevOps / APIs', 'href' => route('public.hire', ['lang' => $locale, 'track' => 'delivery'])],
-            ['icon' => 'DB', 'title' => 'AI Engineering', 'text' => 'Agents / guardrails / evaluation', 'href' => route('public.ai-engineering', ['lang' => $locale])],
+            ['icon' => '<>', 'title' => 'Database & Reliability', 'text' => 'Published skills only', 'href' => route('public.expertise', ['lang' => $locale, 'category' => 'database'])],
+            ['icon' => 'AI', 'title' => 'Project Delivery', 'text' => 'Evidence-reviewed skills only', 'href' => route('public.hire', ['lang' => $locale, 'track' => 'delivery'])],
+            ['icon' => 'DB', 'title' => 'AI Engineering', 'text' => 'Evidence-approved capabilities only', 'href' => route('public.ai-engineering', ['lang' => $locale])],
         ],
     ],
     'ai' => [
@@ -43,7 +43,7 @@
     'hire' => [
         'pill' => 'HIRING VIEW',
         'title' => 'Recruiter Mode',
-        'subtitle' => 'Evaluate capabilities, relevant case studies and CV fit.',
+        'subtitle' => 'Review published skills, case studies and the public CV before contact.',
         'portrait' => true,
     ],
 ][$screen])
@@ -119,16 +119,27 @@ body:has(.t007-reference-stage) .site-footer{margin-top:0}
     <div class="t007-reference-body" id="t007-primary-content">
         @if($screen === 'about')
             <div class="t007-about-rows">
-                <div class="t007-about-row"><span class="t007-about-period">2024 - Now</span><strong>Technology Leadership / SQL / AI</strong></div>
-                <div class="t007-about-row"><span class="t007-about-period">2022 - 2024</span><strong>Enterprise &amp; Royal Authority Systems</strong></div>
-                <div class="t007-about-row"><span class="t007-about-period">2009 - 2022</span><strong>PAAET / Diyar - Delivery &amp; Engineering</strong></div>
+                @if(isset($positions) && $positions->isNotEmpty())
+                    @foreach($positions->take(3) as $position)
+                        <div class="t007-about-row">
+                            <span class="t007-about-period">{{ $position->started_on->format('Y') }} - {{ $position->ended_on ? $position->ended_on->format('Y') : ($t007Ar ? 'الحاضر' : 'Present') }}</span>
+                            <strong>{{ $t007Ar ? $position->role_ar : $position->role_en }} — {{ $position->org_name }}</strong>
+                        </div>
+                    @endforeach
+                @else
+                    <div class="t007-about-row"><strong>{{ $t007Ar ? 'لا توجد فترات مهنية اجتازت التحقق والنشر بعد.' : 'No career periods have completed verification and publication review.' }}</strong></div>
+                @endif
             </div>
         @elseif($screen === 'hire')
             <div class="t007-hire-cards">
-                @foreach([
-                    ['Profile fit', 'SQL DBA | Technical PM | AI Engineering'],
-                    ['Evidence', 'Case studies • certifications • verified links'],
-                    ['CV options', 'ATS PDF | Executive | Engineering'],
+                @foreach($t007Ar ? [
+                    ['ملاءمة الملف', 'المهارات المنشورة بالأدلة فقط'],
+                    ['الأدلة', 'دراسات الحالة والروابط العامة المراجعة'],
+                    ['خيارات السيرة', 'السيرة العامة حسب المسار المختار'],
+                ] : [
+                    ['Profile fit', 'Evidence-reviewed published skills only'],
+                    ['Evidence', 'Published case studies and reviewed public links'],
+                    ['CV options', 'Public CV for the selected career track'],
                 ] as $card)
                     <article class="t007-hire-card">
                         <h2>{{ $card[0] }}</h2><p>{{ $card[1] }}</p>

@@ -47,7 +47,7 @@ def capture(root: Path, screen_id: str, *, commit: str, locale: str,
         raise CaptureError("Invalid locale or device pixel ratio")
     if not command or any("assets/screen-reference" in part for part in command):
         raise CaptureError("Supply a runtime renderer command, not an original reference")
-    if timeout <= 0 or timeout > 3600:
+    if not isinstance(timeout, int) or isinstance(timeout, bool) or timeout <= 0 or timeout > 3600:
         raise CaptureError("Capture timeout must be between 1 and 3600 seconds")
     if any("\n" in arg or "\r" in arg for arg in command):
         raise CaptureError("Multiline capture commands are not auditable")
@@ -122,7 +122,7 @@ def capture(root: Path, screen_id: str, *, commit: str, locale: str,
     reproducible = [
         "python3", "qa/capture_visual_evidence.py", screen_id,
         "--commit", commit, "--locale", locale, "--dpr", str(dpr),
-        "--route", route, "--", *command,
+        "--route", route, "--timeout", str(timeout), "--", *command,
     ]
     ledger["screens"][screen_id] = {
         "reference_image": screen["reference_image"],
@@ -158,12 +158,13 @@ def main(argv=None):
     parser.add_argument("--locale", required=True, choices=("ar", "en"))
     parser.add_argument("--dpr", required=True, type=float)
     parser.add_argument("--route", required=True)
+    parser.add_argument("--timeout", type=int, default=240)
     args = parser.parse_args(argv[:split])
     try:
         result = capture(
             Path(__file__).resolve().parents[1], args.screen_id,
             commit=args.commit, locale=args.locale, dpr=args.dpr,
-            route=args.route, command=argv[split + 1:],
+            route=args.route, command=argv[split + 1:], timeout=args.timeout,
         )
     except CaptureError as exc:
         print("NOT VERIFIED: " + str(exc), file=sys.stderr)

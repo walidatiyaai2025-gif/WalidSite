@@ -20,14 +20,22 @@
 <h2>{{ $locale === 'ar' ? 'الذكاء الاصطناعي ومزودو الخدمة' : 'AI processing and providers' }}</h2>
 <p>{{ $locale === 'ar' ? 'يمكن للمشرف إعداد خدمات ذكاء اصطناعي محلية أو خارجية لإنتاج مسودات ومراجعتها. عند تفعيل مزود خارجي قد تُنقل إليه مدخلات العمل حسب الإعدادات، ولم تُعتمد قائمة المزودين وفترات الاحتفاظ لديهم بعد. لا ترسل كلمات مرور أو بيانات سرية في نموذج التواصل.' : 'Administrators can configure local or external AI services for draft creation and review. If an external provider is enabled, task inputs may be sent to it under its configured processing terms. The final provider list and retention terms have not yet been approved. Do not submit passwords or confidential records through contact.' }}</p>
 <h2>{{ $locale === 'ar' ? 'الجلسات والإشعارات' : 'Sessions and notifications' }}</h2>
-<p>{{ $locale === 'ar' ? 'قد تستعمل وظائف تسجيل الدخول ملفات جلسة وحماية CSRF لازمة للأمان. لا تمنح زيارة الموقع موافقة تسويقية أو اشتراكًا في الإشعارات. لا تُعرض خدمة الاشتراك أو إرسال إشعارات باعتبارها مفعلة قبل تنفيذ وسيلة موافقة وإلغاء فعلية.' : 'Login features may use essential session and CSRF protection. Visiting the website does not grant marketing or notification consent. Subscription and notification delivery must not be represented as active until actual opt-in and revocation functionality is available.' }}</p>
+<p>{{ $locale === 'ar' ? 'قد تستعمل وظائف تسجيل الدخول ملفات جلسة وحماية CSRF لازمة للأمان. لا تمنح زيارة الموقع موافقة تسويقية أو اشتراكًا في الإشعارات. يمكن للحسابات المسجلة في تطبيق الهاتف الموافقة صراحة على تفضيلات الإشعارات أو إلغاؤها. لا يضمن تفعيل التفضيل وصول إشعار، وموافقة التواصل ليست موافقة تسويقية.' : 'Login features may use essential session and CSRF protection. Visiting the website does not grant marketing or notification consent. Authenticated mobile accounts provide explicit notification preference opt-in and revocation. A preference does not guarantee delivery, and contact consent is not marketing consent.' }}</p>
 <h2>{{ $locale === 'ar' ? 'الاحتفاظ والحذف والتصدير' : 'Retention, deletion and export' }}</h2>
-<p>{{ $locale === 'ar' ? 'لم تُعتمد مدد احتفاظ رقمية أو إجراءات محو تلقائية. يمكنك تقديم طلب اطلاع أو تصحيح أو تصدير أو حذف بيانات من خلال نموذج التواصل عند توفره، لكن الإرسال ليس إثباتًا لإتمام الطلب. يجري تنفيذ دورة حياة بيانات الحساب بشكل منفصل.' : 'No numerical retention schedule or automatic erasure promise has been approved. You can submit an access, correction, export or deletion request through the contact form when available; submitting it does not mean it was fulfilled. The separate account-data lifecycle is still under implementation.' }}</p>
+<p>{{ $locale === 'ar' ? 'لم تُعتمد مدد احتفاظ رقمية أو إجراءات محو تلقائية. يمكنك تقديم طلب اطلاع أو تصحيح أو تصدير أو حذف بيانات من خلال نموذج التواصل عند توفره، لكن الإرسال ليس إثباتًا لإتمام الطلب. يمكن لصاحب الحساب المسجل إدارة تفضيلات الإشعارات وطلب تصدير البيانات وبدء حذف الحساب من أدوات الحساب في تطبيق الهاتف بعد تسجيل الدخول. يتطلب الحذف تأكيد كلمة المرور. طلبات التواصل العامة ليست تنفيذًا آليًا لهذه الإجراءات.' : 'No numerical retention schedule or automatic erasure promise has been approved. You can submit an access, correction, export or deletion request through the contact form when available; submitting it does not mean it was fulfilled. Authenticated account holders can manage notification preferences, request a data export, or initiate account deletion through the mobile account controls. These controls require authentication; deletion requires password confirmation. Public contact requests are not automated fulfillment.' }}</p>
 <h2>{{ $locale === 'ar' ? 'أطراف خارجية وحدود الخدمة' : 'Third parties and availability' }}</h2>
 <p>{{ $locale === 'ar' ? 'قد تتفاعل مع استضافة الموقع أو البريد أو GitHub أو مزود ذكاء اصطناعي بحسب الميزات المستخدمة. التفاصيل والجهات النهائية تحتاج مراجعة قانونية. عند تعطل البريد يعرض الموقع حالة غير متاحة بدل تأكيد إرسال غير صحيح.' : 'Hosting, mail, GitHub and configured AI providers may be involved depending on the feature used. Final provider identities and terms require legal review. When mail is unavailable, the site reports it unavailable rather than falsely confirming delivery.' }}</p>
 </article>
 <nav class="policy-actions" aria-label="{{ $locale === 'ar' ? 'إجراءات الخصوصية' : 'Privacy actions' }}">
-<a href="{{ route('public.contact', ['lang'=>$locale, 'topic'=>'privacy']) }}">{{ $locale === 'ar' ? 'طلب وصول أو حذف أو تصدير' : 'Request access, deletion or export' }}</a>
+@foreach([
+    'privacy-access' => ['طلب الاطلاع', 'Request access'],
+    'privacy-correction' => ['طلب التصحيح', 'Request correction'],
+    'privacy-export' => ['طلب التصدير', 'Request export'],
+    'privacy-deletion' => ['طلب الحذف', 'Request deletion'],
+    'privacy-notifications' => ['طلب إلغاء موافقة الإشعارات', 'Request notification revocation'],
+] as $topic => $labels)
+<a href="{{ route('public.contact', ['lang'=>$locale, 'topic'=>$topic]) }}">{{ $labels[$locale === 'ar' ? 0 : 1] }}</a>
+@endforeach
 <a href="{{ route('public.terms', ['lang'=>$locale]) }}">{{ $locale === 'ar' ? 'عرض الشروط' : 'View terms' }}</a>
 </nav>
 </section>
