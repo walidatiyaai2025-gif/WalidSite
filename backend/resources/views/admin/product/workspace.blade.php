@@ -106,7 +106,7 @@ aside button{background:transparent;border:1px solid #fff;color:#fff;padding:8px
 <th scope="col">{{ $locale === 'ar' ? 'المشروع' : 'Project' }}</th><th scope="col">{{ $locale === 'ar' ? 'الحالة' : 'Status' }}</th><th scope="col">{{ $locale === 'ar' ? 'الظهور' : 'Visibility' }}</th>
 <th scope="col">{{ $locale === 'ar' ? 'الأدلة الموثقة/الإجمالي' : 'Verified/total evidence' }}</th><th scope="col">{{ $locale === 'ar' ? 'المنشور' : 'Public proof' }}</th></tr></thead><tbody>
 @foreach($projects as $project)
-@php($ready = $project->visibility === 'public' && $project->published_at !== null && $project->published_at->lte(now()) && is_string($project->role_en) && $project->role_en !== '' && $project->verified_public_evidence_count > 0 && preg_match('/\A[A-Za-z0-9-]+\z/D', $project->slug) === 1)
+@php($ready = $project->verified_public_ready === true)
 <tr><td><strong>{{ $project->title }}</strong><p class="muted"><code dir="ltr">{{ $project->slug }}</code></p></td>
 <td>{{ $project->status }}</td><td>{{ $project->visibility === 'public' ? ($locale === 'ar' ? 'عام' : 'Public') : ($locale === 'ar' ? 'خاص' : 'Private') }}</td>
 <td>{{ $project->verified_public_evidence_count }} / {{ $project->evidence_count }}</td>
