@@ -276,14 +276,16 @@ Route::middleware('auth:web')->group(function (): void {
             'manual_published', 'manual_unpublished', 'manual_rejected',
             'scheduled', 'requires_review', 'refresh_required', 'refresh_superseded',
         ];
+        $projectActions = ['evidence_submitted', 'evidence_approved', 'evidence_discarded', 'draft_updated', 'project_published'];
         $allActions = array_values(array_unique(array_merge(
-            $providerActions, $editorialActions, $mediaActions
+            $providerActions, $editorialActions, $mediaActions, $projectActions
         )));
         $input = $request->validate([
             'lang' => ['sometimes', 'in:ar,en'],
             'page' => ['sometimes', 'integer', 'min:1', 'max:10000'],
             'editorial_page' => ['sometimes', 'integer', 'min:1', 'max:10000'],
-            'domain' => ['sometimes', 'in:all,provider,editorial,media'],
+            'project_page' => ['sometimes', 'integer', 'min:1', 'max:10000'],
+            'domain' => ['sometimes', 'in:all,provider,editorial,media,project'],
             'provider' => ['sometimes', 'uuid'],
             'action' => ['sometimes', \Illuminate\Validation\Rule::in($allActions)],
             'day' => ['sometimes', 'date_format:Y-m-d', 'before_or_equal:'.$today],
@@ -349,17 +351,34 @@ Route::middleware('auth:web')->group(function (): void {
             })
             ->orderByDesc('event.created_at')->orderByDesc('event.id');
 
+        // Never expose private evidence URLs, request bodies or actor emails.
+        $projectQuery = \Illuminate\Support\Facades\DB::table('project_audit_events')
+            ->select(['id', 'project_id', 'evidence_id', 'action', 'created_at'])
+            ->when(! in_array($domain, ['all', 'project'], true), fn ($q) => $q->whereRaw('1 = 0'))
+            ->when(isset($input['provider']), fn ($q) => $q->whereRaw('1 = 0'))
+            ->when(isset($input['action']), function ($q) use ($input, $projectActions) {
+                in_array($input['action'], $projectActions, true)
+                    ? $q->where('action', $input['action']) : $q->whereRaw('1 = 0');
+            })
+            ->when(isset($input['day']), function ($q) use ($input) {
+                $start = \Carbon\CarbonImmutable::parse($input['day'], 'UTC')->startOfDay();
+                $q->where('created_at', '>=', $start)->where('created_at', '<', $start->addDay());
+            })
+            ->orderByDesc('created_at')->orderByDesc('id');
+
         if (($input['format'] ?? null) === 'csv') {
             $providerWindow = (clone $auditQuery)->limit(1001)->get();
             $editorialWindow = (clone $editorialQuery)->limit(1001)->get();
-            $truncated = $providerWindow->count() > 1000 || $editorialWindow->count() > 1000;
+            $projectWindow = (clone $projectQuery)->limit(1001)->get();
+            $truncated = $providerWindow->count() > 1000 || $editorialWindow->count() > 1000 || $projectWindow->count() > 1000;
             $providerRows = $providerWindow->take(1000)->map($redact);
             $editorialRows = $editorialWindow->take(1000);
+            $projectRows = $projectWindow->take(1000);
             $safeCell = static function (string $value): string {
                 return preg_match('/^[=+\-@\t\r]/u', $value) === 1 ? "'".$value : $value;
             };
             return response()->streamDownload(static function () use (
-                $providerRows, $editorialRows, $safeCell, $mediaActions, $locale
+                $providerRows, $editorialRows, $projectRows, $safeCell, $mediaActions, $locale
             ): void {
                 $stream = fopen('php://output', 'wb');
                 fwrite($stream, "\xEF\xBB\xBF");
@@ -391,6 +410,13 @@ Route::middleware('auth:web')->group(function (): void {
                         $safeCell($subject),
                     ]);
                 }
+                foreach ($projectRows as $event) {
+                    fputcsv($stream, [
+                        (string) $event->created_at, '', (string) $event->action,
+                        '', 'project', (string) $event->project_id
+                            .($event->evidence_id ? ' / '.(string) $event->evidence_id : ''),
+                    ]);
+                }
                 fclose($stream);
             }, 'admin-audit-'.$today.'.csv', [
                 'Content-Type' => 'text/csv; charset=UTF-8',
@@ -407,6 +433,7 @@ Route::middleware('auth:web')->group(function (): void {
             'action' => $input['action'] ?? null,
             'day' => $input['day'] ?? null,
             'editorial_page' => $input['editorial_page'] ?? null,
+            'project_page' => $input['project_page'] ?? null,
         ], static fn ($value): bool => $value !== null));
         $events->getCollection()->transform($redact);
 
@@ -419,6 +446,16 @@ Route::middleware('auth:web')->group(function (): void {
                 'action' => $input['action'] ?? null,
                 'day' => $input['day'] ?? null,
                 'page' => $input['page'] ?? null,
+                'project_page' => $input['project_page'] ?? null,
+            ], static fn ($value): bool => $value !== null));
+
+        $projectEvents = (clone $projectQuery)
+            ->paginate(20, ['*'], 'project_page')
+            ->appends(array_filter([
+                'lang' => $locale, 'domain' => $domain !== 'all' ? $domain : null,
+                'provider' => $input['provider'] ?? null, 'action' => $input['action'] ?? null,
+                'day' => $input['day'] ?? null, 'page' => $input['page'] ?? null,
+                'editorial_page' => $input['editorial_page'] ?? null,
             ], static fn ($value): bool => $value !== null));
 
         $providers = \App\Models\AiProvider::withTrashed()
@@ -433,7 +470,7 @@ Route::middleware('auth:web')->group(function (): void {
 
         return response()->view('admin.ai.security-audit', compact(
             'events', 'editorialEvents', 'providers', 'filters', 'locale', 'today',
-            'providerActions', 'editorialActions', 'mediaActions'
+            'providerActions', 'editorialActions', 'mediaActions', 'projectActions', 'projectEvents'
         ))->header('Cache-Control', 'no-store, private');
     })->name('admin.audit.index')->middleware('throttle:30,1');
 
@@ -2316,6 +2353,12 @@ Route::middleware('auth:web')->prefix('admin')->group(function (): void {
             ])->save();
 
             // Identifier-only audit: never log the private source URL or request payload.
+            \Illuminate\Support\Facades\DB::table('project_audit_events')->insert([
+                'id' => (string) \Illuminate\Support\Str::uuid(),
+                'project_id' => $draft->id, 'evidence_id' => $candidate->id,
+                'actor_id' => $request->user()->id, 'action' => 'evidence_approved',
+                'created_at' => now('UTC'),
+            ]);
             \Illuminate\Support\Facades\Log::notice('admin.project_evidence.approved', [
                 'project_id' => $draft->id,
                 'evidence_id' => $candidate->id,
@@ -2382,6 +2425,12 @@ Route::middleware('auth:web')->prefix('admin')->group(function (): void {
                 'published_at' => now('UTC'),
             ])->save();
 
+            \Illuminate\Support\Facades\DB::table('project_audit_events')->insert([
+                'id' => (string) \Illuminate\Support\Str::uuid(),
+                'project_id' => $draft->id, 'evidence_id' => null,
+                'actor_id' => $request->user()->id, 'action' => 'project_published',
+                'created_at' => now('UTC'),
+            ]);
             \Illuminate\Support\Facades\Log::notice('admin.project.published', [
                 'project_id' => $draft->id,
                 'actor_id' => $request->user()->id,
@@ -2422,6 +2471,12 @@ Route::middleware('auth:web')->prefix('admin')->group(function (): void {
             $row->fill(collect($input)->only([
                 'title', 'summary_en', 'summary_ar', 'role_en', 'role_ar',
             ])->all())->save();
+            \Illuminate\Support\Facades\DB::table('project_audit_events')->insert([
+                'id' => (string) \Illuminate\Support\Str::uuid(),
+                'project_id' => $row->id, 'evidence_id' => null,
+                'actor_id' => $request->user()->id, 'action' => 'draft_updated',
+                'created_at' => now('UTC'),
+            ]);
             \Illuminate\Support\Facades\Log::notice('admin.project_private_draft.updated', [
                 'project_id' => $row->id, 'actor_id' => $request->user()->id,
             ]);
@@ -2490,12 +2545,18 @@ Route::middleware('auth:web')->prefix('admin')->group(function (): void {
                     'url' => 'This evidence URL is already attached to the project.',
                 ]);
             }
-            \App\Models\ProjectEvidence::create([
+            $candidate = \App\Models\ProjectEvidence::create([
                 'project_id' => $draft->id,
                 'evidence_type' => $input['evidence_type'],
                 'url' => $canonicalUrl,
                 'visibility' => 'private',
                 'verified_at' => null,
+            ]);
+            \Illuminate\Support\Facades\DB::table('project_audit_events')->insert([
+                'id' => (string) \Illuminate\Support\Str::uuid(),
+                'project_id' => $draft->id, 'evidence_id' => $candidate->id,
+                'actor_id' => $request->user()->id, 'action' => 'evidence_submitted',
+                'created_at' => now('UTC'),
             ]);
             // No URL or user identifier appears in audit output.
             \Illuminate\Support\Facades\Log::notice('admin.project_private_evidence.queued', [
@@ -2530,6 +2591,12 @@ Route::middleware('auth:web')->prefix('admin')->group(function (): void {
                 ->whereKey($evidence)->where('project_id', $draft->id)->lockForUpdate()->firstOrFail();
             abort_unless($candidate->visibility === 'private' && $candidate->verified_at === null, 409);
             $candidate->delete();
+            \Illuminate\Support\Facades\DB::table('project_audit_events')->insert([
+                'id' => (string) \Illuminate\Support\Str::uuid(),
+                'project_id' => $draft->id, 'evidence_id' => $candidate->id,
+                'actor_id' => $request->user()->id, 'action' => 'evidence_discarded',
+                'created_at' => now('UTC'),
+            ]);
             // Audit identifiers only, never private evidence URLs or secret payloads.
             \Illuminate\Support\Facades\Log::notice('admin.project_private_evidence.discarded', [
                 'project_id' => $draft->id, 'evidence_id' => $candidate->id,
