@@ -288,6 +288,7 @@ final class AdminProductOperationsJourneyTest extends TestCase
         $this->assertStringNotContainsString('NEVER_EXPOSE_PRIVATE_TOKEN', $export);
         $this->assertStringNotContainsString('1000,minor_currency_units', $export);
         $this->assertStringNotContainsString('9999,minor_currency_units', $export);
+        $this->assertStringNotContainsString('9999,minor_currency_units', $this->get('/admin/analytics?period=all&format=csv')->assertOk()->streamedContent());
         $this->get('/admin/analytics?period=all')->assertOk()
             ->assertDontSee('>11249</td>', false);
         foreach (['period=week','period[]=7d','format=pdf','lang=xx'] as $query) {
