@@ -326,4 +326,15 @@ class PublicPortfolioAndContactTest extends TestCase
         ])->assertRedirect();
         Mail::assertNothingSent();
     }
+    public function test_contact_form_has_semantic_autocomplete_for_both_locales(): void
+    {
+        config(['mail.contact_recipient' => 'contact@example.test', 'mail.default' => 'smtp']);
+        foreach (['en', 'ar'] as $locale) {
+            $this->get('/contact?lang='.$locale)->assertOk()
+                ->assertSee('name="name" autocomplete="name"', false)
+                ->assertSee('name="email" autocomplete="email"', false)
+                ->assertSee('name="subject" autocomplete="off"', false);
+        }
+    }
+
 }
