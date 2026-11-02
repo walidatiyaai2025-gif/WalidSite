@@ -1,7 +1,8 @@
-@php($t012Screen = $screen ?? 'blog')
-@php($t012Ar = ($locale ?? 'en') === 'ar')
-@php($t012Current = request()->route()?->getName())
-@php($t012Copy = [
+<?php
+$t012Screen = $screen ?? 'blog';
+$t012Ar = ($locale ?? 'en') === 'ar';
+$t012Current = request()->route()?->getName();
+$t012Copy = [
     'blog' => [
         'pill' => $t012Ar ? 'مركز المعرفة' : 'KNOWLEDGE HUB',
         'title' => $t012Ar ? 'المدونة التقنية' : 'Technical Blog',
@@ -22,12 +23,13 @@
         'title' => $t012Ar ? 'نتائج البحث' : 'Search Results',
         'subtitle' => $t012Ar ? 'اعثر على الإجابة أو المشروع أو المورد الهندسي المناسب.' : 'Find the right answer, project, or engineering resource.',
     ],
-][$t012Screen])
-@php($t012Secondary = match($t012Screen) {
+][$t012Screen];
+$t012Secondary = match($t012Screen) {
     'article' => '#sources-title',
     'lab' => route('public.lab.runbooks', ['lang' => $locale]),
     default => '#t012-functional',
-})
+};
+?>
 @push('styles')
 <style>
 body:has(.t012-reference-stage){margin:0;background:#f5f9fc;color:#184876;overflow-x:hidden}
@@ -120,35 +122,38 @@ body:has(.t012-reference-stage) .site-footer{margin-top:0}
         <a href="{{ route('public.resume', ['lang' => $locale]) }}">{{ $t012Ar ? 'السيرة العامة' : 'Resume' }}</a>
     </nav>
     <a class="t012-contact" href="{{ route('public.contact', ['lang' => $locale]) }}">{{ $t012Ar ? 'تواصل' : 'Get in touch' }}</a>
-    {{-- Compute the locale-switch parameters in an explicit Blade PHP scope. --}}
-    @php
+    <?php
+        // Only preserve bounded first-party browse parameters.
         $t012SwitchArgs = ['lang' => $t012Ar ? 'en' : 'ar'];
-    @endphp
-    @if($t012Current === 'public.article')
-        @php($t012SwitchArgs['slug'] = $article->slug)
-        @php($t012SwitchArgs = array_merge($t012SwitchArgs, $articleContextQuery ?? []))
-    @elseif($t012Current === 'public.search')
-        @if($search !== '')
-            @php($t012SwitchArgs['q'] = $search)
-        @endif
-        @if($search !== '' || $type !== 'all')
-            @php($t012SwitchArgs['type'] = $type)
-        @endif
-    @elseif($t012Current === 'public.blog')
-        @php($t012RawQuery = request()->query())
-        @php($t012RawSearch = $t012RawQuery['q'] ?? null)
-        @if(is_string($t012RawSearch) && mb_strlen(trim($t012RawSearch)) <= 80 && trim($t012RawSearch) !== '')
-            @php($t012SwitchArgs['q'] = trim($t012RawSearch))
-        @endif
-        @php($t012RawCategory = $t012RawQuery['category'] ?? null)
-        @if(is_string($t012RawCategory) && preg_match('/\\A[a-z0-9-]{1,110}\\z/D', $t012RawCategory))
-            @php($t012SwitchArgs['category'] = $t012RawCategory)
-        @endif
-        @php($t012RawPage = $t012RawQuery['page'] ?? null)
-        @if(is_string($t012RawPage) && ctype_digit($t012RawPage) && (int) $t012RawPage >= 1 && (int) $t012RawPage <= 10000)
-            @php($t012SwitchArgs['page'] = (int) $t012RawPage)
-        @endif
-    @endif
+        if ($t012Current === 'public.article') {
+            $t012SwitchArgs['slug'] = $article->slug;
+            $t012SwitchArgs = array_merge($t012SwitchArgs, $articleContextQuery ?? []);
+        } elseif ($t012Current === 'public.search') {
+            if ($search !== '') {
+                $t012SwitchArgs['q'] = $search;
+            }
+            if ($search !== '' || $type !== 'all') {
+                $t012SwitchArgs['type'] = $type;
+            }
+        } elseif ($t012Current === 'public.blog') {
+            $rawT012Query = request()->query();
+            $rawT012Search = $rawT012Query['q'] ?? null;
+            if (is_string($rawT012Search) && mb_strlen(trim($rawT012Search)) <= 80
+                && trim($rawT012Search) !== '') {
+                $t012SwitchArgs['q'] = trim($rawT012Search);
+            }
+            $rawT012Category = $rawT012Query['category'] ?? null;
+            if (is_string($rawT012Category)
+                && preg_match('/\\A[a-z0-9-]{1,110}\\z/D', $rawT012Category)) {
+                $t012SwitchArgs['category'] = $rawT012Category;
+            }
+            $rawT012Page = $rawT012Query['page'] ?? null;
+            if (is_string($rawT012Page) && ctype_digit($rawT012Page)
+                && (int) $rawT012Page >= 1 && (int) $rawT012Page <= 10000) {
+                $t012SwitchArgs['page'] = (int) $rawT012Page;
+            }
+        }
+    ?>
     <a class="t012-sr-only" href="{{ route($t012Current ?? 'home', $t012SwitchArgs) }}">{{ $t012Ar ? 'English' : 'العربية' }}</a>
 </header>
 <section class="t012-reference-stage t012-screen-{{ $t012Screen }}" aria-label="{{ $t012Copy['title'] }}">
