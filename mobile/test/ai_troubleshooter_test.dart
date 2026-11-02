@@ -408,13 +408,13 @@ void main() {
     await reveal(tester, const Key('ai-job-status'));
     expect(find.textContaining('Retry after about 30 seconds'), findsOneWidget);
     expect(find.byKey(const Key('ai-open-solution')), findsNothing);
-    // The submit control may be lazily removed from the viewport while a
-    // queued job is active; assert no second submission instead of assuming
-    // the offscreen widget is mounted.
-    final submit = find.byKey(const Key('ai-diagnose-submit'));
-    if (submit.evaluate().isNotEmpty) {
-      expect(tester.widget<FilledButton>(submit).onPressed, isNull);
-    }
+    // Reach the actual offscreen control and assert the real disabled state.
+    // Silently skipping the assertion when lazy scrolling unmounts the button
+    // would conceal a duplicate paid AI submission regression.
+    await revealAbove(tester, const Key('ai-diagnose-submit'));
+    expect(tester.widget<FilledButton>(
+      find.byKey(const Key('ai-diagnose-submit')),
+    ).onPressed, isNull);
     await reveal(tester, const Key('ai-refresh-status'));
     expect(tester.widget<OutlinedButton>(
       find.byKey(const Key('ai-refresh-status')),
