@@ -55,7 +55,6 @@ void main() {
       markdown: '# Only reviewed steps',
       version: 2, validatedAt: DateTime.utc(2026, 10, 31),
     );
-    final pending = <ReviewedRunbook>[];
     await tester.pumpWidget(MaterialApp(
       home: ReviewedRunbookDetail(
         id: _id, arabic: false,
@@ -79,7 +78,6 @@ void main() {
     expect(find.bySemanticsIdentifier('walidsite.mobile.04'), findsNothing);
     expect(find.byKey(const Key('online-runbook-detail-unavailable')),
         findsOneWidget);
-    expect(pending, isEmpty);
   });
 
   for (final arabic in [false, true]) {
@@ -99,7 +97,7 @@ void main() {
           profileAction: (_) async => const MobileAccount(_id, 'qa@example.test'),
           savedAction: (_, __, pageNumber) async =>
               MobileSavedPage.parse(page, pageNumber),
-          revokeAction: (_) async {},
+          logoutAction: (_) async {},
         ),
       ));
       // No authenticated private route exists before the real account data.
