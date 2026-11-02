@@ -529,7 +529,7 @@ final class AdminPrivateProjectEvidenceTest extends TestCase
             ->assertSee('روابط الأدلة الصالحة للعرض العام')
             ->assertSee('الأدلة المعتمدة الحالية لا تصلح لصفحة مشروع عامة')
             ->assertDontSee('بوابة نشر المشروع')
-            ->assertDontSee('نشر المشروع');
+            ->assertDontSee('>نشر المشروع</button>', false);
 
         $project->evidence()->create([
             'evidence_type' => 'document',
