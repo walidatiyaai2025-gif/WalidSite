@@ -263,26 +263,40 @@ Route::middleware('auth:web')->group(function (): void {
             ->header('Cache-Control', 'no-store');
     })->whereUuid('provider')->name('admin.providers.audit');
 
-    // ADMIN-03/13: consolidated, read-only provider configuration audit.
-    // It exposes audited *field names*, never untrusted stored values, actor
-    // details or provider credentials. Archived providers retain history.
+    // ADMIN-13: bounded cross-domain audit & security projection.
+    // Provider configuration, editorial decisions and media-rights decisions
+    // are persisted independently. Never expose credential values, prompts,
+    // draft bodies, citation URLs, private storage paths or actor identities.
     Route::get('/admin/audit', function (Request $request) {
         abort_unless($request->user()?->canAccessAdmin(), 403);
         $today = now('UTC')->toDateString();
+        $providerActions = ['created', 'updated', 'tested', 'deleted'];
+        $mediaActions = ['media_rights_approved', 'media_rights_revoked'];
+        $editorialActions = [
+            'manual_published', 'manual_unpublished', 'manual_rejected',
+            'scheduled', 'requires_review', 'refresh_required', 'refresh_superseded',
+        ];
+        $allActions = array_values(array_unique(array_merge(
+            $providerActions, $editorialActions, $mediaActions
+        )));
         $input = $request->validate([
             'lang' => ['sometimes', 'in:ar,en'],
             'page' => ['sometimes', 'integer', 'min:1', 'max:10000'],
+            'editorial_page' => ['sometimes', 'integer', 'min:1', 'max:10000'],
+            'domain' => ['sometimes', 'in:all,provider,editorial,media'],
             'provider' => ['sometimes', 'uuid'],
-            'action' => ['sometimes', 'in:created,updated,tested,deleted'],
+            'action' => ['sometimes', \Illuminate\Validation\Rule::in($allActions)],
             'day' => ['sometimes', 'date_format:Y-m-d', 'before_or_equal:'.$today],
             'format' => ['sometimes', 'in:csv'],
         ]);
         $locale = $input['lang'] ?? 'en';
+        $domain = $input['domain'] ?? 'all';
         $allowedFields = [
             'display_name', 'provider_type', 'base_url', 'enabled',
             'concurrent_limit', 'timeout_seconds', 'daily_budget_minor',
             'currency', 'routing_priority', 'secret_rotated', 'secret_removed',
         ];
+
         $auditQuery = \Illuminate\Support\Facades\DB::table('ai_provider_audit_events as event')
             ->join('ai_providers as provider', 'provider.id', '=', 'event.provider_id')
             ->select([
@@ -290,10 +304,14 @@ Route::middleware('auth:web')->group(function (): void {
                 'event.changed_fields_json', 'event.created_at',
                 'provider.display_name', 'provider.deleted_at',
             ])
+            ->when(! in_array($domain, ['all', 'provider'], true), fn ($query) => $query->whereRaw('1 = 0'))
             ->when(isset($input['provider']), fn ($query) => $query
                 ->where('event.provider_id', $input['provider']))
-            ->when(isset($input['action']), fn ($query) => $query
-                ->where('event.action', $input['action']))
+            ->when(isset($input['action']), function ($query) use ($input, $providerActions) {
+                in_array($input['action'], $providerActions, true)
+                    ? $query->where('event.action', $input['action'])
+                    : $query->whereRaw('1 = 0');
+            })
             ->when(isset($input['day']), function ($query) use ($input) {
                 $start = \Carbon\CarbonImmutable::parse($input['day'], 'UTC')->startOfDay();
                 $query->where('event.created_at', '>=', $start)
@@ -314,56 +332,109 @@ Route::middleware('auth:web')->group(function (): void {
             return $event;
         };
 
+        $editorialQuery = \Illuminate\Support\Facades\DB::table('editorial_events as event')
+            ->leftJoin('articles as article', 'article.id', '=', 'event.article_id')
+            ->select([
+                'event.id', 'event.article_id', 'event.revision_no', 'event.action',
+                'event.reason', 'event.created_at', 'article.title_en', 'article.title_ar',
+            ])
+            ->when($domain === 'provider' || isset($input['provider']), fn ($query) => $query->whereRaw('1 = 0'))
+            ->when($domain === 'media', fn ($query) => $query->whereIn('event.action', $mediaActions))
+            ->when($domain === 'editorial', fn ($query) => $query->whereIn('event.action', $editorialActions))
+            ->when(isset($input['action']), fn ($query) => $query->where('event.action', $input['action']))
+            ->when(isset($input['day']), function ($query) use ($input) {
+                $start = \Carbon\CarbonImmutable::parse($input['day'], 'UTC')->startOfDay();
+                $query->where('event.created_at', '>=', $start)
+                    ->where('event.created_at', '<', $start->addDay());
+            })
+            ->orderByDesc('event.created_at')->orderByDesc('event.id');
+
         if (($input['format'] ?? null) === 'csv') {
-            // Never stream an unbounded history or emit spreadsheet formulas
-            // from a user-editable provider display name.
-            $window = (clone $auditQuery)->limit(1001)->get();
-            $truncated = $window->count() > 1000;
-            $rows = $window->take(1000)->map($redact);
+            $providerWindow = (clone $auditQuery)->limit(1001)->get();
+            $editorialWindow = (clone $editorialQuery)->limit(1001)->get();
+            $truncated = $providerWindow->count() > 1000 || $editorialWindow->count() > 1000;
+            $providerRows = $providerWindow->take(1000)->map($redact);
+            $editorialRows = $editorialWindow->take(1000);
             $safeCell = static function (string $value): string {
-                return preg_match('/^[=+\-@\t\r]/u', $value) === 1
-                    ? "'".$value : $value;
+                return preg_match('/^[=+\-@\t\r]/u', $value) === 1 ? "'".$value : $value;
             };
-            return response()->streamDownload(static function () use ($rows, $safeCell): void {
+            return response()->streamDownload(static function () use (
+                $providerRows, $editorialRows, $safeCell, $mediaActions, $locale
+            ): void {
                 $stream = fopen('php://output', 'wb');
                 fwrite($stream, "\xEF\xBB\xBF");
-                fputcsv($stream, ['UTC time', 'Provider', 'Action', 'Changed field names']);
-                foreach ($rows as $event) {
+                fputcsv($stream, [
+                    'UTC time', 'Provider', 'Action', 'Changed field names', 'Domain', 'Subject',
+                ]);
+                foreach ($providerRows as $event) {
                     fputcsv($stream, [
                         (string) $event->created_at,
                         $safeCell((string) $event->display_name),
                         $event->action,
                         implode(', ', $event->fields),
+                        'provider',
+                        '',
+                    ]);
+                }
+                foreach ($editorialRows as $event) {
+                    $isMedia = in_array($event->action, $mediaActions, true);
+                    $title = $locale === 'ar'
+                        ? ((string) ($event->title_ar ?: $event->title_en))
+                        : ((string) ($event->title_en ?: $event->title_ar));
+                    $subject = $isMedia ? (string) ($event->reason ?? '') : $title;
+                    fputcsv($stream, [
+                        (string) $event->created_at,
+                        '',
+                        (string) $event->action,
+                        '',
+                        $isMedia ? 'media' : 'editorial',
+                        $safeCell($subject),
                     ]);
                 }
                 fclose($stream);
-            }, 'provider-audit-'.$today.'.csv', [
+            }, 'admin-audit-'.$today.'.csv', [
                 'Content-Type' => 'text/csv; charset=UTF-8',
-                'Cache-Control' => 'no-store',
+                'Cache-Control' => 'no-store, private',
                 'X-Content-Type-Options' => 'nosniff',
                 'X-Export-Truncated' => $truncated ? 'true' : 'false',
             ]);
         }
 
-        $events = (clone $auditQuery)->paginate(20)->appends(array_filter([
+        $events = (clone $auditQuery)->paginate(20, ['*'], 'page')->appends(array_filter([
             'lang' => $locale,
+            'domain' => $domain !== 'all' ? $domain : null,
             'provider' => $input['provider'] ?? null,
             'action' => $input['action'] ?? null,
             'day' => $input['day'] ?? null,
+            'editorial_page' => $input['editorial_page'] ?? null,
         ], static fn ($value): bool => $value !== null));
         $events->getCollection()->transform($redact);
+
+        $editorialEvents = (clone $editorialQuery)
+            ->paginate(20, ['*'], 'editorial_page')
+            ->appends(array_filter([
+                'lang' => $locale,
+                'domain' => $domain !== 'all' ? $domain : null,
+                'provider' => $input['provider'] ?? null,
+                'action' => $input['action'] ?? null,
+                'day' => $input['day'] ?? null,
+                'page' => $input['page'] ?? null,
+            ], static fn ($value): bool => $value !== null));
+
         $providers = \App\Models\AiProvider::withTrashed()
             ->select('id', 'display_name')->orderBy('display_name')
             ->orderBy('id')->get();
         $filters = [
+            'domain' => $domain,
             'provider' => $input['provider'] ?? '',
             'action' => $input['action'] ?? '',
             'day' => $input['day'] ?? '',
         ];
 
         return response()->view('admin.ai.security-audit', compact(
-            'events', 'providers', 'filters', 'locale', 'today'
-        ))->header('Cache-Control', 'no-store');
+            'events', 'editorialEvents', 'providers', 'filters', 'locale', 'today',
+            'providerActions', 'editorialActions', 'mediaActions'
+        ))->header('Cache-Control', 'no-store, private');
     })->name('admin.audit.index')->middleware('throttle:30,1');
 
     // ADMIN-05: one read-only routing projection for authorized web admins.
@@ -791,6 +862,143 @@ Route::middleware('auth:web')->group(function (): void {
         ])->with('status', 'Article unpublished.');
     })->middleware('throttle:10,1')->name('admin.content.unpublish');
 
+    // ADMIN-12: explicit review queue. It exposes only bounded gate state;
+    // draft bodies, citation URLs and provider details remain private.
+    Route::get('/admin/approvals', function (Request $request) {
+        abort_unless($request->user()?->canAccessAdmin(), 403);
+        $input = $request->validate([
+            'lang' => ['sometimes', 'in:ar,en'],
+            'page' => ['sometimes', 'integer', 'min:1', 'max:10000'],
+        ]);
+        $locale = $input['lang'] ?? 'en';
+        $approvals = \App\Models\ArticleRevision::query()
+            ->with('article.heroAsset')
+            ->whereHas('article', fn ($article) => $article->where('status', 'draft'))
+            ->whereRaw(
+                'article_revisions.revision_no = (SELECT MAX(latest.revision_no) FROM article_revisions AS latest WHERE latest.article_id = article_revisions.article_id)'
+            )
+            ->orderByDesc('updated_at')->orderBy('id')
+            ->paginate(25)->appends(['lang' => $locale]);
+
+        $approvals->getCollection()->transform(function ($revision) {
+            $article = $revision->article;
+            $checks = is_array($revision->validation_json) ? $revision->validation_json : [];
+            $lastDecision = \Illuminate\Support\Facades\DB::table('editorial_events')
+                ->where('article_id', $article->id)
+                ->where('revision_no', $revision->revision_no)
+                ->whereIn('action', ['manual_published', 'manual_rejected', 'requires_review'])
+                ->orderByDesc('created_at')->orderByDesc('id')->first();
+
+            return (object) [
+                'article_id' => $article->id,
+                'revision_no' => $revision->revision_no,
+                'title_en' => $article->title_en,
+                'title_ar' => $article->title_ar,
+                'evidence_passed' => $revision->hasVerifiedEvidence(),
+                'technical_passed' => ($checks['technical_passed'] ?? false) === true,
+                'image_rights_passed' => $article->hero_asset_id === null
+                    || $article->heroAsset?->isPubliclyUsable() === true,
+                'requires_owner' => ($checks['risk_level'] ?? null) !== 'low'
+                    || ($checks['contains_professional_claims'] ?? null) !== false,
+                'last_decision' => $lastDecision?->action,
+            ];
+        });
+
+        return response()->view('admin.approvals', compact('approvals', 'locale'))
+            ->header('Cache-Control', 'no-store, private')
+            ->header('X-Content-Type-Options', 'nosniff');
+    })->name('admin.approvals.index')->middleware('throttle:30,1');
+
+    Route::post('/admin/approvals/{article}/decision', function (
+        Request $request, \App\Models\Article $article
+    ) {
+        abort_unless($request->user()?->canAccessAdmin(), 403);
+        $request->validate(['lang' => ['sometimes', 'in:ar,en']]);
+        if (array_diff(
+            array_keys($request->request->all()),
+            ['_token', 'decision', 'reason']
+        ) !== []) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'decision' => 'Unsupported decision input.',
+            ]);
+        }
+        $input = $request->validate([
+            'decision' => ['required', \Illuminate\Validation\Rule::in(['approve', 'reject', 'defer'])],
+            'reason' => ['required', \Illuminate\Validation\Rule::in([
+                'source_reviewed', 'technical_reviewed', 'legal_reviewed',
+            ])],
+        ]);
+        $locale = $request->query('lang') === 'ar' ? 'ar' : 'en';
+
+        try {
+            $state = \Illuminate\Support\Facades\DB::transaction(function () use (
+                $request, $article, $input
+            ): string {
+                $locked = \App\Models\Article::query()->whereKey($article->id)
+                    ->lockForUpdate()->firstOrFail();
+                abort_if($locked->status === 'published', 409, 'Article is already published.');
+                $revision = $locked->revisions()->orderByDesc('revision_no')->firstOrFail();
+
+                if ($input['decision'] === 'defer') {
+                    app(\App\AI\EditorialScheduleRunner::class)->event(
+                        'web-defer:'.\Illuminate\Support\Str::uuid(),
+                        $locked->id, $revision->revision_no, $request->user()->id,
+                        'requires_review', $input['reason']
+                    );
+                    return 'deferred';
+                }
+
+                if ($input['decision'] === 'reject') {
+                    app(\App\AI\EditorialScheduleRunner::class)->event(
+                        'web-reject:'.\Illuminate\Support\Str::uuid(),
+                        $locked->id, $revision->revision_no, $request->user()->id,
+                        'manual_rejected', $input['reason']
+                    );
+                    return 'rejected';
+                }
+
+                if (! $locked->isReadyToPublish()) {
+                    throw \Illuminate\Validation\ValidationException::withMessages([
+                        'approval' => 'Independent citation, technical and media review is incomplete.',
+                    ]);
+                }
+                $checks = is_array($revision->validation_json) ? $revision->validation_json : [];
+                if (($checks['risk_level'] ?? null) !== 'low'
+                    || ($checks['contains_professional_claims'] ?? null) !== false) {
+                    abort_unless($request->user()->hasRole('owner'), 403);
+                }
+
+                $locked->publishVerified();
+                app(\App\AI\EditorialScheduleRunner::class)->event(
+                    'web-approve:'.\Illuminate\Support\Str::uuid(),
+                    $locked->id, $revision->revision_no, $request->user()->id,
+                    'manual_published', $input['reason']
+                );
+                return 'published';
+            }, 3);
+        } catch (\DomainException) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'approval' => 'Publication gates changed during approval.',
+            ]);
+        }
+
+        $messages = [
+            'en' => [
+                'published' => 'Verified revision approved and published.',
+                'rejected' => 'Revision rejected and recorded for review.',
+                'deferred' => 'Decision deferred; nothing was published.',
+            ],
+            'ar' => [
+                'published' => 'تم اعتماد الإصدار المتحقق منه ونشره.',
+                'rejected' => 'تم رفض الإصدار وتسجيل القرار للمراجعة.',
+                'deferred' => 'تم تأجيل القرار ولم يُنشر أي محتوى.',
+            ],
+        ];
+        return redirect()->route('admin.approvals.index', ['lang' => $locale])
+            ->with('status', $messages[$locale][$state]);
+    })->whereUuid('article')->name('admin.approvals.decision')
+        ->middleware('throttle:10,1');
+
     // T020: generated artwork approval delegates to the existing domain
     // verifier. The web layer only captures an explicit human attestation;
     // it never reads private storage paths, prompts or provider metadata.
@@ -967,11 +1175,28 @@ Route::middleware('auth:web')->group(function (): void {
         ]);
 
         try {
-            $approved = app(\App\AI\EditorialArtworkRights::class)->approve(
-                $asset,
-                $request->user(),
-                $request->boolean('licensed_for_publication'),
-                $request->boolean('no_owner_impersonation')
+            $approved = \Illuminate\Support\Facades\DB::transaction(
+                function () use ($asset, $request): bool {
+                    $approved = app(\App\AI\EditorialArtworkRights::class)->approve(
+                        $asset,
+                        $request->user(),
+                        $request->boolean('licensed_for_publication'),
+                        $request->boolean('no_owner_impersonation')
+                    );
+                    if ($approved) {
+                        \Illuminate\Support\Facades\DB::table('editorial_events')->insert([
+                            'id' => (string) \Illuminate\Support\Str::uuid(),
+                            'event_key' => 'media-rights-approved:'.\Illuminate\Support\Str::uuid(),
+                            'article_id' => null,
+                            'revision_no' => null,
+                            'actor_id' => $request->user()->id,
+                            'action' => 'media_rights_approved',
+                            'reason' => 'asset:'.$asset->id,
+                            'created_at' => now('UTC'),
+                        ]);
+                    }
+                    return $approved;
+                }, 3
             );
         } catch (\DomainException|\RuntimeException $exception) {
             return back()->withErrors([
@@ -1000,9 +1225,26 @@ Route::middleware('auth:web')->group(function (): void {
         Request $request, \App\Models\Asset $asset
     ) {
         abort_unless($request->user()?->canAccessAdmin(), 403);
-        // Revocation is a fail-closed one-way admin action. Never expose
-        // internal storage paths or silently restore licenses in this view.
-        $asset->forceFill(['rights_status' => 'revoked', 'publishable' => false])->save();
+        // Revocation is a fail-closed one-way admin action. Record the
+        // first state transition only; repeated revocation remains idempotent.
+        \Illuminate\Support\Facades\DB::transaction(function () use ($asset, $request): void {
+            $locked = \App\Models\Asset::query()->whereKey($asset->id)
+                ->lockForUpdate()->firstOrFail();
+            if ($locked->rights_status === 'revoked' && ! $locked->publishable) {
+                return;
+            }
+            $locked->forceFill(['rights_status' => 'revoked', 'publishable' => false])->save();
+            \Illuminate\Support\Facades\DB::table('editorial_events')->insert([
+                'id' => (string) \Illuminate\Support\Str::uuid(),
+                'event_key' => 'media-rights-revoked:'.\Illuminate\Support\Str::uuid(),
+                'article_id' => null,
+                'revision_no' => null,
+                'actor_id' => $request->user()->id,
+                'action' => 'media_rights_revoked',
+                'reason' => 'asset:'.$locked->id,
+                'created_at' => now('UTC'),
+            ]);
+        }, 3);
 
         return redirect()->route('admin.media.index', [
             'lang' => $request->query('lang') === 'ar' ? 'ar' : 'en',
