@@ -133,11 +133,31 @@ def _verify_native_identity(xml: bytes, identifier: str, heading: str,
         raise AndroidCaptureError("Native screen locale or visible title is not verified")
 
 
+def _native_template(route: object) -> str:
+    """Resolve one actual on-screen canonical route, never a literal {id}."""
+    if not isinstance(route, str):
+        raise AndroidCaptureError("Android capture route must be a string")
+    if route in NATIVE_SCREENS and "{id}" not in route:
+        return route
+    for template in NATIVE_SCREENS:
+        if "{id}" not in template:
+            continue
+        prefix, suffix = template.split("{id}")
+        if not route.startswith(prefix) or (suffix and not route.endswith(suffix)):
+            continue
+        end = -len(suffix) if suffix else None
+        resource_id = route[len(prefix):end]
+        # A screen ID is a real local resource key, not a route literal,
+        # traversal, URI encoding, fragment, query, or arbitrary command.
+        if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,127}", resource_id):
+            return template
+    raise AndroidCaptureError("This Flutter route has no independently verified identity")
+
+
 def render(env=None, runner=subprocess.run) -> Path:
     env = os.environ if env is None else env
     route = env.get("WALIDSITE_CAPTURE_ROUTE")
-    if route not in HEADINGS and route not in NATIVE_SCREENS:
-        raise AndroidCaptureError("This Flutter route has no independently verified identity")
+    native_template = None if route in HEADINGS else _native_template(route)
     locale = env.get("WALIDSITE_CAPTURE_LOCALE")
     if locale not in ("en", "ar"):
         raise AndroidCaptureError("Capture locale is invalid")
@@ -179,7 +199,7 @@ def render(env=None, runner=subprocess.run) -> Path:
     if route in HEADINGS:
         _verify_heading(hierarchy, HEADINGS[route][0 if locale == "en" else 1], height)
     else:
-        identifier, titles, top = NATIVE_SCREENS[route]
+        identifier, titles, top = NATIVE_SCREENS[native_template]
         _verify_native_identity(hierarchy, identifier,
                                 titles[0 if locale == "en" else 1], width, height, top)
     pixels = _run(serial, ["exec-out", "screencap", "-p"], runner)
@@ -207,7 +227,7 @@ def render(env=None, runner=subprocess.run) -> Path:
     if route in HEADINGS:
         _verify_heading(hierarchy_after, HEADINGS[route][0 if locale == "en" else 1], height)
     else:
-        identifier, titles, top = NATIVE_SCREENS[route]
+        identifier, titles, top = NATIVE_SCREENS[native_template]
         _verify_native_identity(hierarchy_after, identifier,
                                 titles[0 if locale == "en" else 1], width, height, top)
 

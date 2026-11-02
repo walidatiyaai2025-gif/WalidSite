@@ -126,7 +126,11 @@ class AndroidScreenCaptureTest(unittest.TestCase):
         for route, (identifier, titles, top) in NATIVE_SCREENS.items():
             for locale, title in (("en", titles[0]), ("ar", titles[1])):
                 with self.subTest(route=route, locale=locale):
-                    self.env["WALIDSITE_CAPTURE_ROUTE"] = route
+                    # Dynamic routes must identify an actual resource, not the
+                    # unresolved canonical {id} template.
+                    self.env["WALIDSITE_CAPTURE_ROUTE"] = (
+                        route.replace("{id}", "verified-123")
+                    )
                     self.env["WALIDSITE_CAPTURE_LOCALE"] = locale
                     runner, calls = self.runner(
                         xml=self.native_hierarchy(
@@ -183,7 +187,10 @@ class AndroidScreenCaptureTest(unittest.TestCase):
     def test_rejects_unsupported_routes_and_untrusted_geometry_before_adb(self):
         cases = [
             ("WALIDSITE_CAPTURE_ROUTE", "/welcome?lang=ar"),
-            ("WALIDSITE_CAPTURE_ROUTE", "/solutions/123"),
+            ("WALIDSITE_CAPTURE_ROUTE", "/solutions/{id}"),
+            ("WALIDSITE_CAPTURE_ROUTE", "/solutions/%2e%2e"),
+            ("WALIDSITE_CAPTURE_ROUTE", "/solutions/a/other"),
+            ("WALIDSITE_CAPTURE_ROUTE", "/runbooks/{id}/offline"),
             ("WALIDSITE_CAPTURE_ROUTE", "/solutions/{id}?secret=x"),
             ("WALIDSITE_CAPTURE_ROUTE", "/profile?auth=false"),
             ("WALIDSITE_CAPTURE_ROUTE", "/home?secret=x"),
