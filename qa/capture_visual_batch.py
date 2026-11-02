@@ -53,7 +53,7 @@ def validate_plan(root: Path, plan: object, require_all: bool = False) -> list[d
         command = item["renderer_command"]
         if (not isinstance(command, list) or not command or
                 any(not isinstance(arg, str) or not arg or
-                    "\n" in arg or "\r" in arg or "assets/screen-reference" in arg
+                    "\n" in arg or "\r" in arg or "\0" in arg or "assets/screen-reference" in arg
                     for arg in command)):
             raise CapturePlanError(f"{screen_id}: invalid renderer argv (no reference image inputs)")
         if type(item["timeout"]) is not int or not 1 <= item["timeout"] <= 3600:

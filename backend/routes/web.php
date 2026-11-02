@@ -2081,12 +2081,42 @@ Route::middleware('auth:web')->prefix('admin')->group(function (): void {
             ->when(isset($input['visibility']), static fn ($q) => $q->where('visibility', $input['visibility']));
         $projects = $query->orderByDesc('updated_at')->orderBy('id')->paginate(20)
             ->appends($request->only(['lang', 'status', 'visibility']));
+        // Private URLs are visible only to the owner, never to other admins.
+        // Laravel's eager-limit confines the review queue to ten per project.
+        if ($request->user()->hasRole('owner')) {
+            $projects->getCollection()->load(['evidence' => static fn ($q) => $q
+                ->where('visibility', 'private')->whereNull('verified_at')
+                ->orderByDesc('created_at')->limit(10)]);
+        }
         return response()->view('admin.operations', [
             'section' => 'projects', 'projects' => $projects,
             'statusFilter' => $input['status'] ?? '',
             'visibilityFilter' => $input['visibility'] ?? '',
         ])->header('Cache-Control', 'no-store, private');
     })->name('admin.operations.projects')->middleware('throttle:30,1');
+
+    // ADMIN-09: owner-only, paginated review of ALL pending private draft
+    // evidence. Previously only ten newest candidates were reachable.
+    Route::get('/projects/{project}/evidence', function (Request $request, string $project) {
+        abort_unless($request->user()?->canAccessAdmin() && $request->user()->hasRole('owner'), 403);
+        $input = $request->validate([
+            'lang' => ['sometimes', 'in:ar,en'],
+            'page' => ['sometimes', 'integer', 'between:1,10000'],
+        ]);
+        $draft = \App\Models\Project::query()->whereKey($project)->firstOrFail();
+        abort_unless($draft->visibility === 'private' && $draft->published_at === null, 409);
+        $locale = $input['lang'] ?? 'en';
+        $evidence = \App\Models\ProjectEvidence::query()
+            ->where('project_id', $draft->id)
+            ->where('visibility', 'private')->whereNull('verified_at')
+            ->orderByDesc('created_at')->orderByDesc('id')
+            ->paginate(10)->appends(['lang' => $locale]);
+        return response()->view('admin.project-evidence-review', compact(
+            'draft', 'evidence', 'locale'
+        ))->header('Cache-Control', 'no-store, private')
+            ->header('X-Content-Type-Options', 'nosniff');
+    })->whereUuid('project')->name('admin.operations.projects.evidence.review')
+        ->middleware('throttle:30,1');
 
     Route::patch('/projects/{project}', function (Request $request, string $project) {
         abort_unless($request->user()?->canAccessAdmin() && $request->user()->hasRole('owner'), 403);
@@ -2123,6 +2153,125 @@ Route::middleware('auth:web')->prefix('admin')->group(function (): void {
         ])->with('status', 'Private project draft updated; not published.');
     })->whereUuid('project')->name('admin.operations.projects.update')
         ->middleware('throttle:10,1');
+
+    // ADMIN-09: submit supporting evidence for a private, unpublished
+    // project. This records a review candidate, never verified/public proof.
+    // The server does not fetch or preflight the submitted URL.
+    Route::post('/projects/{project}/evidence', function (Request $request, string $project) {
+        abort_unless($request->user()?->canAccessAdmin() && $request->user()->hasRole('owner'), 403);
+        $input = $request->validate([
+            'lang' => ['sometimes', 'in:ar,en'],
+            'evidence_type' => ['required', \Illuminate\Validation\Rule::in([
+                'document', 'repository', 'publication',
+            ])],
+            'url' => ['required', 'string', 'max:2048'],
+        ]);
+        if (array_diff(array_keys($request->request->all()), [
+            '_token', 'evidence_type', 'url',
+        ]) !== []) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'evidence' => 'Only private evidence submission fields are supported.',
+            ]);
+        }
+        $url = trim($input['url']);
+        $parts = parse_url($url);
+        $host = is_array($parts) ? ($parts['host'] ?? null) : null;
+        $host = is_string($host) ? strtolower($host) : '';
+        // Accept a structurally public DNS name, not IP literals, local-only
+        // names, redirect credentials or internal endpoint syntax. There is
+        // deliberately NO DNS lookup or outbound URL request on this path.
+        $publicHost = preg_match(
+            '/\A(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}\z/D',
+            $host
+        ) === 1;
+        $tld = substr(strrchr($host, '.') ?: '', 1);
+        $blockedHost = in_array($tld, [
+            'local', 'internal', 'localhost', 'test', 'invalid', 'onion', 'lan', 'home',
+        ], true) || in_array($host, [
+            'localtest.me', 'localhost.localdomain', 'nip.io', 'sslip.io',
+        ], true) || str_ends_with($host, '.nip.io') || str_ends_with($host, '.sslip.io');
+        if (! is_array($parts)
+            || ($parts['scheme'] ?? null) !== 'https'
+            || ! $publicHost || $blockedHost
+            || isset($parts['user']) || isset($parts['pass']) || isset($parts['port'])
+            || isset($parts['query']) || isset($parts['fragment'])
+            || filter_var($url, FILTER_VALIDATE_URL) === false
+            || preg_match('/[\x00-\x20\x7f]/', $url) === 1
+            || preg_match('/%(?:0[0-9a-f]|1[0-9a-f]|7f)/i', $url) === 1) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'url' => 'Evidence must use a direct HTTPS URL on a public DNS hostname without credentials or query tokens.',
+            ]);
+        }
+        $canonicalUrl = 'https://'.$host.($parts['path'] ?? '');
+        \Illuminate\Support\Facades\DB::transaction(function () use ($project, $input, $canonicalUrl, $request): void {
+            $draft = \App\Models\Project::query()->whereKey($project)->lockForUpdate()->firstOrFail();
+            abort_unless($draft->visibility === 'private' && $draft->published_at === null, 409);
+            if (\App\Models\ProjectEvidence::query()
+                ->where('project_id', $draft->id)->where('url', $canonicalUrl)->exists()) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'url' => 'This evidence URL is already attached to the project.',
+                ]);
+            }
+            \App\Models\ProjectEvidence::create([
+                'project_id' => $draft->id,
+                'evidence_type' => $input['evidence_type'],
+                'url' => $canonicalUrl,
+                'visibility' => 'private',
+                'verified_at' => null,
+            ]);
+            // No URL or user identifier appears in audit output.
+            \Illuminate\Support\Facades\Log::notice('admin.project_private_evidence.queued', [
+                'project_id' => $draft->id,
+            ]);
+        }, 3);
+        $ar = $request->query('lang') === 'ar';
+        return redirect()->route('admin.operations.projects', ['lang' => $ar ? 'ar' : 'en'])
+            ->with('status', $ar
+                ? 'تمت إضافة الدليل إلى المسودة الخاصة للمراجعة دون نشر أو اعتماد.'
+                : 'Private draft evidence queued for review; not published or verified.');
+    })->whereUuid('project')->name('admin.operations.projects.evidence')
+        ->middleware('throttle:10,1');
+
+    // Discard is a private draft review action, not approval or publication.
+    Route::delete('/projects/{project}/evidence/{evidence}', function (Request $request, string $project, string $evidence) {
+        abort_unless($request->user()?->canAccessAdmin() && $request->user()->hasRole('owner'), 403);
+        $request->validate([
+            'lang' => ['sometimes', 'in:ar,en'],
+            'return' => ['sometimes', 'in:review'],
+            'page' => ['sometimes', 'integer', 'between:1,10000'],
+        ]);
+        if (array_diff(array_keys($request->request->all()), ['_token', '_method']) !== []) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'evidence' => 'Unsupported evidence review fields.',
+            ]);
+        }
+        \Illuminate\Support\Facades\DB::transaction(function () use ($project, $evidence, $request): void {
+            $draft = \App\Models\Project::query()->whereKey($project)->lockForUpdate()->firstOrFail();
+            abort_unless($draft->visibility === 'private' && $draft->published_at === null, 409);
+            $candidate = \App\Models\ProjectEvidence::query()
+                ->whereKey($evidence)->where('project_id', $draft->id)->lockForUpdate()->firstOrFail();
+            abort_unless($candidate->visibility === 'private' && $candidate->verified_at === null, 409);
+            $candidate->delete();
+            // Audit identifiers only, never private evidence URLs or secret payloads.
+            \Illuminate\Support\Facades\Log::notice('admin.project_private_evidence.discarded', [
+                'project_id' => $draft->id, 'evidence_id' => $candidate->id,
+                'actor_id' => $request->user()->id,
+            ]);
+        }, 3);
+        $ar = $request->query('lang') === 'ar';
+        // Only a fixed internal marker can return an owner to the review
+        // queue. Never accept an arbitrary redirect URL from the browser.
+        $review = $request->query('return') === 'review';
+        return redirect()->route($review
+            ? 'admin.operations.projects.evidence.review'
+            : 'admin.operations.projects', $review ? [
+                'project' => $project,
+                'lang' => $ar ? 'ar' : 'en',
+                'page' => $request->query('page', 1),
+            ] : ['lang' => $ar ? 'ar' : 'en'])
+            ->with('status', $ar ? 'تم رفض الدليل الخاص غير المعتمد.' : 'Unverified private evidence discarded; no publication occurred.');
+    })->whereUuid('project')->whereUuid('evidence')
+        ->name('admin.operations.projects.evidence.discard')->middleware('throttle:10,1');
 
     Route::get('/audience', function (Request $request) {
         abort_unless($request->user()?->canAccessAdmin(), 403);

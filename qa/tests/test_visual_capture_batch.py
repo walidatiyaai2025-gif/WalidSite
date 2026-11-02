@@ -92,6 +92,7 @@ class VisualCaptureBatchTest(unittest.TestCase):
             {"timeout": 3601}, {"renderer_command": []},
             {"renderer_command": ["cp", "assets/screen-reference/web_home.png", "x"]},
             {"renderer_command": ["python3", "bad\ncommand"]},
+            {"renderer_command": ["python3", "bad\0command"]},
         ]
         for change in invalid:
             with self.subTest(change=change), self.assertRaises(CapturePlanError):

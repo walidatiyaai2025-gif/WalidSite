@@ -97,6 +97,16 @@ class VisualFidelityGateTest(unittest.TestCase):
         self.assertEqual(matched, 0)
         self.assertTrue(any("byte-for-byte copy" in error for error in errors))
 
+    def test_malformed_locale_metadata_fails_closed(self):
+        self._mark_matched()
+        for invalid_locale in (None, 42, [], {"locale": "en"}):
+            with self.subTest(locale=invalid_locale):
+                self.entries["WEB-01"]["locale"] = invalid_locale
+                self._write_ledger()
+                errors, matched, total = audit(self.root)
+                self.assertEqual((matched, total), (0, 40))
+                self.assertTrue(any("invalid/placeholder screenshot provenance" in error for error in errors))
+
     def test_final_release_gate_rejects_pending_evidence(self):
         errors, matched, total = audit(self.root, require_complete=True)
         self.assertEqual((matched, total), (0, 40))
@@ -142,6 +152,8 @@ class VisualFidelityGateTest(unittest.TestCase):
 
         cases = [
             ("capture", "qa/visual-captures/WEB-02.png", "canonical screen ID"),
+            ("capture", 7, "canonical screen ID"),
+            ("capture", ["qa/visual-captures/WEB-01.png"], "canonical screen ID"),
             ("route", "/about", "invalid/placeholder screenshot provenance"),
             ("route", "//outside.example.test", "invalid/placeholder screenshot provenance"),
             ("route", "/blog/../admin", "invalid/placeholder screenshot provenance"),
