@@ -42,6 +42,8 @@
 <h1 id="contact-heading">{{ $locale === 'ar' ? 'التواصل' : 'Contact' }}</h1>
 <p>{{ $locale === 'ar' ? 'تُستخدم بيانات الرسالة فقط للرد على طلب التواصل، ولا تنشر على الموقع.' : 'Messages are used only to reply to the inquiry; they are not published.' }}
 <a href="{{ route('public.privacy', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'اقرأ إشعار الخصوصية والبيانات (مسودة غير معتمدة).' : 'Read the privacy and data disclosure (unapproved draft).' }}</a></p>
+<p class="contact-privacy-context">{{ $locale === 'ar' ? 'الموافقة على الرد على رسالتك لا تشترك بك في بريد تسويقي أو إشعارات. إلغاء موافقات حساب التطبيق وتصدير بياناته وحذفه تتم من الملف الشخصي في التطبيق؛ ويمكن استخدام طلب الخصوصية هنا للمساعدة إذا كان البريد مهيأ.' : 'Consenting to a reply does not subscribe you to marketing email or push notifications. To revoke your companion-app choices, export your data or delete your account, open Account privacy under My profile in the signed-in app. This contact form can request assistance when mail is configured.' }}
+<a href="{{ route('public.privacy', ['lang' => $locale]) }}#account-controls">{{ $locale === 'ar' ? 'خطوات التحكم في بيانات الحساب' : 'Account privacy control steps' }}</a></p>
 @if($reportArticle)
 <p class="contact-article-context">
     {{ $locale === 'ar' ? 'الإبلاغ عن مشكلة في المقال المنشور:' : 'Reporting an issue in the published article:' }}
