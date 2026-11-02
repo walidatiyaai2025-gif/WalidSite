@@ -257,6 +257,45 @@ class PublicPortfolioAndContactTest extends TestCase
             ->assertDontSee('Confidential CV details');
     }
 
+    public function test_contact_canonical_and_localized_alternates_exclude_private_inquiry_context(): void
+    {
+        // A visitor can request a privacy right, reference a case study, or
+        // select a CV focus without creating indexable personal-topic URLs.
+        foreach (['ar', 'en'] as $lang) {
+            foreach ([
+                '&topic=privacy&request=deletion',
+                '&project=undisclosed-work',
+                '&track=database',
+            ] as $context) {
+                $response = $this->get('/contact?lang='.$lang.$context)
+                    ->assertOk()
+                    ->assertSee('lang="'.$lang.'"', false)
+                    ->assertSee('dir="'.($lang === 'ar' ? 'rtl' : 'ltr').'"', false)
+                    ->assertSee(
+                        '<link rel="canonical" href="'.route('public.contact', ['lang' => $lang]).'">',
+                        false
+                    );
+                foreach (['en', 'ar'] as $alternate) {
+                    $response->assertSee(
+                        '<link rel="alternate" hreflang="'.$alternate.'" href="'.
+                            route('public.contact', ['lang' => $alternate]).'">',
+                        false
+                    );
+                }
+                $content = $response->getContent();
+                $this->assertEquals(1, preg_match_all(
+                    '/<link\s+rel="canonical"\s+href="[^"]+">/', $content
+                ));
+                $this->assertEquals(2, preg_match_all(
+                    '/<link\s+rel="alternate"\s+hreflang="(?:ar|en)"\s+href="[^"]+">/',
+                    $content
+                ));
+                $this->assertStringNotContainsString('rel="canonical" href="'.route(
+                    'public.contact', ['lang' => $lang]).'&amp;', $content);
+            }
+        }
+    }
+
     public function test_contact_is_explicitly_unavailable_without_verified_delivery_configuration(): void
     {
         config(['mail.contact_recipient' => null, 'mail.default' => 'log']);
