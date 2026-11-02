@@ -106,7 +106,7 @@ default => $locale === 'ar' ? 'الموافقة على الخصوصية' : 'Priv
 'email' => $locale === 'ar' ? 'البريد' : 'Email',
 default => $locale === 'ar' ? 'الموضوع' : 'Subject' } }}</label>
 @php($oldFieldValue = old($field, $field === 'subject' ? $suggestedSubject : ''))
-<input id="contact-{{ $field }}" type="{{ $field === 'email' ? 'email' : 'text' }}" name="{{ $field }}" value="{{ is_string($oldFieldValue) ? $oldFieldValue : '' }}" required maxlength="{{ $field === 'email' ? 254 : 140 }}" @error($field) aria-invalid="true" aria-describedby="contact-{{ $field }}-error" @enderror>
+<input id="contact-{{ $field }}" type="{{ $field === 'email' ? 'email' : 'text' }}" name="{{ $field }}" value="{{ is_string($oldFieldValue) ? $oldFieldValue : '' }}" autocomplete="{{ $field === 'name' ? 'name' : ($field === 'email' ? 'email' : 'off') }}" required maxlength="{{ $field === 'email' ? 254 : 140 }}" @error($field) aria-invalid="true" aria-describedby="contact-{{ $field }}-error" @enderror>
 @error($field)<p id="contact-{{ $field }}-error" class="contact-error" role="alert">{{ $message }}</p>@enderror
 @endforeach
 <label for="contact-message">{{ $locale === 'ar' ? 'الرسالة' : 'Message' }}</label>
