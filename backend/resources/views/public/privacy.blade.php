@@ -41,5 +41,20 @@
 <a href="{{ route('public.contact', ['lang'=>$locale, 'topic'=>'privacy']) }}">{{ $locale === 'ar' ? 'طلب وصول أو حذف أو تصدير' : 'Request access, deletion or export' }}</a>
 <a href="{{ route('public.terms', ['lang'=>$locale]) }}">{{ $locale === 'ar' ? 'عرض الشروط' : 'View terms' }}</a>
 </nav>
+<article aria-labelledby="privacy-rights-heading">
+<h2 id="privacy-rights-heading">{{ $locale === 'ar' ? 'طلبات حقوق البيانات' : 'Data rights requests' }}</h2>
+<p>{{ $locale === 'ar' ? 'اختر نوع الطلب لفتح نموذج التواصل بموضوع محدد. لا ينفذ إرسال الاستفسار حذفًا أو تصديرًا تلقائيًا، ويتطلب موافقة صريحة وخدمة بريد مهيأة.' : 'Choose a request to open the contact form with a specific subject. An inquiry does not automatically delete or export data; affirmative consent and configured mail delivery are required.' }}</p>
+<ul>
+@foreach([
+ 'privacy-access' => ['ar' => 'الاطلاع على بياناتي', 'en' => 'Access my data'],
+ 'privacy-correction' => ['ar' => 'تصحيح بياناتي', 'en' => 'Correct my data'],
+ 'privacy-export' => ['ar' => 'تصدير بياناتي', 'en' => 'Export my data'],
+ 'privacy-deletion' => ['ar' => 'طلب حذف بياناتي', 'en' => 'Request deletion'],
+ 'privacy-notifications' => ['ar' => 'سحب موافقة الإشعارات', 'en' => 'Revoke notification consent'],
+] as $topic => $labels)
+<li><a href="{{ route('public.contact', ['lang' => $locale, 'topic' => $topic]) }}">{{ $labels[$locale] }}</a></li>
+@endforeach
+</ul>
+</article>
 </section>
 @endsection
