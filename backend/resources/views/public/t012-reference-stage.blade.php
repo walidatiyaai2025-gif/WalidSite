@@ -43,14 +43,16 @@ body:has(.t012-reference-stage) .site-footer{margin-top:0}
 .t012-nav-links a.active{color:#0a9a8c}
 .t012-nav-links a:nth-child(1){width:106px;letter-spacing:.33px}.t012-nav-links a:nth-child(2){width:108px;letter-spacing:.5px}.t012-nav-links a:nth-child(3){width:107px;letter-spacing:.5px}.t012-nav-links a:nth-child(4){width:106px;letter-spacing:.3px}
 .t012-nav-links a:nth-child(5){width:108px;letter-spacing:.6px}.t012-nav-links a:nth-child(6){width:106px;letter-spacing:.33px}.t012-nav-links a:nth-child(7){width:108px;letter-spacing:1px}.t012-nav-links a:nth-child(8){width:62px;letter-spacing:.8px}
-.t012-contact{display:flex;width:161px;height:50px;align-items:center;justify-content:center;border-radius:16px;background:#0a9a8c;color:#184876;text-decoration:none;font-size:18px;font-weight:800;letter-spacing:1.55px;white-space:nowrap;margin-left:auto;transform:translateY(2px);flex-shrink:0;padding-left:21px;padding-bottom:2px}
+.t012-contact{display:flex;width:161px;height:50px;align-items:center;justify-content:center;border-radius:16px;background:#0a9a8c;color:#184876;text-decoration:none;font-size:18px;font-weight:800;letter-spacing:1.55px;white-space:nowrap;margin-left:auto;transform:translateY(2px);flex-shrink:0;padding-left:23px;padding-bottom:2px}
 .t012-sr-only{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
 .t012-reference-stage{height:760px;background:#f5f9fc}
 .t012-reference-hero{height:326px;background:#edf7fc;position:relative;padding:35px 56px}
 .t012-pill{height:39px;min-width:259px;width:max-content;border-radius:16px;background:#dcf6f1;color:#0a9a8c;display:flex;align-items:center;padding:0 15px;font-size:18px;font-weight:700;letter-spacing:.7px;transform:translateX(-4px)}
 .t012-pill span{display:block;transform:translate(-1px,-1px)}
-.t012-screen-blog .t012-pill{letter-spacing:.6px}
+.t012-screen-blog .t012-pill{letter-spacing:.6px;font-weight:800}
 .t012-screen-blog .t012-pill span{transform:translate(-1px,-2px)}
+.t012-screen-article .t012-pill{letter-spacing:.6px;font-weight:800}
+.t012-screen-article .t012-pill span{transform:translate(-1px,-2px)}
 .t012-reference-hero h1{font-size:46px;line-height:1.15;margin:28px 0 21px;color:#184876;font-weight:700;letter-spacing:2.05px}
 .t012-reference-subtitle{margin:0 0 0 2px;color:#3b6684;font-size:20px;line-height:1.4;letter-spacing:-.18px;position:relative;top:3px}
 .t012-screen-blog .t012-reference-hero h1{transform:translate(-1px,3px) scale(.977,.913);transform-origin:left top}
