@@ -100,7 +100,11 @@ class AdminScreenshotRendererTest(unittest.TestCase):
         invalid = [
             ("WALIDSITE_RENDER_BASE_URL", "https://example.org"),
             ("WALIDSITE_CAPTURE_ROUTE", "/admin/login"),
-            ("WALIDSITE_CAPTURE_ROUTE", "/admin/audit"),
+            ("WALIDSITE_CAPTURE_ROUTE", "/admin/ai/providers/not-a-uuid"),
+            ("WALIDSITE_CAPTURE_ROUTE", "/admin/ai/providers/01234567-89ab-4cde-8fab-0123456789ab/audit"),
+            ("WALIDSITE_CAPTURE_ROUTE", "/admin/ai/providers/%2e%2e"),
+            ("WALIDSITE_CAPTURE_ROUTE", "/admin/ai/providers/01234567-89ab-4cde-8fab-0123456789ab?x=y"),
+            ("WALIDSITE_CAPTURE_ROUTE", "/admin/ADMIN"),
             ("WALIDSITE_CAPTURE_ROUTE", "/admin/projects?token=secret"),
             ("WALIDSITE_CAPTURE_LOCALE", "fr"),
             ("WALIDSITE_CAPTURE_DPR", "0"),
@@ -134,7 +138,8 @@ class AdminScreenshotRendererTest(unittest.TestCase):
         for kwargs in (
             {"status": 403}, {"redirected": True},
             {"language": "ar"}, {"direction": "rtl"},
-            {"missing_main": True},
+            {"missing_main": True}, {"missing_heading": True},
+            {"wrong_heading": True},
         ):
             with self.subTest(kwargs=kwargs):
                 manager, page, browser, context = self.fake(**kwargs)
@@ -144,6 +149,18 @@ class AdminScreenshotRendererTest(unittest.TestCase):
                 browser.close.assert_called_once()
                 context.close.assert_called_once()
                 self.assertFalse(self.output.exists())
+
+    def test_contract_covers_exactly_twelve_static_and_one_uuid_editor(self):
+        screen_file = Path(__file__).resolve().parents[2] / "contracts" / "screens.json"
+        screens = json.loads(screen_file.read_text(encoding="utf-8"))["screens"]
+        routes = {s["route"] for s in screens if s["id"].startswith("ADMIN-")}
+        self.assertEqual(len(routes), 13)
+        self.assertEqual(routes, set(STATIC_HEADINGS) | {"/admin/ai/providers/{id}"})
+        self.assertEqual(PROVIDER_EDITOR_HEADINGS,
+                         ("Edit AI provider", "تحرير مزود AI"))
+        for route, values in STATIC_HEADINGS.items():
+            self.assertEqual(expected_heading(route, "en"), values[0])
+            self.assertEqual(expected_heading(route, "ar"), values[1])
 
     def test_arabic_viewport_direction_and_dpr(self):
         env = dict(self.env, WALIDSITE_CAPTURE_LOCALE="ar",
