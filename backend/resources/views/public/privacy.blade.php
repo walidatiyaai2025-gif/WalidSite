@@ -12,6 +12,10 @@
 <h1 id="privacy-heading">{{ $locale === 'ar' ? 'الخصوصية وطلبات البيانات' : 'Privacy and data requests' }}</h1>
 <div class="policy-note" role="status"><strong>{{ $locale === 'ar' ? 'مسودة معلوماتية — غير معتمدة قانونيًا' : 'Information draft — not legally approved' }}</strong>
 <p>{{ $locale === 'ar' ? 'هذه المعلومات توضح سلوك الميزات البرمجية الحالي ولا تمثل سياسة قانونية نهائية. هوية مسؤول البيانات القانونية، فترات الاحتفاظ، جهات المعالجة، أساس المعالجة وشروط الولاية القضائية تحتاج إلى اعتماد قبل الإطلاق.' : 'This describes currently implemented software behavior, not a final legal policy. The legal data-controller identity, retention periods, processors, lawful basis and jurisdiction need approval before launch.' }}</p></div>
+<nav class="policy-actions" aria-label="{{ $locale === 'ar' ? 'روابط سريعة لحقوق البيانات' : 'Quick links to data rights' }}">
+<a href="#account-controls">{{ $locale === 'ar' ? 'الموافقات وحقوق حسابي' : 'Consent and account rights' }}</a>
+<a href="{{ route('public.contact', ['lang'=>$locale, 'topic'=>'privacy']) }}">{{ $locale === 'ar' ? 'التواصل بشأن البيانات' : 'Contact about my data' }}</a>
+</nav>
 <article>
 <h2>{{ $locale === 'ar' ? 'الرسائل والموافقة' : 'Messages and consent' }}</h2>
 <p>{{ $locale === 'ar' ? 'نموذج التواصل يطلب الاسم والبريد الإلكتروني والموضوع والرسالة، ولا يرسل أيًا منها دون تحديد مربع موافقة منفصل وغير محدد مسبقًا. تستخدم الرسالة للرد على الاستفسار؛ ولا تصبح منشورًا عامًا. قد يتعذر الإرسال إن لم تضبط خدمة البريد.' : 'The contact form requests a name, email address, subject and message. Nothing is submitted without an independently selected, initially unchecked consent box. Messages are for replying to inquiries, not public publication. Delivery can be unavailable until mail service is configured.' }}</p>
