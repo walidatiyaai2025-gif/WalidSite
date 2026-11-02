@@ -67,9 +67,14 @@ final class MobileBootstrapController extends Controller
                     'server_saved_resources' => true,
                     'saved_resources_requires_auth' => true,
                 ],
-                // There is no public privacy-policy endpoint yet; never
-                // generate an official-looking URL for a non-existent page.
-                'privacy_policy_url' => null,
+                // #480 added the bilingual public privacy disclosure. Advertise
+                // only its existing named route and keep it origin-relative so
+                // bootstrap never guesses a deployment domain.
+                'privacy_policy_url' => route(
+                    'public.privacy',
+                    ['lang' => $locale],
+                    false
+                ),
             ],
         ])->header('Cache-Control', 'no-store');
     }
