@@ -162,14 +162,18 @@ def capture(root: Path, screen_id: str, *, commit: str, locale: str,
         if incoming.read_bytes() == approved.read_bytes():
             raise CaptureError("Capture bytes are identical to the immutable source artwork")
 
-        if not verified_source_checkout(root, commit):
-            raise CaptureError("Renderer changed Git source or checkout during capture")
 
         relative = f"qa/visual-captures/{screen_id}.png"
         destination = root / relative
         if destination.exists() or destination.is_symlink():
             raise CaptureError("Refusing to overwrite an existing screenshot")
         destination.write_bytes(incoming.read_bytes())
+
+    # The private temp renderer output is removed before inspecting Git status;
+    # only the canonical screen PNG is allowed to be untracked at this point.
+    if not verified_source_checkout(root, commit):
+        destination.unlink(missing_ok=True)
+        raise CaptureError("Renderer changed Git source or checkout during capture")
 
     old_ledger = ledger_path.read_bytes()
     reproducible = [
