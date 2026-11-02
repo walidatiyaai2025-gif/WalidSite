@@ -50,7 +50,7 @@ final class AccountInterviewErasureTest extends TestCase
         return $id;
     }
 
-    private function session(User $user, string $path, ?string $answer): string
+    private function interviewRow(User $user, string $path, ?string $answer): string
     {
         $id = (string) Str::uuid();
         DB::table('mobile_interview_sessions')->insert([
@@ -77,9 +77,9 @@ final class AccountInterviewErasureTest extends TestCase
         $originalEmail = $user->email;
         $token = $this->token($user);
         $path = $this->learningPath();
-        $answered = $this->session($user, $path, self::SECRET);
-        $pending = $this->session($user, $path, null);
-        $foreign = $this->session($other, $path, 'FOREIGN_ACCOUNT_ANSWER');
+        $answered = $this->interviewRow($user, $path, self::SECRET);
+        $pending = $this->interviewRow($user, $path, null);
+        $foreign = $this->interviewRow($other, $path, 'FOREIGN_ACCOUNT_ANSWER');
 
         // Failed password verification must roll back all deletions.
         $this->withToken($token)->deleteJson('/api/v1/mobile/account', [
@@ -164,7 +164,7 @@ final class AccountInterviewErasureTest extends TestCase
         $user = $this->account('revoked');
         $token = $this->token($user);
         $path = $this->learningPath();
-        $id = $this->session($user, $path, null);
+        $id = $this->interviewRow($user, $path, null);
 
         DB::table('users')->where('id', $user->id)->update(['status' => 'deleted']);
         Auth::forgetGuards();
