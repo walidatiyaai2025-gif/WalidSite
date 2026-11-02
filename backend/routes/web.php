@@ -2081,6 +2081,13 @@ Route::middleware('auth:web')->prefix('admin')->group(function (): void {
             ->when(isset($input['visibility']), static fn ($q) => $q->where('visibility', $input['visibility']));
         $projects = $query->orderByDesc('updated_at')->orderBy('id')->paginate(20)
             ->appends($request->only(['lang', 'status', 'visibility']));
+        // Private URLs are visible only to the owner, never to other admins.
+        // Laravel's eager-limit confines the review queue to ten per project.
+        if ($request->user()->hasRole('owner')) {
+            $projects->getCollection()->load(['evidence' => static fn ($q) => $q
+                ->where('visibility', 'private')->whereNull('verified_at')
+                ->orderByDesc('created_at')->limit(10)]);
+        }
         return response()->view('admin.operations', [
             'section' => 'projects', 'projects' => $projects,
             'statusFilter' => $input['status'] ?? '',
@@ -2201,6 +2208,34 @@ Route::middleware('auth:web')->prefix('admin')->group(function (): void {
                 : 'Private draft evidence queued for review; not published or verified.');
     })->whereUuid('project')->name('admin.operations.projects.evidence')
         ->middleware('throttle:10,1');
+
+    // Discard is a private draft review action, not approval or publication.
+    Route::delete('/projects/{project}/evidence/{evidence}', function (Request $request, string $project, string $evidence) {
+        abort_unless($request->user()?->canAccessAdmin() && $request->user()->hasRole('owner'), 403);
+        $request->validate(['lang' => ['sometimes', 'in:ar,en']]);
+        if (array_diff(array_keys($request->request->all()), ['_token', '_method']) !== []) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'evidence' => 'Unsupported evidence review fields.',
+            ]);
+        }
+        \Illuminate\Support\Facades\DB::transaction(function () use ($project, $evidence, $request): void {
+            $draft = \App\Models\Project::query()->whereKey($project)->lockForUpdate()->firstOrFail();
+            abort_unless($draft->visibility === 'private' && $draft->published_at === null, 409);
+            $candidate = \App\Models\ProjectEvidence::query()
+                ->whereKey($evidence)->where('project_id', $draft->id)->lockForUpdate()->firstOrFail();
+            abort_unless($candidate->visibility === 'private' && $candidate->verified_at === null, 409);
+            $candidate->delete();
+            // Audit identifiers only, never private evidence URLs or secret payloads.
+            \Illuminate\Support\Facades\Log::notice('admin.project_private_evidence.discarded', [
+                'project_id' => $draft->id, 'evidence_id' => $candidate->id,
+                'actor_id' => $request->user()->id,
+            ]);
+        }, 3);
+        $ar = $request->query('lang') === 'ar';
+        return redirect()->route('admin.operations.projects', ['lang' => $ar ? 'ar' : 'en'])
+            ->with('status', $ar ? 'تم رفض الدليل الخاص غير المعتمد.' : 'Unverified private evidence discarded; no publication occurred.');
+    })->whereUuid('project')->whereUuid('evidence')
+        ->name('admin.operations.projects.evidence.discard')->middleware('throttle:10,1');
 
     Route::get('/audience', function (Request $request) {
         abort_unless($request->user()?->canAccessAdmin(), 403);
