@@ -249,6 +249,8 @@ void main() {
           loginCalls++;
           return RunbookSession(token: bearer, expiresAt: DateTime.utc(2100));
         },
+        startAction: (_, __, id, ___) async =>
+            InterviewStarted.parse(startJson(), id),
         tracksAction: (_, page) async {
           catalogCalls++;
           expect(page, 1);
@@ -304,6 +306,8 @@ void main() {
       arabic: true,
       loginAction: (_, __) async => RunbookSession(
           token: bearer, expiresAt: DateTime.utc(2100)),
+      startAction: (_, __, id, ___) async =>
+          InterviewStarted.parse(startJson(), id),
       tracksAction: (_, __) async {
         catalogCalls++;
         throw const FormatException('PRIVATE_SERVER_RESPONSE');
