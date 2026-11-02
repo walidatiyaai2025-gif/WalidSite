@@ -126,6 +126,57 @@ jobs:
           }
           echo "PASS: MariaDB migration and repeated owner CV seed are idempotent and fail-closed\n";
           '
+      - name: T012 real Laravel visual diagnostics
+        id: t012_visual_diagnostics
+        if: ${{ github.event_name == 'pull_request' && github.head_ref == 'feat/13-t012-runtime-visual-acceptance' }}
+        shell: bash
+        env:
+          APP_ENV: testing
+          APP_KEY: base64:MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE=
+          APP_URL: http://127.0.0.1:8000
+          DB_CONNECTION: sqlite
+          DB_DATABASE: ${{ github.workspace }}/backend/database/t012-visual.sqlite
+          CACHE_STORE: array
+          SESSION_DRIVER: file
+          QUEUE_CONNECTION: sync
+          MAIL_MAILER: log
+        run: |
+          set -euo pipefail
+          renderer_sha="$(git rev-parse HEAD)"
+          test "$renderer_sha" = "${{ github.event.pull_request.head.sha }}"
+          export GITHUB_SHA="$renderer_sha"
+          touch backend/database/t012-visual.sqlite
+          cd backend
+          php artisan migrate:fresh --force
+          php artisan db:seed --class=T012VisualCaptureSeeder --force
+          php artisan serve --host=127.0.0.1 --port=8000 > /tmp/walidsite-t012.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          cd ..
+          for attempt in {1..30}; do
+            if curl --fail --silent --show-error http://127.0.0.1:8000/blog >/dev/null; then
+              break
+            fi
+            if ! kill -0 "$server_pid" 2>/dev/null; then
+              cat /tmp/walidsite-t012.log
+              exit 1
+            fi
+            sleep 1
+          done
+          curl --fail --silent --show-error http://127.0.0.1:8000/blog >/dev/null
+          python -m pip install --disable-pip-version-check --quiet playwright==1.55.0
+          python -m playwright install --with-deps chromium
+          python qa/capture_t012_diagnostics.py --commit "$(git rev-parse HEAD)" --base-url http://127.0.0.1:8000 --locale en --dpr 1
+
+      - name: Upload T012 runtime visual diagnostics
+        if: ${{ always() && steps.t012_visual_diagnostics.outcome != 'skipped' && github.event_name == 'pull_request' && github.head_ref == 'feat/13-t012-runtime-visual-acceptance' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: T012-runtime-visual-diagnostics
+          path: qa/visual-diagnostics/T012
+          if-no-files-found: error
+          retention-days: 7
+
       - uses: actions/setup-node@v4
         if: ${{ hashFiles('backend/package.json') != '' }}
         with:
