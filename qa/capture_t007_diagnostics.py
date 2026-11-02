@@ -109,6 +109,63 @@ def main() -> int:
             "mismatch_ratio": mismatches / total,
         }
 
+    try:
+        from playwright.sync_api import sync_playwright
+        base_url = os.environ.get("WALIDSITE_RENDER_BASE_URL", "").rstrip("/")
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(headless=True)
+            try:
+                context = browser.new_context(
+                    viewport={"width": 1440, "height": 860},
+                    device_scale_factor=1,
+                    locale="en-US",
+                    reduced_motion="reduce",
+                    color_scheme="light",
+                )
+                try:
+                    page = context.new_page()
+                    response = page.goto(
+                        base_url + "/expertise",
+                        wait_until="domcontentloaded",
+                        timeout=30000,
+                    )
+                    if response is None or response.status != 200:
+                        raise RuntimeError("font probe page did not return HTTP 200")
+                    page.evaluate("() => document.fonts.ready")
+                    report["font_probe"] = page.evaluate("""() => {
+                        const pick = (selector) => {
+                            const node = document.querySelector(selector);
+                            if (!node) return null;
+                            const css = getComputedStyle(node);
+                            return {
+                                family: css.fontFamily,
+                                size: css.fontSize,
+                                weight: css.fontWeight,
+                                line_height: css.lineHeight,
+                                letter_spacing: css.letterSpacing,
+                            };
+                        };
+                        return {
+                            inter_400: document.fonts.check('400 16px Inter'),
+                            inter_800: document.fonts.check('800 16px Inter'),
+                            body: pick('body'),
+                            brand: pick('.t007-brand strong'),
+                            nav: pick('.t007-nav-links a'),
+                            h1: pick('.t007-reference-hero h1'),
+                            subtitle: pick('.t007-reference-subtitle'),
+                            action: pick('.t007-reference-action'),
+                            card_title: pick('.t007-reference-card h2'),
+                            card_body: pick('.t007-reference-card p'),
+                            card_link: pick('.t007-card-link'),
+                        };
+                    }""")
+                finally:
+                    context.close()
+            finally:
+                browser.close()
+    except Exception as exc:
+        report["font_probe"] = {"error": type(exc).__name__}
+
     report_path = out / "report.json"
     report_path.write_text(
         json.dumps(report, ensure_ascii=False, indent=2) + "\n",
