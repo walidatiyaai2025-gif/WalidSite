@@ -156,6 +156,7 @@ final class MobileDiagnosisDispatcher
                 || trim($body) === '' || mb_strlen($body) > 1000) {
                 throw new RuntimeException('Diagnosis provider returned no bounded selection.');
             }
+            $tokens = ProviderUsage::tokens($provider->provider_type, $response);
 
             $cost = (int) $job->reserved_budget_minor;
             $this->queue->recordUsage(
@@ -164,7 +165,8 @@ final class MobileDiagnosisDispatcher
                 'mobile-diagnosis:'.$request->id,
                 $cost,
                 $provider->currency,
-                $model->provider_model_id
+                $model->provider_model_id,
+                $tokens
             );
 
             $selection = json_decode(trim($body), true, 8, JSON_THROW_ON_ERROR);

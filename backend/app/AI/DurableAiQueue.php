@@ -94,16 +94,37 @@ final class DurableAiQueue
         // Otherwise 20 old queued jobs behind a busy one-slot provider can
         // hide a runnable job on another provider. This is only a scheduling
         // hint: each candidate is still checked under its provider row lock.
+        // Running reservations include any amount not yet receipted.
+        // Aggregate receipts per job FIRST to avoid multiplying the same
+        // reservation when a job emitted more than one usage receipt.
+        $receiptTotals = DB::table('ai_usage as job_receipts')
+            ->select('job_receipts.job_id')
+            ->selectRaw('SUM(job_receipts.cost_minor) AS recorded_minor')
+            ->groupBy('job_receipts.job_id');
         $runningCounts = DB::table('ai_jobs as active_jobs')
+            ->leftJoinSub($receiptTotals, 'receipt_totals',
+                fn ($join) => $join->on('receipt_totals.job_id', '=', 'active_jobs.id'))
             ->select('active_jobs.provider_id')
             ->selectRaw('COUNT(*) AS running_count')
+            ->selectRaw('SUM(CASE WHEN active_jobs.reserved_budget_minor > COALESCE(receipt_totals.recorded_minor, 0) THEN active_jobs.reserved_budget_minor - COALESCE(receipt_totals.recorded_minor, 0) ELSE 0 END) AS outstanding_minor')
             ->where('active_jobs.status', 'running')
             ->groupBy('active_jobs.provider_id');
+
+        // Already reported costs consume today's UTC budget, even after the
+        // original paid job completes. Exclude obviously unaffordable jobs
+        // before LIMIT; reserve accounting is rechecked under lock below.
+        $todaySpend = DB::table('ai_usage as consumed_usage')
+            ->select('consumed_usage.provider_id')
+            ->selectRaw('SUM(consumed_usage.cost_minor) AS spent_today')
+            ->where('consumed_usage.created_at', '>=', now('UTC')->startOfDay())
+            ->groupBy('consumed_usage.provider_id');
 
         $ids = DB::table('ai_jobs')
             ->join('ai_providers', 'ai_providers.id', '=', 'ai_jobs.provider_id')
             ->leftJoinSub($runningCounts, 'provider_running',
                 fn ($join) => $join->on('provider_running.provider_id', '=', 'ai_providers.id'))
+            ->leftJoinSub($todaySpend, 'provider_spend',
+                fn ($join) => $join->on('provider_spend.provider_id', '=', 'ai_providers.id'))
             // An open provider circuit cannot admit work until cooldown.
             // Excluding it before LIMIT prevents a large frozen backlog from
             // starving eligible providers; lock-time verification stays below.
@@ -128,6 +149,11 @@ final class DurableAiQueue
             ->where(fn ($q) => $q->where('ai_providers.provider_type', '!=', 'openai-compatible')
                 ->orWhere('ai_jobs.reserved_budget_minor', '>', 0))
             ->whereColumn('ai_jobs.reserved_budget_minor', '<=', 'ai_providers.daily_budget_minor')
+            // Today's paid receipts plus unreceipted running reservations
+            // must leave enough headroom for this candidate. A frozen
+            // over-budget backlog cannot hide unrelated runnable work.
+            // Currency consistency and races remain lock-time checks.
+            ->whereRaw('COALESCE(provider_spend.spent_today, 0) + COALESCE(provider_running.outstanding_minor, 0) + ai_jobs.reserved_budget_minor <= ai_providers.daily_budget_minor')
             ->when($jobTypes !== null, fn ($query) => $query->whereIn('ai_jobs.job_type', $jobTypes))
             ->whereIn('ai_jobs.status', ['queued', 'retry'])
             ->where(fn ($q) => $q->whereNull('ai_jobs.next_attempt_at')
@@ -402,6 +428,52 @@ final class DurableAiQueue
                 'usage_json' => json_encode($tokens, JSON_THROW_ON_ERROR),
                 'created_at' => now(),
             ]);
+            return true;
+        }, 3);
+    }
+
+    /**
+     * Cancel queued/retrying/running work without treating the cancellation as
+     * a provider failure. Existing usage receipts remain immutable because
+     * they represent cost already incurred; the remaining reservation is
+     * released by moving the job out of the runnable/running states.
+     *
+     * Returns true only when this call performs the terminal transition.
+     * Repeated cancellation and already-terminal jobs are idempotent no-ops.
+     */
+    public function cancelJob(string $jobId): bool
+    {
+        if (! Str::isUuid($jobId)) {
+            throw new InvalidArgumentException('Invalid AI job identifier.');
+        }
+
+        return DB::transaction(function () use ($jobId): bool {
+            $job = DB::table('ai_jobs')->where('id', $jobId)
+                ->lockForUpdate()->first();
+            if (! $job) {
+                throw new DomainException('Unknown AI job.');
+            }
+
+            if ($job->status === 'cancelled') {
+                // Defensive cleanup if an older caller changed only the job
+                // status and left a stale lease behind.
+                DB::table('job_leases')->where('job_id', $jobId)->delete();
+                return false;
+            }
+
+            if (! in_array($job->status, ['queued', 'retry', 'running'], true)) {
+                return false;
+            }
+
+            DB::table('ai_jobs')->where('id', $jobId)->update([
+                'status' => 'cancelled',
+                'next_attempt_at' => null,
+                'result_ref' => null,
+                'last_error_code' => 'cancelled',
+                'updated_at' => now(),
+            ]);
+            DB::table('job_leases')->where('job_id', $jobId)->delete();
+
             return true;
         }, 3);
     }
