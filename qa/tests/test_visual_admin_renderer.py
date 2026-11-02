@@ -1,4 +1,6 @@
 """Admin authenticated screenshot renderer contract; mocks are NOT visual proof."""
+import io
+import json
 import os
 import stat
 import tempfile
@@ -7,8 +9,10 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
 
+from PIL import Image
+
 from qa.admin_visual_session import AdminSessionError
-from qa.render_admin_screenshot import render
+from qa.render_admin_screenshot import render, STATIC_HEADINGS, expected_heading, PROVIDER_EDITOR_HEADINGS
 
 
 class AdminScreenshotRendererTest(unittest.TestCase):
@@ -22,6 +26,9 @@ class AdminScreenshotRendererTest(unittest.TestCase):
         self.state.write_text('{"cookies":[{"name":"laravel_session","value":"secret"}],"origins":[]}')
         os.chmod(self.state, 0o600)
         self.output = self.root / "runtime.png"
+        buf = io.BytesIO()
+        Image.new("RGB", (1440, 860), (244, 250, 255)).save(buf, "PNG")
+        self.fake_png = buf.getvalue()
         self.env = {
             "WALIDSITE_RENDER_BASE_URL": "http://127.0.0.1:8000",
             "WALIDSITE_CAPTURE_ROUTE": "/admin/github",
@@ -34,7 +41,8 @@ class AdminScreenshotRendererTest(unittest.TestCase):
         }
 
     def fake(self, *, status=200, redirected=False, language="en",
-             direction="ltr", missing_main=False):
+             direction="ltr", missing_main=False, missing_heading=False,
+             wrong_heading=False, png=None):
         page = Mock()
         target = "http://127.0.0.1:8000" + self.env["WALIDSITE_CAPTURE_ROUTE"] + "?lang=" + self.env["WALIDSITE_CAPTURE_LOCALE"]
         page.goto.return_value = SimpleNamespace(status=status)
@@ -43,9 +51,17 @@ class AdminScreenshotRendererTest(unittest.TestCase):
         html.get_attribute.side_effect = lambda key: {"lang": language, "dir": direction}[key]
         content = Mock()
         content.count.return_value = 0 if missing_main else 1
+        title = Mock()
+        title.count.return_value = 0 if missing_heading else 1
+        title.inner_text.return_value = (
+            "Other Admin screen" if wrong_heading
+            else expected_heading(self.env["WALIDSITE_CAPTURE_ROUTE"],
+                                  self.env["WALIDSITE_CAPTURE_LOCALE"])
+        )
         page.locator.side_effect = lambda key: {
-            "html": html, "main#content": content,
+            "html": html, "main#content": content, "main#content h1": title,
         }[key]
+        page.screenshot.return_value = self.fake_png if png is None else png
         context = Mock()
         context.new_page.return_value = page
         browser = Mock()
@@ -58,8 +74,7 @@ class AdminScreenshotRendererTest(unittest.TestCase):
         return manager, page, browser, context
 
     def test_each_canonical_admin_route_uses_actual_authenticated_context(self):
-        for route in ("/admin/github", "/admin/projects", "/admin/audience",
-                      "/admin/analytics"):
+        for route in (*STATIC_HEADINGS, "/admin/ai/providers/01234567-89ab-4cde-8fab-0123456789ab"):
             with self.subTest(route=route):
                 self.env["WALIDSITE_CAPTURE_ROUTE"] = route
                 manager, page, browser, context = self.fake()
@@ -75,6 +90,9 @@ class AdminScreenshotRendererTest(unittest.TestCase):
                     {"width": 1440, "height": 860},
                 )
                 page.screenshot.assert_called_once()
+                self.assertEqual(self.output.read_bytes(), self.fake_png)
+                self.assertEqual(self.output.stat().st_mode & 0o777, 0o600)
+                self.output.unlink()
                 context.close.assert_called_once()
                 browser.close.assert_called_once()
 
@@ -82,7 +100,11 @@ class AdminScreenshotRendererTest(unittest.TestCase):
         invalid = [
             ("WALIDSITE_RENDER_BASE_URL", "https://example.org"),
             ("WALIDSITE_CAPTURE_ROUTE", "/admin/login"),
-            ("WALIDSITE_CAPTURE_ROUTE", "/admin/audit"),
+            ("WALIDSITE_CAPTURE_ROUTE", "/admin/ai/providers/not-a-uuid"),
+            ("WALIDSITE_CAPTURE_ROUTE", "/admin/ai/providers/01234567-89ab-4cde-8fab-0123456789ab/audit"),
+            ("WALIDSITE_CAPTURE_ROUTE", "/admin/ai/providers/%2e%2e"),
+            ("WALIDSITE_CAPTURE_ROUTE", "/admin/ai/providers/01234567-89ab-4cde-8fab-0123456789ab?x=y"),
+            ("WALIDSITE_CAPTURE_ROUTE", "/admin/ADMIN"),
             ("WALIDSITE_CAPTURE_ROUTE", "/admin/projects?token=secret"),
             ("WALIDSITE_CAPTURE_LOCALE", "fr"),
             ("WALIDSITE_CAPTURE_DPR", "0"),
@@ -116,7 +138,8 @@ class AdminScreenshotRendererTest(unittest.TestCase):
         for kwargs in (
             {"status": 403}, {"redirected": True},
             {"language": "ar"}, {"direction": "rtl"},
-            {"missing_main": True},
+            {"missing_main": True}, {"missing_heading": True},
+            {"wrong_heading": True},
         ):
             with self.subTest(kwargs=kwargs):
                 manager, page, browser, context = self.fake(**kwargs)
@@ -126,6 +149,73 @@ class AdminScreenshotRendererTest(unittest.TestCase):
                 browser.close.assert_called_once()
                 context.close.assert_called_once()
                 self.assertFalse(self.output.exists())
+
+    def test_contract_covers_exactly_twelve_static_and_one_uuid_editor(self):
+        screen_file = Path(__file__).resolve().parents[2] / "contracts" / "screens.json"
+        screens = json.loads(screen_file.read_text(encoding="utf-8"))["screens"]
+        routes = {s["route"] for s in screens if s["id"].startswith("ADMIN-")}
+        self.assertEqual(len(routes), 13)
+        self.assertEqual(routes, set(STATIC_HEADINGS) | {"/admin/ai/providers/{id}"})
+        self.assertEqual(PROVIDER_EDITOR_HEADINGS,
+                         ("Edit AI provider", "تحرير مزود AI"))
+        for route, values in STATIC_HEADINGS.items():
+            self.assertEqual(expected_heading(route, "en"), values[0])
+            self.assertEqual(expected_heading(route, "ar"), values[1])
+
+    def test_invalid_png_or_wrong_pixel_size_never_creates_capture(self):
+        wrong = io.BytesIO()
+        Image.new("RGB", (800, 600)).save(wrong, "PNG")
+        for payload in (b"invalid png", wrong.getvalue(), b""):
+            with self.subTest(size=len(payload)):
+                manager, page, _, _ = self.fake(png=payload)
+                with self.assertRaises(AdminSessionError):
+                    render(self.env, manager)
+                page.screenshot.assert_called_once()
+                self.assertFalse(self.output.exists())
+
+    def test_late_url_or_heading_change_after_png_rejects_capture(self):
+        for mode in ("redirect", "wrong-heading"):
+            with self.subTest(mode=mode):
+                manager, page, _, _ = self.fake()
+                png = page.screenshot.return_value
+
+                def after_screenshot(**kwargs):
+                    if mode == "redirect":
+                        page.url = "http://127.0.0.1:8000/admin/login"
+                    else:
+                        page.locator("main#content h1").inner_text.return_value = "Login"
+                    return png
+
+                page.screenshot.side_effect = after_screenshot
+                with self.assertRaises(AdminSessionError):
+                    render(self.env, manager)
+                self.assertFalse(self.output.exists())
+
+    def test_existing_destination_or_symlink_directory_is_not_overwritten(self):
+        self.output.write_bytes(b"preserve existing content")
+        manager, _, _, _ = self.fake()
+        with self.assertRaises(AdminSessionError):
+            render(self.env, manager)
+        self.assertEqual(self.output.read_bytes(), b"preserve existing content")
+        self.output.unlink()
+        actual = self.root / "real-output"
+        actual.mkdir()
+        linked = self.root / "linked-output"
+        linked.symlink_to(actual, target_is_directory=True)
+        env = dict(self.env, WALIDSITE_CAPTURE_PATH=str(linked / "runtime.png"))
+        with self.assertRaises(AdminSessionError):
+            render(env, manager)
+        self.assertFalse((actual / "runtime.png").exists())
+
+    def test_all_static_admin_routes_render_the_correct_arabic_title(self):
+        self.env["WALIDSITE_CAPTURE_LOCALE"] = "ar"
+        for route in STATIC_HEADINGS:
+            with self.subTest(route=route):
+                self.env["WALIDSITE_CAPTURE_ROUTE"] = route
+                manager, _, _, _ = self.fake(language="ar", direction="rtl")
+                self.assertEqual(render(self.env, manager), self.output)
+                self.assertEqual(self.output.read_bytes(), self.fake_png)
+                self.output.unlink()
 
     def test_arabic_viewport_direction_and_dpr(self):
         env = dict(self.env, WALIDSITE_CAPTURE_LOCALE="ar",
