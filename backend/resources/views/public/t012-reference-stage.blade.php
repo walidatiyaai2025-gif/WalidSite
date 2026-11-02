@@ -152,7 +152,7 @@ body:has(.t012-reference-stage) .site-footer{margin-top:0}
                 @foreach($articles->take(3) as $a)
                     <article class="t012-search-card"><span class="t012-search-badge">{{ $t012Ar ? 'حل موثق' : 'Verified solution' }}</span>
                         <h2>{{ $t012Ar ? $a->title_ar : $a->title_en }}</h2><p>{{ $t012Ar ? 'ملخص، أدلة، مراجع' : 'Summary, evidence, references' }}</p>
-                        <a href="{{ route('public.article', ['slug'=>$a->slug,'lang'=>$locale,'source'=>'search','q'=>$search,'type'=>$type]) }}">{{ $t012Ar ? 'فتح الدليل التفصيلي' : 'Open detailed guide' }} &nbsp;&gt;</a>
+                        <a href="{{ route('public.blog', ['lang'=>$locale, 'q'=>$search]) }}">{{ $t012Ar ? 'استعراض المقالات المطابقة' : 'Browse matching articles' }} &nbsp;&gt;</a>
                     </article>
                 @endforeach
             </div>
