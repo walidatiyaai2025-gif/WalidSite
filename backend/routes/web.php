@@ -2733,6 +2733,7 @@ Route::middleware('auth:web')->prefix('admin')->group(function (): void {
                 }
                 fclose($stream);
             }, 'ai-usage-'.$startDay.'-to-'.$day.'.csv', [
+                'Content-Type' => 'text/csv; charset=UTF-8',
                 'Cache-Control' => 'no-store, private',
                 'X-Content-Type-Options' => 'nosniff',
             ]);

@@ -434,6 +434,35 @@ final class AdminOperationsJourneyTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_analytics_cost_download_is_real_utf8_csv_with_safe_headers_in_both_locales(): void
+    {
+        Http::fake();
+        $day = now('UTC')->toDateString();
+        $start = now('UTC')->subDays(6)->toDateString();
+        $filename = 'ai-usage-'.$start.'-to-'.$day.'.csv';
+
+        $this->get('/admin/analytics?format=csv')->assertRedirect('/admin/login');
+        $this->actingAs($this->account('reader'), 'web')
+            ->get('/admin/analytics?format=csv')->assertForbidden();
+        $this->actingAs($this->account('owner'), 'web');
+        foreach (['ar', 'en'] as $locale) {
+            $response = $this->get('/admin/analytics?format=csv&window=7&lang='.$locale)
+                ->assertOk()
+                ->assertHeader('Content-Type', 'text/csv; charset=UTF-8')
+                ->assertHeader('Cache-Control', 'no-store, private')
+                ->assertHeader('X-Content-Type-Options', 'nosniff')
+                ->assertDownload($filename);
+            $csv = $response->streamedContent();
+            $this->assertStringStartsWith("\xEF\xBB\xBF", $csv);
+            $this->assertStringContainsString(
+                '"UTC period start","UTC period end",Currency,Receipts,"Cost (minor units)"',
+                $csv
+            );
+            $this->assertStringNotContainsString('PRIVATE_PROVIDER_SECRET', $csv);
+        }
+        Http::assertNothingSent();
+    }
+
     public function test_analytics_csv_never_interprets_imported_currency_as_spreadsheet_formula(): void
     {
         Http::fake();
