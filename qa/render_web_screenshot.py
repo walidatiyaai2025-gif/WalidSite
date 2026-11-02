@@ -9,7 +9,6 @@ import os
 from pathlib import Path
 from urllib.parse import urlsplit
 
-
 # Reference PNGs use grayscale text antialiasing. Disable Chromium LCD
 # subpixel text so runtime captures are deterministic across CI hosts.
 CHROMIUM_RENDER_ARGS = ["--disable-lcd-text"]
@@ -42,6 +41,17 @@ def target_url(base: str, route: str) -> str:
     return base.rstrip("/") + route
 
 
+def localized_target(base: str, route: str, locale: str) -> str:
+    """Use Laravel's real server-side locale rather than browser language alone.
+
+    The route stays exactly canonical (without caller-controlled query data);
+    only the two allowed locale selectors may be appended by the renderer.
+    """
+    if locale not in ("ar", "en"):
+        raise RenderConfigError("Unsupported screenshot locale")
+    return target_url(base, route) + "?lang=" + locale
+
+
 def viewport(physical_width: int, physical_height: int, dpr: float):
     if physical_width <= 0 or physical_height <= 0 or not (0.5 <= dpr <= 8):
         raise RenderConfigError("Invalid screenshot size or DPR")
@@ -53,11 +63,9 @@ def viewport(physical_width: int, physical_height: int, dpr: float):
 
 def render(env=None):
     env = os.environ if env is None else env
-    url = target_url(env.get("WALIDSITE_RENDER_BASE_URL", ""),
-                     env["WALIDSITE_CAPTURE_ROUTE"])
     locale = env["WALIDSITE_CAPTURE_LOCALE"]
-    if locale not in ("ar", "en"):
-        raise RenderConfigError("Unsupported screenshot locale")
+    url = localized_target(env.get("WALIDSITE_RENDER_BASE_URL", ""),
+                           env["WALIDSITE_CAPTURE_ROUTE"], locale)
     dpr = float(env["WALIDSITE_CAPTURE_DPR"])
     size = viewport(int(env["WALIDSITE_CAPTURE_WIDTH"]),
                     int(env["WALIDSITE_CAPTURE_HEIGHT"]), dpr)
@@ -107,6 +115,17 @@ def render(env=None):
                 selector = env.get("WALIDSITE_CAPTURE_READY_SELECTOR")
                 if selector:
                     page.locator(selector).wait_for(state="visible", timeout=15000)
+                # Navigations triggered after DOMContentLoaded (e.g. a late
+                # auth redirect) must not be accepted as the requested screen.
+                if page.url.rstrip("/") != url.rstrip("/"):
+                    raise RenderConfigError("Page navigated after load; refusing a wrong screen")
+                html = page.locator("html")
+                expected_dir = "rtl" if locale == "ar" else "ltr"
+                if (html.get_attribute("lang") != locale
+                        or html.get_attribute("dir") != expected_dir):
+                    raise RenderConfigError(
+                        "Rendered HTML language/direction disagree with capture locale"
+                    )
                 page.screenshot(
                     path=str(output), full_page=False, animations="disabled",
                     caret="hide", type="png",
