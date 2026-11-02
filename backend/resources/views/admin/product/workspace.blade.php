@@ -20,7 +20,8 @@
 <style>
 :root{--primary:#163B66;--cta:#126DE1;--accent:#00A999;--surface:#F5F9FC;--text:#142E4D;--muted:#55718B;--line:#D3E3ED}
 *{box-sizing:border-box}body{margin:0;background:var(--surface);color:var(--text);font:16px/1.6 Inter,Arial,sans-serif}html[lang=ar] body{font-family:Tajawal,Arial,sans-serif}
-a{color:var(--cta)}a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--cta);outline-offset:3px}
+a{color:var(--cta)}a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,main:focus-visible{outline:3px solid var(--cta);outline-offset:3px}
+@media(forced-colors:active){.button,.button-outline,aside a[aria-current=page],.notice,.warning,.error{border:2px solid CanvasText}.button{forced-color-adjust:auto}}
 .skip{position:absolute;top:-100px;inset-inline-start:12px;background:#fff;padding:12px;z-index:4}.skip:focus{top:12px}
 .shell{display:grid;grid-template-columns:240px minmax(0,1fr);min-height:100vh}aside{background:var(--primary);padding:24px 16px;color:white}aside h2{margin:0 0 20px}aside nav{display:grid;gap:3px}
 aside a{display:flex;align-items:center;min-height:44px;padding:8px 12px;color:white;text-decoration:none;border-radius:10px}aside a[aria-current=page]{color:var(--primary);background:white;font-weight:700}
