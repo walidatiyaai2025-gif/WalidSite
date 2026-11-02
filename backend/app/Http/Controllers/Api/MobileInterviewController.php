@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Laravel\Sanctum\PersonalAccessToken;
 
 /**
  * MOBILE-09: a private, self-guided technical practice session anchored in
@@ -18,8 +19,11 @@ final class MobileInterviewController extends Controller
     public function __invoke(Request $request, PublicLearningPathController $learning): JsonResponse
     {
         $user = $request->user();
+        $token = $user?->currentAccessToken();
+        // Sanctum's first-party TransientToken is not an issued mobile token.
+        // Only a real mobile bearer may create or answer private practices.
         abort_unless($user !== null && $user->status === 'active'
-            && $user->tokenCan('mobile'), 403);
+            && $token instanceof PersonalAccessToken && $token->can('mobile'), 403);
 
         $input = $request->validate([
             'action' => ['required', Rule::in(['start', 'answer'])],

@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
+use Laravel\Sanctum\PersonalAccessToken;
 
 final class MobileSavedController extends Controller
 {
@@ -19,8 +20,11 @@ final class MobileSavedController extends Controller
     private function owner(Request $request): string
     {
         $user = $request->user();
+        $token = $user?->currentAccessToken();
+        // tokenCan() alone also trusts browser sessions (TransientToken).
+        // Private bookmarks belong to a real, scoped mobile bearer only.
         abort_unless($user !== null && $user->status === 'active'
-            && $user->tokenCan('mobile'), 403);
+            && $token instanceof PersonalAccessToken && $token->can('mobile'), 403);
 
         return (string) $user->getKey();
     }
