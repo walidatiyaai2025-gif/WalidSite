@@ -1,5 +1,8 @@
 @php($screen = $screen ?? 'home')
 @php($t007Ar = request()->query('lang') === 'ar')
+{{-- Keep the recruiter's vetted focus throughout WEB-12 to public CV, never raw request data. --}}
+@php($t007RecruiterTrack = ($screen === 'hire' && isset($track) && is_string($track)
+    && in_array($track, ['database', 'software', 'delivery'], true)) ? $track : 'all')
 @php($t007HasAiSkill = isset($skills) && $skills->pluck('slug')->contains('ai-engineering'))
 @php($t007ReferenceReady = match ($screen) {
     'home' => isset($publicProfile, $hasVerifiedAiCapability)
@@ -273,7 +276,7 @@ body:has(.t007-reference-stage) .site-footer{margin-top:0}
                 ] as $card)
                     <article class="t007-hire-card">
                         <h2>{{ $card[0] }}</h2><p>{{ $card[1] }}</p>
-                        <a href="{{ route('public.resume', ['lang' => $locale]) }}">{{ $t007Ui['download'] }}</a>
+                        <a href="{{ route('public.resume', ['lang' => $locale, 'track' => $t007RecruiterTrack]) }}">{{ $t007Ui['download'] }}</a>
                         <a href="{{ route('public.projects', ['lang' => $locale]) }}">{{ $t007Ui['projects'] }}&nbsp;&nbsp;&gt;</a>
                     </article>
                 @endforeach
