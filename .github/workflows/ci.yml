@@ -150,6 +150,7 @@ jobs:
           WALIDSITE_RENDER_BASE_URL: http://127.0.0.1:8000
           WALIDSITE_QA_ADMIN_ORIGIN: http://127.0.0.1:8000
           WALIDSITE_QA_ADMIN_LOCALE: en
+          PYTHONDONTWRITEBYTECODE: "1"
         run: |
           set -euo pipefail
           tested_sha="$(git rev-parse HEAD)"
@@ -235,6 +236,10 @@ jobs:
           plan_path="$plan_dir/admin-plan.json"
           python3 qa/build_admin_visual_plan.py --provider-id "$provider_id" --locale en --dpr 1 --timeout 120 --output "$plan_path"
 
+          # Earlier mandatory test/install steps legitimately generate only these
+          # untracked build caches. Remove exact generated paths; never reset or
+          # clean arbitrary source before provenance attestation.
+          git clean -fd -- backend/composer.lock qa/__pycache__ qa/tests/__pycache__
           dirty_status="$(git status --porcelain=v1 --untracked-files=all)"
           if test -n "$dirty_status"; then
             echo "Visual attestation found repository changes before capture (status/path only):"
