@@ -51,6 +51,7 @@
  'export' => ['ar' => 'تصدير بياناتي', 'en' => 'Export my data'],
  'deletion' => ['ar' => 'طلب حذف بياناتي', 'en' => 'Request deletion'],
  'revoke' => ['ar' => 'سحب موافقة الإشعارات', 'en' => 'Revoke notification consent'],
+ 'notifications' => ['ar' => 'إلغاء الاشتراك في الإشعارات', 'en' => 'Notification preferences inquiry'],
 ] as $topic => $labels)
 <li><a href="{{ route('public.contact', ['lang' => $locale, 'topic' => 'privacy', 'request' => $topic]) }}">{{ $labels[$locale] }}</a></li>
 @endforeach
