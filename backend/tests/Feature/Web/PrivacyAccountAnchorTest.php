@@ -13,6 +13,7 @@ final class PrivacyAccountAnchorTest extends TestCase
                 ->assertOk()
                 ->assertSee('id="account-controls" tabindex="-1"', false)
                 ->assertSee('href="#account-controls"', false)
+                ->assertSee($locale === 'ar' ? 'الموافقات وحقوق حسابي' : 'Consent and account rights')
                 ->assertSee('<ol>', false)
                 ->assertSee('</ol>', false)
                 ->assertSee('href="'.e(route('public.contact', [
