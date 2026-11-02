@@ -118,6 +118,7 @@ def audit(root: Path, require_complete: bool = False):
         capture = record["capture"]
         capture_dir = (root / "qa/visual-captures").resolve()
         if not isinstance(capture, str) or capture != f"qa/visual-captures/{screen_id}.png":
+            # Reject malformed ledger values before passing them to pathlib.
             errors.append(f"{screen_id}: capture must use this exact canonical screen ID and PNG path")
             continue
         screenshot = (root / capture).resolve()
