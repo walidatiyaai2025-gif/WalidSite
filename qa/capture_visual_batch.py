@@ -6,18 +6,16 @@ Each screen remains PENDING unless the real renderer produces an exact RGBA matc
 """
 import argparse
 import json
-import re
-import subprocess
 import sys
 from pathlib import Path
 
 try:
-    from qa.capture_visual_evidence import CaptureError, capture, _route_matches
+    from qa.capture_visual_evidence import CaptureError, capture, _route_matches, verified_source_checkout
     from qa.validate_visual_fidelity import audit
 except ModuleNotFoundError as exc:
     if exc.name != "qa":
         raise
-    from capture_visual_evidence import CaptureError, capture, _route_matches
+    from capture_visual_evidence import CaptureError, capture, _route_matches, verified_source_checkout
     from validate_visual_fidelity import audit
 
 
@@ -68,16 +66,9 @@ def validate_plan(root: Path, plan: object, require_all: bool = False) -> list[d
 
 
 def verified_head(root: Path, commit: str) -> bool:
-    if not isinstance(commit, str) or not re.fullmatch(r"[0-9a-f]{40}", commit):
-        return False
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "HEAD"], cwd=root, check=True,
-            capture_output=True, text=True, timeout=10,
-        )
-    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
-        return False
-    return result.stdout.strip() == commit
+    # Keep compatibility with the batch API, but use the SAME strict
+    # checkout/worktree attestation as standalone screenshot capture.
+    return verified_source_checkout(root, commit)
 
 
 def execute(root: Path, plan: object, commit: str, *,
@@ -87,7 +78,7 @@ def execute(root: Path, plan: object, commit: str, *,
     # Validate the entire execution plan BEFORE the first renderer invocation.
     entries = validate_plan(root, plan, require_all=require_all)
     if not verified_head(root, commit):
-        raise CapturePlanError("Renderer commit must match the current checked-out Git HEAD")
+        raise CapturePlanError("Renderer commit must match an unmodified source checkout")
     problems, _, _ = audit(root)
     if problems:
         raise CapturePlanError("Existing evidence is invalid: " + "; ".join(problems))

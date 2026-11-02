@@ -1,6 +1,5 @@
 """Visual batch runner regressions: never admit a fake match or run partial plans."""
 import json
-import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -138,16 +137,13 @@ class VisualCaptureBatchTest(unittest.TestCase):
                         capture_action=renderer)
         renderer.assert_not_called()
 
-    def test_head_verification_checks_real_git_sha_not_user_claim(self):
-        with patch("qa.capture_visual_batch.subprocess.run",
-                   return_value=subprocess.CompletedProcess([], 0, stdout=self.sha + "\n")) as run:
+    def test_head_verification_delegates_to_shared_strict_checkout_guard(self):
+        with patch("qa.capture_visual_batch.verified_source_checkout", return_value=True) as guard:
             self.assertTrue(verified_head(self.root, self.sha))
-            self.assertEqual(run.call_args.args[0], ["git", "rev-parse", "HEAD"])
-        with patch("qa.capture_visual_batch.subprocess.run",
-                   return_value=subprocess.CompletedProcess([], 0, stdout="0" * 40)):
+            guard.assert_called_once_with(self.root, self.sha)
+        with patch("qa.capture_visual_batch.verified_source_checkout", return_value=False):
             self.assertFalse(verified_head(self.root, self.sha))
-        self.assertFalse(verified_head(self.root, "not a sha"))
-        self.assertFalse(verified_head(self.root, "A" * 40))
+            self.assertFalse(verified_head(self.root, "not a sha"))
 
 
 if __name__ == "__main__":
