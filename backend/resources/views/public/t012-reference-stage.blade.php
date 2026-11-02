@@ -52,14 +52,14 @@ body:has(.t012-reference-stage) .site-footer{margin-top:0}
 .t012-pill span{display:block;transform:translate(-1px,-2px)}
 .t012-reference-hero h1{font-size:46px;line-height:1.15;margin:28px 0 21px;color:#184876;font-weight:700;letter-spacing:2.05px}
 .t012-reference-subtitle{margin:0 0 0 2px;color:#3b6684;font-size:20px;line-height:1.4;letter-spacing:-.18px;position:relative;top:3px}
-.t012-screen-blog .t012-reference-hero h1{transform:translate(-1px,3px) scale(.980,.936);transform-origin:left top}
-.t012-screen-article .t012-reference-hero h1{transform:translate(-1px,3px) scale(1.01,.947);transform-origin:left top}
-.t012-screen-lab .t012-reference-hero h1{transform:translate(-1px,0) scale(.972,.947);transform-origin:left top}
-.t012-screen-search .t012-reference-hero h1{transform:translate(1px,0) scale(.992,.947);transform-origin:left top}
-.t012-screen-blog .t012-reference-subtitle{transform:translateY(-1px) scale(1.002,1.012);transform-origin:left top}
-.t012-screen-article .t012-reference-subtitle{transform:translateY(-1px) scale(1.014,.97);transform-origin:left top}
-.t012-screen-lab .t012-reference-subtitle{transform:translate(-1px,-1px) scale(1.000,1.012);transform-origin:left top}
-.t012-screen-search .t012-reference-subtitle{transform:translateY(-1px) scale(.996,1.012);transform-origin:left top}
+.t012-screen-blog .t012-reference-hero h1{transform:translate(-1px,3px) scale(.977,.913);transform-origin:left top}
+.t012-screen-article .t012-reference-hero h1{transform:translate(-1px,3px) scale(1.01,.89);transform-origin:left top}
+.t012-screen-lab .t012-reference-hero h1{transform:translate(-1px,1px) scale(.972,.943);transform-origin:left top}
+.t012-screen-search .t012-reference-hero h1{transform:translate(2px,1px) scale(.986,.943);transform-origin:left top}
+.t012-screen-blog .t012-reference-subtitle{transform:translateY(-1px) scale(1.01,.9);transform-origin:left top}
+.t012-screen-article .t012-reference-subtitle{transform:scale(1.006,.85);transform-origin:left top}
+.t012-screen-lab .t012-reference-subtitle{transform:translate(-1px,-1px) scale(1.01,.9);transform-origin:left top}
+.t012-screen-search .t012-reference-subtitle{transform:translateY(-1px) scale(1.004,.9);transform-origin:left top}
 .t012-reference-actions{display:flex;gap:19px;margin-top:27px}
 .t012-reference-action{height:63px;width:245px;border-radius:16px;display:flex;align-items:center;padding-left:29px;text-decoration:none;color:#184876;font-size:23px;font-weight:700;letter-spacing:1px}
 .t012-reference-action.primary{background:#0a9a8c;padding-bottom:4px}
@@ -83,7 +83,7 @@ body:has(.t012-reference-stage) .site-footer{margin-top:0}
 .t012-article-main h2{font-size:28px;line-height:1.25;margin:0 0 17px;color:#184876;font-weight:700;letter-spacing:1.05px;transform:translate(-5px,4px) scaleY(.9);transform-origin:left top}
 .t012-article-steps{font-size:21px;color:#254a68;letter-spacing:1.04px;margin:0 0 18px;transform:translateY(4px) scaleY(.9);transform-origin:left top}
 .t012-article-meta{font-size:20px;color:#254a68;letter-spacing:.38px;margin:0 0 32px;transform:translateY(6px) scaleY(.95);transform-origin:left top}
-.t012-article-code{height:116px;width:871px;max-width:100%;border-radius:14px;background:#184876;color:#7deccb;padding:15px 26px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:18px;line-height:1.8;white-space:pre-wrap;overflow:hidden;transform:translate(-1px,6px)}
+.t012-article-code{height:116px;width:871px;max-width:100%;border-radius:14px;background:#184876;color:#7debcb;padding:15px 26px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:18px;line-height:1.8;white-space:pre-wrap;overflow:hidden;transform:translate(-1px,6px)}
 .t012-article-aside h2{font-size:24px;margin:3px 0 31px;color:#184876;letter-spacing:.7px;transform:translate(1px,2px) scaleY(.85);transform-origin:left top}
 .t012-article-aside ul{list-style:none;padding:0;margin:0}.t012-article-aside li{font-size:20px;line-height:30.1px;color:#254a68;margin-bottom:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;transform:scaleY(.875);transform-origin:left top}
 .t012-search-body{padding:33px 55px 44px}
