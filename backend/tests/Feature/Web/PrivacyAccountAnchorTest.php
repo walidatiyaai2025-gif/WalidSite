@@ -12,7 +12,12 @@ final class PrivacyAccountAnchorTest extends TestCase
             $this->get('/privacy?lang='.$locale)
                 ->assertOk()
                 ->assertSee('id="account-controls" tabindex="-1"', false)
-                ->assertSee('<ol>', false);
+                ->assertSee('<ol>', false)
+                ->assertSee('</ol>', false)
+                ->assertSee('href="'.e(route('public.contact', [
+                    'lang' => $locale,
+                    'topic' => 'privacy',
+                ])).'"', false);
         }
     }
 }
