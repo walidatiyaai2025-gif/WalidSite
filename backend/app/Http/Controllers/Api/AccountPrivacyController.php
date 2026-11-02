@@ -22,61 +22,103 @@ final class AccountPrivacyController extends Controller
 {
     private const EXPORT_SAVED_LIMIT = 10000;
 
+    private const EXPORT_INTERVIEW_LIMIT = 1000;
+
     public function export(Request $request): JsonResponse
     {
         $user = $this->mobileUser($request);
         $this->onlyFields($request, []);
 
-        $saved = DB::table('saved_resources')
-            ->where('user_id', $user->id)
-            ->orderBy('saved_at')
-            ->orderBy('id')
-            ->limit(self::EXPORT_SAVED_LIMIT + 1)
-            ->get(['resource_type', 'resource_id', 'saved_at']);
+        // Export and deletion share a user-row lock. A stale authenticated
+        // request must never export private answers after account erasure, or
+        // observe a partly cleared account in the middle of that transaction.
+        $archive = DB::transaction(function () use ($user): array {
+            $locked = User::query()->whereKey($user->id)->lockForUpdate()->first();
+            abort_unless($locked !== null && $locked->status === 'active', 403);
 
-        if ($saved->count() > self::EXPORT_SAVED_LIMIT) {
-            return response()->json([
-                'message' => 'Account export exceeds the self-service safety limit.',
-            ], 413)->header('Cache-Control', 'no-store');
+            $saved = DB::table('saved_resources')
+                ->where('user_id', $locked->id)
+                ->orderBy('saved_at')
+                ->orderBy('id')
+                ->limit(self::EXPORT_SAVED_LIMIT + 1)
+                ->get(['resource_type', 'resource_id', 'saved_at']);
+
+            if ($saved->count() > self::EXPORT_SAVED_LIMIT) {
+                return ['error' => 'Account export exceeds the self-service safety limit.'];
+            }
+
+            // These are private, user-authored answers. Their prior lesson
+            // context may now be withdrawn, so export only the account's own
+            // writing and minimal session provenance (not source content).
+            $interviews = DB::table('mobile_interview_sessions')
+                ->where('user_id', $locked->id)
+                ->orderBy('created_at')
+                ->orderBy('id')
+                ->limit(self::EXPORT_INTERVIEW_LIMIT + 1)
+                ->get([
+                    'id', 'path_id', 'lesson_index', 'locale',
+                    'answer_text', 'answered_at', 'created_at',
+                ]);
+
+            if ($interviews->count() > self::EXPORT_INTERVIEW_LIMIT) {
+                return ['error' => 'Private practice archive exceeds the self-service safety limit.'];
+            }
+
+            $preferences = NotificationPreference::query()
+                ->where('user_id', $locked->id)
+                ->orderBy('purpose')
+                ->orderBy('channel')
+                ->get()
+                ->map(static fn (NotificationPreference $preference): array => [
+                    'purpose' => $preference->purpose,
+                    'channel' => $preference->channel,
+                    'enabled' => $preference->enabled,
+                    'consented_at' => $preference->consented_at?->toIso8601String(),
+                    'revoked_at' => $preference->revoked_at?->toIso8601String(),
+                ])->values()->all();
+
+            return [
+                'data' => [
+                    'profile' => [
+                        'id' => $locked->id,
+                        'email' => $locked->email,
+                        'status' => $locked->status,
+                        'created_at' => $locked->created_at?->toIso8601String(),
+                    ],
+                    'saved_resources' => $saved->map(static fn ($row): array => [
+                        'resource_type' => $row->resource_type,
+                        'resource_id' => $row->resource_id,
+                        'saved_at' => (string) $row->saved_at,
+                    ])->values()->all(),
+                    'private_interviews' => $interviews->map(static fn ($row): array => [
+                        'session_id' => $row->id,
+                        'path_id' => $row->path_id,
+                        'lesson_index' => (int) $row->lesson_index,
+                        'locale' => $row->locale,
+                        'answer_text' => $row->answer_text,
+                        'answered_at' => $row->answered_at,
+                        'created_at' => $row->created_at,
+                    ])->values()->all(),
+                    'notification_preferences' => $preferences,
+                ],
+                'meta' => [
+                    'exported_at' => now('UTC')->toIso8601String(),
+                    'secrets_excluded' => true,
+                    'private_ai_prompts_excluded' => true,
+                    'private_interview_answers_included' => true,
+                    'foreign_user_data_excluded' => true,
+                ],
+            ];
+        }, 3);
+
+        if (isset($archive['error'])) {
+            // No partially truncated archive may be mistaken for a complete
+            // right-of-access export.
+            return response()->json(['message' => $archive['error']], 413)
+                ->header('Cache-Control', 'no-store');
         }
 
-        $preferences = NotificationPreference::query()
-            ->where('user_id', $user->id)
-            ->orderBy('purpose')
-            ->orderBy('channel')
-            ->get()
-            ->map(static fn (NotificationPreference $preference): array => [
-                'purpose' => $preference->purpose,
-                'channel' => $preference->channel,
-                'enabled' => $preference->enabled,
-                'consented_at' => $preference->consented_at?->toIso8601String(),
-                'revoked_at' => $preference->revoked_at?->toIso8601String(),
-            ])->values()->all();
-
-        $response = response()->json([
-            'data' => [
-                'profile' => [
-                    'id' => $user->id,
-                    'email' => $user->email,
-                    'status' => $user->status,
-                    'created_at' => $user->created_at?->toIso8601String(),
-                ],
-                'saved_resources' => $saved->map(static fn ($row): array => [
-                    'resource_type' => $row->resource_type,
-                    'resource_id' => $row->resource_id,
-                    'saved_at' => (string) $row->saved_at,
-                ])->values()->all(),
-                'notification_preferences' => $preferences,
-            ],
-            'meta' => [
-                'exported_at' => now('UTC')->toIso8601String(),
-                'secrets_excluded' => true,
-                'private_ai_prompts_excluded' => true,
-                'foreign_user_data_excluded' => true,
-            ],
-        ]);
-
-        return $response
+        return response()->json($archive)
             ->header('Cache-Control', 'no-store')
             ->header('Content-Disposition', 'attachment; filename="walidsite-account-export.json"')
             ->header('X-Content-Type-Options', 'nosniff');
