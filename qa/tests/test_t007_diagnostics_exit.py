@@ -14,14 +14,21 @@ class T007DiagnosticExitTest(unittest.TestCase):
         ast.fix_missing_locations(policy)
         check = compile(policy, str(source), "eval")
 
-        def exit_code(statuses):
-            report = {"screens": {str(i): {"status": status} for i, status in enumerate(statuses)}}
-            return eval(check, {"report": report})
+        screen_ids = ("WEB-01", "WEB-02", "WEB-03", "WEB-06", "WEB-12")
 
-        self.assertEqual(exit_code(["exact", "mismatch"]), 0)
-        self.assertEqual(exit_code(["exact", "render_failed"]), 1)
-        self.assertEqual(exit_code(["wrong_dimensions", "mismatch"]), 1)
-        self.assertEqual(exit_code(["render_failed", "wrong_dimensions"]), 1)
+        def exit_code(statuses, font_probe=None):
+            report = {
+                "screens": {sid: {"status": status} for sid, status in zip(screen_ids, statuses)},
+                "font_probe": {"inter_400": True} if font_probe is None else font_probe,
+            }
+            return eval(check, {"report": report, "SCREEN_IDS": screen_ids})
+
+        self.assertEqual(exit_code(["exact"] * 4 + ["mismatch"]), 0)
+        self.assertEqual(exit_code(["exact"] * 4 + ["render_failed"]), 1)
+        self.assertEqual(exit_code(["wrong_dimensions"] + ["mismatch"] * 4), 1)
+        self.assertEqual(exit_code(["render_failed", "wrong_dimensions"] + ["exact"] * 3), 1)
+        self.assertEqual(exit_code(["exact"] * 4), 1)
+        self.assertEqual(exit_code(["exact"] * 5, {"error": "TimeoutError"}), 1)
 
 
 if __name__ == "__main__":
