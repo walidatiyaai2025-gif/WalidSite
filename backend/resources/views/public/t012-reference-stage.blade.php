@@ -37,7 +37,7 @@ body:has(.t012-reference-stage) .site-footer{margin-top:0}
 .t012-nav-shell{height:100px;background:#184876;display:flex;align-items:center;padding:0 59px 0 55px;color:#fff}
 .t012-brand{display:flex;align-items:center;text-decoration:none;white-space:nowrap;margin-right:47px;transform:translateY(3px)}
 .t012-brand span{font-size:40px;font-weight:800;line-height:1;color:#0a9a8c;letter-spacing:-1.2px}
-.t012-brand strong{font-size:25px;font-weight:800;color:#fff;margin-left:4px;letter-spacing:-.35px}
+.t012-brand strong{display:inline-block;font-size:25px;font-weight:800;color:#fff;margin-left:4px;letter-spacing:0;transform:translateY(-3px)}
 .t012-nav-links{height:100%;display:flex;align-items:center;flex:1;min-width:0;transform:translateY(3px)}
 .t012-nav-links a{display:flex;align-items:center;height:100%;color:#d8e6f2;text-decoration:none;font-size:16px;font-weight:400;white-space:nowrap;margin-right:60px}
 .t012-nav-links a.active{color:#0a9a8c}
@@ -52,6 +52,14 @@ body:has(.t012-reference-stage) .site-footer{margin-top:0}
 .t012-pill span{display:block;transform:translate(-1px,-2px)}
 .t012-reference-hero h1{font-size:46px;line-height:1.15;margin:28px 0 21px;color:#184876;font-weight:700;letter-spacing:2.05px}
 .t012-reference-subtitle{margin:0 0 0 2px;color:#3b6684;font-size:20px;line-height:1.4;letter-spacing:-.18px;position:relative;top:3px}
+.t012-screen-blog .t012-reference-hero h1{transform:translate(-1px,3px) scale(.977,.913);transform-origin:left top}
+.t012-screen-article .t012-reference-hero h1{transform:translate(-1px,3px) scale(1.01,.89);transform-origin:left top}
+.t012-screen-lab .t012-reference-hero h1{transform:translate(-1px,1px) scale(.972,.943);transform-origin:left top}
+.t012-screen-search .t012-reference-hero h1{transform:translate(2px,1px) scale(.986,.943);transform-origin:left top}
+.t012-screen-blog .t012-reference-subtitle{transform:translateY(-1px) scale(1.01,.9);transform-origin:left top}
+.t012-screen-article .t012-reference-subtitle{transform:scale(1.006,.85);transform-origin:left top}
+.t012-screen-lab .t012-reference-subtitle{transform:translate(-1px,-1px) scale(1.01,.9);transform-origin:left top}
+.t012-screen-search .t012-reference-subtitle{transform:translateY(-1px) scale(1.004,.9);transform-origin:left top}
 .t012-reference-actions{display:flex;gap:19px;margin-top:27px}
 .t012-reference-action{height:63px;width:245px;border-radius:16px;display:flex;align-items:center;padding-left:29px;text-decoration:none;color:#184876;font-size:23px;font-weight:700;letter-spacing:1px}
 .t012-reference-action.primary{background:#0a9a8c;padding-bottom:4px}
@@ -65,28 +73,28 @@ body:has(.t012-reference-stage) .site-footer{margin-top:0}
 .t012-reference-card{height:341px;border:1px solid #e0e7ee;border-radius:16px;background:#fff;padding:22px 23px;position:relative}
 .t012-card-icon{width:67px;height:65px;border-radius:12px;background:#edf7fc;color:#0a9a8c;font-size:20px;font-weight:800;display:flex;align-items:center;justify-content:center;transform:translateX(-1px)}
 .t012-card-icon span{display:block;transform:translateY(-7px)}
-.t012-reference-card h2{font-size:26px;line-height:1.25;margin:36px 0 22px;color:#184876;font-weight:700;letter-spacing:1.5px;overflow-wrap:anywhere}
-.t012-reference-card p{font-size:16px;line-height:1.5;margin:0;color:#254a68;letter-spacing:.55px;position:relative;top:-3px;overflow-wrap:anywhere}
+.t012-reference-card h2{font-size:26px;line-height:1.25;margin:36px 0 22px;color:#184876;font-weight:700;letter-spacing:1.5px;overflow-wrap:anywhere;transform:translateY(1px) scaleY(.92);transform-origin:left top}
+.t012-reference-card p{font-size:16px;line-height:1.5;margin:0;color:#254a68;letter-spacing:.55px;position:relative;top:-3px;overflow-wrap:anywhere;transform:scaleY(.94);transform-origin:left top}
 .t012-card-rule{height:2px;background:#dce7ec;position:absolute;left:19px;right:29px;top:244px}
-.t012-card-link{position:absolute;top:271px;left:26px;color:#0a7e74;text-decoration:none;font-size:20px;font-weight:600;letter-spacing:1.15px}
+.t012-card-link{position:absolute;top:271px;left:26px;color:#0a7e74;text-decoration:none;font-size:20px;font-weight:600;letter-spacing:1.35px;transform:translateY(1px) scaleY(.84);transform-origin:left top}
 .t012-article-body{padding:30px 56px 36px;display:grid;grid-template-columns:minmax(0,946px) minmax(0,346px);gap:34px}
 .t012-article-main,.t012-article-aside{height:368px;background:#fff;border-radius:16px}
 .t012-article-main{padding:22px 34px}.t012-article-aside{padding:22px 34px}
-.t012-article-main h2{font-size:27px;line-height:1.25;margin:0 0 17px;color:#184876;font-weight:700;letter-spacing:1.55px;transform:translate(-5px,3px)}
-.t012-article-steps{font-size:20px;color:#254a68;letter-spacing:1.5px;margin:0 0 18px;transform:translateY(3px)}
-.t012-article-meta{font-size:19px;color:#254a68;letter-spacing:1px;margin:0 0 32px;transform:translateY(5px)}
+.t012-article-main h2{font-size:28px;line-height:1.25;margin:0 0 17px;color:#184876;font-weight:700;letter-spacing:1.05px;transform:translate(-5px,4px) scaleY(.9);transform-origin:left top}
+.t012-article-steps{font-size:21px;color:#254a68;letter-spacing:1.04px;margin:0 0 18px;transform:translateY(4px) scaleY(.9);transform-origin:left top}
+.t012-article-meta{font-size:20px;color:#254a68;letter-spacing:.38px;margin:0 0 32px;transform:translateY(6px) scaleY(.95);transform-origin:left top}
 .t012-article-code{height:116px;width:871px;max-width:100%;border-radius:14px;background:#184876;color:#7deccb;padding:15px 26px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:18px;line-height:1.8;white-space:pre-wrap;overflow:hidden;transform:translate(-1px,6px)}
-.t012-article-aside h2{font-size:23px;margin:3px 0 31px;color:#184876;letter-spacing:1.2px;transform:translateY(1px)}
-.t012-article-aside ul{list-style:none;padding:0;margin:0;transform:translateY(-1px)}.t012-article-aside li{font-size:19px;line-height:30px;letter-spacing:.4px;color:#254a68;margin-bottom:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.t012-article-aside h2{font-size:24px;margin:3px 0 31px;color:#184876;letter-spacing:.7px;transform:translate(1px,2px) scaleY(.85);transform-origin:left top}
+.t012-article-aside ul{list-style:none;padding:0;margin:0}.t012-article-aside li{font-size:20px;line-height:30.1px;color:#254a68;margin-bottom:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;transform:scaleY(.875);transform-origin:left top}
 .t012-search-body{padding:33px 55px 44px}
 .t012-search-box{height:72px;width:1316px;max-width:100%;background:#fff;border-radius:16px;margin-bottom:28px;display:flex;align-items:center;padding:0 33px}
-.t012-search-box input{width:100%;border:0;outline:0;background:transparent;font:inherit;font-size:23px;letter-spacing:.5px;color:#315471;transform:translateY(1px)}
+.t012-search-box input{width:100%;border:0;outline:0;background:transparent;font:inherit;font-size:23px;letter-spacing:.5px;color:#315471;transform:translateY(2px) scaleY(.96);transform-origin:left top}
 .t012-search-grid{display:grid;grid-template-columns:repeat(3,411px);gap:27px}
 .t012-search-card{height:256px;border-radius:18px;background:#fff;padding:18px 25px;position:relative}
 .t012-search-badge{display:inline-flex;min-width:188px;height:33px;align-items:center;padding:0 14px;border-radius:15px;background:#e9f7f5;color:#078e80;font-size:16px;font-weight:700;transform:translate(-5px,1px)}
-.t012-search-card h2{font-size:26px;margin:35px 0 31px;color:#184876;line-height:1.15;letter-spacing:1.5px}
-.t012-search-card p{font-size:18px;letter-spacing:.5px;color:#254a68;margin:0}
-.t012-search-card a{position:absolute;left:25px;bottom:31px;color:#254a68;text-decoration:none;font-size:18px;letter-spacing:.5px}
+.t012-search-card h2{font-size:26px;margin:35px 0 31px;color:#184876;line-height:1.15;letter-spacing:1.5px;transform:translateY(1px) scaleY(.96);transform-origin:left top}
+.t012-search-card p{font-size:18px;letter-spacing:.43px;color:#254a68;margin:0}
+.t012-search-card a{position:absolute;left:25px;bottom:31px;color:#254a68;text-decoration:none;font-size:18px;letter-spacing:.65px}
 .t012-functional{background:#fff;padding-top:48px}
 @media(min-width:901px) and (max-width:1399px){.t012-nav-shell{padding-inline:24px}.t012-brand{margin-right:24px}.t012-nav-links a,.t012-nav-links a:nth-child(n){margin-right:clamp(8px,1.4vw,20px);font-size:14px}.t012-reference-cards{grid-template-columns:repeat(3,minmax(0,1fr));gap:20px}.t012-reference-hero{padding-inline:36px}.t012-visual-stack{left:auto;right:30px;transform:scale(.78);transform-origin:top right}.t012-reference-subtitle{max-width:65%}.t012-reference-body{padding-inline:36px}.t012-article-body{grid-template-columns:minmax(0,1fr) minmax(260px,346px);padding-inline:36px}}
 @media(max-width:900px){.t012-nav-shell{height:auto;min-height:100px;padding:18px 24px;flex-wrap:wrap}.t012-nav-links{order:3;width:100%;overflow:auto}.t012-nav-links a{margin-right:28px}.t012-contact{margin-left:auto}.t012-reference-stage{height:auto}.t012-reference-hero{height:auto;min-height:420px;padding:32px 28px}.t012-visual-stack{position:relative;left:auto;top:auto;margin:35px auto 0;max-width:100%;transform:scale(.78);transform-origin:top left}.t012-reference-body{height:auto;padding:28px}.t012-reference-cards,.t012-search-grid,.t012-article-body{grid-template-columns:1fr}.t012-reference-card,.t012-search-card,.t012-article-main,.t012-article-aside{width:100%}.t012-article-body{padding:28px}.t012-search-body{padding:28px}.t012-reference-actions{flex-wrap:wrap}.t012-reference-action{max-width:100%;width:auto;min-width:0;padding-inline:22px}.t012-reference-subtitle{max-width:100%}}
@@ -111,7 +119,7 @@ body:has(.t012-reference-stage) .site-footer{margin-top:0}
     @if($t012Current === 'public.article') @php($t012SwitchArgs['slug'] = request()->route('slug')) @endif
     <a class="t012-sr-only" href="{{ route($t012Current ?? 'home', $t012SwitchArgs) }}">{{ $t012Ar ? 'English' : 'العربية' }}</a>
 </header>
-<section class="t012-reference-stage" aria-label="{{ $t012Copy['title'] }}">
+<section class="t012-reference-stage t012-screen-{{ $t012Screen }}" aria-label="{{ $t012Copy['title'] }}">
     <div class="t012-reference-hero">
         <div class="t012-pill"><span>{{ $t012Copy['pill'] }}</span></div>
         <h1>{{ $t012Copy['title'] }}</h1>
