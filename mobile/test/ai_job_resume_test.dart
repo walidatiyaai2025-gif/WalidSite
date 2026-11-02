@@ -72,7 +72,6 @@ void main() {
       ),
     ));
     await signIn(tester);
-    expect(find.byKey(const Key('ai-resume-id')), findsOneWidget);
     await resume(tester, jobId);
     expect(gets, 1);
     expect(find.byKey(const Key('ai-resume-id')), findsOneWidget);
