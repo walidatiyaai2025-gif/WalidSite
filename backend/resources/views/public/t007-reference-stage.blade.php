@@ -45,12 +45,15 @@
     'ai' => [
         'pill' => 'AI PRACTICE',
         'title' => 'AI Engineering',
-        'subtitle' => 'AI-assisted engineering with measurable safeguards.',
+        // A screenshot is not evidence that the owner has deployed a
+        // workflow, tested a commercial model, or delivered a specific demo.
+        // The canonical API currently returns no published workflows/demos.
+        'subtitle' => 'Reviewed AI skills, safety notes and public evidence.',
         'portrait' => false,
         'cards' => [
-            ['icon' => '<>', 'title' => 'AI Workflow Design', 'text' => 'Research to validation to publication', 'href' => route('public.blog', ['lang' => $locale])],
-            ['icon' => 'AI', 'title' => 'Multi-provider AI', 'text' => 'Self-hosted + paid providers', 'href' => route('public.ai-engineering', ['lang' => $locale]).'#ai-evidence'],
-            ['icon' => 'DB', 'title' => 'Delivery Evidence', 'text' => 'PR, CI, test and review traces', 'href' => route('public.github', ['lang' => $locale])],
+            ['icon' => '<>', 'title' => 'AI Safety', 'text' => 'Human review before use', 'href' => route('public.ai-engineering', ['lang' => $locale]).'#ai-evidence'],
+            ['icon' => 'AI', 'title' => 'Verified Skills', 'text' => 'Only published skills appear below', 'href' => route('public.ai-engineering', ['lang' => $locale]).'#ai-evidence'],
+            ['icon' => 'DB', 'title' => 'Public Evidence', 'text' => 'Source-checked case studies only', 'href' => route('public.projects', ['lang' => $locale])],
         ],
     ],
     'hire' => [
@@ -115,7 +118,13 @@
         'Engineering reliable enterprise systems with practical AI.' => 'هندسة أنظمة مؤسسية موثوقة باستخدام الذكاء الاصطناعي العملي.',
         'A career built across databases, government systems and delivery.' => 'مسيرة مهنية في قواعد البيانات والأنظمة الحكومية وتسليم المشاريع.',
         'Evidence-led expertise: AI, SQL, software and technical leadership.' => 'خبرات مدعومة بالأدلة في الذكاء الاصطناعي وقواعد البيانات والبرمجيات والقيادة التقنية.',
-        'AI-assisted engineering with measurable safeguards.' => 'هندسة مدعومة بالذكاء الاصطناعي مع ضوابط قابلة للقياس.',
+        'Reviewed AI skills, safety notes and public evidence.' => 'مهارات الذكاء الاصطناعي المراجعة وإرشادات السلامة والأدلة العامة.',
+        'AI Safety' => 'سلامة الذكاء الاصطناعي',
+        'Human review before use' => 'مراجعة بشرية قبل الاستخدام',
+        'Verified Skills' => 'المهارات الموثقة',
+        'Only published skills appear below' => 'تُعرض أدناه المهارات المنشورة فقط',
+        'Public Evidence' => 'الأدلة العامة',
+        'Source-checked case studies only' => 'دراسات الحالة المتحقق من مصادرها فقط',
         'Review published capabilities, case studies and public CV details.' => 'راجع القدرات المنشورة ودراسات الحالة والسيرة المهنية العامة.',
         'Evidence-gated software, data and AI engineering work.' => 'أعمال هندسية في البرمجيات والبيانات والذكاء الاصطناعي، لا تُنشر إلا بعد التحقق.',
         'Only career records that passed publication review are shown.' => 'تُعرض فقط السجلات المهنية التي اجتازت مراجعة النشر.',

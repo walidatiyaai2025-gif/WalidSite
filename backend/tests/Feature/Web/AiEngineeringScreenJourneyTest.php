@@ -20,9 +20,11 @@ final class AiEngineeringScreenJourneyTest extends TestCase
             $page = $this->get('/ai-engineering?lang='.$locale)->assertOk()
                 ->assertSee('lang="'.$locale.'"', false)
                 ->assertSee($locale === 'ar' ? 'هندسة الذكاء الاصطناعي' : 'AI Engineering')
-                ->assertSee($locale === 'ar' ? 'تصميم سير عمل الذكاء الاصطناعي' : 'AI Workflow Design')
-                ->assertSee($locale === 'ar' ? 'ذكاء اصطناعي متعدد المزوّدين' : 'Multi-provider AI')
-                ->assertSee($locale === 'ar' ? 'أدلة التسليم' : 'Delivery Evidence')
+                ->assertSee($locale === 'ar' ? 'سلامة الذكاء الاصطناعي' : 'AI Safety')
+                ->assertSee($locale === 'ar' ? 'المهارات الموثقة' : 'Verified Skills')
+                ->assertSee($locale === 'ar' ? 'الأدلة العامة' : 'Public Evidence')
+                ->assertDontSee('Self-hosted + paid providers')
+                ->assertDontSee('Multi-provider AI')
                 ->assertSee('href="'.route('public.projects', ['lang' => $locale]).'"', false)
                 ->assertSee('href="'.route('public.github', ['lang' => $locale]).'"', false)
                 ->assertDontSee('live provider')
@@ -78,4 +80,21 @@ final class AiEngineeringScreenJourneyTest extends TestCase
         $this->get('/ai-engineering?lang[]=en')->assertSessionHasErrors('lang');
         $this->get('/ai-engineering?lang=SECRET')->assertSessionHasErrors('lang');
     }
+    public function test_ai_contract_and_bilingual_cards_do_not_claim_unpublished_provider_workflows(): void
+    {
+        foreach (['ar', 'en'] as $locale) {
+            $this->getJson('/api/v1/public/expertise/ai?lang='.$locale)
+                ->assertOk()
+                ->assertJsonPath('data.workflows', [])
+                ->assertJsonPath('data.verified_demos', []);
+
+            $this->get('/ai-engineering?lang='.$locale)
+                ->assertOk()
+                ->assertSee($locale === 'ar'
+                    ? 'تُعرض أدناه المهارات المنشورة فقط' : 'Only published skills appear below', false)
+                ->assertDontSee('Self-hosted + paid providers')
+                ->assertDontSee('No AI capabilities are available globally');
+        }
+    }
+
 }

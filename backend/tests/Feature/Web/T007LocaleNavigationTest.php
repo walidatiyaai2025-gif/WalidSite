@@ -156,4 +156,14 @@ class T007LocaleNavigationTest extends TestCase
             }
         }
     }
+    public function test_home_primary_navigation_marks_only_current_page_and_anchors_are_functional(): void
+    {
+        foreach (['ar', 'en'] as $locale) {
+            $home = $this->get('/?lang='.$locale)->assertOk();
+            $home->assertSee('aria-current="page" href="'.route('home', ['lang' => $locale]).'"', false);
+            $home->assertSee('href="#t007-primary-content"', false)
+                ->assertSee('id="t007-primary-content" tabindex="-1"', false);
+        }
+    }
+
 }
