@@ -71,6 +71,7 @@ class EditorialPipelineTest extends TestCase
     {
         Http::fake(['https://models.example.org/v1/chat/completions' => Http::response([
             'choices' => [['message' => ['content' => '# A draft needing source review']]],
+            'usage' => ['prompt_tokens' => 21, 'completion_tokens' => 7],
         ], 200)]);
         $provider = $this->provider();
         $article = $this->article();
@@ -84,6 +85,11 @@ class EditorialPipelineTest extends TestCase
         $this->assertFalse($article->fresh()->isReadyToPublish());
         $this->assertSame(false, $draft->citations_json[0]['verified']);
         $this->assertSame(80, (int) DB::table('ai_usage')->where('job_id', $jobId)->sum('cost_minor'));
+        $this->assertSame(
+            ['input_tokens' => 21, 'output_tokens' => 7],
+            json_decode((string) DB::table('ai_usage')->where('job_id', $jobId)
+                ->value('usage_json'), true)
+        );
         Http::assertSent(fn ($request) =>
             $request->url() === 'https://models.example.org/v1/chat/completions'
             && $request->hasHeader('Authorization', 'Bearer test-secret-never-log')
@@ -492,6 +498,8 @@ class EditorialPipelineTest extends TestCase
     {
         Http::fake(['http://127.0.0.1:11434/api/generate' => Http::response([
             'response' => '# Locally generated draft',
+            'prompt_eval_count' => 13,
+            'eval_count' => 5,
         ], 200)]);
         $provider = $this->provider('ollama-compatible');
         $jobId = $this->claimedJob($provider, 'draft');
@@ -501,6 +509,44 @@ class EditorialPipelineTest extends TestCase
         $this->assertSame('draft', $draft->status);
         $this->assertFalse($draft->hasVerifiedEvidence());
         $this->assertSame(0, (int) DB::table('ai_usage')->where('job_id', $jobId)->sum('cost_minor'));
+        $this->assertSame(
+            ['input_tokens' => 13, 'output_tokens' => 5],
+            json_decode((string) DB::table('ai_usage')->where('job_id', $jobId)
+                ->value('usage_json'), true)
+        );
+    }
+
+    public function test_malformed_provider_token_counters_fail_without_draft_or_receipt(): void
+    {
+        Http::fake(['https://models.example.org/v1/chat/completions' => Http::response([
+            'choices' => [['message' => ['content' => '# Must not persist']]],
+            'usage' => ['prompt_tokens' => '21', 'completion_tokens' => 7],
+        ], 200)]);
+        $provider = $this->provider();
+        $article = $this->article();
+        $jobId = $this->claimedJob($provider, 'editorial-draft', 80);
+
+        try {
+            app(EditorialAiGenerator::class)->draft(
+                $article, $provider, 'chosen-model',
+                ['https://docs.example.org/backup'], 'Write backup steps',
+                $jobId, 'review-worker', 80
+            );
+            $this->fail('Malformed token accounting must fail closed.');
+        } catch (RuntimeException $exception) {
+            $this->assertSame(
+                'AI draft generation failed safely.',
+                $exception->getMessage()
+            );
+        }
+
+        $this->assertSame(0, $article->revisions()->count());
+        $this->assertDatabaseCount('ai_usage', 0);
+        $this->assertSame(
+            'running',
+            DB::table('ai_jobs')->where('id', $jobId)->value('status')
+        );
+        Http::assertSentCount(1);
     }
 
     public function test_rights_review_rejects_artwork_larger_than_generator_quarantine_limit(): void
