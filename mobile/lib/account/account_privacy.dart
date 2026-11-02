@@ -377,10 +377,21 @@ class _MobileAccountPrivacyState extends State<MobileAccountPrivacyScreen> {
         if (mounted) setState(() => _busy = false);
       }
     } finally {
-      password.clear();
-      word.clear();
-      password.dispose();
-      word.dispose();
+      // The dialog route may still be animating out. Defer controller disposal
+      // until its transition has finished so TextFields cannot rebuild against
+      // disposed listenables during the route's final frames.
+      final navigator = Navigator.maybeOf(context);
+      if (navigator != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          Future<void>.delayed(const Duration(milliseconds: 350), () {
+            password.dispose();
+            word.dispose();
+          });
+        });
+      } else {
+        password.dispose();
+        word.dispose();
+      }
     }
   }
 
