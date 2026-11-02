@@ -23,7 +23,7 @@ class T007DiagnosticExitTest(unittest.TestCase):
 
         screen_ids = ("WEB-01", "WEB-02", "WEB-03", "WEB-06", "WEB-12")
 
-        def exit_code(statuses, font_probe=None, responsive_ok=True, navigation_ok=True, arabic_ok=True):
+        def exit_code(statuses, font_probe=None, responsive_ok=True, navigation_ok=True, arabic_ok=True, functional_ok=True):
             report = {
                 "screens": {sid: {"status": status} for sid, status in zip(screen_ids, statuses)},
                 "font_probe": {"inter_400": True, "inter_800": True} if font_probe is None else font_probe,
@@ -32,7 +32,7 @@ class T007DiagnosticExitTest(unittest.TestCase):
                 and "error" not in report["font_probe"]
                 and report["font_probe"].get("inter_400") is True
                 and report["font_probe"].get("inter_800") is True),
-                "responsive_ok": responsive_ok, "navigation_ok": navigation_ok, "arabic_capture_ok": arabic_ok}
+                "responsive_ok": responsive_ok, "navigation_ok": navigation_ok, "arabic_capture_ok": arabic_ok, "functional_ok": functional_ok}
             return eval(check, {"report": report, "SCREEN_IDS": screen_ids})
 
         self.assertEqual(exit_code(["exact"] * 4 + ["mismatch"]), 0)
@@ -46,6 +46,7 @@ class T007DiagnosticExitTest(unittest.TestCase):
         self.assertEqual(exit_code(["exact"] * 5, responsive_ok=False), 1)
         self.assertEqual(exit_code(["exact"] * 5, navigation_ok=False), 1)
         self.assertEqual(exit_code(["exact"] * 5, arabic_ok=False), 1)
+        self.assertEqual(exit_code(["exact"] * 5, functional_ok=False), 1)
         self.assertEqual(exit_code(["mismatch"] * 5, responsive_ok=True), 0)
 
     def test_rasterization_sweep_is_diagnostic_only(self):
@@ -179,6 +180,31 @@ class T007DiagnosticExitTest(unittest.TestCase):
         rows["WEB-12"]["size"] = [1440, 860]
         rows.pop("WEB-02")
         self.assertFalse(complete(rows))
+
+
+    def test_functional_journey_matrix_requires_all_screens_and_both_locales(self):
+        source = Path(__file__).resolve().parents[1] / "capture_t007_diagnostics.py"
+        tree = ast.parse(source.read_text(encoding="utf-8"))
+        func = next(n for n in tree.body if isinstance(n, ast.FunctionDef)
+                    and n.name == "functional_audit_complete")
+        standalone = ast.Module(body=[func], type_ignores=[])
+        ast.fix_missing_locations(standalone)
+        scope = {"SCREEN_IDS": ("WEB-01", "WEB-02", "WEB-03", "WEB-06", "WEB-12"),
+                 "RESPONSIVE_LOCALES": ("ar", "en")}
+        exec(compile(standalone, str(source), "exec"), scope)
+        valid = {f"{screen}:{lang}": {"passed": True, "locale": lang, "journey": screen}
+                 for screen in scope["SCREEN_IDS"]
+                 for lang in scope["RESPONSIVE_LOCALES"]}
+        self.assertTrue(scope["functional_audit_complete"](valid))
+        missing = valid.copy()
+        missing.pop("WEB-06:ar")
+        self.assertFalse(scope["functional_audit_complete"](missing))
+        broken = valid.copy()
+        broken["WEB-12:en"] = {"passed": False, "locale": "en", "journey": "WEB-12"}
+        self.assertFalse(scope["functional_audit_complete"](broken))
+        swapped = valid.copy()
+        swapped["WEB-03:en"] = {"passed": True, "locale": "untrusted", "journey": "WEB-03"}
+        self.assertFalse(scope["functional_audit_complete"](swapped))
 
 
 if __name__ == "__main__":

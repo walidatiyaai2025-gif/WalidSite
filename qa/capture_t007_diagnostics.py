@@ -297,6 +297,119 @@ def arabic_capture_complete(rows: dict) -> bool:
                     for row in rows.values()))
 
 
+def functional_browser_audit(base_url: str, screens: dict) -> dict:
+    """Exercise five genuine Laravel visitor journeys in both languages.
+
+    This checks real form submissions/anchor focus and selected recruiter CV
+    context, not just HTML strings or a reference image. Every journey
+    traverses actual public routes using Playwright Chromium.
+    """
+    from playwright.sync_api import sync_playwright
+
+    if not base_url.startswith(("https://", "http://127.0.0.1:", "http://localhost:")):
+        raise ValueError("E2E journey needs approved HTTPS or local origin")
+
+    checks = {}
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        try:
+            for lang in RESPONSIVE_LOCALES:
+                context = browser.new_context(
+                    viewport={"width": 1440, "height": 860},
+                    device_scale_factor=1,
+                    locale="ar-KW" if lang == "ar" else "en-US",
+                    reduced_motion="reduce",
+                )
+                try:
+                    for screen_id in SCREEN_IDS:
+                        key = f"{screen_id}:{lang}"
+                        page = context.new_page()
+                        try:
+                            route = screens[screen_id]["route"]
+                            response = page.goto(
+                                base_url.rstrip("/") + route + "?lang=" + lang,
+                                wait_until="domcontentloaded", timeout=30000,
+                            )
+                            if response is None or response.status != 200:
+                                raise RuntimeError("Initial public journey route inaccessible")
+                            if screen_id == "WEB-01":
+                                page.locator(".landing-actions a[href*='/projects']").first.click()
+                                destination = urlsplit(page.url)
+                                if destination.path != "/projects":
+                                    raise RuntimeError("Home projects CTA missing")
+                            elif screen_id == "WEB-02":
+                                page.locator(
+                                    ".about-jump-links a[href='#about-certifications']"
+                                ).click()
+                                destination = urlsplit(page.url)
+                                if destination.fragment != "about-certifications" or (
+                                    page.locator("#about-certifications").count() != 1
+                                ):
+                                    raise RuntimeError("About credential anchor missing")
+                            elif screen_id == "WEB-03":
+                                page.locator("#expertise-category").select_option("database")
+                                page.locator("form.expertise-filter button[type='submit']").click()
+                                destination = urlsplit(page.url)
+                                if (destination.path != "/expertise"
+                                    or parse_qs(destination.query).get("category") != ["database"]
+                                    or page.locator("#expertise-category").input_value() != "database"):
+                                    raise RuntimeError("Expertise filter did not persist")
+                                page.locator("form.expertise-filter a").click()
+                                destination = urlsplit(page.url)
+                                if "category" in parse_qs(destination.query):
+                                    raise RuntimeError("Expertise clear filter did not work")
+                            elif screen_id == "WEB-06":
+                                page.locator(
+                                    ".t007-reference-card a[href$='#ai-evidence']"
+                                ).first.click()
+                                destination = urlsplit(page.url)
+                                if destination.fragment != "ai-evidence" or (
+                                    page.locator("#ai-evidence").count() != 1
+                                ):
+                                    raise RuntimeError("AI evidence anchor missing")
+                            else:
+                                page.locator("#career-track").select_option("delivery")
+                                page.locator("form.recruiter-focus button[type='submit']").click()
+                                destination = urlsplit(page.url)
+                                if (destination.path != "/hire"
+                                    or parse_qs(destination.query).get("track") != ["delivery"]
+                                    or page.locator("#career-track").input_value() != "delivery"):
+                                    raise RuntimeError("Recruiter focus did not persist")
+                                page.locator(
+                                    ".recruiter-card-links a[href*='/resume']"
+                                ).first.click()
+                                destination = urlsplit(page.url)
+                                if (destination.path != "/resume"
+                                    or parse_qs(destination.query).get("track") != ["delivery"]):
+                                    raise RuntimeError("Focused CV route lost selected track")
+                            if parse_qs(destination.query).get("lang") != [lang]:
+                                raise RuntimeError("Visitor journey lost language")
+                            if page.locator("main#main-content").count() != 1:
+                                raise RuntimeError("Destination missing main landmark")
+                            checks[key] = {"passed": True, "locale": lang,
+                                           "journey": screen_id}
+                        except Exception as exc:
+                            checks[key] = {"passed": False, "error": type(exc).__name__,
+                                           "reason": str(exc)[:150]}
+                        finally:
+                            page.close()
+                finally:
+                    context.close()
+        finally:
+            browser.close()
+    return checks
+
+
+def functional_audit_complete(rows: dict) -> bool:
+    expected = {f"{screen}:{lang}" for screen in SCREEN_IDS
+                for lang in RESPONSIVE_LOCALES}
+    return (set(rows) == expected
+            and all(isinstance(v, dict) and v.get("passed") is True
+                    and v.get("locale") in RESPONSIVE_LOCALES
+                    and v.get("journey") in SCREEN_IDS
+                    for v in rows.values()))
+
+
 def navigation_browser_audit(base_url: str, screens: dict) -> dict:
     """Follow real T007 hero actions; verify all visible internal links.
 
@@ -720,6 +833,16 @@ def main() -> int:
     except Exception as exc:
         report["font_probe"] = {"error": type(exc).__name__}
 
+    # Functional E2E assertions cover the five complete web visitor paths.
+    try:
+        report["functional_audit"] = functional_browser_audit(
+            os.environ.get("WALIDSITE_RENDER_BASE_URL", ""), screens
+        )
+    except Exception as exc:
+        report["functional_audit"] = {"setup": {
+            "passed": False, "error": type(exc).__name__
+        }}
+
     # Interactive E2E proof complements (but cannot replace) screenshot parity.
     try:
         report["navigation_audit"] = navigation_browser_audit(
@@ -747,6 +870,8 @@ def main() -> int:
         "responsive_ok": responsive_audit_complete(report["responsive_audit"]),
         "navigation_checks": len(report["navigation_audit"]),
         "navigation_ok": navigation_audit_complete(report["navigation_audit"]),
+        "functional_checks": len(report["functional_audit"]),
+        "functional_ok": functional_audit_complete(report["functional_audit"]),
         "arabic_captures": sum(row.get("status") == "captured"
                                for row in report["arabic_screens"].values()),
         "arabic_capture_ok": arabic_capture_complete(report["arabic_screens"]),
@@ -780,6 +905,7 @@ def main() -> int:
                  or not report["summary"]["font_probe_ok"]
                  or not report["summary"]["responsive_ok"]
                  or not report["summary"]["navigation_ok"]
+                 or not report["summary"]["functional_ok"]
                  or not report["summary"]["arabic_capture_ok"]) else 0
 
 
