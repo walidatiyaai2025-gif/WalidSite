@@ -113,6 +113,14 @@ final class AccountInterviewErasureTest extends TestCase
         ]);
         $this->assertSame('deleted', $user->fresh()->status);
         $this->assertDatabaseCount('account_deletion_events', 1);
+        $this->assertDatabaseMissing('users', [
+            'id' => $user->id,
+            'email' => $originalEmail,
+        ]);
+        $this->assertDatabaseHas('users', [
+            'id' => $user->id,
+            'status' => 'deleted',
+        ]);
         $audit = json_encode(DB::table('account_deletion_events')->first(), JSON_THROW_ON_ERROR);
         $this->assertStringNotContainsString(self::SECRET, $audit);
         $this->assertStringNotContainsString($originalEmail, $audit);
