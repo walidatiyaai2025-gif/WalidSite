@@ -7,8 +7,10 @@
 @php($t007ReferenceReady = match ($screen) {
     'home' => isset($publicProfile, $hasVerifiedAiCapability)
         && is_array($publicProfile) && $hasVerifiedAiCapability === true,
+    'about' => isset($positions) && $positions->isNotEmpty(),
     'expertise' => $t007HasAiSkill,
     'ai' => ! empty($aiData['skills'] ?? []),
+    'hire' => isset($skills) && $skills->isNotEmpty(),
     default => false,
 })
 @php($referenceCopy = [
