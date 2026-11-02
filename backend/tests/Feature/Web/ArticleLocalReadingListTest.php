@@ -198,4 +198,15 @@ final class ArticleLocalReadingListTest extends TestCase
         }
     }
 
+    public function test_blog_can_clear_browser_only_saved_links_in_both_languages(): void
+    {
+        foreach (['en', 'ar'] as $locale) {
+            $this->get('/blog?lang='.$locale)->assertOk()
+                ->assertSee('id="blog-clear-saved"', false)
+                ->assertSee('window.localStorage.removeItem(storageKey)', false)
+                ->assertSee('clearButton.hidden = list.children.length === 0', false)
+                ->assertSee('clearButton.addEventListener(\'click\'', false);
+        }
+    }
+
 }
