@@ -120,8 +120,36 @@ body:has(.t012-reference-stage) .site-footer{margin-top:0}
         <a href="{{ route('public.resume', ['lang' => $locale]) }}">{{ $t012Ar ? 'السيرة العامة' : 'Resume' }}</a>
     </nav>
     <a class="t012-contact" href="{{ route('public.contact', ['lang' => $locale]) }}">{{ $t012Ar ? 'تواصل' : 'Get in touch' }}</a>
-    @php($t012SwitchArgs = ['lang' => $t012Ar ? 'en' : 'ar'])
-    @if($t012Current === 'public.article') @php($t012SwitchArgs['slug'] = request()->route('slug')) @endif
+    @php
+        // Preserve only server-validated local browse context on locale changes.
+        // Never accept arbitrary return URLs or unbounded query strings.
+        $t012SwitchArgs = ['lang' => $t012Ar ? 'en' : 'ar'];
+        if ($t012Current === 'public.article') {
+            $t012SwitchArgs['slug'] = $article->slug;
+            $t012SwitchArgs = array_merge($t012SwitchArgs, $articleContextQuery ?? []);
+        } elseif ($t012Current === 'public.search') {
+            if ($search !== '') {
+                $t012SwitchArgs['q'] = $search;
+                $t012SwitchArgs['type'] = $type;
+            } elseif ($type !== 'all') {
+                $t012SwitchArgs['type'] = $type;
+            }
+        } elseif ($t012Current === 'public.blog') {
+            $rawT012Query = request()->query();
+            $rawT012Search = $rawT012Query['q'] ?? null;
+            if (is_string($rawT012Search) && mb_strlen(trim($rawT012Search)) <= 80 && trim($rawT012Search) !== '') {
+                $t012SwitchArgs['q'] = trim($rawT012Search);
+            }
+            $rawT012Category = $rawT012Query['category'] ?? null;
+            if (is_string($rawT012Category) && preg_match('/\A[a-z0-9-]{1,110}\z/D', $rawT012Category)) {
+                $t012SwitchArgs['category'] = $rawT012Category;
+            }
+            $rawT012Page = $rawT012Query['page'] ?? null;
+            if (is_string($rawT012Page) && ctype_digit($rawT012Page) && (int) $rawT012Page >= 1 && (int) $rawT012Page <= 10000) {
+                $t012SwitchArgs['page'] = (int) $rawT012Page;
+            }
+        }
+    @endphp
     <a class="t012-sr-only" href="{{ route($t012Current ?? 'home', $t012SwitchArgs) }}">{{ $t012Ar ? 'English' : 'العربية' }}</a>
 </header>
 <section class="t012-reference-stage t012-screen-{{ $t012Screen }}" aria-label="{{ $t012Copy['title'] }}">
@@ -158,15 +186,27 @@ body:has(.t012-reference-stage) .site-footer{margin-top:0}
         </div>
     @elseif($t012Screen === 'search')
         <div class="t012-reference-body t012-search-body">
-            <form class="t012-search-box" method="get" action="{{ route('public.search') }}" role="search">
-                <input type="hidden" name="lang" value="{{ $locale }}"><input name="q" type="search" maxlength="80" value="" placeholder="{{ $t012Ar ? 'ابحث في الأدلة والمشاريع والكود والمقالات...' : 'Search runbooks, projects, code and articles...' }}">
+            <form class="t012-search-box" method="get" action="{{ route('public.search') }}" role="search" aria-label="{{ $t012Ar ? 'بحث موثق' : 'Verified content search' }}">
+                <input type="hidden" name="lang" value="{{ $locale }}">
+                <input type="hidden" name="type" value="{{ $type }}">
+                <label class="t012-sr-only" for="t012-top-search">{{ $t012Ar ? 'كلمات البحث' : 'Search terms' }}</label>
+                <input id="t012-top-search" name="q" type="search" maxlength="80" value="{{ $search }}" placeholder="{{ $t012Ar ? 'ابحث في الأدلة والمشاريع والكود والمقالات...' : 'Search runbooks, projects, code and articles...' }}">
+                <button class="t012-sr-only" type="submit">{{ $t012Ar ? 'بحث' : 'Search' }}</button>
             </form>
-            @if($type === 'all')
+            @php($t012PreviewIsProject = $type === 'projects')
+            @php($t012PreviewItems = $t012PreviewIsProject ? $projects : $articles)
+            @if($t012PreviewItems->isNotEmpty())
             <div class="t012-search-grid">
-                @foreach($articles->take(3) as $a)
-                    <article class="t012-search-card"><span class="t012-search-badge">{{ $t012Ar ? 'حل موثق' : 'Verified solution' }}</span>
-                        <h2>{{ $t012Ar ? $a->title_ar : $a->title_en }}</h2><p>{{ $t012Ar ? 'ملخص، أدلة، مراجع' : 'Summary, evidence, references' }}</p>
-                        <a href="{{ route('public.article', ['slug'=>$a->slug,'lang'=>$locale,'source'=>'search','q'=>$search,'type'=>$type]) }}">{{ $t012Ar ? 'فتح الدليل التفصيلي' : 'Open detailed guide' }} &nbsp;&gt;</a>
+                @foreach($t012PreviewItems->take(3) as $entry)
+                    <article class="t012-search-card">
+                        <span class="t012-search-badge">{{ $t012PreviewIsProject ? ($t012Ar ? 'مشروع موثق' : 'Verified project') : ($t012Ar ? 'حل موثق' : 'Verified solution') }}</span>
+                        <h2>{{ $t012PreviewIsProject ? $entry['name'] : ($t012Ar ? $entry->title_ar : $entry->title_en) }}</h2>
+                        <p>{{ $t012Ar ? 'ملخص، أدلة، مراجع' : 'Summary, evidence, references' }}</p>
+                        @if($t012PreviewIsProject)
+                            <a href="{{ route('public.project', ['slug' => $entry['slug'], 'lang' => $locale]) }}">{{ $t012Ar ? 'عرض المشروع' : 'View project' }} &nbsp;&gt;</a>
+                        @else
+                            <a href="{{ route('public.article', ['slug'=>$entry->slug,'lang'=>$locale,'source'=>'search','q'=>$search,'type'=>$type]) }}">{{ $t012Ar ? 'فتح الدليل التفصيلي' : 'Open detailed guide' }} &nbsp;&gt;</a>
+                        @endif
                     </article>
                 @endforeach
             </div>
