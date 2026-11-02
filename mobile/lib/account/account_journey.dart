@@ -343,6 +343,12 @@ class _MobileAccountJourneyState extends State<MobileAccountJourney> {
   bool get _validSession => _session != null &&
       (_session!.expiresAt == null ||
           _session!.expiresAt!.isAfter(DateTime.now().toUtc()));
+
+  // A rejected bearer is not a transient catalog outage. Never trap the
+  // user behind a retry/sign-out flow that keeps replaying a revoked token.
+  bool _authorizationLost(Object error) => error is MobileAiHttpException &&
+      (error.statusCode == 401 || error.statusCode == 403);
+
   void _clearSession() {
     _epoch++;
     _session = null;
@@ -415,10 +421,16 @@ class _MobileAccountJourneyState extends State<MobileAccountJourney> {
         _password.clear();
       });
       await _loadAccountData(session, epoch);
-    } catch (_) {
+    } catch (error) {
       if (!mounted || epoch != _epoch) return;
       setState(() {
-        if (_session != null) {
+        if (_session != null && _authorizationLost(error)) {
+          // Profile and saved data have not both been verified. The server
+          // rejected the bearer; clear all local identity and allow re-login.
+          _clearSession();
+          _message = _label('Session no longer authorized. Sign in again.',
+              'لم تعد الجلسة مصرحًا بها. سجل الدخول مجددًا.');
+        } else if (_session != null) {
           _profile = null;
           _accountReady = false;
           _saved = const [];
@@ -447,15 +459,21 @@ class _MobileAccountJourneyState extends State<MobileAccountJourney> {
     setState(() { _busy = true; _message = null; });
     try {
       await _loadAccountData(session, epoch);
-    } catch (_) {
+    } catch (error) {
       if (!mounted || epoch != _epoch) return;
       setState(() {
-        _profile = null;
-        _accountReady = false;
-        _saved = const [];
-        _message = _label(
-            'Account data is still unavailable. Retry or sign out.',
-            'بيانات الحساب ما زالت غير متاحة. أعد المحاولة أو سجل الخروج.');
+        if (_authorizationLost(error)) {
+          _clearSession();
+          _message = _label('Session no longer authorized. Sign in again.',
+              'لم تعد الجلسة مصرحًا بها. سجل الدخول مجددًا.');
+        } else {
+          _profile = null;
+          _accountReady = false;
+          _saved = const [];
+          _message = _label(
+              'Account data is still unavailable. Retry or sign out.',
+              'بيانات الحساب ما زالت غير متاحة. أعد المحاولة أو سجل الخروج.');
+        }
       });
     } finally {
       if (mounted) setState(() => _busy = false);
