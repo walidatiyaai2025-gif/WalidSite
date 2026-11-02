@@ -228,6 +228,28 @@ body:has(.t007-reference-stage) .site-footer{margin-top:0}
 @media(max-width:900px){.t007-language-switch{margin-left:10px;margin-right:0;flex-shrink:0}.t007-nav-links{scrollbar-width:thin;scrollbar-color:#0a9a8c #184876}.t007-nav-links a:focus-visible{outline-offset:-5px}}
 @media(max-width:900px){.t007-nav-shell{height:auto;min-height:100px;padding:18px 24px;flex-wrap:wrap}.t007-nav-links{order:3;width:100%;overflow:auto}.t007-nav-links a{margin-right:28px}.t007-contact{margin-left:auto}.t007-reference-stage{height:auto}.t007-reference-hero{height:auto;min-height:420px;padding:32px 28px}.t007-visual-stack{position:relative;left:auto;top:auto;margin:35px auto 0}.t007-reference-body{height:auto;padding:28px}.t007-reference-cards,.t007-hire-cards{grid-template-columns:1fr}.t007-reference-card,.t007-hire-card{width:100%}}
 @media(max-width:900px){:lang(ar) .t007-visual-stack{left:auto;right:auto}:lang(ar) .t007-about-row strong{margin-right:0}}
+
+/* Keyboard users must SEE the supplemental navigation when it gains focus. */
+.t007-sr-only:focus-visible{
+    position:fixed!important;inset-block-start:12px!important;inset-inline-start:12px!important;
+    left:auto!important;top:auto!important;width:auto!important;height:auto!important;
+    margin:0!important;padding:10px 16px!important;overflow:visible!important;
+    clip:auto!important;clip-path:none!important;white-space:normal!important;
+    background:#fff!important;color:#163B66!important;border:3px solid #126DE1!important;
+    border-radius:8px!important;z-index:10000!important;text-decoration:none!important;
+}
+/* Match RTL navigation flow without altering the immutable English capture. */
+:lang(ar) .t007-brand{margin-right:0;margin-left:clamp(12px,2vw,47px)}
+:lang(ar) .t007-nav-links a,:lang(ar) .t007-nav-links a:nth-child(n){
+    margin-right:0;margin-left:clamp(12px,2.2vw,34px)
+}
+:lang(ar) .t007-contact{margin-left:0;margin-right:auto}
+@media(max-width:900px){
+    :lang(ar) .t007-brand{margin-left:0}
+    :lang(ar) .t007-nav-links a,:lang(ar) .t007-nav-links a:nth-child(n){margin-left:22px}
+    :lang(ar) .t007-contact{margin-right:auto}
+}
+
 </style>
 @endpush
 <section class="t007-reference-stage" aria-label="{{ $copy['title'] }}">
@@ -249,7 +271,7 @@ body:has(.t007-reference-stage) .site-footer{margin-top:0}
             @endif
         </div>
     </div>
-    <div class="t007-reference-body" id="t007-primary-content">
+    <div class="t007-reference-body" id="t007-primary-content" tabindex="-1">
         @if($screen === 'about')
             <div class="t007-about-rows">
                 @if(isset($positions) && $positions->isNotEmpty())
