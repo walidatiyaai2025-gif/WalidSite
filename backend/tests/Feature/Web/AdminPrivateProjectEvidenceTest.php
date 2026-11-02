@@ -309,7 +309,7 @@ final class AdminPrivateProjectEvidenceTest extends TestCase
     {
         // These matrices exercise validation/authorization repeatedly; keep the
         // production throttle enabled on the route but isolate it from feature assertions.
-        $this->withoutMiddleware(\\Illuminate\\Routing\\Middleware\\ThrottleRequests::class);
+        $this->withoutMiddleware(\Illuminate\Routing\Middleware\ThrottleRequests::class);
         Http::fake();
         $project = $this->project();
         $candidate = $project->evidence()->create([
@@ -365,7 +365,7 @@ final class AdminPrivateProjectEvidenceTest extends TestCase
     {
         // These matrices exercise validation/authorization repeatedly; keep the
         // production throttle enabled on the route but isolate it from feature assertions.
-        $this->withoutMiddleware(\\Illuminate\\Routing\\Middleware\\ThrottleRequests::class);
+        $this->withoutMiddleware(\Illuminate\Routing\Middleware\ThrottleRequests::class);
         Http::fake();
         $project = $this->project();
         $project->forceFill([
@@ -416,7 +416,7 @@ final class AdminPrivateProjectEvidenceTest extends TestCase
     {
         // These matrices exercise validation/authorization repeatedly; keep the
         // production throttle enabled on the route but isolate it from feature assertions.
-        $this->withoutMiddleware(\\Illuminate\\Routing\\Middleware\\ThrottleRequests::class);
+        $this->withoutMiddleware(\Illuminate\Routing\Middleware\ThrottleRequests::class);
         Http::fake();
         $this->actingAs($this->account('owner'), 'web');
         $project = $this->project();
