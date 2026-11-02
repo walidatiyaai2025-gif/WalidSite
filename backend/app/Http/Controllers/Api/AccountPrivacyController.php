@@ -220,6 +220,26 @@ final class AccountPrivacyController extends Controller
                         'updated_at' => now('UTC'),
                     ]);
 
+                // Status is an accounting/lifecycle fact, not consent to retain
+                // output pointers. Terminal completed/failed/cancelled jobs can
+                // still contain a result_ref and completed checkpoint refs.
+                // Erase all account-bound output references while preserving
+                // immutable spend receipts and terminal job statuses.
+                DB::table('ai_jobs')
+                    ->whereIn('id', $jobIds)
+                    ->whereNotNull('result_ref')
+                    ->update([
+                        'result_ref' => null,
+                        'updated_at' => now('UTC'),
+                    ]);
+                DB::table('ai_job_steps')
+                    ->whereIn('job_id', $jobIds)
+                    ->whereNotNull('output_ref')
+                    ->update([
+                        'output_ref' => null,
+                        'updated_at' => now('UTC'),
+                    ]);
+
                 DB::table('job_leases')->whereIn('job_id', $jobIds)->delete();
             }
 
