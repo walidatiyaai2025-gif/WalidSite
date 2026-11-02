@@ -16,10 +16,11 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  Future<void> resume(WidgetTester tester, String id) async {
+  Future<void> resume(WidgetTester tester, String id,
+      {bool fromBelow = false}) async {
     await tester.scrollUntilVisible(
       find.byKey(const Key('ai-resume-id')),
-      -200,
+      fromBelow ? -200 : 200,
       scrollable: find.byType(Scrollable).first,
     );
     await tester.enterText(find.byKey(const Key('ai-resume-id')), id);
@@ -119,7 +120,7 @@ void main() {
     );
     expect(find.textContaining('معرّف مهمة صالحًا'), findsOneWidget);
 
-    await resume(tester, jobId);
+    await resume(tester, jobId, fromBelow: true);
     expect(gets, 1);
     expect(find.byKey(const Key('ai-job-card')), findsNothing);
     await tester.scrollUntilVisible(
@@ -153,7 +154,7 @@ void main() {
     );
     expect(find.textContaining('Job not available or expired'), findsOneWidget);
 
-    await resume(tester, jobId);
+    await resume(tester, jobId, fromBelow: true);
     expect(gets, 2);
     expect(find.byKey(const Key('ai-login-submit')), findsOneWidget);
     expect(find.byKey(const Key('ai-resume-id')), findsNothing);
