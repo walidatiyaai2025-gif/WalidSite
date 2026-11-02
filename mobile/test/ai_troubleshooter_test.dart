@@ -51,6 +51,23 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  // The sign-out action is deliberately above the long diagnosis form.
+  // Scrolling upward requires a negative delta; the default reveal helper
+  // moves down to locate result cards and controls below the current viewport.
+  Future<void> revealAbove(WidgetTester tester, Key key) async {
+    final mainScroll = find.descendant(
+      of: find.byType(ListView),
+      matching: find.byType(Scrollable),
+    ).first;
+    await tester.scrollUntilVisible(
+      find.byKey(key),
+      -220,
+      scrollable: mainScroll,
+    );
+    await tester.ensureVisible(find.byKey(key));
+    await tester.pumpAndSettle();
+  }
+
   Future<void> login(
     WidgetTester tester, {
     String email = 'reader@example.test',
@@ -939,9 +956,10 @@ void main() {
     await reveal(tester, const Key('ai-diagnose-submit'));
     await tester.tap(find.byKey(const Key('ai-diagnose-submit')));
     await tester.pumpAndSettle();
+    await reveal(tester, const Key('ai-job-card'));
     expect(find.byKey(const Key('ai-job-card')), findsOneWidget);
 
-    await reveal(tester, const Key('ai-sign-out'));
+    await revealAbove(tester, const Key('ai-sign-out'));
     await tester.tap(find.byKey(const Key('ai-sign-out')));
     await tester.pumpAndSettle();
 
@@ -1010,7 +1028,7 @@ void main() {
     await tester.tap(find.byKey(const Key('ai-refresh-status')));
     await tester.pump();
     expect(polls, 1);
-    await reveal(tester, const Key('ai-sign-out'));
+    await revealAbove(tester, const Key('ai-sign-out'));
     await tester.tap(find.byKey(const Key('ai-sign-out')));
     await tester.pumpAndSettle();
 
