@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import '../ai/ai_troubleshooter.dart';
+import 'account_privacy.dart';
 import '../articles/verified_articles.dart';
 import '../runbooks/verified_online_runbooks.dart';
 
@@ -437,6 +438,35 @@ class _MobileAccountJourneyState extends State<MobileAccountJourney> {
     ));
   }
 
+  void _openPrivacy() {
+    if (_busy || !_requireSession()) return;
+    final bearer = _session!.token;
+    Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => MobileAccountPrivacyScreen(
+        arabic: widget.arabic,
+        bearer: bearer,
+        onDeleted: () {
+          if (!mounted) return;
+          setState(() {
+            _clearSession();
+            _message = _label(
+              'Account deletion confirmed. Your local session was cleared.',
+              'تم تأكيد حذف الحساب ومسح الجلسة المحلية.',
+            );
+          });
+        },
+        onUnauthorized: () {
+          if (!mounted) return;
+          setState(() {
+            _clearSession();
+            _message = _label('Session no longer authorized. Sign in again.',
+                'لم تعد الجلسة مصرحًا بها. سجل الدخول مجددًا.');
+          });
+        },
+      ),
+    ));
+  }
+
   Future<void> _signOut() async {
     if (_busy || !_requireSession()) return;
     final bearer = _session!.token;
@@ -528,6 +558,13 @@ class _MobileAccountJourneyState extends State<MobileAccountJourney> {
                     const SizedBox(height: 12),
                     Text(_label('Profile changes are not supported by this API yet.',
                         'تعديل الملف الشخصي غير متاح عبر واجهة API الحالية.')),
+                    const SizedBox(height: 12),
+                    OutlinedButton(
+                      key: const Key('account-privacy-entry'),
+                      onPressed: _busy ? null : _openPrivacy,
+                      child: Text(_label('Privacy, consent and my data',
+                          'الخصوصية والموافقات وبياناتي')),
+                    ),
                     const SizedBox(height: 16),
                     FilledButton(
                       key: const Key('account-signout'),
