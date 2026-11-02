@@ -65,7 +65,8 @@ final class AdminCvPublicReviewJourneyTest extends TestCase
                 ->assertSee('href="#content"', false)
                 ->assertSee('id="cv-review-title"', false)
                 ->assertSee('role="list"', false)
-                ->assertSee('role="status"', false)
+                ->assertSee($locale === 'ar'
+                    ? 'لم تُنشر سيرة مهنية معتمدة' : 'No published CV for an active owner')
                 ->assertDontSee('Download verified PDF')
                 ->assertDontSee('تنزيل PDF المعتمد')
                 ->assertDontSee($draft->public_name)
@@ -105,7 +106,8 @@ final class AdminCvPublicReviewJourneyTest extends TestCase
             $response = $this->get('/admin/projects?lang='.$locale)->assertOk()
                 ->assertDontSee('PRIVATE_PROFILE_NAME_NOT_FOR_ADMIN_CV')
                 ->assertDontSee('CONFIDENTIAL_UNREVIEWED_BIO')
-                ->assertDontSee('role="status"', false);
+                ->assertDontSee($locale === 'ar'
+                    ? 'لم تُنشر سيرة مهنية معتمدة' : 'No published CV for an active owner');
             foreach (['all', 'database', 'software', 'delivery'] as $track) {
                 $url = route('public.resume.pdf', [
                     'lang' => $locale, 'track' => $track,
