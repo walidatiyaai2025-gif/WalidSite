@@ -466,6 +466,107 @@ class DurableAiQueueTest extends TestCase
             ->sum('cost_minor'));
     }
 
+    public function test_cancellation_releases_running_lease_and_blocks_future_checkpoint_or_usage(): void
+    {
+        $queue = new DurableAiQueue();
+        $provider = $this->provider('openai-compatible', 1000);
+        $id = $queue->enqueue(
+            $provider, 'draft', 'cancel:running', ['research', 'write'], 100
+        );
+        $this->assertSame($id, $queue->claimNext('worker-a')?->id);
+        $this->assertTrue(
+            $queue->recordUsage($id, 'worker-a', 'cancel:spent', 25, 'USD')
+        );
+
+        $this->assertTrue($queue->cancelJob($id));
+        $this->assertSame(
+            'cancelled',
+            DB::table('ai_jobs')->where('id', $id)->value('status')
+        );
+        $this->assertNull(
+            DB::table('ai_jobs')->where('id', $id)->value('next_attempt_at')
+        );
+        $this->assertNull(
+            DB::table('ai_jobs')->where('id', $id)->value('result_ref')
+        );
+        $this->assertDatabaseMissing('job_leases', ['job_id' => $id]);
+        $this->assertSame(
+            25,
+            (int) DB::table('ai_usage')->where('job_id', $id)->sum('cost_minor')
+        );
+
+        foreach (['checkpoint', 'usage', 'complete'] as $operation) {
+            try {
+                match ($operation) {
+                    'checkpoint' => $queue->completeStep(
+                        $id, 'worker-a', 'research', 'drafts/cancelled'
+                    ),
+                    'usage' => $queue->recordUsage(
+                        $id, 'worker-a', 'cancel:after', 1, 'USD'
+                    ),
+                    'complete' => $queue->completeJob(
+                        $id, 'worker-a', 'drafts/cancelled'
+                    ),
+                };
+                $this->fail('Cancelled job accepted '.$operation.'.');
+            } catch (DomainException $exception) {
+                $this->assertSame(
+                    'An active matching lease is required.',
+                    $exception->getMessage()
+                );
+            }
+        }
+
+        $this->assertFalse($queue->cancelJob($id));
+        $this->assertDatabaseCount('job_leases', 0);
+        $this->assertNull($queue->claimNext('worker-b'));
+    }
+
+    public function test_queued_and_retry_cancellation_is_terminal_without_opening_provider_circuit(): void
+    {
+        $queue = new DurableAiQueue();
+        $provider = $this->provider();
+
+        $queued = $queue->enqueue(
+            $provider, 'draft', 'cancel:queued', ['research']
+        );
+        $this->assertTrue($queue->cancelJob($queued));
+        $this->assertSame(
+            'cancelled',
+            DB::table('ai_jobs')->where('id', $queued)->value('status')
+        );
+
+        $retry = $queue->enqueue(
+            $provider, 'draft', 'cancel:retry', ['research']
+        );
+        $this->assertSame($retry, $queue->claimNext('worker-a')?->id);
+        $queue->failJob($retry, 'worker-a', 'provider_timeout');
+        $this->assertSame(
+            'retry',
+            DB::table('ai_jobs')->where('id', $retry)->value('status')
+        );
+
+        $this->assertTrue($queue->cancelJob($retry));
+        $this->assertSame(
+            'cancelled',
+            DB::table('ai_jobs')->where('id', $retry)->value('status')
+        );
+        $this->assertNull(
+            DB::table('ai_jobs')->where('id', $retry)->value('next_attempt_at')
+        );
+
+        $this->travel(20)->minutes();
+        $this->assertSame(0, $queue->recoverExpired());
+        $this->assertNull($queue->claimNext('worker-b'));
+        $this->assertFalse($queue->cancelJob($retry));
+
+        $circuit = DB::table('ai_provider_circuits')
+            ->where('provider_id', $provider->id)->first();
+        $this->assertNotNull($circuit);
+        $this->assertSame(1, (int) $circuit->consecutive_failures);
+        $this->assertNull($circuit->opened_until);
+    }
+
     public function test_unsafe_opaque_output_reference_is_rejected(): void
     {
         $queue = new DurableAiQueue();
