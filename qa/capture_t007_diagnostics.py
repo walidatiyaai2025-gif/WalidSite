@@ -232,7 +232,7 @@ def responsive_browser_audit(base_url: str, screens: dict) -> dict:
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)
         try:
-            for width, height in ((390, 844), (768, 1024)):
+            for width, height in ((390, 844), (768, 1024), (1024, 768), (1280, 800)):
                 for lang in ("ar", "en"):
                     context = browser.new_context(
                         viewport={"width": width, "height": height},
@@ -274,6 +274,32 @@ def responsive_browser_audit(base_url: str, screens: dict) -> dict:
                                             target.tabIndex === -1),
                                         nav_present: Boolean(nav && nav.querySelectorAll('a').length >= 8),
                                     };
+                                }""")
+                                # Focus is a user action: every header link must
+                                # scroll into view in RTL and LTR, including the
+                                # compact-desktop rail at 1024/1280px. A clipped
+                                # rail with overflow:hidden/visible fails closed.
+                                checks["all_navigation_links_focus_reachable"] = page.evaluate("""() => {
+                                    const nav = document.querySelector('.t007-nav-links');
+                                    if (!nav) return false;
+                                    const links = [...nav.querySelectorAll('a')];
+                                    if (links.length < 8) return false;
+                                    const styles = getComputedStyle(nav);
+                                    if (nav.scrollWidth > nav.clientWidth + 1 &&
+                                        !['auto', 'scroll'].includes(styles.overflowX)) {
+                                        return false;
+                                    }
+                                    return links.every((link) => {
+                                        link.focus();
+                                        const box = link.getBoundingClientRect();
+                                        const parent = nav.getBoundingClientRect();
+                                        return document.activeElement === link &&
+                                            box.width > 0 && box.height > 0 &&
+                                            box.left >= parent.left - 2 &&
+                                            box.right <= parent.right + 2 &&
+                                            box.left >= -2 &&
+                                            box.right <= innerWidth + 2;
+                                    });
                                 }""")
                                 # Enter keyboard modality and focus the hidden
                                 # secondary navigation; its visible focus state
