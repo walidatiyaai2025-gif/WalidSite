@@ -447,7 +447,7 @@ final class AdminCanonicalProductApiTest extends TestCase
         $this->assertStringNotContainsString('PRIVATE', $analytics->getContent());
 
         $this->getJson('/api/v1/admin/audience')->assertOk()
-            ->assertJsonPath('data.notifications.consent_storage_available', false)
+            ->assertJsonPath('data.notifications.consent_storage_available', true)
             ->assertJsonPath('data.notifications.consented_recipients', 0)
             ->assertJsonPath('data.notifications.delivery_enabled', false)
             ->assertJsonMissing(['email' => true]);
