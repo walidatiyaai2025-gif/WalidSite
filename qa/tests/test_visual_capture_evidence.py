@@ -59,6 +59,12 @@ class CaptureRunnerTest(unittest.TestCase):
             "screens": entries,
         }), encoding="utf-8")
         self.sha = "b" * 40
+        # Synthetic pixel fixtures have no Git repository. Provenance is
+        # tested separately against a real temporary Git checkout.
+        from unittest.mock import patch
+        guard = patch("qa.capture_visual_evidence.verified_source_checkout", return_value=True)
+        guard.start()
+        self.addCleanup(guard.stop)
 
     def renderer(self, rgb=(11, 22, 33, 255)):
         script = (
