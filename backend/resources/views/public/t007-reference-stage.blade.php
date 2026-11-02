@@ -337,8 +337,17 @@ body:has(.t007-reference-stage) .site-footer{margin-top:0}
                 ] as $card)
                     <article class="t007-hire-card">
                         <h2>{{ $card[0] }}</h2><p>{{ $card[1] }}</p>
-                        <a href="{{ route('public.resume', ['lang' => $locale, 'track' => $t007RecruiterTrack]) }}">{{ $t007Ui['download'] }}</a>
-                        <a href="{{ route('public.projects', ['lang' => $locale]) }}">{{ $t007Ui['projects'] }}&nbsp;&nbsp;&gt;</a>
+                        @if($loop->first)
+                            <a href="{{ route('public.hire', ['lang' => $locale, 'track' => $t007RecruiterTrack]).'#recruiter-profile-heading' }}">{{ $t007Ar ? 'عرض المهارات الموثقة' : 'View verified skills' }}</a>
+                            <a href="{{ route('public.resume', ['lang' => $locale, 'track' => $t007RecruiterTrack]) }}">{{ $t007Ui['download'] }}</a>
+                        @elseif($loop->index === 1)
+                            <a href="{{ route('public.projects', ['lang' => $locale]) }}">{{ $t007Ui['projects'] }}&nbsp;&nbsp;&gt;</a>
+                            <a href="{{ route('public.github', ['lang' => $locale]) }}">{{ $t007Ar ? 'مصادر GitHub العامة' : 'Public GitHub sources' }}</a>
+                        @else
+                            <a href="{{ route('public.resume.pdf', ['lang' => $locale, 'track' => $t007RecruiterTrack]) }}"
+                               type="application/pdf" download>{{ $t007Ar ? 'تنزيل السيرة PDF' : 'Download CV (PDF)' }}</a>
+                            <a href="{{ route('public.resume', ['lang' => $locale, 'track' => $t007RecruiterTrack]) }}">{{ $t007Ui['download'] }}</a>
+                        @endif
                     </article>
                 @endforeach
             </div>

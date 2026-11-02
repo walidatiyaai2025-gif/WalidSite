@@ -202,4 +202,19 @@ class T007LocaleNavigationTest extends TestCase
         }
     }
 
+    public function test_recruiter_first_viewport_cards_have_distinct_real_destinations_and_direct_pdf(): void
+    {
+        foreach (['ar', 'en'] as $locale) {
+            $html = $this->get('/hire?lang='.$locale.'&track=database')->assertOk();
+            $html->assertSee('href="'.e(route('public.hire', [
+                'lang' => $locale, 'track' => 'database',
+            ]).'#recruiter-profile-heading').'"', false)
+                ->assertSee('href="'.e(route('public.github', ['lang' => $locale])).'"', false)
+                ->assertSee('href="'.e(route('public.resume.pdf', [
+                    'lang' => $locale, 'track' => 'database',
+                ])).'"', false)
+                ->assertSee('type="application/pdf" download', false);
+        }
+    }
+
 }
