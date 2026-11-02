@@ -136,4 +136,36 @@ final class PrivacyPolicyJourneyTest extends TestCase
     }
 
 
+    public function test_rights_inquiries_keep_category_on_locale_change_without_fulfilling_any_request(): void
+    {
+        config(['mail.contact_recipient' => 'reviewed@example.test', 'mail.default' => 'smtp']);
+        Mail::fake();
+        $topics = [
+            'privacy-access', 'privacy-correction', 'privacy-export',
+            'privacy-deletion', 'privacy-notifications',
+        ];
+        foreach ($topics as $topic) {
+            foreach (['en', 'ar'] as $locale) {
+                $other = $locale === 'en' ? 'ar' : 'en';
+                $this->get(route('public.contact', [
+                    'lang' => $locale, 'topic' => $topic,
+                ]))->assertOk()
+                    ->assertSee('id="privacy-rights-inquiry-notice"', false)
+                    ->assertSee('href="'.e(route('public.contact', [
+                        'lang' => $other, 'topic' => $topic,
+                    ])).'"', false)
+                    ->assertSee('name="privacy_consent"', false)
+                    ->assertDontSee('name="privacy_consent" value="1" checked', false)
+                    ->assertSee($locale === 'ar'
+                        ? 'إرسال هذه الرسالة لا يحذف بياناتك'
+                        : 'Sending this message does not delete account data');
+            }
+        }
+        $this->get('/contact?lang=en&topic[]=privacy-deletion')->assertOk()
+            ->assertDontSee('id="privacy-rights-inquiry-notice"', false);
+        $this->get('/contact?lang=en&topic=privacy-deletion&article=unknown')->assertOk()
+            ->assertDontSee('id="privacy-rights-inquiry-notice"', false);
+        Mail::assertNothingSent();
+    }
+
 }
