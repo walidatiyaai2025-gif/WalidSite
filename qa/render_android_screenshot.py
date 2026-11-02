@@ -22,7 +22,7 @@ PACKAGE = "com.example.waleed_tech_companion"
 HEADINGS = {
     "/home": ("Waleed Tech Companion", "رفيق وليد التقني"),
     "/tools/ai-troubleshooter": ("AI Troubleshooter", "مساعد تشخيص الأعطال"),
-    "/runbooks": ("Offline runbook library", "مكتبة الأدلة المحلية"),
+    "/runbooks": ("Verified runbooks", "الأدلة المنشورة"),
     "/articles": ("Technical articles", "المقالات التقنية"),
     "/learn": ("Learning paths", "مسارات التعلّم"),
     "/learn/interview": ("Interview trainer", "تدريب المقابلات"),
