@@ -7,6 +7,8 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+  pull-requests: read
+  issues: read
 concurrency:
   group: pr-ci-${{ github.event.pull_request.number || github.ref }}
   # Preserve a running main build so the installer artifact can finish.
@@ -49,6 +51,13 @@ jobs:
         run: python3 -m unittest discover -s qa/tests -p test_cpanel_package.py
       - name: Validate active CI workflow policy
         run: python3 qa/validate_ci_policy.py
+      - name: Enforce exclusive Issue, branch and PR ownership
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 qa/validate_pr_ownership.py
+      - name: Test PR ownership policy locally
+        run: python3 -m unittest qa.tests.test_pr_ownership -v
       - name: Verify fail-closed legacy duplicate branch reconciliation
         run: python3 -m unittest discover -s qa/tests -p 'test_abandoned_branch_cleanup.py'
       - name: Validate canonical owner CV source
