@@ -643,7 +643,7 @@ final class MobileAiDiagnoseTest extends TestCase
             'user_id' => $user->id,
             'selected_runbook_id' => $runbook,
         ]);
-        $this->getJson('/api/v1/mobile/solutions/'.$runbook)->assertUnauthorized();
+        $this->getJson('/api/v1/mobile/solutions/'.$runbook)->assertNotFound();
         $this->assertStringNotContainsString($runbook, $response->getContent());
         Http::assertSentCount(1);
     }
