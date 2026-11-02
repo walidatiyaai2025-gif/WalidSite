@@ -49,6 +49,7 @@ final class AdminAiTaskRouteController extends Controller
             'enabled' => $model->enabled,
             'capabilities' => $model->capabilities_json ?? [],
             'cost_currency' => $model->cost_policy_json['currency'] ?? null,
+            'image_reservation_minor' => $model->cost_policy_json['image_reservation_minor'] ?? null,
         ];
     }
 
@@ -110,6 +111,7 @@ final class AdminAiTaskRouteController extends Controller
         $this->authorizeAdmin($request);
         $this->onlyFields($request, [
             'provider_id', 'provider_model_id', 'enabled', 'supports_text',
+            'supports_image', 'image_reservation_minor',
         ]);
         $input = $request->validate([
             'provider_id' => ['required', 'uuid',
@@ -118,6 +120,8 @@ final class AdminAiTaskRouteController extends Controller
                 'regex:/\A[A-Za-z0-9_.:\-]{1,90}\z/D'],
             'enabled' => ['required', 'boolean'],
             'supports_text' => ['required', 'boolean'],
+            'supports_image' => ['sometimes', 'boolean'],
+            'image_reservation_minor' => ['sometimes', 'integer', 'between:1,100000000'],
         ]);
         $provider = AiProvider::query()->findOrFail($input['provider_id']);
         $request->validate(['provider_model_id' => [
@@ -125,13 +129,42 @@ final class AdminAiTaskRouteController extends Controller
                 ->where('provider_id', $provider->id),
         ]]);
 
+        $supportsImage = (bool) ($input['supports_image'] ?? false);
+        if ($supportsImage && $provider->provider_type !== 'openai-compatible') {
+            throw ValidationException::withMessages([
+                'supports_image' => 'Image generation requires an OpenAI-compatible provider.',
+            ]);
+        }
+        if ($supportsImage && ! isset($input['image_reservation_minor'])) {
+            throw ValidationException::withMessages([
+                'image_reservation_minor' => 'A positive image reservation is required.',
+            ]);
+        }
+        if (! $supportsImage && isset($input['image_reservation_minor'])) {
+            throw ValidationException::withMessages([
+                'image_reservation_minor' => 'Image reservation requires image capability.',
+            ]);
+        }
+
+        $capabilities = [];
+        if ((bool) $input['supports_text']) {
+            $capabilities[] = 'text';
+        }
+        if ($supportsImage) {
+            $capabilities[] = 'image-generation';
+        }
+        $costPolicy = $provider->provider_type === 'openai-compatible'
+            ? ['currency' => $provider->currency] : [];
+        if ($supportsImage) {
+            $costPolicy['image_reservation_minor'] = (int) $input['image_reservation_minor'];
+        }
+
         $model = AiModel::create([
             'provider_id' => $provider->id,
             'provider_model_id' => $input['provider_model_id'],
             'enabled' => (bool) $input['enabled'],
-            'capabilities_json' => $input['supports_text'] ? ['text'] : [],
-            'cost_policy_json' => $provider->provider_type === 'openai-compatible'
-                ? ['currency' => $provider->currency] : [],
+            'capabilities_json' => $capabilities,
+            'cost_policy_json' => $costPolicy,
         ]);
         $model->setRelation('provider', $provider);
 
