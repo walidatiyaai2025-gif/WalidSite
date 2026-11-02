@@ -121,6 +121,12 @@ def main(argv=None):
         print("CAPTURE PLAN REJECTED: " + str(exc), file=sys.stderr)
         return 2
     print(json.dumps(result, ensure_ascii=False, sort_keys=True))
+    # A dry run is planning only; it cannot be mistaken for completed evidence.
+    if args.dry_run:
+        return 0
+    # A full batch succeeds only when all 40 screens have verified captures.
+    if args.require_all and len(result["captured"]) + len(result["already_matched"]) != 40:
+        return 1
     return 1 if result["failed"] else 0
 
 
