@@ -1096,31 +1096,6 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
                           ? (ar ? 'جارٍ التشخيص...' : 'Diagnosing...')
                           : (ar ? 'ابدأ التشخيص' : 'Diagnose')),
                     ),
-                    const SizedBox(height: 12),
-                    Text(ar
-                        ? 'استرجاع تشخيص سابق (يتطلب صلاحية حسابك)'
-                        : 'Resume an earlier diagnosis (account access required)'),
-                    const SizedBox(height: 8),
-                    TextField(
-                      key: const Key('ai-resume-id'),
-                      controller: _resumeId,
-                      maxLength: 36,
-                      autocorrect: false,
-                      enableSuggestions: false,
-                      decoration: InputDecoration(
-                        labelText: ar ? 'معرّف مهمة التشخيص' : 'Diagnosis job ID',
-                        border: const OutlineInputBorder(),
-                      ),
-                    ),
-                    OutlinedButton.icon(
-                      key: const Key('ai-resume-submit'),
-                      onPressed: _busyDiagnosis || _busyPoll || _busySave ||
-                              _job != null ? null : _resumeExistingJob,
-                      icon: const Icon(Icons.history),
-                      label: Text(_busyPoll
-                          ? (ar ? 'جارٍ الاسترجاع...' : 'Restoring...')
-                          : (ar ? 'استرجاع الحالة' : 'Restore status')),
-                    ),
                   ],
                   if (_message != null) ...[
                     const SizedBox(height: 16),
@@ -1158,13 +1133,6 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
                             Text(
                               '${_statusLabel(_job!.status)} · ${_job!.progressPercent}%',
                               key: const Key('ai-job-status'),
-                            ),
-                            Text(ar
-                                ? 'احتفظ بمعرّف المهمة لاسترجاعها بعد تسجيل الدخول مرة أخرى:'
-                                : 'Keep this ID to resume after signing in again:'),
-                            SelectableText(
-                              _job!.id,
-                              key: const Key('ai-job-reference'),
                             ),
                             if (_job!.retryAfterSeconds != null)
                               Text(ar
@@ -1230,9 +1198,43 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
                                   ? 'الإبلاغ عن مشكلة التشخيص'
                                   : 'Report a diagnosis issue'),
                             ),
+                            Text(ar
+                                ? 'احتفظ بمعرّف المهمة لاسترجاعها بعد تسجيل الدخول مرة أخرى:'
+                                : 'Keep this ID to resume after signing in again:'),
+                            SelectableText(
+                              _job!.id,
+                              key: const Key('ai-job-reference'),
+                            ),
                           ],
                         ),
                       ),
+                    ),
+                  ],
+                  if (_token != null && _job == null) ...[
+                    const SizedBox(height: 12),
+                    Text(ar
+                        ? 'استرجاع تشخيص سابق (يتطلب صلاحية حسابك)'
+                        : 'Resume an earlier diagnosis (account access required)'),
+                    const SizedBox(height: 8),
+                    TextField(
+                      key: const Key('ai-resume-id'),
+                      controller: _resumeId,
+                      maxLength: 36,
+                      autocorrect: false,
+                      enableSuggestions: false,
+                      decoration: InputDecoration(
+                        labelText: ar ? 'معرّف مهمة التشخيص' : 'Diagnosis job ID',
+                        border: const OutlineInputBorder(),
+                      ),
+                    ),
+                    OutlinedButton.icon(
+                      key: const Key('ai-resume-submit'),
+                      onPressed: _busyDiagnosis || _busyPoll || _busySave ||
+                              _job != null ? null : _resumeExistingJob,
+                      icon: const Icon(Icons.history),
+                      label: Text(_busyPoll
+                          ? (ar ? 'جارٍ الاسترجاع...' : 'Restoring...')
+                          : (ar ? 'استرجاع الحالة' : 'Restore status')),
                     ),
                   ],
                 ],
