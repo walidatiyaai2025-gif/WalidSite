@@ -538,4 +538,142 @@ void main() {
     expect(find.text('Share'), findsOneWidget);
   });
 
+
+  testWidgets('switching bearer mid-save ignores old success and permits new account save',
+      (tester) async {
+    const accountA = '1|private-account-a';
+    const accountB = '2|private-account-b';
+    final firstSave = Completer<void>();
+    final saves = <String>[];
+    Future<ReviewedRunbook> load(String id) async => reviewed();
+    Future<void> save(String token, String id) {
+      expect(id, runbookId);
+      saves.add(token);
+      return token == accountA ? firstSave.future : Future<void>.value();
+    }
+    Widget screen(String? token) => MaterialApp(
+      home: ReviewedRunbookDetail(
+        id: runbookId,
+        arabic: true,
+        initialBearer: token,
+        loader: load,
+        saveAction: save,
+      ),
+    );
+
+    await tester.pumpWidget(screen(accountA));
+    await tester.pumpAndSettle();
+    await reveal(tester, const Key('online-runbook-save'));
+    await tester.tap(find.byKey(const Key('online-runbook-save')));
+    await tester.pump();
+    expect(saves, [accountA]);
+
+    // The same guide and loader remain mounted; only identity changes.
+    await tester.pumpWidget(screen(accountB));
+    await tester.pumpAndSettle();
+    await reveal(tester, const Key('online-runbook-save'));
+    expect(find.text('تم الحفظ'), findsNothing);
+    expect(tester.widget<OutlinedButton>(
+      find.byKey(const Key('online-runbook-save')),
+    ).onPressed, isNotNull);
+
+    firstSave.complete();
+    await tester.pump();
+    await tester.pumpAndSettle();
+    expect(find.text('تم حفظ الدليل المراجع في حسابك.'), findsNothing);
+    await reveal(tester, const Key('online-runbook-save'));
+    await tester.tap(find.byKey(const Key('online-runbook-save')));
+    await tester.pumpAndSettle();
+    expect(saves, [accountA, accountB]);
+    expect(find.text('تم الحفظ'), findsOneWidget);
+    expect(find.text(accountA), findsNothing);
+    expect(find.text(accountB), findsNothing);
+  });
+
+  testWidgets('completed bookmark never transfers across account or logout',
+      (tester) async {
+    const accountA = '1|already-saved';
+    const accountB = '2|not-yet-saved';
+    final saves = <String>[];
+    Future<ReviewedRunbook> load(String id) async => reviewed();
+    Future<void> save(String token, String id) async {
+      expect(id, runbookId);
+      saves.add(token);
+    }
+    Widget screen(String? token) => MaterialApp(
+      home: ReviewedRunbookDetail(
+        id: runbookId,
+        arabic: false,
+        initialBearer: token,
+        loader: load,
+        saveAction: save,
+        loginAction: (_, __) async {
+          throw StateError('Guest must not silently save without login');
+        },
+      ),
+    );
+
+    await tester.pumpWidget(screen(accountA));
+    await tester.pumpAndSettle();
+    await reveal(tester, const Key('online-runbook-save'));
+    await tester.tap(find.byKey(const Key('online-runbook-save')));
+    await tester.pumpAndSettle();
+    expect(find.text('Saved'), findsOneWidget);
+    expect(saves, [accountA]);
+
+    await tester.pumpWidget(screen(accountB));
+    await tester.pumpAndSettle();
+    await reveal(tester, const Key('online-runbook-save'));
+    expect(find.text('Saved'), findsNothing);
+    expect(tester.widget<OutlinedButton>(
+      find.byKey(const Key('online-runbook-save')),
+    ).onPressed, isNotNull);
+    await tester.tap(find.byKey(const Key('online-runbook-save')));
+    await tester.pumpAndSettle();
+    expect(saves, [accountA, accountB]);
+    expect(find.text('Saved'), findsOneWidget);
+
+    // Logging out does not inherit either account's saved acknowledgment.
+    await tester.pumpWidget(screen(null));
+    await tester.pumpAndSettle();
+    await reveal(tester, const Key('online-runbook-save'));
+    expect(find.text('Saved'), findsNothing);
+    await tester.tap(find.byKey(const Key('online-runbook-save')));
+    await tester.pumpAndSettle();
+    expect(find.text('Sign in to save'), findsOneWidget);
+    expect(saves, [accountA, accountB]);
+    expect(find.text(accountA), findsNothing);
+    expect(find.text(accountB), findsNothing);
+  });
+
+  testWidgets('old share completion cannot report success after account rotation',
+      (tester) async {
+    final oldShare = Completer<bool>();
+    Future<ReviewedRunbook> load(String id) async => reviewed();
+    Widget screen(String? token) => MaterialApp(
+      home: ReviewedRunbookDetail(
+        id: runbookId,
+        arabic: false,
+        initialBearer: token,
+        loader: load,
+        shareAction: (_, __) => oldShare.future,
+      ),
+    );
+
+    await tester.pumpWidget(screen('1|reader-a'));
+    await tester.pumpAndSettle();
+    await reveal(tester, const Key('online-runbook-share'));
+    await tester.tap(find.byKey(const Key('online-runbook-share')));
+    await tester.pump();
+    await tester.pumpWidget(screen('2|reader-b'));
+    await tester.pumpAndSettle();
+    oldShare.complete(true);
+    await tester.pump();
+    await tester.pumpAndSettle();
+    expect(find.text('Share options opened.'), findsNothing);
+    await reveal(tester, const Key('online-runbook-share'));
+    expect(find.text('Share'), findsOneWidget);
+    expect(find.text('1|reader-a'), findsNothing);
+  });
+
 }
