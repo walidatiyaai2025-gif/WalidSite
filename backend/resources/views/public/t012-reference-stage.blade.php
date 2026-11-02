@@ -47,6 +47,10 @@ body:has(.t012-reference-stage) .site-footer{margin-top:0}
 .t012-nav-links a:nth-child(5){width:108px;letter-spacing:.6px}.t012-nav-links a:nth-child(6){width:106px;letter-spacing:.33px}.t012-nav-links a:nth-child(7){width:108px;letter-spacing:1px}.t012-nav-links a:nth-child(8){width:62px;letter-spacing:.8px}
 .t012-contact{display:flex;width:161px;height:50px;align-items:center;justify-content:center;border-radius:16px;background:#0a9a8c;color:#184876;text-decoration:none;font-size:18px;font-weight:800;letter-spacing:1.55px;white-space:nowrap;margin-left:auto;transform:translateY(2px);flex-shrink:0;padding-left:23px;padding-bottom:2px}
 .t012-sr-only{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
+/* The reference has a visually hidden locale control. Never hide its keyboard
+   focus: restore a full-size, high-contrast target without changing idle pixels. */
+.t012-nav-shell>.t012-locale-switch:focus-visible,.t012-search-box .t012-sr-only:focus-visible{position:fixed!important;inset:auto 12px auto auto!important;top:12px!important;display:inline-flex!important;align-items:center;justify-content:center;width:auto!important;min-width:64px!important;height:44px!important;padding:8px 12px!important;margin:0!important;clip:auto!important;clip-path:none!important;overflow:visible!important;border:2px solid #0a9a8c!important;border-radius:8px;background:#fff;color:#184876;font-size:16px;font-weight:700;text-decoration:none;z-index:1000;outline:3px solid #184876;outline-offset:2px}
+.t012-search-box input:focus-visible{outline:3px solid #0a9a8c!important;outline-offset:3px;border-radius:4px}
 .t012-reference-stage{height:760px;background:#f5f9fc}
 .t012-reference-hero{height:326px;background:#edf7fc;position:relative;padding:35px 56px}
 .t012-pill{height:39px;min-width:259px;width:max-content;border-radius:16px;background:#dcf6f1;color:#0a9a8c;display:flex;align-items:center;padding:0 15px;font-size:18px;font-weight:700;letter-spacing:.7px;transform:translateX(-4px)}
@@ -103,8 +107,20 @@ body:has(.t012-reference-stage) .site-footer{margin-top:0}
 .t012-search-card p{font-size:18px;letter-spacing:.43px;color:#254a68;margin:0}
 .t012-search-card a{position:absolute;left:25px;bottom:31px;color:#254a68;text-decoration:none;font-size:18px;letter-spacing:.65px}
 .t012-functional{background:#fff;padding-top:48px}
-@media(min-width:901px) and (max-width:1399px){.t012-nav-shell{padding-inline:24px}.t012-brand{margin-right:24px}.t012-nav-links a,.t012-nav-links a:nth-child(n){margin-right:clamp(8px,1.4vw,20px);font-size:14px}.t012-reference-cards{grid-template-columns:repeat(3,minmax(0,1fr));gap:20px}.t012-reference-hero{padding-inline:36px}.t012-visual-stack{left:auto;right:30px;transform:scale(.78);transform-origin:top right}.t012-reference-subtitle{max-width:65%}.t012-reference-body{padding-inline:36px}.t012-article-body{grid-template-columns:minmax(0,1fr) minmax(260px,346px);padding-inline:36px}}
-@media(max-width:900px){.t012-nav-shell{height:auto;min-height:100px;padding:18px 24px;flex-wrap:wrap}.t012-nav-links{order:3;width:100%;overflow:auto}.t012-nav-links a{margin-right:28px}.t012-contact{margin-left:auto}.t012-reference-stage{height:auto}.t012-reference-hero{height:auto;min-height:420px;padding:32px 28px}.t012-visual-stack{position:relative;left:auto;top:auto;margin:35px auto 0;max-width:100%;transform:scale(.78);transform-origin:top left}.t012-reference-body{height:auto;padding:28px}.t012-reference-cards,.t012-search-grid,.t012-article-body{grid-template-columns:1fr}.t012-reference-card,.t012-search-card,.t012-article-main,.t012-article-aside{width:100%}.t012-article-body{padding:28px}.t012-search-body{padding:28px}.t012-reference-actions{flex-wrap:wrap}.t012-reference-action{max-width:100%;width:auto;min-width:0;padding-inline:22px}.t012-reference-subtitle{max-width:100%}}
+@media(min-width:901px) and (max-width:1399px){.t012-nav-shell{padding-inline:24px}.t012-brand{margin-right:24px}.t012-nav-links a,.t012-nav-links a:nth-child(n){margin-right:clamp(8px,1.4vw,20px);font-size:14px}.t012-reference-cards{grid-template-columns:repeat(3,minmax(0,1fr));gap:20px}.t012-reference-hero{padding-inline:36px}.t012-visual-stack{left:auto;right:30px;transform:scale(.78);transform-origin:top right}.t012-reference-subtitle{max-width:65%}.t012-nav-links{overflow-x:auto;overscroll-behavior-inline:contain;scrollbar-width:thin}.t012-nav-links a:nth-child(n){width:auto;flex-shrink:0}.t012-reference-body{padding-inline:36px}.t012-article-body{grid-template-columns:minmax(0,1fr) minmax(260px,346px);padding-inline:36px}}
+@media(max-width:900px){.t012-nav-shell{height:auto;min-height:100px;padding:18px 24px;flex-wrap:wrap}.t012-nav-links{order:3;width:100%;overflow:auto}.t012-nav-links a{margin-right:28px}.t012-contact{margin-left:auto}.t012-reference-stage{height:auto}.t012-reference-hero{height:auto;min-height:420px;padding:32px 28px}.t012-visual-stack{position:relative;left:auto;top:auto;margin:35px auto 0;max-width:100%;transform:scale(.78);transform-origin:top left}.t012-reference-body{height:auto;padding:28px}.t012-reference-cards,.t012-search-grid,.t012-article-body{grid-template-columns:1fr}.t012-reference-card,.t012-search-card,.t012-article-main,.t012-article-aside{width:100%}.t012-article-body{padding:28px}.t012-search-body{padding:28px}.t012-reference-actions{flex-wrap:wrap}.t012-reference-action{max-width:100%;width:auto;min-width:0;padding-inline:22px}.t012-reference-subtitle{max-width:100%}
+/* Touch users also need a discoverable, tappable language switch. */
+.t012-nav-shell>.t012-locale-switch{order:4;position:static!important;display:inline-flex!important;align-items:center;justify-content:center;clip:auto!important;clip-path:none!important;overflow:visible!important;width:auto!important;min-width:88px!important;height:44px!important;padding:7px 14px!important;margin:12px 0 0!important;white-space:nowrap!important;border:2px solid #0a9a8c!important;border-radius:10px;background:#fff;color:#184876;font-size:16px;font-weight:700;text-decoration:none}
+.t012-nav-shell>.t012-locale-switch:focus-visible{position:static!important;top:auto!important}
+.t012-reference-hero h1{font-size:clamp(30px,6vw,46px);overflow-wrap:anywhere}
+.t012-visual-stack{max-width:min(100%,372px)}
+.t012-search-box{min-height:72px;height:auto}
+.t012-search-box input{min-width:0}
+.t012-article-main,.t012-article-aside{height:auto;min-height:300px}
+.t012-article-code{width:100%;overflow-x:auto;white-space:pre}
+.t012-reference-card{min-height:300px;height:auto;overflow-wrap:anywhere}
+.t012-search-card{min-height:256px;height:auto;overflow-wrap:anywhere}
+}
 </style>
 @endpush
 <header class="t012-nav-shell" aria-label="{{ $t012Ar ? 'التنقل الرئيسي' : 'Primary navigation' }}">
@@ -116,7 +132,7 @@ body:has(.t012-reference-stage) .site-footer{margin-top:0}
         <a href="{{ route('public.about', ['lang' => $locale]) }}">{{ $t012Ar ? 'نبذة' : 'About' }}</a>
         <a href="{{ route('public.expertise', ['lang' => $locale]) }}">{{ $t012Ar ? 'الخبرات' : 'Expertise' }}</a>
         <a href="{{ route('public.projects', ['lang' => $locale]) }}">{{ $t012Ar ? 'المشاريع' : 'Projects' }}</a>
-        <a href="{{ route('public.expertise', ['lang' => $locale]) }}">{{ $t012Ar ? 'مختبر AI' : 'AI Lab' }}</a>
+        <a href="{{ route('public.lab', ['lang' => $locale]) }}">{{ $t012Ar ? 'المختبر التقني' : 'Tech Lab' }}</a>
         <a @class(['active' => in_array($t012Current, ['public.blog','public.article'], true)]) href="{{ route('public.blog', ['lang' => $locale]) }}">{{ $t012Ar ? 'المدونة' : 'Blog' }}</a>
         <a href="{{ route('public.github', ['lang' => $locale]) }}">GitHub</a>
         <a href="{{ route('public.resume', ['lang' => $locale]) }}">{{ $t012Ar ? 'السيرة العامة' : 'Resume' }}</a>
@@ -137,7 +153,7 @@ body:has(.t012-reference-stage) .site-footer{margin-top:0}
             }
         }
     ?>
-    <a class="t012-sr-only" href="{{ route($t012Current ?? 'home', $t012SwitchArgs) }}">{{ $t012Ar ? 'English' : 'العربية' }}</a>
+    <a class="t012-sr-only t012-locale-switch" lang="{{ $t012Ar ? 'en' : 'ar' }}" hreflang="{{ $t012Ar ? 'en' : 'ar' }}" href="{{ route($t012Current ?? 'home', $t012SwitchArgs) }}">{{ $t012Ar ? 'English' : 'العربية' }}</a>
 </header>
 <section class="t012-reference-stage t012-screen-{{ $t012Screen }}" aria-label="{{ $t012Copy['title'] }}">
     <div class="t012-reference-hero">
