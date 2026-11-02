@@ -38,6 +38,13 @@ final class PrivacyConsentRealJourneyTest extends TestCase
 
     public function test_bilingual_disclosures_link_actual_mobile_controls_and_remain_unapproved_drafts(): void
     {
+        // When no verified mail transport exists, the public form is correctly
+        // replaced by an unavailable notice. Configure this fixture to test
+        // the real visible consent control, not an impossible default state.
+        config([
+            'mail.contact_recipient' => 'reviewed-owner@example.test',
+            'mail.default' => 'smtp',
+        ]);
         foreach (['en', 'ar'] as $locale) {
             $ar = $locale === 'ar';
             $privacy = $this->get('/privacy?lang='.$locale)->assertOk()
