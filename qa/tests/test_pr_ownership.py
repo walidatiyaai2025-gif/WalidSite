@@ -1,6 +1,6 @@
 """Deterministic admission-policy tests: no network or GitHub token required."""
 import unittest
-from qa.validate_pr_ownership import inspect, issue_from_branch, issue_from_title
+from qa.validate_pr_ownership import compare_proves_ancestor, inspect, issue_from_branch, issue_from_title
 
 MAP = {"T007": 8, "T024": 25}
 REPO = "walidatiyaai2025-gif/WalidSite"
@@ -16,9 +16,11 @@ def pr(number, branch, title, draft=False, sha=SHA):
 
 
 class AdmissionTests(unittest.TestCase):
-    def run_gate(self, target, peers=None, branches=None, files=None, state="open", expected=SHA):
+    def run_gate(self, target, peers=None, branches=None, files=None, state="open", expected=SHA,
+                 reconciled=None):
         return inspect(target, peers or [target], branches or [{"name": target["head"]["ref"]}],
-                       state, files or {}, MAP, REPO, expected)
+                       state, files or {}, MAP, REPO, expected,
+                       reconciled_branches=reconciled)
 
     def test_valid_exclusive_pr(self):
         candidate = pr(10, "fix/507-guard", "fix(#507): protect branches")
@@ -41,6 +43,21 @@ class AdmissionTests(unittest.TestCase):
         errors, _ = self.run_gate(candidate, branches=[
             {"name": "feat/480-privacy-b"}, {"name": "feat/480-privacy-a"}])
         self.assertTrue(any("Competing branch" in e for e in errors))
+
+    def test_reconciled_ancestor_branch_warns_but_does_not_block(self):
+        candidate = pr(10, "feat/480-privacy-b", "feat(#480): privacy b")
+        errors, warnings = self.run_gate(candidate, branches=[
+            {"name": "feat/480-privacy-b"}, {"name": "feat/480-privacy-a"}],
+            reconciled={"feat/480-privacy-a"})
+        self.assertEqual(errors, [])
+        self.assertTrue(any("RECONCILED ANCESTOR" in warning for warning in warnings))
+
+    def test_compare_payload_only_accepts_proven_ancestor(self):
+        self.assertTrue(compare_proves_ancestor({"status": "ahead", "behind_by": 0}))
+        self.assertTrue(compare_proves_ancestor({"status": "identical", "behind_by": 0}))
+        self.assertFalse(compare_proves_ancestor({"status": "diverged", "behind_by": 1}))
+        self.assertFalse(compare_proves_ancestor({"status": "ahead", "behind_by": 2}))
+        self.assertFalse(compare_proves_ancestor({}))
 
     def test_closed_issue_and_mismatch_fail(self):
         candidate = pr(10, "feat/507-guard", "fix(#506): not this")
