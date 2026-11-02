@@ -183,4 +183,19 @@ final class ArticleLocalReadingListTest extends TestCase
         }
     }
 
+    public function test_blog_reading_list_offers_accessible_local_removal_without_server_mutation(): void
+    {
+        $this->approvedArticle();
+        foreach (['en', 'ar'] as $locale) {
+            $html = $this->get('/blog?lang='.$locale)->assertOk()->getContent();
+            $this->assertStringContainsString("remove.type = 'button';", $html);
+            $this->assertStringContainsString("remove.addEventListener('click', () => {", $html);
+            $this->assertStringContainsString("remove.setAttribute('aria-label',", $html);
+            $this->assertStringContainsString('window.localStorage.getItem(storageKey)', $html);
+            $this->assertStringContainsString('window.localStorage.setItem(storageKey, JSON.stringify(remaining))', $html);
+            $this->assertStringContainsString('value.slug !== entry.slug', $html);
+            $this->assertStringNotContainsString('fetch(', $html);
+        }
+    }
+
 }
