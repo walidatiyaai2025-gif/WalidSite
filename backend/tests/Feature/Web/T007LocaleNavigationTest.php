@@ -14,29 +14,29 @@ class T007LocaleNavigationTest extends TestCase
         foreach (['database', 'integration', 'security', 'delivery'] as $category) {
             $this->get('/expertise?lang=en&category='.$category)
                 ->assertOk()
-                ->assertSee('href="'.route('public.expertise', ['lang' => 'ar', 'category' => $category]).'"', false);
+                ->assertSee('href="'.e(route('public.expertise', ['lang' => 'ar', 'category' => $category])).'"', false);
         }
 
         foreach (['all', 'unknown', ''] as $category) {
             $this->get('/expertise?lang=en&category='.$category)
                 ->assertOk()
-                ->assertSee('href="'.route('public.expertise', ['lang' => 'ar']).'"', false);
+                ->assertSee('href="'.e(route('public.expertise', ['lang' => 'ar'])).'"', false);
         }
 
         $this->get('/expertise?lang=en&category[]=database')
             ->assertOk()
-            ->assertSee('href="'.route('public.expertise', ['lang' => 'ar']).'"', false);
+            ->assertSee('href="'.e(route('public.expertise', ['lang' => 'ar'])).'"', false);
     }
 
     public function test_expertise_filter_survives_switching_back_to_english(): void
     {
         $this->get('/expertise?lang=ar&category=security')
             ->assertOk()
-            ->assertSee('href="'.route('public.expertise', ['lang' => 'en', 'category' => 'security']).'"', false);
+            ->assertSee('href="'.e(route('public.expertise', ['lang' => 'en', 'category' => 'security'])).'"', false);
 
         $this->get('/expertise?lang=ar&category[]=security')
             ->assertOk()
-            ->assertSee('href="'.route('public.expertise', ['lang' => 'en']).'"', false);
+            ->assertSee('href="'.e(route('public.expertise', ['lang' => 'en'])).'"', false);
     }
 
     public function test_recruiter_language_switch_preserves_only_safe_tracks(): void
@@ -44,12 +44,12 @@ class T007LocaleNavigationTest extends TestCase
         foreach (['database', 'software', 'delivery'] as $track) {
             $this->get('/hire?lang=ar&track='.$track)
                 ->assertOk()
-                ->assertSee('href="'.route('public.hire', ['lang' => 'en', 'track' => $track]).'"', false);
+                ->assertSee('href="'.e(route('public.hire', ['lang' => 'en', 'track' => $track])).'"', false);
         }
 
         $this->get('/hire?lang=ar&track[]=database')
             ->assertOk()
-            ->assertSee('href="'.route('public.hire', ['lang' => 'en', 'track' => 'all']).'"', false);
+            ->assertSee('href="'.e(route('public.hire', ['lang' => 'en', 'track' => 'all'])).'"', false);
     }
 
     public function test_page_navigation_landmark_has_bilingual_accessible_name(): void
