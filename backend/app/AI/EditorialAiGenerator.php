@@ -81,6 +81,7 @@ final class EditorialAiGenerator
                 || trim($body) === '' || mb_strlen($body) > 40000) {
                 throw new RuntimeException('Provider returned no bounded text.');
             }
+            $tokens = ProviderUsage::tokens($provider->provider_type, $response);
         } catch (Throwable) {
             // Provider messages frequently include private payloads and tokens.
             throw new RuntimeException('AI draft generation failed safely.');
@@ -88,7 +89,7 @@ final class EditorialAiGenerator
 
         $draft = $this->composer->saveDraft($article, $body, array_column($candidates, 'source_url'));
         $this->recordEstimatedUsage($provider, $jobId, $owner,
-            'ai-draft:'.$draft->id, $estimatedCostMinor, $model);
+            'ai-draft:'.$draft->id, $estimatedCostMinor, $model, $tokens);
         return $draft;
     }
 
@@ -231,12 +232,13 @@ final class EditorialAiGenerator
 
     private function recordEstimatedUsage(
         AiProvider $provider, string $jobId, string $owner,
-        string $receiptId, int $estimate, string $model
+        string $receiptId, int $estimate, string $model, array $tokens = []
     ): void {
         // This is a conservative configured estimate, NOT verified provider
-        // invoice data. Strict daily and per-job spending gates still apply.
+        // invoice data. Provider-reported token counters are recorded
+        // separately when present; strict daily/per-job spend gates remain.
         $this->queue->recordUsage($jobId, $owner, $receiptId, $estimate,
-            $provider->currency, $model);
+            $provider->currency, $model, $tokens);
     }
 
     private function timeout(AiProvider $provider): int
