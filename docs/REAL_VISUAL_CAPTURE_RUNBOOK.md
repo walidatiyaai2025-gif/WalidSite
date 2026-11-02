@@ -54,3 +54,24 @@ python3 qa/validate_visual_fidelity.py --require-complete
 ```
 
 The second command is the definitive strict evidence gate. It fails with pending entries, invalid captured image provenance, or a single differing decoded RGBA pixel. Do not close #481 or T024 because the batch runner exists or its synthetic unit tests pass. Separate AR/EN, responsive width, empty/error, keyboard, accessibility and role/authorization QA remain required. Attach actual capture SHA, commands, CI and device/browser evidence in the Issue, not invented success totals.
+
+
+## Inspect actual visual differences without claiming acceptance
+
+The independent `qa/visual_diagnostics.py` works on **any 1–40 screens** in the same canonical, trusted capture plan. It uses the existing strict plan validator, checks out the declared real Git commit, re-audits immutable references and the current evidence ledger, then runs each genuine renderer at the exact source PNG dimensions. It does **not** copy original screenshots into runtime outputs, edit the evidence ledger or upgrade a screen to `matched`.
+
+From a real Laravel/Chromium session and, separately, a real authenticated Admin context or Flutter device, run:
+
+```bash
+sha="$(git rev-parse HEAD)"
+python3 qa/visual_diagnostics.py --plan /tmp/walidsite-captures.json --commit "$sha" --dry-run
+python3 qa/visual_diagnostics.py --plan /tmp/walidsite-captures.json --commit "$sha"
+```
+
+For each successful renderer, the report is `qa/visual-diagnostics/<full-commit-SHA>/report.json`. A captured `<SCREEN-ID>.runtime.png` is **the browser/device-rendered output only**; a `<SCREEN-ID>.difference-preview.png` highlights each mismatching RGBA pixel (including alpha changes). Its white pixels indicate the diagnostic location of a difference; it is **never used to mask or relax** the zero-difference acceptance gate. The original reference is kept only at its immutable path.
+
+Per-screen statuses distinguish `renderer_failed` (including unavailable authenticated state or device), `wrong_dimensions`, `invalid_png`, `oversized_png`, `source_copy_rejected`, `mismatch`, and `exact_pixels_unattested`. The latter means the decoded pixels compared equally, **not** that the runtime's identity or source was independently certified. Renderer stderr/stdout and environment credentials are not copied into the diagnostic report. A failing screen does not prevent diagnosing the next one.
+
+The diagnostic command returns 1 for mismatched/failed captures, 2 for invalid or tampered capture plans and unavailable Git provenance, and 0 for successful dry-runs or no measured differences. None of those exit codes constitutes final visual approval. Use the separate real-capture command `qa/capture_visual_batch.py` and `qa/validate_visual_fidelity.py --require-complete` for actual evidence admission and the final 40/40 gate.
+
+Generated diagnostics are ignored under `qa/visual-diagnostics/.gitignore`, are refused if a SHA-specific destination already exists, and may contain authorized interface data. Keep them on the controlled QA machine or CI artifact with appropriately restricted access; **never** commit production PII, auth storage state, tokens, screenshots of private records, or privileged URLs. Delete a prior local output directory deliberately before repeating the same commit, rather than silently overwriting it. Synthetic unit tests for the diagnostic renderer validate security and math only: they do **not** count as actual screenshots of WalidSite.
