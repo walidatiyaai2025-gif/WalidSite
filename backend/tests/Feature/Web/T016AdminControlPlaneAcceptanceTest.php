@@ -287,8 +287,8 @@ final class T016AdminControlPlaneAcceptanceTest extends TestCase
         $audit = $this->get('/admin/ai/providers/'.$managed->id.'/audit?lang=en')
             ->assertOk()
             ->assertSee('Recorded change events')
-            ->assertSee('secret_rotated')
-            ->assertSee('tested')
+            ->assertSee('Credential replaced')
+            ->assertSee('Connection tested')
             ->assertDontSee('acceptance-managed-secret')
             ->assertDontSee($owner->email);
         $this->assertStringContainsString('no-store', $audit->headers->get('Cache-Control'));
