@@ -95,13 +95,16 @@ final class PrivacyPolicyJourneyTest extends TestCase
             'subject' => 'Privacy or personal data request',
             'message' => 'Please explain the handling of my information.',
         ];
-        foreach (['en', 'ar'] as $lang) {
+        foreach (['en', 'ar'] as $index => $lang) {
+            $this->withServerVariables(['REMOTE_ADDR' => '192.0.2.'.(110 + $index)]);
             $this->from('/contact?lang='.$lang)->post('/contact?lang='.$lang, $data)
                 ->assertSessionHasErrors('privacy_consent');
+            $this->withServerVariables(['REMOTE_ADDR' => '192.0.2.'.(120 + $index)]);
             $this->from('/contact?lang='.$lang)->post('/contact?lang='.$lang,
                 $data + ['privacy_consent' => '0'])
                 ->assertSessionHasErrors('privacy_consent');
         }
+        $this->withServerVariables(['REMOTE_ADDR' => '192.0.2.130']);
         $this->post('/contact?lang=en', $data + [
             'privacy_consent' => '1', 'website' => 'automated-spam.example',
         ])->assertRedirect('/contact?lang=en');
