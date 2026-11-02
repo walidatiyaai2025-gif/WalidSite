@@ -18,11 +18,36 @@
 .article-content{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.9;color:var(--wa-body)}
 .lab-resource-list{padding-inline-start:24px}.lab-resource-list li{margin-block:5px}.lab-resource-list a{min-height:44px;display:inline-flex;align-items:center}
 .lab-resource-more{min-height:44px;display:inline-flex;align-items:center;color:var(--wa-cta);font-weight:800;text-underline-offset:3px}
+.lab-actions{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:16px;margin-block:18px}
+.lab-action-card{background:#fff;border:1px solid var(--wa-soft-border);border-radius:16px;padding:20px}
+.lab-action-card h2{margin-top:0;color:var(--wa-primary);font-size:20px}
+.lab-action-card button{min-height:44px;border-radius:10px;border:1px solid #97B4C8;padding:9px 14px;font:inherit;font-weight:700}
+.lab-action-card button:disabled{cursor:not-allowed;background:var(--wa-muted-surface);color:var(--wa-muted-text);opacity:1}
 </style>
 @endpush
 @section('content')
 <section class="site-wrap editorial"><h1>{{ $locale === 'ar' ? 'المختبر التقني' : 'Technology lab' }}</h1>
 <p>{{ $locale === 'ar' ? 'الأدوات التفاعلية غير مفعّلة حتى التحقق منها. المتاح أدلة منشورة ذات مصادر فقط.' : 'Interactive tools are not active until verified. Only published, evidence-reviewed guides can be opened.' }}</p>
+<div class="lab-actions" aria-label="{{ $locale === 'ar' ? 'إجراءات المختبر' : 'Lab actions' }}">
+    <section class="lab-action-card" aria-labelledby="lab-tool-action-title">
+        <h2 id="lab-tool-action-title">{{ $locale === 'ar' ? 'أداة تفاعلية موثقة' : 'Verified interactive tool' }}</h2>
+        <p>{{ $locale === 'ar'
+            ? 'لا توجد أداة تنفيذية معتمدة للنشر حتى الآن. لن نعرض تجربة وهمية أو غير مراجعة.'
+            : 'No executable tool is approved for public release yet. An unreviewed or fake demo is not exposed.' }}</p>
+        <button type="button" data-action="open_tool" aria-disabled="true" disabled>
+            {{ $locale === 'ar' ? 'فتح الأداة — غير متاح حاليًا' : 'Open tool — currently unavailable' }}
+        </button>
+    </section>
+    <section class="lab-action-card" aria-labelledby="lab-app-action-title">
+        <h2 id="lab-app-action-title">{{ $locale === 'ar' ? 'تطبيق وليد التقني' : 'Waleed Tech Companion app' }}</h2>
+        <p>{{ $locale === 'ar'
+            ? 'لم تُنشر بعد حزمة تطبيق موقعة ومعتمدة للتوزيع. سيظل الفتح معطلاً حتى اجتياز بوابة الإصدار والتوقيع.'
+            : 'No signed, approved distribution build is published yet. Opening stays disabled until the release/signing gate is verified.' }}</p>
+        <button type="button" data-action="open_app" aria-disabled="true" disabled>
+            {{ $locale === 'ar' ? 'فتح التطبيق — بانتظار الإصدار الموثق' : 'Open app — awaiting verified release' }}
+        </button>
+    </section>
+</div>
 <div class="ed-card">
 @if($articles->isEmpty() && $runbooks->isEmpty())
     <p role="status">{{ $locale === 'ar' ? 'لا توجد أدلة منشورة أو تجارب حية.' : 'No reviewed guides or live tool demos are available yet.' }}</p>
