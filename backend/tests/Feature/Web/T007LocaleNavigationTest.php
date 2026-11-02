@@ -52,6 +52,17 @@ class T007LocaleNavigationTest extends TestCase
             ->assertSee('href="'.route('public.hire', ['lang' => 'en', 'track' => 'all']).'"', false);
     }
 
+    public function test_page_navigation_landmark_has_bilingual_accessible_name(): void
+    {
+        $this->get('/about?lang=en')
+            ->assertOk()
+            ->assertSee('<nav class="t007-nav-links" aria-label="Site pages">', false);
+
+        $this->get('/about?lang=ar')
+            ->assertOk()
+            ->assertSee('<nav class="t007-nav-links" aria-label="روابط صفحات الموقع">', false);
+    }
+
     public function test_language_switch_is_visible_and_announces_destination_language(): void
     {
         $this->get('/about?lang=en')
