@@ -94,7 +94,7 @@ final class AccountPrivateInterviewExportTest extends TestCase
             ->assertJsonPath('meta.secrets_excluded', true);
 
         $entries = collect($response->json('data.private_interviews'))->keyBy('session_id');
-        $this->assertSame([$first, $pending], $entries->keys()->all());
+        $this->assertSame([$pending, $first], $entries->keys()->all());
         $this->assertSame('PRIVATE_USER_AUTHORED_ANSWER', $entries[$first]['answer_text']);
         $this->assertSame('ar', $entries[$first]['locale']);
         $this->assertSame(0, $entries[$first]['lesson_index']);
