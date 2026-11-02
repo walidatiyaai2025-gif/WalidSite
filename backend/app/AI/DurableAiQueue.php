@@ -432,6 +432,52 @@ final class DurableAiQueue
         }, 3);
     }
 
+    /**
+     * Cancel queued/retrying/running work without treating the cancellation as
+     * a provider failure. Existing usage receipts remain immutable because
+     * they represent cost already incurred; the remaining reservation is
+     * released by moving the job out of the runnable/running states.
+     *
+     * Returns true only when this call performs the terminal transition.
+     * Repeated cancellation and already-terminal jobs are idempotent no-ops.
+     */
+    public function cancelJob(string $jobId): bool
+    {
+        if (! Str::isUuid($jobId)) {
+            throw new InvalidArgumentException('Invalid AI job identifier.');
+        }
+
+        return DB::transaction(function () use ($jobId): bool {
+            $job = DB::table('ai_jobs')->where('id', $jobId)
+                ->lockForUpdate()->first();
+            if (! $job) {
+                throw new DomainException('Unknown AI job.');
+            }
+
+            if ($job->status === 'cancelled') {
+                // Defensive cleanup if an older caller changed only the job
+                // status and left a stale lease behind.
+                DB::table('job_leases')->where('job_id', $jobId)->delete();
+                return false;
+            }
+
+            if (! in_array($job->status, ['queued', 'retry', 'running'], true)) {
+                return false;
+            }
+
+            DB::table('ai_jobs')->where('id', $jobId)->update([
+                'status' => 'cancelled',
+                'next_attempt_at' => null,
+                'result_ref' => null,
+                'last_error_code' => 'cancelled',
+                'updated_at' => now(),
+            ]);
+            DB::table('job_leases')->where('job_id', $jobId)->delete();
+
+            return true;
+        }, 3);
+    }
+
     public function failJob(string $jobId, string $owner, string $errorCode = 'execution_failed'): void
     {
         if (! preg_match('/^[a-z0-9_]{1,50}$/D', $errorCode)) {
