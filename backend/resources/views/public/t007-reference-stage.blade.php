@@ -172,7 +172,7 @@ body:has(.t007-reference-stage) .site-footer{margin-top:0}
                 @if(isset($positions) && $positions->isNotEmpty())
                     @foreach($positions->take(3) as $position)
                         <div class="t007-about-row">
-                            <span class="t007-about-period">{{ $position->started_on->format('Y') }} - {{ $position->ended_on ? $position->ended_on->format('Y') : ($t007Ar ? 'الحاضر' : 'Present') }}</span>
+                            <span class="t007-about-period">{{ $position->started_on?->format('Y') ?? ($t007Ar ? 'غير محدد' : 'Undated') }} - {{ $position->ended_on ? $position->ended_on->format('Y') : ($t007Ar ? 'الحاضر' : 'Present') }}</span>
                             <strong>{{ $t007Ar ? $position->role_ar : $position->role_en }} — {{ $position->org_name }}</strong>
                         </div>
                     @endforeach
