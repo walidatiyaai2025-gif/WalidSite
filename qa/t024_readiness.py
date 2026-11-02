@@ -128,6 +128,7 @@ def audit(root: Path = ROOT) -> tuple[dict, list[str]]:
         api_source = (root / "api/openapi-contract.yaml").read_text(encoding="utf-8")
         paths, operations = openapi_operations(api_source)
         visual_errors, matched, visual_total = visual_audit(root)
+        visual_records = _json(root, "design/visual-fidelity-evidence.json")["screens"]
     except (OSError, ValueError, TypeError, KeyError, AttributeError) as exc:
         return report, ["Unreadable or invalid canonical QA input: " + type(exc).__name__]
 
@@ -223,13 +224,14 @@ def audit(root: Path = ROOT) -> tuple[dict, list[str]]:
                   "deferred_external": gate_deferred,
                   "unverified": len(EXPECTED_GATES) - gate_verified - gate_deferred},
         "pending_screen_ids": sorted(
-            sid for sid in EXPECTED_IDS if not isinstance(evidence.get("screens"), dict)
-            or _json(root, "design/visual-fidelity-evidence.json")["screens"].get(sid, {}).get("status") != "matched"
+            sid for sid in EXPECTED_IDS if not isinstance(visual_records, dict)
+            or visual_records.get(sid, {}).get("status") != "matched"
         ),
         "unverified_actions": sorted(action_keys - set(action_evidence)),
         "unverified_api_operations": sorted(operations - set(api_evidence)),
         "unverified_gates": sorted(
-            gid for gid in EXPECTED_GATES if gate_evidence.get(gid, {}).get("status") == "pending"
+            gid for gid in EXPECTED_GATES if isinstance(gate_evidence.get(gid), dict)
+            and gate_evidence[gid].get("status") == "pending"
         ),
     })
     report["engineering_ready"] = (
