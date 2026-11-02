@@ -1446,14 +1446,32 @@ Route::get('/contact', function (Request $request) {
         'privacy-deletion' => ['طلب حذف البيانات', 'Personal data deletion request'],
         'privacy-notifications' => ['طلب إلغاء موافقة الإشعارات', 'Notification consent revocation request'],
     ];
-    $privacyRight = $privacyTopic && $rawTopic !== 'privacy' ? $rawTopic : null;
+    // Canonical privacy links use topic=privacy&request=<allowlisted kind>.
+    // Legacy topic=privacy-<kind> links remain valid for existing bookmarks.
+    $rawRequest = $request->query()['request'] ?? null;
+    $rightsSubjects = [
+        'access' => ['طلب الاطلاع على بياناتي', 'Personal data access request'],
+        'correction' => ['طلب تصحيح بياناتي', 'Personal data correction request'],
+        'export' => ['طلب تصدير بياناتي', 'Personal data export request'],
+        'deletion' => ['طلب حذف بياناتي', 'Personal data deletion request'],
+        'revoke' => ['طلب سحب الموافقة على الإشعارات', 'Notification consent revocation inquiry'],
+        'notifications' => ['طلب إلغاء الموافقة على الإشعارات', 'Privacy notification consent revocation request'],
+    ];
+    $privacyRight = $privacyTopic && $rawTopic === 'privacy'
+        && is_string($rawRequest) && array_key_exists($rawRequest, $rightsSubjects)
+        ? $rawRequest : null;
+    if ($privacyRight === null && $privacyTopic && $rawTopic !== 'privacy') {
+        $privacyRight = substr($rawTopic, strlen('privacy-'));
+    }
     $suggestedSubject = $reportArticle !== null
         ? ($locale === 'ar' ? 'ملاحظة بشأن المقال: ' : 'Article issue: ')
             .mb_substr($reportArticle->slug, 0, 100)
         : ($reportProject !== null
             ? ($locale === 'ar' ? 'استفسار عن المشروع: ' : 'Project inquiry: ')
                 .mb_substr($reportProject['slug'], 0, 100)
-            : ($privacyTopic ? $privacySubjects[$rawTopic][$locale === 'ar' ? 0 : 1] : ''));
+            : ($privacyTopic ? ($rawTopic === 'privacy' && $privacyRight !== null
+                ? $rightsSubjects[$privacyRight][$locale === 'ar' ? 0 : 1]
+                : $privacySubjects[$rawTopic][$locale === 'ar' ? 0 : 1]) : ''));
 
     $recipient = config('mail.contact_recipient');
     $available = is_string($recipient) && filter_var($recipient, FILTER_VALIDATE_EMAIL)
@@ -1877,7 +1895,11 @@ Route::middleware('auth:web')->prefix('admin')->group(function (): void {
             ->join('users', 'users.id', '=', 'preference.user_id')
             ->where('users.status', 'active')->where('preference.purpose', $purpose)
             ->where('preference.channel', $channel)->where('preference.enabled', true)
-            ->whereNotNull('preference.consented_at')->whereNull('preference.revoked_at')
+            // A future-dated/imported grant is not affirmative consent yet.
+            // Match the API's fail-closed notification gate at UTC request time.
+            ->whereNotNull('preference.consented_at')
+            ->where('preference.consented_at', '<=', now('UTC'))
+            ->whereNull('preference.revoked_at')
             ->distinct()->count('preference.user_id');
         return response()->view('admin.operations', [
             'section' => 'audience',

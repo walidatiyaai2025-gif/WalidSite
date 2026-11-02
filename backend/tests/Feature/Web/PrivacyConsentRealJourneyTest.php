@@ -36,30 +36,51 @@ final class PrivacyConsentRealJourneyTest extends TestCase
         return $user;
     }
 
-    public function test_bilingual_disclosure_and_request_intents_are_visible_without_claiming_fulfillment(): void
+    public function test_bilingual_disclosures_link_actual_mobile_controls_and_remain_unapproved_drafts(): void
     {
-        config(['mail.contact_recipient' => 'reviewed-owner@example.test', 'mail.default' => 'smtp']);
+        // When no verified mail transport exists, the public form is correctly
+        // replaced by an unavailable notice. Configure this fixture to test
+        // the real visible consent control, not an impossible default state.
+        config([
+            'mail.contact_recipient' => 'reviewed-owner@example.test',
+            'mail.default' => 'smtp',
+        ]);
         foreach (['en', 'ar'] as $locale) {
             $ar = $locale === 'ar';
-            $this->get('/privacy?lang='.$locale)->assertOk()
+            $privacy = $this->get('/privacy?lang='.$locale)->assertOk()
                 ->assertHeader('Cache-Control', 'no-store, private')
                 ->assertSee('<meta name="robots" content="noindex,follow">', false)
+                ->assertSee('id="account-controls" tabindex="-1"', false)
                 ->assertSee('dir="'.($ar ? 'rtl' : 'ltr').'"', false)
                 ->assertSee('href="'.e(route('public.contact', [
-                    'lang' => $locale, 'topic' => 'privacy-deletion',
+                    'lang' => $locale, 'topic' => 'privacy',
                 ])).'"', false)
-                ->assertSee($ar ? 'يتطلب الحذف تأكيد كلمة المرور' : 'deletion requires password confirmation')
-                ->assertDontSee('password_hash')->assertDontSee('Bearer ');
+                ->assertDontSee('name="privacy_consent" value="1" checked', false);
+
+            $privacy->assertSee($ar ? 'الخصوصية والموافقات وبياناتي' : 'Privacy, consent and my data')
+                ->assertSee($ar ? 'موافقة' : 'consent')
+                ->assertSee('DELETE')
+                ->assertSee($ar ? 'غير معتمدة قانونيًا' : 'not legally approved')
+                ->assertDontSee('password_hash')
+                ->assertDontSee('Bearer ');
+
             $this->get('/terms?lang='.$locale)->assertOk()
+                ->assertSee($ar ? 'إلغاء موافقات' : 'notification-consent revocation')
                 ->assertSee($ar ? 'مسودة وليست شروطًا قانونية نافذة' : 'not effective legal terms')
                 ->assertSee('<meta name="robots" content="noindex,follow">', false);
-            $this->get('/contact?lang='.$locale.'&topic=privacy-deletion')->assertOk()
+
+            $this->get('/contact?lang='.$locale.'&topic=privacy')->assertOk()
+                ->assertSee('href="'.e(route('public.privacy', [
+                    'lang' => $locale,
+                ])).'#account-controls"', false)
+                ->assertSee($ar ? 'لا تشترك بك' : 'does not subscribe you')
                 ->assertSee('name="privacy_consent"', false)
-                ->assertDontSee('value="1" checked', false)
-                ->assertSee($ar ? 'إرسال هذه الرسالة لا يحذف بياناتك' : 'Sending this message does not delete account data');
+                ->assertDontSee('value="1" checked', false);
         }
+
         $this->get('/sitemap.xml')->assertOk()
-            ->assertDontSee('/privacy?')->assertDontSee('/terms?');
+            ->assertDontSee('/privacy?')
+            ->assertDontSee('/terms?');
     }
 
     public function test_contact_consent_is_not_notification_opt_in_even_when_mail_accepts_it(): void

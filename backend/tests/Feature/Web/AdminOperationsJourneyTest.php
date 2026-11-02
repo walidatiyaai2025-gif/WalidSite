@@ -191,11 +191,14 @@ final class AdminOperationsJourneyTest extends TestCase
         $allowed = $this->account('reader');
         $revoked = $this->account('reader');
         $disabled = $this->account('reader');
+        $future = $this->account('reader');
         $suspended = $this->account('reader', 'suspended');
         foreach ([
             [$allowed, true, now()->subDay(), null],
             [$revoked, true, now()->subDay(), now()],
             [$disabled, false, now()->subDay(), null],
+            // Imported future consent must not count before its grant time.
+            [$future, true, now('UTC')->addDay(), null],
             [$suspended, true, now()->subDay(), null],
         ] as [$user, $enabled, $consented, $revokedAt]) {
             DB::table('notification_preferences')->insert([
@@ -217,11 +220,13 @@ final class AdminOperationsJourneyTest extends TestCase
             ->assertSee('Delivery is disabled')
             ->assertDontSee($allowed->email)
             ->assertDontSee($revoked->email)
+            ->assertDontSee($future->email)
             ->assertDontSee($suspended->email);
         $this->get('/admin/audience?channel=email')->assertOk()
             ->assertSee('>0</strong>', false);
         $this->get('/admin/audience?lang=ar')->assertOk()
             ->assertSee('معاينة جمهور وافق بالفعل')
+            ->assertSee('>1</strong>', false)
             ->assertSee('الإرسال معطّل بأمان');
         Http::assertNothingSent();
     }

@@ -49,11 +49,11 @@ final class PrivacyInquiryDeliveryBoundaryTest extends TestCase
 
         // Merely navigating to a rights request is not consent to send data.
         $this->get('/privacy?lang=en')->assertOk()
-            ->assertSee('Request notification revocation')
+            ->assertSee('Revoke notification consent')
             ->assertSee('Request deletion');
-        $this->get('/contact?lang=en&topic=privacy-notifications')->assertOk()
-            ->assertSee('value="Notification consent revocation request"', false)
-            ->assertSee('id="privacy-rights-inquiry-notice"', false)
+        $this->get('/contact?lang=en&topic=privacy&request=revoke')->assertOk()
+            ->assertSee('value="Notification consent revocation inquiry"', false)
+            ->assertSee('id="privacy-request-disclosure"', false)
             ->assertSee('name="privacy_consent"', false);
         Mail::assertNothingSent();
 
@@ -98,7 +98,7 @@ final class PrivacyInquiryDeliveryBoundaryTest extends TestCase
         ];
 
         // A privacy topic must not bypass the generic contact anti-bot gate.
-        $this->post('/contact?lang=ar&topic=privacy-deletion', [
+        $this->post('/contact?lang=ar&topic=privacy&request=deletion', [
             ...$fields, 'website' => ['injected'],
         ])->assertRedirect('/contact?lang=ar');
         Mail::assertNothingSent();
@@ -106,7 +106,7 @@ final class PrivacyInquiryDeliveryBoundaryTest extends TestCase
         // Without a configured transport, even accepted consent cannot
         // produce a delivery-success claim.
         config(['mail.contact_recipient' => null]);
-        $this->post('/contact?lang=en&topic=privacy-deletion', $fields)
+        $this->post('/contact?lang=en&topic=privacy&request=deletion', $fields)
             ->assertStatus(503)
             ->assertDontSee('someone@example.test');
         Mail::assertNothingSent();
