@@ -73,7 +73,7 @@ final class AdminOperationsVisualStructureTest extends TestCase
                 }
                 $html = $response->getContent();
                 $this->assertSame(1, preg_match_all('/<h1>[^<]*<\/h1>/', $html));
-                $this->assertStringContainsString('<h1>'.$titles[$locale === 'ar' ? 1 : 0].'</h1>', $html);
+                $this->assertStringContainsString('<h1>'.e($titles[$locale === 'ar' ? 1 : 0]).'</h1>', $html);
                 $this->assertSame(1, preg_match_all('/aria-current="page"/', $html));
                 $this->assertSame(1, preg_match(
                     '~<a\\s+href="'.preg_quote(route('admin.operations.'.$section, ['lang' => $locale]), '~').'"\\s+aria-current="page"~',
