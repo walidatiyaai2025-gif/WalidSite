@@ -117,7 +117,8 @@
     'use strict';
     const locale = @json($locale);
     const storageKey = 'walidsite:public-reading-list:v1';
-    const articlePath = @json(route('public.article', ['slug' => 'reading-list-placeholder', 'lang' => $locale], false));
+    @php($localArticlePath = route('public.article', ['slug' => 'reading-list-placeholder', 'lang' => $locale], false))
+    const articlePath = @json($localArticlePath);
     const status = document.getElementById('blog-saved-status');
     const list = document.getElementById('blog-saved-items');
     if (!status || !list) return;
