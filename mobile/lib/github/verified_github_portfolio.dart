@@ -600,6 +600,22 @@ class _VerifiedGithubPortfolioScreenState
                       Text(ar
                           ? 'مستودعات عامة تم التحقق منها عبر GitHub. لا تُعرض مستودعات خاصة أو إحصاءات تخمينية.'
                           : 'Public repositories verified through GitHub. No private projects or estimated metrics.'),
+                      const SizedBox(height: 8),
+                      Text(
+                        ar
+                            ? 'المتابعة محفوظة على هذا الجهاز فقط، ولا تنشئ نجمة أو متابعة في حساب GitHub.'
+                            : 'Follows are stored on this device only; they do not star or watch repositories on GitHub.',
+                        key: const Key('github-follow-local-note'),
+                      ),
+                      if (_followError != null) ...[
+                        const SizedBox(height: 8),
+                        Text(_followError!, key: const Key('github-follow-error')),
+                        TextButton(
+                          key: const Key('github-follow-retry'),
+                          onPressed: _followLoading || _followSaving ? null : _loadFollowed,
+                          child: Text(ar ? 'إعادة المحاولة' : 'Retry'),
+                        ),
+                      ],
                       const SizedBox(height: 12),
                       for (final repository in repositories)
                         Padding(
@@ -620,7 +636,17 @@ class _VerifiedGithubPortfolioScreenState
                                     repository.verifiedAt.toIso8601String()),
                               ],
                             ),
-                            trailing: const Icon(Icons.open_in_new),
+                            trailing: IconButton(
+                              key: Key('github-follow-' + repository.fullName),
+                              tooltip: _followed.contains(repository.fullName.toLowerCase())
+                                  ? (ar ? 'إلغاء المتابعة على هذا الجهاز' : 'Unfollow on this device')
+                                  : (ar ? 'متابعة على هذا الجهاز' : 'Follow on this device'),
+                              onPressed: _followLoading || _followSaving || _followError != null
+                                  ? null : () => _toggleFollow(repository),
+                              icon: Icon(_followed.contains(repository.fullName.toLowerCase())
+                                  ? Icons.bookmark_added_outlined
+                                  : Icons.bookmark_add_outlined),
+                            ),
                             onTap: () => _open(repository),
                           )),
                         ),
