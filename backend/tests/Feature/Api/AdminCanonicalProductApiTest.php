@@ -141,10 +141,14 @@ final class AdminCanonicalProductApiTest extends TestCase
         $routes = collect(Route::getRoutes()->getRoutes());
 
         foreach ($required as $uri => $methods) {
-            $route = $routes->first(static fn ($candidate) => $candidate->uri() === $uri);
-            $this->assertNotNull($route, 'Missing canonical route '.$uri);
+            // Laravel registers separate Route instances for GET and POST on
+            // the same URI. Verify the union rather than only the first match.
+            $matches = $routes->filter(static fn ($candidate) => $candidate->uri() === $uri);
+            $this->assertNotEmpty($matches->all(), 'Missing canonical route '.$uri);
+            $registered = $matches->flatMap(static fn ($candidate) => $candidate->methods())
+                ->unique()->values()->all();
             foreach ($methods as $method) {
-                $this->assertContains($method, $route->methods(), $uri.' missing '.$method);
+                $this->assertContains($method, $registered, $uri.' missing '.$method);
             }
         }
     }
