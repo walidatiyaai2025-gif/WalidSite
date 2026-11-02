@@ -101,6 +101,12 @@ final class SiteInstaller
                     'status' => 'active',
                 ])->save();
                 $owner->roles()->syncWithoutDetaching([$role->id]);
+
+                // The baseline import intentionally starts private. Only after
+                // the canonical owner is active and owns this site may the
+                // source-classified public CV subset become visible.
+                app(\App\Domain\Profile\OwnerCvPublisher::class)
+                    ->publishAfterVerifiedActivation($owner->fresh());
             });
 
             // Exclusive filesystem creation is a second permanent installation
