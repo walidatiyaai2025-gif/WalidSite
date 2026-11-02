@@ -159,6 +159,21 @@ class AdminVisualSessionTest(unittest.TestCase):
                     provision_session("http://127.0.0.1:8000", email, password,
                                       locale=locale, playwright_manager=Mock())
 
+    def test_cli_redacts_unexpected_browser_errors(self):
+        out, err = io.StringIO(), io.StringIO()
+        with patch.dict("os.environ", {
+            "WALIDSITE_QA_ADMIN_ORIGIN": "http://127.0.0.1:8000",
+            "WALIDSITE_QA_ADMIN_EMAIL": "owner@example.test",
+            "WALIDSITE_QA_ADMIN_PASSWORD": "TOP_SECRET",
+        }), patch("qa.admin_visual_session._playwright",
+                  side_effect=RuntimeError("TOP_SECRET browser diagnostic")), \
+                redirect_stdout(out), redirect_stderr(err):
+            self.assertEqual(main(), 1)
+        combined = out.getvalue() + err.getvalue()
+        self.assertNotIn("TOP_SECRET", combined)
+        self.assertNotIn("owner@example.test", combined)
+        self.assertIn("NOT VERIFIED", combined)
+
     def test_cli_failure_does_not_echo_credentials(self):
         out, err = io.StringIO(), io.StringIO()
         with patch.dict("os.environ", {
