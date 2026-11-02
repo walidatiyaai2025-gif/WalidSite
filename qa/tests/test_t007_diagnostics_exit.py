@@ -57,14 +57,21 @@ class T007DiagnosticExitTest(unittest.TestCase):
         self.assertIn('"--font-render-hinting=full"', source)
         self.assertIn('"default": []', source)
         self.assertIn('report["rasterization_sweep"]', source)
-        # The diagnostic result is intentionally absent from the final exit
+        self.assertIn('report["style_geometry_sweep"]', source)
+        self.assertIn('"subtitle_geometry"', source)
+        self.assertIn('"card_link_weight"', source)
+        self.assertIn('"card_title_geometry"', source)
+        self.assertIn('"all_geometry"', source)
+        # The diagnostic results are intentionally absent from the final exit
         # policy and pixel acceptance; it must never turn a mismatch green.
         tree = ast.parse(source)
         main = next(node for node in tree.body
                     if isinstance(node, ast.FunctionDef) and node.name == "main")
         final_return = next(node for node in reversed(main.body)
                             if isinstance(node, ast.Return))
-        self.assertNotIn("rasterization_sweep", ast.unparse(final_return.value))
+        policy = ast.unparse(final_return.value)
+        self.assertNotIn("rasterization_sweep", policy)
+        self.assertNotIn("style_geometry_sweep", policy)
 
     def test_runtime_audit_covers_mobile_tablet_arabic_english_and_keyboard(self):
         source = (Path(__file__).resolve().parents[1] /
