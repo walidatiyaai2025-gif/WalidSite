@@ -16,7 +16,7 @@ void main() {
       // canonical destination. Re-pumping the same WaleedTechApp instance
       // would retain the previously pushed route and stop exercising Home.
       await tester.pumpWidget(
-        WaleedTechApp(key: ValueKey<String>('t021-$caseId')),
+        WaleedTechApp(initiallyStarted: true, key: ValueKey<String>('t021-$caseId')),
       );
       await tester.pumpAndSettle();
 

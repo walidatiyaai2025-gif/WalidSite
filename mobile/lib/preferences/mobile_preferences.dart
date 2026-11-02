@@ -274,6 +274,33 @@ class _MobilePreferencesScreenState extends State<MobilePreferencesScreen> {
                 onSelectionChanged: (selection) => _changeLanguage(selection.first),
               )),
           const SizedBox(height: 12),
+          _panel('theme', label('Theme', 'المظهر'),
+            label('Light theme is the only verified theme in this build.',
+                'المظهر الفاتح هو المظهر الوحيد المتحقق منه في هذا الإصدار.'),
+            action: OutlinedButton.icon(
+              key: const Key('preferences-change-theme'),
+              onPressed: () => showDialog<void>(
+                context: context,
+                builder: (dialogContext) => AlertDialog(
+                  key: const Key('preferences-theme-unavailable'),
+                  title: Text(label('Light theme only', 'المظهر الفاتح فقط')),
+                  content: Text(label(
+                    'No second theme is verified in this build. Nothing will be changed.',
+                    'لا يوجد مظهر ثانٍ متحقق منه في هذا الإصدار، ولن يتم تغيير أي إعداد.',
+                  )),
+                  actions: [
+                    TextButton(
+                      key: const Key('preferences-theme-dismiss'),
+                      onPressed: () => Navigator.pop(dialogContext),
+                      child: Text(label('OK', 'حسنًا')),
+                    ),
+                  ],
+                ),
+              ),
+              icon: const Icon(Icons.light_mode_outlined),
+              label: Text(label('Theme availability', 'حالة المظهر')),
+            )),
+          const SizedBox(height: 12),
           _panel('offline', label('Offline mode', 'وضع عدم الاتصال'),
             label('Bundled guides stay on device. Signed updates require '
                 'a verified connection; Wi-Fi-only scheduling is unavailable.',
@@ -300,10 +327,11 @@ class _MobilePreferencesScreenState extends State<MobilePreferencesScreen> {
                   'لا يوجد رصيد شخصي معلن. حدود المزودين تُفرض على الخادم.')),
           const SizedBox(height: 12),
           _panel('data', label('Data controls', 'التحكم في البيانات'),
-              label('Server account export/deletion is not implemented. '
-                  'Removing a downloaded guide does not delete server data.',
-                  'تصدير بيانات الحساب أو حذفها على الخادم غير منفذ بعد. '
-                  'حذف الدليل المحمّل لا يحذف بيانات الخادم.')),
+              label('Account export and deletion are available after sign-in '
+                  'from Saved resources & account. Removing a downloaded guide '
+                  'here never deletes server account data.',
+                  'تصدير الحساب وحذفه متاحان بعد تسجيل الدخول من المحفوظات والحساب. '
+                  'حذف الدليل المحمّل هنا لا يحذف بيانات الحساب على الخادم.')),
           const SizedBox(height: 16),
 
             ],

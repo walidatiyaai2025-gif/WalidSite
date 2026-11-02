@@ -501,7 +501,7 @@ void main() {
 
   testWidgets('main app opens real account screen with truthful unavailable state',
       (tester) async {
-    await tester.pumpWidget(const WaleedTechApp());
+    await tester.pumpWidget(const WaleedTechApp(initiallyStarted: true));
     await tester.scrollUntilVisible(
       find.byKey(const Key('account-saved-profile-entry')), 145,
     );

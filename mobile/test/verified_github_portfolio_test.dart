@@ -245,7 +245,7 @@ void main() {
 
   testWidgets('home links to MOBILE-10 without a guessed server origin',
       (tester) async {
-    await tester.pumpWidget(const WaleedTechApp());
+    await tester.pumpWidget(const WaleedTechApp(initiallyStarted: true));
     await tester.scrollUntilVisible(
       find.byKey(const Key('verified-github-entry')), 140,
     );
