@@ -115,6 +115,22 @@ details{border:1px solid var(--edge);padding:10px;border-radius:8px}details[open
 <div><label for="summary-ar-{{ $project->id }}">الملخص (AR)</label><textarea id="summary-ar-{{ $project->id }}" name="summary_ar" maxlength="5000" required>{{ $project->summary_ar }}</textarea></div>
 </div><button type="submit">{{ $ar ? 'حفظ المسودة الخاصة' : 'Save private draft' }}</button>
 </form></details>
+<details><summary>{{ $ar ? 'إضافة دليل خاص للمراجعة' : 'Add private evidence for review' }}</summary>
+<p class="muted">{{ $ar ? 'يُحفظ الرابط كدليل خاص غير معتمد، ولا يُنشر أو يُفتح تلقائيًا. استخدم رابط HTTPS عامًا مباشرًا دون رموز وصول.' : 'Evidence stays private and unverified. No URL is fetched or published. Provide a direct public HTTPS link without access tokens.' }}</p>
+<form method="post" action="{{ route('admin.operations.projects.evidence', ['project'=>$project->id,'lang'=>$locale]) }}">
+@csrf
+<div class="field-grid">
+<div><label for="evidence-type-{{ $project->id }}">{{ $ar ? 'نوع الدليل' : 'Evidence type' }}</label>
+<select id="evidence-type-{{ $project->id }}" name="evidence_type" required>
+<option value="document">{{ $ar ? 'مستند' : 'Document' }}</option>
+<option value="repository">{{ $ar ? 'مستودع' : 'Repository' }}</option>
+<option value="publication">{{ $ar ? 'منشور' : 'Publication' }}</option>
+</select></div>
+<div><label for="evidence-url-{{ $project->id }}">{{ $ar ? 'رابط الدليل العام' : 'Public evidence URL' }}</label>
+<input id="evidence-url-{{ $project->id }}" type="url" name="url" inputmode="url" maxlength="2048" placeholder="https://github.com/owner/repository" autocomplete="off" required></div>
+</div><button type="submit">{{ $ar ? 'إضافة دليل خاص للمراجعة' : 'Queue private evidence for review' }}</button>
+</form>
+</details>
 @else <span class="muted">{{ $ar ? 'مراجعة دليل مطلوبة' : 'Evidence review required' }}</span>
 @endif
 </td></tr>
