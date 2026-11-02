@@ -184,7 +184,8 @@
         ar: @json($article->title_ar),
     };
     // The route template comes from Laravel, not a stored or third-party URL.
-    const articlePath = @json(route('public.article', ['slug' => 'reading-list-placeholder', 'lang' => $locale], false));
+    @php($localArticlePath = route('public.article', ['slug' => 'reading-list-placeholder', 'lang' => $locale], false))
+    const articlePath = @json($localArticlePath);
     const storageKey = 'walidsite:public-reading-list:v1';
     const limit = 30;
     const toggle = document.getElementById('article-save-toggle');
