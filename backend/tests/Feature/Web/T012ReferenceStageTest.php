@@ -82,7 +82,7 @@ final class T012ReferenceStageTest extends TestCase
         );
 
         $page = $this->get('/blog?lang=en')->assertOk()
-            ->assertSee('class="t012-reference-stage"', false)
+            ->assertSee('class="t012-reference-stage t012-screen-blog"', false)
             ->assertSee($live->title_en)
             ->assertSee('Actual reviewed summary')
             ->assertDontSee($draft->title_en)
