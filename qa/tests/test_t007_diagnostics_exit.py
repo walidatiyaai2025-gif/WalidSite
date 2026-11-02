@@ -49,9 +49,12 @@ class T007DiagnosticExitTest(unittest.TestCase):
     def test_rasterization_sweep_is_diagnostic_only(self):
         source = (Path(__file__).resolve().parents[1] /
                   "capture_t007_diagnostics.py").read_text(encoding="utf-8")
-        self.assertIn('"current": ["--disable-lcd-text"]', source)
+        self.assertIn('"baseline_disable_lcd": ["--disable-lcd-text"]', source)
         self.assertIn('"--font-render-hinting=none"', source)
+        self.assertIn('"current_slight_hint"', source)
         self.assertIn('"--font-render-hinting=slight"', source)
+        self.assertIn('"--font-render-hinting=medium"', source)
+        self.assertIn('"--font-render-hinting=full"', source)
         self.assertIn('"default": []', source)
         self.assertIn('report["rasterization_sweep"]', source)
         # The diagnostic result is intentionally absent from the final exit
