@@ -142,6 +142,8 @@ class VisualFidelityGateTest(unittest.TestCase):
 
         cases = [
             ("capture", "qa/visual-captures/WEB-02.png", "canonical screen ID"),
+            ("capture", 7, "canonical screen ID"),
+            ("capture", ["qa/visual-captures/WEB-01.png"], "canonical screen ID"),
             ("route", "/about", "invalid/placeholder screenshot provenance"),
             ("route", "//outside.example.test", "invalid/placeholder screenshot provenance"),
             ("route", "/blog/../admin", "invalid/placeholder screenshot provenance"),
