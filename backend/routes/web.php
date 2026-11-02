@@ -2166,7 +2166,8 @@ Route::middleware('auth:web')->prefix('admin')->group(function (): void {
             || isset($parts['user']) || isset($parts['pass']) || isset($parts['port'])
             || isset($parts['query']) || isset($parts['fragment'])
             || filter_var($url, FILTER_VALIDATE_URL) === false
-            || preg_match('/[\x00-\x20\x7f]/', $url) === 1) {
+            || preg_match('/[\x00-\x20\x7f]/', $url) === 1
+            || preg_match('/%(?:0[0-9a-f]|1[0-9a-f]|7f)/i', $url) === 1) {
             throw \Illuminate\Validation\ValidationException::withMessages([
                 'url' => 'Evidence must use a direct HTTPS URL on a public DNS hostname without credentials or query tokens.',
             ]);
