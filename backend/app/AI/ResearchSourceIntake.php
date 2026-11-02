@@ -2,6 +2,7 @@
 
 namespace App\AI;
 
+use App\Integrations\GitHub\PublicRepositoryDirectory;
 use InvalidArgumentException;
 
 /**
@@ -15,6 +16,11 @@ final class ResearchSourceIntake
 {
     private const MAX_SOURCES = 20;
     private const MAX_URL_LENGTH = 2048;
+
+    public function __construct(
+        private readonly ?PublicRepositoryDirectory $githubDirectory = null
+    ) {
+    }
 
     /**
      * @param array<int, mixed> $sourceUrls
@@ -70,7 +76,9 @@ final class ResearchSourceIntake
             // These sources are copied to model prompts before fact review.
             || $this->containsCredentialParameter((string) ($parts['path'] ?? ''))
             || $this->containsCredentialParameter($query)
-            || $this->containsCredentialParameter((string) ($parts['fragment'] ?? ''))) {
+            || $this->containsCredentialParameter((string) ($parts['fragment'] ?? ''))
+            || ($this->isGithubOwnedHost($host)
+                && ! $this->isVerifiedPublicGithubCitation($host, (string) ($parts['path'] ?? '')))) {
             throw new InvalidArgumentException('Research sources must use a safe public HTTPS URL.');
         }
 
@@ -119,6 +127,60 @@ final class ResearchSourceIntake
         // If four decoding rounds still change the URL, there is no safe
         // public interpretation. Fail closed before a model sees the source.
         return true;
+    }
+
+    private function isGithubOwnedHost(string $host): bool
+    {
+        return $host === 'github.com'
+            || str_ends_with($host, '.github.com')
+            || $host === 'raw.githubusercontent.com'
+            || str_ends_with($host, '.githubusercontent.com');
+    }
+
+    /**
+     * Arbitrary GitHub URLs are not evidence of public visibility. Only the
+     * canonical github.com repository surface may enter a provider prompt,
+     * and only after the existing public portfolio directory re-verifies the
+     * allowlisted repository through GitHub's unauthenticated public API.
+     *
+     * Direct API/raw/subdomain URLs are intentionally rejected so a caller
+     * cannot smuggle a private download or alternate GitHub capability URL.
+     */
+    private function isVerifiedPublicGithubCitation(string $host, string $path): bool
+    {
+        if ($host !== 'github.com') {
+            return false;
+        }
+
+        $segments = array_values(array_filter(
+            explode('/', trim($path, '/')),
+            static fn (string $segment): bool => $segment !== ''
+        ));
+        if (count($segments) < 2) {
+            return false;
+        }
+
+        $slug = strtolower($segments[0].'/'.$segments[1]);
+        if (count($segments) > 2 && ! in_array($segments[2], [
+            'blob', 'tree', 'commit', 'commits', 'issues', 'pull',
+            'releases', 'wiki',
+        ], true)) {
+            return false;
+        }
+
+        $directory = $this->githubDirectory ?? new PublicRepositoryDirectory();
+        foreach ($directory->repositories() as $repository) {
+            if (($repository['status'] ?? null) !== 'verified'
+                || ! is_string($repository['full_name'] ?? null)) {
+                continue;
+            }
+
+            if (hash_equals(strtolower($repository['full_name']), $slug)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function isLocalHost(string $host): bool
