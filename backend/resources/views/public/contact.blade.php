@@ -44,6 +44,14 @@
 <a href="{{ route('public.privacy', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'اقرأ إشعار الخصوصية والبيانات (مسودة غير معتمدة).' : 'Read the privacy and data disclosure (unapproved draft).' }}</a></p>
 <p class="contact-privacy-context">{{ $locale === 'ar' ? 'الموافقة على الرد على رسالتك لا تشترك بك في بريد تسويقي أو إشعارات. إلغاء موافقات حساب التطبيق وتصدير بياناته وحذفه تتم من الملف الشخصي في التطبيق؛ ويمكن استخدام طلب الخصوصية هنا للمساعدة إذا كان البريد مهيأ.' : 'Consenting to a reply does not subscribe you to marketing email or push notifications. To revoke your companion-app choices, export your data or delete your account, open Account privacy under My profile in the signed-in app. This contact form can request assistance when mail is configured.' }}
 <a href="{{ route('public.privacy', ['lang' => $locale]) }}#account-controls">{{ $locale === 'ar' ? 'خطوات التحكم في بيانات الحساب' : 'Account privacy control steps' }}</a></p>
+@php($privacyRequest = $privacyRight ?? null)
+@php($privacyRequest = in_array($privacyRequest, ['access', 'correction', 'export', 'deletion', 'revoke', 'notifications'], true) ? $privacyRequest : null)
+@if($privacyRequest)
+<p id="privacy-request-disclosure" role="status">{{ $locale === 'ar'
+    ? 'هذا نموذج استفسار عن حقوق البيانات، وليس إجراءً مصادقًا عليه لحذف الحساب أو تصدير البيانات أو سحب الموافقة. يلزم التحقق من الهوية؛ إرسال الرسالة لا يثبت تنفيذ الطلب.'
+    : 'This is a data rights inquiry, not an authenticated action. Identity must be verified; sending a message is not proof of deletion, export or notification consent revocation.' }}</p>
+<a href="{{ route('public.contact', ['lang' => $locale === 'ar' ? 'en' : 'ar', 'topic' => 'privacy', 'request' => $privacyRequest]) }}">{{ $locale === 'ar' ? 'English' : 'العربية' }}</a>
+@endif
 @if($reportArticle)
 <p class="contact-article-context">
     {{ $locale === 'ar' ? 'الإبلاغ عن مشكلة في المقال المنشور:' : 'Reporting an issue in the published article:' }}
