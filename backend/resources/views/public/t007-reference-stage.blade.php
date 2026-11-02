@@ -344,8 +344,12 @@ body:has(.t007-reference-stage) .site-footer{margin-top:0}
                             <a href="{{ route('public.projects', ['lang' => $locale]) }}">{{ $t007Ui['projects'] }}&nbsp;&nbsp;&gt;</a>
                             <a href="{{ route('public.github', ['lang' => $locale]) }}">{{ $t007Ar ? 'مصادر GitHub العامة' : 'Public GitHub sources' }}</a>
                         @else
-                            <a href="{{ route('public.resume.pdf', ['lang' => $locale, 'track' => $t007RecruiterTrack]) }}"
-                               type="application/pdf" download>{{ $t007Ar ? 'تنزيل السيرة PDF' : 'Download CV (PDF)' }}</a>
+                            @if($hasPublishedOwnerCv ?? false)
+                                <a href="{{ route('public.resume.pdf', ['lang' => $locale, 'track' => $t007RecruiterTrack]) }}"
+                                   type="application/pdf" download>{{ $t007Ar ? 'تنزيل السيرة PDF' : 'Download CV (PDF)' }}</a>
+                            @else
+                                <p role="status">{{ $t007Ar ? 'السيرة الموثقة غير متاحة للنشر بعد.' : 'Verified CV is not available for download yet.' }}</p>
+                            @endif
                             <a href="{{ route('public.resume', ['lang' => $locale, 'track' => $t007RecruiterTrack]) }}">{{ $t007Ui['download'] }}</a>
                         @endif
                     </article>

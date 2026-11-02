@@ -125,8 +125,10 @@ body:has(.recruiter-screen) .header-links a[href*="/contact"]{background:#00A999
                     : 'Open the public CV for this career focus, then print or save it as PDF in your browser.' }}</p>
                 <div class="recruiter-card-links">
                     <a href="{{ route('public.resume', ['lang' => $locale, 'track' => $track]) }}">{{ $locale === 'ar' ? 'السيرة العامة حسب المجال' : 'View focused public resume' }}</a>
-                    <a href="{{ route('public.resume.pdf', ['lang' => $locale, 'track' => $track]) }}"
-                       type="application/pdf" download>{{ $locale === 'ar' ? 'تنزيل سيرة هذا المجال PDF' : 'Download focused CV (PDF)' }}</a>
+                    @if($hasPublishedOwnerCv)
+                        <a href="{{ route('public.resume.pdf', ['lang' => $locale, 'track' => $track]) }}"
+                           type="application/pdf" download>{{ $locale === 'ar' ? 'تنزيل سيرة هذا المجال PDF' : 'Download focused CV (PDF)' }}</a>
+                    @endif
                     <a href="{{ route('public.contact', array_merge(['lang' => $locale], $track !== 'all' ? ['track' => $track] : [])) }}">{{ $locale === 'ar' ? 'التواصل بشأن المجال' : 'Contact about this focus' }}</a>
                 </div>
             </section>

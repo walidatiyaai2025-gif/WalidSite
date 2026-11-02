@@ -1562,6 +1562,9 @@ foreach (['about', 'expertise', 'hire'] as $professionalPage) {
 
         return view('public.professional', [
             'page' => $professionalPage,
+            // The download endpoint returns 404 without a currently
+            // published/active owner. Hide its CTA in the same state.
+            'hasPublishedOwnerCv' => $profile !== null,
             'positions' => $positions,
             'certifications' => $certifications,
             'skills' => $skills,

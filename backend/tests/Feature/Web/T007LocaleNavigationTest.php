@@ -167,30 +167,51 @@ class T007LocaleNavigationTest extends TestCase
         }
     }
 
+    private function publishT007OwnerCv(): \App\Models\User
+    {
+        $user = \App\Models\User::create([
+            'email' => 't007-cv-published@example.test',
+            'status' => 'active',
+        ]);
+        $user->roles()->attach(\App\Models\Role::firstOrCreate(['name' => 'owner'])->id);
+        \App\Models\Profile::create([
+            'user_id' => $user->id,
+            'public_name' => 'Verified test owner',
+            'publish_status' => 'published',
+        ]);
+
+        return $user;
+    }
+
     public function test_about_and_recruiter_download_the_real_bilingual_evidence_gated_pdf(): void
     {
+        // No fake download CTA while the server intentionally returns 404
+        // for a nonexistent unpublished public owner profile.
+        $this->get('/resume/pdf?lang=en')->assertNotFound();
+        $this->get('/about?lang=en')->assertOk()
+            ->assertDontSee('type="application/pdf" download', false);
+        $this->get('/hire?lang=ar')->assertOk()
+            ->assertDontSee('type="application/pdf" download', false)
+            ->assertSee('السيرة الموثقة غير متاحة للنشر بعد.');
+
+        $owner = $this->publishT007OwnerCv();
         foreach (['ar', 'en'] as $locale) {
             $this->get('/about?lang='.$locale)->assertOk()
                 ->assertSee('href="'.e(route('public.resume.pdf', [
                     'lang' => $locale, 'track' => 'all',
                 ])).'"', false)
                 ->assertSee('type="application/pdf" download', false);
-
             foreach (['all', 'database', 'software', 'delivery'] as $track) {
                 $this->get('/hire?lang='.$locale.'&track='.$track)->assertOk()
                     ->assertSee('href="'.e(route('public.resume.pdf', [
                         'lang' => $locale, 'track' => $track,
                     ])).'"', false);
             }
-
-            // Invalid and array-valued input cannot choose a private or
-            // unsupported CV track in either the HTML or PDF destination.
             $this->get('/hire?lang='.$locale.'&track[]=private')->assertOk()
                 ->assertSee('href="'.e(route('public.resume.pdf', [
                     'lang' => $locale, 'track' => 'all',
                 ])).'"', false)
                 ->assertDontSee('track%5B0%5D=', false);
-
             $pdf = $this->get('/resume/pdf?lang='.$locale.'&track=delivery')
                 ->assertOk()
                 ->assertHeader('Content-Type', 'application/pdf');
@@ -200,10 +221,20 @@ class T007LocaleNavigationTest extends TestCase
                 (string) $pdf->headers->get('Content-Disposition'));
             $this->assertSame('no-store, private', $pdf->headers->get('Cache-Control'));
         }
+
+        // Privacy revocation immediately hides each download, not just
+        // the PDF response. Public HTML preview remains the honest fallback.
+        $owner->update(['status' => 'inactive']);
+        $this->get('/resume/pdf?lang=en')->assertNotFound();
+        $this->get('/about?lang=en')->assertOk()
+            ->assertDontSee('type="application/pdf" download', false);
+        $this->get('/hire?lang=en')->assertOk()
+            ->assertDontSee('type="application/pdf" download', false);
     }
 
     public function test_recruiter_first_viewport_cards_have_distinct_real_destinations_and_direct_pdf(): void
     {
+        $this->publishT007OwnerCv();
         foreach (['ar', 'en'] as $locale) {
             $html = $this->get('/hire?lang='.$locale.'&track=database')->assertOk();
             $html->assertSee('href="'.e(route('public.hire', [
