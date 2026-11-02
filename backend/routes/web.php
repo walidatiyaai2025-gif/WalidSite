@@ -276,7 +276,7 @@ Route::middleware('auth:web')->group(function (): void {
             'manual_published', 'manual_unpublished', 'manual_rejected',
             'scheduled', 'requires_review', 'refresh_required', 'refresh_superseded',
         ];
-        $projectActions = ['evidence_submitted', 'evidence_approved', 'evidence_discarded', 'draft_updated', 'project_published'];
+        $projectActions = ['evidence_submitted', 'evidence_approved', 'evidence_discarded', 'draft_updated', 'project_published', 'project_withdrawn'];
         $allActions = array_values(array_unique(array_merge(
             $providerActions, $editorialActions, $mediaActions, $projectActions
         )));
@@ -2443,6 +2443,58 @@ Route::middleware('auth:web')->prefix('admin')->group(function (): void {
                 ? 'تم نشر المشروع بعد اجتياز بوابة الدليل المعتمد والمحتوى الثنائي.'
                 : 'Project published after verified-evidence and bilingual-content gates passed.');
     })->whereUuid('project')->name('admin.operations.projects.publish')
+        ->middleware('throttle:5,1');
+
+    // ADMIN-09: immediate owner-controlled retraction of public claims.
+    // Keep manually reviewed evidence for a separate, evidence-gated republish;
+    // never retain the published flag after withdrawing visibility.
+    Route::post('/projects/{project}/withdraw', function (Request $request, string $project) {
+        abort_unless($request->user()?->canAccessAdmin() && $request->user()->hasRole('owner'), 403);
+        $input = $request->validate([
+            'lang' => ['sometimes', 'in:ar,en'],
+            'withdrawal_confirmed' => ['accepted'],
+        ]);
+        if (array_diff(array_keys($request->request->all()), [
+            '_token', 'withdrawal_confirmed',
+        ]) !== []) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'project' => 'Unsupported project withdrawal fields.',
+            ]);
+        }
+
+        \Illuminate\Support\Facades\DB::transaction(function () use ($project, $request): void {
+            $published = \App\Models\Project::query()->whereKey($project)
+                ->lockForUpdate()->firstOrFail();
+            abort_unless($published->visibility === 'public'
+                && $published->published_at !== null, 409);
+
+            // Preserve proof records, but make all public portfolio scopes
+            // immediately exclude this project until a new explicit publish.
+            $published->forceFill([
+                'visibility' => 'private',
+                'published_at' => null,
+            ])->save();
+
+            // No claim, URL or evidence payload enters the security log.
+            \Illuminate\Support\Facades\DB::table('project_audit_events')->insert([
+                'id' => (string) \Illuminate\Support\Str::uuid(),
+                'project_id' => $published->id, 'evidence_id' => null,
+                'actor_id' => $request->user()->id, 'action' => 'project_withdrawn',
+                'created_at' => now('UTC'),
+            ]);
+            \Illuminate\Support\Facades\Log::notice('admin.project.withdrawn', [
+                'project_id' => $published->id,
+                'actor_id' => $request->user()->id,
+            ]);
+        }, 3);
+
+        $ar = ($input['lang'] ?? 'en') === 'ar';
+        return redirect()->route('admin.operations.projects', [
+            'lang' => $ar ? 'ar' : 'en',
+        ])->with('status', $ar
+            ? 'تم سحب المشروع من العرض العام. الأدلة المعتمدة محفوظة، وإعادة النشر تتطلب تأكيداً منفصلاً.'
+            : 'Project withdrawn from public view. Approved evidence remains saved; republication requires a separate confirmation.');
+    })->whereUuid('project')->name('admin.operations.projects.withdraw')
         ->middleware('throttle:5,1');
 
     Route::patch('/projects/{project}', function (Request $request, string $project) {
