@@ -142,6 +142,7 @@ jobs:
           MAIL_MAILER: log
         run: |
           set -euo pipefail
+          mkdir -p qa/visual-diagnostics/T012
           renderer_sha="$(git rev-parse HEAD)"
           test "$renderer_sha" = "${{ github.event.pull_request.head.sha }}"
           export GITHUB_SHA="$renderer_sha"
@@ -151,7 +152,7 @@ jobs:
           php artisan db:seed --class=T012VisualCaptureSeeder --force
           php artisan serve --host=127.0.0.1 --port=8000 > /tmp/walidsite-t012.log 2>&1 &
           server_pid=$!
-          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          trap 'status=$?; if [ "$status" -ne 0 ]; then echo "T012 Laravel server log:"; cat /tmp/walidsite-t012.log || true; fi; kill "$server_pid" 2>/dev/null || true; exit "$status"' EXIT
           cd ..
           for attempt in {1..30}; do
             if curl --fail --silent --show-error http://127.0.0.1:8000/blog >/dev/null; then
