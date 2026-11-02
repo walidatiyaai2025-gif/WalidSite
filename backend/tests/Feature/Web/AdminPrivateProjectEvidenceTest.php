@@ -285,8 +285,15 @@ final class AdminPrivateProjectEvidenceTest extends TestCase
             $this->actingAs($this->account($role), 'web')
                 ->get($path.'?lang=ar')->assertForbidden()
                 ->assertDontSee('private-proof');
-            $this->get('/admin/projects')->assertOk()
-                ->assertDontSee('Review all private evidence (paginated)');
+            // The reader role is denied the admin operations index entirely.
+            // Admin access is governed independently from owner-only evidence.
+            $index = $this->get('/admin/projects');
+            if ($role === 'reader') {
+                $index->assertForbidden();
+            } else {
+                $index->assertOk()
+                    ->assertDontSee('Review all private evidence (paginated)');
+            }
         }
         $this->actingAs($this->account('owner'), 'web');
         $this->get('/admin/projects/'.$public->id.'/evidence')->assertStatus(409);
