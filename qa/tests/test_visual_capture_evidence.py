@@ -103,7 +103,7 @@ class CaptureRunnerTest(unittest.TestCase):
 
     def test_custom_timeout_is_recorded_and_replayable(self):
         capture(self.root, "WEB-01", commit=self.sha, locale="ar",
-                dpr=2, route="/", command=self.renderer(), timeout=17)
+                dpr=1, route="/", command=self.renderer(), timeout=17)
         self.assertIn("--timeout 17", self.record()["capture_command"])
 
     def test_cli_timeout_reaches_capture_and_rejects_invalid_values(self):
