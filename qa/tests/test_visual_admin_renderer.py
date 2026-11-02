@@ -51,9 +51,17 @@ class AdminScreenshotRendererTest(unittest.TestCase):
         html.get_attribute.side_effect = lambda key: {"lang": language, "dir": direction}[key]
         content = Mock()
         content.count.return_value = 0 if missing_main else 1
+        title = Mock()
+        title.count.return_value = 0 if missing_heading else 1
+        title.inner_text.return_value = (
+            "Other Admin screen" if wrong_heading
+            else expected_heading(self.env["WALIDSITE_CAPTURE_ROUTE"],
+                                  self.env["WALIDSITE_CAPTURE_LOCALE"])
+        )
         page.locator.side_effect = lambda key: {
-            "html": html, "main#content": content,
+            "html": html, "main#content": content, "main#content h1": title,
         }[key]
+        page.screenshot.return_value = self.fake_png if png is None else png
         context = Mock()
         context.new_page.return_value = page
         browser = Mock()
@@ -66,8 +74,7 @@ class AdminScreenshotRendererTest(unittest.TestCase):
         return manager, page, browser, context
 
     def test_each_canonical_admin_route_uses_actual_authenticated_context(self):
-        for route in ("/admin/github", "/admin/projects", "/admin/audience",
-                      "/admin/analytics"):
+        for route in (*STATIC_HEADINGS, "/admin/ai/providers/01234567-89ab-4cde-8fab-0123456789ab"):
             with self.subTest(route=route):
                 self.env["WALIDSITE_CAPTURE_ROUTE"] = route
                 manager, page, browser, context = self.fake()
@@ -83,6 +90,9 @@ class AdminScreenshotRendererTest(unittest.TestCase):
                     {"width": 1440, "height": 860},
                 )
                 page.screenshot.assert_called_once()
+                self.assertEqual(self.output.read_bytes(), self.fake_png)
+                self.assertEqual(self.output.stat().st_mode & 0o777, 0o600)
+                self.output.unlink()
                 context.close.assert_called_once()
                 browser.close.assert_called_once()
 
