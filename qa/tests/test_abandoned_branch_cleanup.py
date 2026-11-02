@@ -90,6 +90,8 @@ class AbandonedBranchCleanupTest(unittest.TestCase):
             337: ("fix/332-mobile-learning-unique-page-slugs", 336),
             # Closed-unmerged alternate PR #525 superseded by merged #523.
             525: ("fix/521-serialize-mobile-bookmark-quota", 523),
+            # Accepted merged feature PR #506 supersedes closed PR #502.
+            502: ("feat/480-account-privacy-journey-completion", 506),
         }
         for pr, (branch, successor) in expected.items():
             with self.subTest(pr=pr):
@@ -124,6 +126,12 @@ class AbandonedBranchCleanupTest(unittest.TestCase):
             999, "fix/someone-else-branch", "f" * 40, 120,
         )
         self.assertEqual(reconcile_one(unknown, self.api, REPO), "preserved")
+        self.assertEqual(self.api.requested, [])
+
+        unknown_feature = AbandonedDuplicate(
+            998, "feat/someone-else-active-work", "e" * 40, 506,
+        )
+        self.assertEqual(reconcile_one(unknown_feature, self.api, REPO), "preserved")
         self.assertEqual(self.api.requested, [])
 
     def test_closed_unmerged_provenance_is_mandatory(self):
