@@ -182,6 +182,12 @@
                         @php($rawContactTopic = request()->query()['topic'] ?? null)
                         @if(is_string($rawContactTopic) && $rawContactTopic === 'privacy')
                             @php($languageArgs['topic'] = 'privacy')
+                            {{-- Preserve only the five server-recognized request categories. --}}
+                            @php($rawPrivacyRight = request()->query()['request'] ?? null)
+                            @if(is_string($rawPrivacyRight)
+                                && in_array($rawPrivacyRight, ['access', 'export', 'correction', 'deletion', 'revoke'], true))
+                                @php($languageArgs['request'] = $rawPrivacyRight)
+                            @endif
                         @endif
                     @endif
                 @endif
