@@ -169,4 +169,18 @@ final class ArticleLocalReadingListTest extends TestCase
         $this->assertStringContainsString('feedback.textContent = words.unavailable;', $html);
     }
 
+    public function test_blog_saved_links_reconcile_other_tab_edits_and_fail_closed_on_storage_error(): void
+    {
+        $this->approvedArticle();
+        foreach (['en', 'ar'] as $locale) {
+            $html = $this->get('/blog?lang='.$locale)->assertOk()->getContent();
+            $this->assertStringContainsString("window.addEventListener('storage', event => {", $html);
+            $this->assertStringContainsString('event.key === storageKey || event.key === null', $html);
+            $this->assertStringContainsString('list.replaceChildren();', $html);
+            $this->assertStringContainsString('function render() {', $html);
+            $this->assertStringContainsString('render();', $html);
+            $this->assertStringContainsString('link.textContent = locale ===', $html);
+        }
+    }
+
 }
