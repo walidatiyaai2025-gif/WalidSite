@@ -312,86 +312,26 @@ class _MobileAccountPrivacyState extends State<MobileAccountPrivacyScreen> {
 
   Future<void> _deleteAccount() async {
     if (_busy || _unauthorized) return;
-    final password = TextEditingController();
-    final word = TextEditingController();
+    // The dialog owns its text controllers until its exit animation fully
+    // unmounts. Disposing them as soon as showDialog resolves is too early.
+    final password = await showDialog<String>(
+      context: context,
+      builder: (_) => _AccountDeleteConfirmation(arabic: widget.arabic),
+    );
+    if (!mounted || password == null) return;
+    setState(() { _busy = true; _notice = null; });
     try {
-      final confirmed = await showDialog<bool>(
-        context: context,
-        builder: (dialogContext) => StatefulBuilder(
-          builder: (dialogContext, redraw) => AlertDialog(
-            title: Text(label('Delete account', 'حذف الحساب')),
-            content: SingleChildScrollView(child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(label(
-                  'Delete saved data, revoke all tokens and consent, anonymize profile. Enter password and type DELETE.',
-                  'حذف المحفوظات وإلغاء الجلسات والموافقات وإخفاء هوية الحساب. أدخل كلمة المرور واكتب DELETE.',
-                )),
-                TextField(
-                  key: const Key('privacy-delete-password'),
-                  controller: password,
-                  obscureText: true,
-                  autocorrect: false,
-                  enableSuggestions: false,
-                  decoration: InputDecoration(labelText: label('Password', 'كلمة المرور')),
-                  onChanged: (_) => redraw(() {}),
-                ),
-                TextField(
-                  key: const Key('privacy-delete-word'),
-                  controller: word,
-                  autocorrect: false,
-                  decoration: const InputDecoration(labelText: 'DELETE'),
-                  onChanged: (_) => redraw(() {}),
-                ),
-              ],
-            )),
-            actions: [
-              TextButton(
-                key: const Key('privacy-delete-cancel'),
-                onPressed: () => Navigator.of(dialogContext).pop(false),
-                child: Text(label('Cancel', 'إلغاء')),
-              ),
-              FilledButton(
-                key: const Key('privacy-delete-confirm'),
-                onPressed: word.text == 'DELETE' && password.text.isNotEmpty
-                    ? () => Navigator.of(dialogContext).pop(true) : null,
-                child: Text(label('Permanently delete', 'حذف نهائي')),
-              ),
-            ],
-          ),
-        ),
-      ) ?? false;
-      if (!mounted || !confirmed) return;
-      setState(() { _busy = true; _notice = null; });
-      try {
-        await (widget.deleteAction ?? const AccountPrivacyClient().delete)(
-            widget.bearer, password.text);
-        if (!mounted) return;
-        _portable = null;
-        _matrix = null;
-        widget.onDeleted();
-        Navigator.of(context).pop();
-      } catch (e) {
-        if (mounted) setState(() => _handleError(e));
-      } finally {
-        if (mounted) setState(() => _busy = false);
-      }
+      await (widget.deleteAction ?? const AccountPrivacyClient().delete)(
+          widget.bearer, password);
+      if (!mounted) return;
+      _portable = null;
+      _matrix = null;
+      widget.onDeleted();
+      Navigator.of(context).pop();
+    } catch (e) {
+      if (mounted) setState(() => _handleError(e));
     } finally {
-      // The dialog route may still be animating out. Defer controller disposal
-      // until its transition has finished so TextFields cannot rebuild against
-      // disposed listenables during the route's final frames.
-      final navigator = Navigator.maybeOf(context);
-      if (navigator != null) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          Future<void>.delayed(const Duration(milliseconds: 350), () {
-            password.dispose();
-            word.dispose();
-          });
-        });
-      } else {
-        password.dispose();
-        word.dispose();
-      }
+      if (mounted) setState(() => _busy = false);
     }
   }
 
@@ -459,5 +399,73 @@ class _MobileAccountPrivacyState extends State<MobileAccountPrivacyScreen> {
         ],
       )),
     ),
+  );
+}
+
+class _AccountDeleteConfirmation extends StatefulWidget {
+  const _AccountDeleteConfirmation({required this.arabic});
+  final bool arabic;
+
+  @override
+  State<_AccountDeleteConfirmation> createState() =>
+      _AccountDeleteConfirmationState();
+}
+
+class _AccountDeleteConfirmationState extends State<_AccountDeleteConfirmation> {
+  final _password = TextEditingController();
+  final _word = TextEditingController();
+
+  String label(String en, String ar) => widget.arabic ? ar : en;
+
+  @override
+  void dispose() {
+    _password.clear();
+    _word.clear();
+    _password.dispose();
+    _word.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: Text(label('Delete account', 'حذف الحساب')),
+    content: SingleChildScrollView(child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(label(
+          'Delete saved data, revoke all tokens and consent, anonymize profile. Enter password and type DELETE.',
+          'حذف المحفوظات وإلغاء الجلسات والموافقات وإخفاء هوية الحساب. أدخل كلمة المرور واكتب DELETE.',
+        )),
+        TextField(
+          key: const Key('privacy-delete-password'),
+          controller: _password,
+          obscureText: true,
+          autocorrect: false,
+          enableSuggestions: false,
+          decoration: InputDecoration(labelText: label('Password', 'كلمة المرور')),
+          onChanged: (_) => setState(() {}),
+        ),
+        TextField(
+          key: const Key('privacy-delete-word'),
+          controller: _word,
+          autocorrect: false,
+          decoration: const InputDecoration(labelText: 'DELETE'),
+          onChanged: (_) => setState(() {}),
+        ),
+      ],
+    )),
+    actions: [
+      TextButton(
+        key: const Key('privacy-delete-cancel'),
+        onPressed: () => Navigator.of(context).pop(),
+        child: Text(label('Cancel', 'إلغاء')),
+      ),
+      FilledButton(
+        key: const Key('privacy-delete-confirm'),
+        onPressed: _word.text == 'DELETE' && _password.text.isNotEmpty
+            ? () => Navigator.of(context).pop(_password.text) : null,
+        child: Text(label('Permanently delete', 'حذف نهائي')),
+      ),
+    ],
   );
 }
