@@ -24,6 +24,9 @@
     <a class="t007-sr-only" href="{{ route($t007SwitchRoute, $t007SwitchArgs) }}">
         {{ $t007Locale === 'ar' ? 'English' : 'العربية' }}
     </a>
+    @if($t007Current === 'public.hire')
+        <a class="t007-sr-only" aria-current="page" href="{{ route('public.hire', ['lang' => $t007Locale, 'track' => $t007SwitchArgs['track'] ?? 'all']) }}">{{ $t007Locale === 'ar' ? 'التوظيف' : 'Recruiter' }}</a>
+    @endif
     <a class="t007-sr-only" href="{{ route('public.lab', ['lang' => $t007Locale]) }}">Tech lab</a>
     <a class="t007-sr-only" href="{{ route('public.search', ['lang' => $t007Locale]) }}">Search</a>
 </header>
