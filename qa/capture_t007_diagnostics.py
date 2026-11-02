@@ -336,6 +336,25 @@ def responsive_browser_audit(base_url: str, screens: dict) -> dict:
     return results
 
 
+
+def responsive_audit_complete(rows: dict) -> bool:
+    """Require the exact supported screen/locale/viewport matrix, not a count.
+
+    A skipped or replaced browser case must fail closed even if the same total
+    number of test rows was accidentally reported.
+    """
+    expected = {
+        f"{screen_id}:{lang}:{width}"
+        for width, _ in RESPONSIVE_VIEWPORTS
+        for lang in RESPONSIVE_LOCALES
+        for screen_id in SCREEN_IDS
+    }
+    return set(rows) == expected and all(
+        isinstance(row, dict) and row.get("passed") is True
+        for row in rows.values()
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--commit", required=True)
@@ -531,8 +550,7 @@ def main() -> int:
     report["summary"] = {
         "expected_screens": len(SCREEN_IDS),
         "responsive_checks": len(report["responsive_audit"]),
-        "responsive_ok": (len(report["responsive_audit"]) == len(SCREEN_IDS) * len(RESPONSIVE_VIEWPORTS) * len(RESPONSIVE_LOCALES) and
-            all(row["passed"] for row in report["responsive_audit"].values())),
+        "responsive_ok": responsive_audit_complete(report["responsive_audit"]),
         "captured_screens": sum(row["status"] in ("exact", "mismatch")
                                 for row in report["screens"].values()),
         "exact_screens": sum(row["status"] == "exact"

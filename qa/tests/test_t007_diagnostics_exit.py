@@ -76,12 +76,59 @@ class T007DiagnosticExitTest(unittest.TestCase):
     def test_runtime_audit_covers_mobile_tablet_arabic_english_and_keyboard(self):
         source = (Path(__file__).resolve().parents[1] /
                   "capture_t007_diagnostics.py").read_text(encoding="utf-8")
-        self.assertIn('((390, 844), (768, 1024))', source)
+        self.assertIn('RESPONSIVE_VIEWPORTS = ((390, 844), (768, 1024), (1024, 768), (1280, 800))', source)
         self.assertIn('("ar", "en")', source)
         self.assertIn('page.keyboard.press("Tab")', source)
         self.assertIn('supplemental_keyboard_link_visible', source)
         self.assertIn('"responsive_checks": len(report["responsive_audit"])', source)
-        self.assertIn('len(report["responsive_audit"]) == 20', source)
+        self.assertIn('"responsive_ok": responsive_audit_complete(report["responsive_audit"])', source)
+
+
+    def test_complete_responsive_audit_rejects_missing_replaced_or_failed_cases(self):
+        source = Path(__file__).resolve().parents[1] / "capture_t007_diagnostics.py"
+        tree = ast.parse(source.read_text(encoding="utf-8"))
+        helper = next(node for node in tree.body
+                      if isinstance(node, ast.FunctionDef) and
+                      node.name == "responsive_audit_complete")
+        standalone = ast.Module(body=[helper], type_ignores=[])
+        ast.fix_missing_locations(standalone)
+        scope = {
+            "SCREEN_IDS": ("WEB-01", "WEB-02", "WEB-03", "WEB-06", "WEB-12"),
+            "RESPONSIVE_VIEWPORTS": ((390, 844), (768, 1024), (1024, 768), (1280, 800)),
+            "RESPONSIVE_LOCALES": ("ar", "en"),
+        }
+        exec(compile(standalone, str(source), "exec"), scope)
+        complete = scope["responsive_audit_complete"]
+        rows = {
+            f"{screen_id}:{lang}:{width}": {"passed": True}
+            for width, _ in scope["RESPONSIVE_VIEWPORTS"]
+            for lang in scope["RESPONSIVE_LOCALES"]
+            for screen_id in scope["SCREEN_IDS"]
+        }
+        self.assertEqual(len(rows), 40)
+        self.assertTrue(complete(rows))
+
+        missing = rows.copy()
+        missing.pop("WEB-01:ar:390")
+        self.assertFalse(complete(missing))
+
+        extra = rows.copy()
+        extra["unexpected:en:390"] = {"passed": True}
+        self.assertFalse(complete(extra))
+
+        replacement = missing.copy()
+        replacement["WEB-01:ar:391"] = {"passed": True}
+        self.assertEqual(len(replacement), 40)
+        self.assertFalse(complete(replacement))
+
+        failed = rows.copy()
+        failed["WEB-01:ar:390"] = {"passed": False}
+        self.assertFalse(complete(failed))
+
+        unknown = rows.copy()
+        unknown["WEB-01:ar:390"] = {"status": "pending"}
+        self.assertFalse(complete(unknown))
+
 
 
 if __name__ == "__main__":
