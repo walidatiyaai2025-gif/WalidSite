@@ -24,7 +24,7 @@
     @if($t007Current === 'public.expertise')
         {{-- Keep a valid expertise category across locales; discard arrays and unknown values. --}}
         @php($t007RawCategory = request()->query()['category'] ?? 'all')
-        @php($t007SwitchArgs['category'] = is_string($t007RawCategory) && in_array($t007RawCategory, ['all', 'database', 'software', 'ai', 'leadership'], true) ? $t007RawCategory : 'all')
+        @php($t007SwitchArgs['category'] = is_string($t007RawCategory) && in_array($t007RawCategory, ['all', 'database', 'integration', 'security', 'delivery'], true) ? $t007RawCategory : 'all')
     @endif
     {{-- Language selection must be visible and keyboard-operable, not screen-reader-only.
          Preserve the recruiter track only after validating its public allowlist. --}}
