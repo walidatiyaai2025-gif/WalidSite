@@ -29,6 +29,39 @@ RASTER_CANDIDATES = {
     "default": [],
 }
 
+# WEB-06 has identical runtime/reference visible copy, so style experiments can
+# isolate typography geometry without fabricating personal claims. These rules
+# are injected only into diagnostic browser pages and never accepted as proof.
+STYLE_CANDIDATES = {
+    "current": "",
+    "subtitle_geometry": (
+        ".t007-reference-subtitle{top:1px!important;letter-spacing:0!important}"
+    ),
+    "card_link_weight": (
+        ".t007-card-link{font-weight:700!important;letter-spacing:1.3px!important}"
+    ),
+    "card_title_geometry": (
+        ".t007-reference-card h2{position:relative!important;top:2px!important;"
+        "letter-spacing:1.4px!important}"
+    ),
+    "h1_down_2": (
+        ".t007-reference-hero h1{position:relative!important;top:2px!important}"
+    ),
+    "subtitle_link_title": (
+        ".t007-reference-subtitle{top:1px!important;letter-spacing:0!important}"
+        ".t007-card-link{font-weight:700!important;letter-spacing:1.3px!important}"
+        ".t007-reference-card h2{position:relative!important;top:2px!important;"
+        "letter-spacing:1.4px!important}"
+    ),
+    "all_geometry": (
+        ".t007-reference-hero h1{position:relative!important;top:2px!important}"
+        ".t007-reference-subtitle{top:1px!important;letter-spacing:0!important}"
+        ".t007-card-link{font-weight:700!important;letter-spacing:1.3px!important}"
+        ".t007-reference-card h2{position:relative!important;top:2px!important;"
+        "letter-spacing:1.4px!important}"
+    ),
+}
+
 
 def select_best_raster_candidate(rows: dict):
     measured = [
@@ -114,6 +147,76 @@ def rasterization_sweep(base_url: str, reference_path: Path, out: Path) -> dict:
                 "mismatch_ratio": mismatches / (width * height),
                 "browser_args": browser_args,
             }
+
+    best = select_best_raster_candidate(rows)
+    return {"candidates": rows, "best": best}
+
+
+def style_geometry_sweep(base_url: str, reference_path: Path, out: Path) -> dict:
+    """Measure candidate WEB-06 CSS geometry without modifying application UI."""
+    from playwright.sync_api import sync_playwright
+
+    if not base_url.startswith(("https://", "http://127.0.0.1:", "http://localhost:")):
+        raise ValueError("Style sweep needs an approved HTTPS or local origin")
+    with Image.open(reference_path) as source:
+        reference = source.convert("RGBA")
+        width, height = reference.size
+
+    rows = {}
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(
+            headless=True,
+            args=["--disable-lcd-text", "--font-render-hinting=slight"],
+        )
+        try:
+            for name, css in STYLE_CANDIDATES.items():
+                runtime_path = out / f"WEB-06.style-{name}.png"
+                context = browser.new_context(
+                    viewport={"width": width, "height": height},
+                    device_scale_factor=1,
+                    locale="en-US",
+                    reduced_motion="reduce",
+                    color_scheme="light",
+                )
+                try:
+                    page = context.new_page()
+                    url = base_url.rstrip("/") + "/ai-engineering?lang=en"
+                    response = page.goto(
+                        url, wait_until="domcontentloaded", timeout=30000
+                    )
+                    if response is None or response.status != 200:
+                        raise RuntimeError("style probe route did not return HTTP 200")
+                    page.evaluate("() => document.fonts.ready")
+                    if css:
+                        page.add_style_tag(content=css)
+                    page.screenshot(
+                        path=str(runtime_path), full_page=False,
+                        animations="disabled", caret="hide", type="png",
+                    )
+                except Exception as exc:
+                    rows[name] = {"status": "render_failed", "error": type(exc).__name__}
+                    continue
+                finally:
+                    context.close()
+
+                with Image.open(runtime_path) as source:
+                    runtime = source.convert("RGBA")
+                if runtime.size != reference.size:
+                    rows[name] = {"status": "wrong_dimensions"}
+                    continue
+                mismatches = sum(
+                    actual != expected
+                    for actual, expected in zip(runtime.getdata(), reference.getdata())
+                )
+                rows[name] = {
+                    "status": "exact" if mismatches == 0 else "mismatch",
+                    "mismatching_rgba_pixels": mismatches,
+                    "total_pixels": width * height,
+                    "mismatch_ratio": mismatches / (width * height),
+                    "css": css,
+                }
+        finally:
+            browser.close()
 
     best = select_best_raster_candidate(rows)
     return {"candidates": rows, "best": best}
@@ -314,6 +417,15 @@ def main() -> int:
         )
     except Exception as exc:
         report["rasterization_sweep"] = {"error": type(exc).__name__}
+
+    try:
+        report["style_geometry_sweep"] = style_geometry_sweep(
+            os.environ.get("WALIDSITE_RENDER_BASE_URL", "").rstrip("/"),
+            root / screens["WEB-06"]["reference_image"],
+            out,
+        )
+    except Exception as exc:
+        report["style_geometry_sweep"] = {"error": type(exc).__name__}
 
     try:
         from playwright.sync_api import sync_playwright
