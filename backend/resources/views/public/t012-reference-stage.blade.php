@@ -132,7 +132,7 @@ body:has(.t012-reference-stage) .site-footer{margin-top:0}
         <a href="{{ route('public.about', ['lang' => $locale]) }}">{{ $t012Ar ? 'نبذة' : 'About' }}</a>
         <a href="{{ route('public.expertise', ['lang' => $locale]) }}">{{ $t012Ar ? 'الخبرات' : 'Expertise' }}</a>
         <a href="{{ route('public.projects', ['lang' => $locale]) }}">{{ $t012Ar ? 'المشاريع' : 'Projects' }}</a>
-        <a href="{{ route('public.lab', ['lang' => $locale]) }}">{{ $t012Ar ? 'المختبر التقني' : 'Tech Lab' }}</a>
+        <a href="{{ route('public.lab', ['lang' => $locale]) }}">{{ $t012Ar ? 'مختبر AI' : 'AI Lab' }}</a>
         <a @class(['active' => in_array($t012Current, ['public.blog','public.article'], true)]) href="{{ route('public.blog', ['lang' => $locale]) }}">{{ $t012Ar ? 'المدونة' : 'Blog' }}</a>
         <a href="{{ route('public.github', ['lang' => $locale]) }}">GitHub</a>
         <a href="{{ route('public.resume', ['lang' => $locale]) }}">{{ $t012Ar ? 'السيرة العامة' : 'Resume' }}</a>
