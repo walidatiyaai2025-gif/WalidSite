@@ -116,7 +116,15 @@ void main() {
 
     expect(find.byKey(const Key('mobile-home-unconfigured')), findsOneWidget);
     expect(find.textContaining('not configured'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('offline-runbooks-entry')),
+      120,
+    );
     expect(find.byKey(const Key('offline-runbooks-entry')), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('verified-articles-entry')),
+      120,
+    );
     expect(find.byKey(const Key('verified-articles-entry')), findsOneWidget);
   });
 
