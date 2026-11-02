@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -51,6 +52,31 @@ class _MemoryGithubFollowStore implements GithubFollowStore {
     writes++;
     if (failWrite) throw const FileSystemException('private storage failure');
     values = Set<String>.of(repositories);
+  }
+}
+
+/// Controlled IO boundaries reproduce out-of-order file operations without
+/// requiring a real device or racing the operating system scheduler.
+class _GatedGithubFollowStore extends _MemoryGithubFollowStore {
+  _GatedGithubFollowStore({
+    Set<String>? initial,
+    this.readGate,
+    this.writeGate,
+  }) : super(initial);
+
+  final Completer<void>? readGate;
+  final Completer<void>? writeGate;
+
+  @override
+  Future<Set<String>> load() async {
+    if (readGate != null) await readGate!.future;
+    return super.load();
+  }
+
+  @override
+  Future<void> save(Set<String> repositories) async {
+    if (writeGate != null) await writeGate!.future;
+    return super.save(repositories);
   }
 }
 
@@ -362,6 +388,124 @@ void main() {
     expect(tester.widget<IconButton>(find.byKey(
       const Key('github-follow-public-owner/verified-repo'),
     )).onPressed, isNotNull);
+  });
+
+  testWidgets('stale follow reads cannot overwrite the newly selected local store',
+      (tester) async {
+    final records = VerifiedGithubPortfolio.parse(
+      feed([verifiedRepo()]), arabic: false,
+    );
+    final oldRead = Completer<void>();
+    final oldStore = _GatedGithubFollowStore(
+      initial: {'public-owner/verified-repo'},
+      readGate: oldRead,
+    );
+    final newStore = _MemoryGithubFollowStore();
+    Widget screen(GithubFollowStore store) => MaterialApp(
+      home: VerifiedGithubPortfolioScreen(
+        arabic: false,
+        loader: () => SynchronousFuture(records),
+        followStore: store,
+      ),
+    );
+
+    await tester.pumpWidget(screen(oldStore));
+    await tester.pump();
+    final followKey = const Key('github-follow-public-owner/verified-repo');
+    expect(tester.widget<IconButton>(find.byKey(followKey)).onPressed, isNull);
+
+    // The second source returns first; late contents from the old source
+    // must never mark the new source's repositories as followed.
+    await tester.pumpWidget(screen(newStore));
+    await tester.pumpAndSettle();
+    expect(tester.widget<IconButton>(find.byKey(followKey)).tooltip,
+        'Follow on this device');
+    oldRead.complete();
+    await tester.pumpAndSettle();
+    expect(tester.widget<IconButton>(find.byKey(followKey)).tooltip,
+        'Follow on this device');
+    expect(find.byKey(const Key('github-follow-error')), findsNothing);
+    await tester.tap(find.byKey(followKey));
+    await tester.pumpAndSettle();
+    expect(newStore.values, {'public-owner/verified-repo'});
+    expect(oldStore.writes, 0);
+  });
+
+  testWidgets('stale read failures never disable the newer Arabic follow store',
+      (tester) async {
+    final records = VerifiedGithubPortfolio.parse(
+      feed([verifiedRepo()], arabic: true), arabic: true,
+    );
+    final oldRead = Completer<void>();
+    final oldStore = _GatedGithubFollowStore(readGate: oldRead)
+      ..failRead = true;
+    final newStore = _MemoryGithubFollowStore({'public-owner/verified-repo'});
+    Widget screen(GithubFollowStore store) => MaterialApp(
+      home: VerifiedGithubPortfolioScreen(
+        arabic: true,
+        loader: () => SynchronousFuture(records),
+        followStore: store,
+      ),
+    );
+
+    await tester.pumpWidget(screen(oldStore));
+    await tester.pump();
+    await tester.pumpWidget(screen(newStore));
+    await tester.pumpAndSettle();
+    final followKey = const Key('github-follow-public-owner/verified-repo');
+    expect(tester.widget<IconButton>(find.byKey(followKey)).tooltip,
+        'إلغاء المتابعة على هذا الجهاز');
+    oldRead.complete();
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('github-follow-error')), findsNothing);
+    expect(tester.widget<IconButton>(find.byKey(followKey)).onPressed, isNotNull);
+    expect(tester.widget<IconButton>(find.byKey(followKey)).tooltip,
+        'إلغاء المتابعة على هذا الجهاز');
+  });
+
+  testWidgets('pending save to replaced store cannot claim follow in new store',
+      (tester) async {
+    final records = VerifiedGithubPortfolio.parse(
+      feed([verifiedRepo()]), arabic: false,
+    );
+    final oldWrite = Completer<void>();
+    final oldStore = _GatedGithubFollowStore(writeGate: oldWrite);
+    final newStore = _MemoryGithubFollowStore();
+    Widget screen(GithubFollowStore store) => MaterialApp(
+      home: VerifiedGithubPortfolioScreen(
+        arabic: false,
+        loader: () => SynchronousFuture(records),
+        followStore: store,
+      ),
+    );
+
+    await tester.pumpWidget(screen(oldStore));
+    await tester.pumpAndSettle();
+    final followKey = const Key('github-follow-public-owner/verified-repo');
+    await tester.tap(find.byKey(followKey));
+    await tester.pump();
+    expect(tester.widget<IconButton>(find.byKey(followKey)).onPressed, isNull,
+        reason: 'The outgoing store is still saving');
+
+    await tester.pumpWidget(screen(newStore));
+    await tester.pumpAndSettle();
+    expect(tester.widget<IconButton>(find.byKey(followKey)).tooltip,
+        'Follow on this device');
+    expect(tester.widget<IconButton>(find.byKey(followKey)).onPressed, isNotNull);
+
+    oldWrite.complete();
+    await tester.pumpAndSettle();
+    expect(oldStore.values, {'public-owner/verified-repo'});
+    expect(newStore.values, isEmpty);
+    expect(tester.widget<IconButton>(find.byKey(followKey)).tooltip,
+        'Follow on this device');
+    expect(find.byKey(const Key('github-follow-error')), findsNothing);
+    await tester.tap(find.byKey(followKey));
+    await tester.pumpAndSettle();
+    expect(newStore.values, {'public-owner/verified-repo'});
+    expect(newStore.writes, 1);
+    expect(tester.widget<IconButton>(find.byKey(followKey)).tooltip,
+        'Unfollow on this device');
   });
 
 }
