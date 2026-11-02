@@ -207,7 +207,11 @@ void main() {
     await visibleTap(tester, 'privacy-export');
     expect(find.byKey(const Key('privacy-copy')), findsNothing);
     expect(find.textContaining('NEVER_COPY_ACCESS_TOKEN'), findsNothing);
-    expect(find.textContaining('Request not confirmed'), findsWidgets);
+    // The rejection notice sits above the export action in a scrollable
+    // viewport; bring it into view before asserting its user-facing text.
+    await tester.drag(find.byType(ListView), const Offset(0, 700));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Request not confirmed'), findsOneWidget);
   });
 
   for (final arabic in [false, true]) {
