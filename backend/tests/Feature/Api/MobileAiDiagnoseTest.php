@@ -240,6 +240,70 @@ final class MobileAiDiagnoseTest extends TestCase
         $this->assertDatabaseCount('ai_jobs', 0);
     }
 
+    public function test_suspend_or_delete_during_catalog_read_never_admits_an_ai_job(): void
+    {
+        // The initial bearer check observes an active account. The real
+        // runbook SQL query then changes its persisted status before the
+        // controller enters its quota/paid reservation transaction. This
+        // tests the exact stale-auth window, not a fake sequential request.
+        $this->configure('openai-compatible', 25, 100);
+        $reviewed = $this->reviewedRunbook('revoked-owner-diagnosis');
+        Http::fake([
+            'https://provider.example.test/v1/chat/completions' => Http::response([
+                'choices' => [['message' => [
+                    'content' => json_encode(['runbook_id' => $reviewed], JSON_THROW_ON_ERROR),
+                ]]],
+            ]),
+        ]);
+
+        foreach (['inactive', 'deleted'] as $status) {
+            $owner = $this->user();
+            $token = $this->token($owner);
+            $switchedDuringCatalogRead = false;
+
+            DB::listen(function ($event) use ($owner, $status, &$switchedDuringCatalogRead): void {
+                if ($switchedDuringCatalogRead
+                    || ! str_contains(strtolower($event->sql), 'runbooks')) {
+                    return;
+                }
+                // This runs *after* token authentication, as part of the
+                // genuine reviewed catalog database read.
+                $switchedDuringCatalogRead = true;
+                DB::table('users')->where('id', $owner->id)
+                    ->update(['status' => $status]);
+            });
+
+            $this->withToken($token)
+                ->postJson('/api/v1/mobile/ai/diagnose', $this->payload())
+                ->assertForbidden()
+                ->assertDontSee('RESTORE DATABASE')
+                ->assertDontSee('fixture-credential');
+
+            $this->assertTrue($switchedDuringCatalogRead,
+                'The test must change the account after the auth check.');
+            $this->assertSame($status, $owner->fresh()->status);
+            $this->assertSame(0, AiDiagnosisRequest::query()
+                ->where('user_id', $owner->id)->count());
+            $this->assertDatabaseCount('ai_jobs', 0);
+            $this->assertDatabaseCount('ai_job_steps', 0);
+            $this->assertDatabaseCount('ai_usage', 0);
+            Auth::forgetGuards();
+        }
+
+        Http::assertNothingSent();
+
+        // Another account remains eligible for normal verified diagnosis;
+        // this rejection is not a global AI provider circuit breaker.
+        $activeUser = $this->user();
+        $this->withToken($this->token($activeUser))
+            ->postJson('/api/v1/mobile/ai/diagnose', $this->payload())
+            ->assertOk()->assertJsonPath('data.status', 'completed');
+        $this->assertDatabaseHas('ai_diagnosis_requests', [
+            'user_id' => $activeUser->id,
+        ]);
+        Http::assertSentCount(1);
+    }
+
     public function test_route_quota_is_per_user_and_blocks_second_request_before_ai(): void
     {
         $this->configure(perMinute: 1, perDay: 5);
