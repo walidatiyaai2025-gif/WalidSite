@@ -19,8 +19,12 @@ class T007DiagnosticExitTest(unittest.TestCase):
         def exit_code(statuses, font_probe=None):
             report = {
                 "screens": {sid: {"status": status} for sid, status in zip(screen_ids, statuses)},
-                "font_probe": {"inter_400": True} if font_probe is None else font_probe,
+                "font_probe": {"inter_400": True, "inter_800": True} if font_probe is None else font_probe,
             }
+            report["summary"] = {"font_probe_ok": (isinstance(report["font_probe"], dict)
+                and "error" not in report["font_probe"]
+                and report["font_probe"].get("inter_400") is True
+                and report["font_probe"].get("inter_800") is True)}
             return eval(check, {"report": report, "SCREEN_IDS": screen_ids})
 
         self.assertEqual(exit_code(["exact"] * 4 + ["mismatch"]), 0)
@@ -29,6 +33,8 @@ class T007DiagnosticExitTest(unittest.TestCase):
         self.assertEqual(exit_code(["render_failed", "wrong_dimensions"] + ["exact"] * 3), 1)
         self.assertEqual(exit_code(["exact"] * 4), 1)
         self.assertEqual(exit_code(["exact"] * 5, {"error": "TimeoutError"}), 1)
+        self.assertEqual(exit_code(["exact"] * 5, {}), 1)
+        self.assertEqual(exit_code(["exact"] * 5, {"inter_400": True, "inter_800": False}), 1)
 
 
 if __name__ == "__main__":
