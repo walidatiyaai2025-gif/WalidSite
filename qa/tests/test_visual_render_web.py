@@ -13,8 +13,10 @@ from qa.render_web_screenshot import (
 
 
 class RealWebCaptureConfigTest(unittest.TestCase):
-    def test_renderer_disables_lcd_subpixel_text_for_reference_stability(self):
-        self.assertEqual(CHROMIUM_RENDER_ARGS, ["--disable-lcd-text"])
+    def test_renderer_uses_measured_grayscale_hinting_for_reference_stability(self):
+        self.assertEqual(CHROMIUM_RENDER_ARGS, [
+            "--disable-lcd-text", "--font-render-hinting=slight",
+        ])
 
     def test_https_and_loopback_http_targets(self):
         self.assertEqual(target_url("https://preview.example.test/", "/about"),
