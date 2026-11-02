@@ -15,6 +15,7 @@ void main() {
     WidgetTester tester, {
     bool arabic = false,
     MobileLoginAction? login,
+    MobileLogoutAction? logout,
     MobileDiagnoseAction? diagnose,
     MobileJobStatusAction? poll,
     MobileSaveAction? save,
@@ -25,6 +26,7 @@ void main() {
       home: AiTroubleshooterScreen(
         arabic: arabic,
         loginAction: login,
+        logoutAction: logout,
         diagnoseAction: diagnose,
         jobStatusAction: poll,
         saveAction: save,
@@ -46,6 +48,23 @@ void main() {
       scrollable: mainScroll,
     );
     await tester.ensureVisible(finder);
+    await tester.pumpAndSettle();
+  }
+
+  // The sign-out action is deliberately above the long diagnosis form.
+  // Scrolling upward requires a negative delta; the default reveal helper
+  // moves down to locate result cards and controls below the current viewport.
+  Future<void> revealAbove(WidgetTester tester, Key key) async {
+    final mainScroll = find.descendant(
+      of: find.byType(ListView),
+      matching: find.byType(Scrollable),
+    ).first;
+    await tester.scrollUntilVisible(
+      find.byKey(key),
+      -220,
+      scrollable: mainScroll,
+    );
+    await tester.ensureVisible(find.byKey(key));
     await tester.pumpAndSettle();
   }
 
@@ -910,4 +929,141 @@ void main() {
     expect(postCalls, 1);
   });
 
+
+  testWidgets('sign out revokes bearer and removes private diagnosis data',
+      (tester) async {
+    final revoked = <String>[];
+    await pumpScreen(
+      tester,
+      login: (_, __) async =>
+          const MobileAiSession(token: token, expiresAt: null),
+      logout: (bearer) async { revoked.add(bearer); },
+      diagnose: (_, __, ___, ____) async => const MobileAiJob(
+        id: jobId, status: 'queued', progressPercent: 0,
+        resultUrl: null, retryAfterSeconds: 30,
+      ),
+    );
+
+    await login(tester);
+    await tester.enterText(
+        find.byKey(const Key('ai-technology')), 'Private framework');
+    await tester.enterText(
+        find.byKey(const Key('ai-question')), 'PRIVATE_DIAGNOSIS_QUESTION');
+    await tester.enterText(
+        find.byKey(const Key('ai-code')), 'PRIVATE_CODE_SAMPLE');
+    await reveal(tester, const Key('ai-consent'));
+    await tester.tap(find.byKey(const Key('ai-consent')));
+    await reveal(tester, const Key('ai-diagnose-submit'));
+    await tester.tap(find.byKey(const Key('ai-diagnose-submit')));
+    await tester.pumpAndSettle();
+    await reveal(tester, const Key('ai-job-card'));
+    expect(find.byKey(const Key('ai-job-card')), findsOneWidget);
+
+    await revealAbove(tester, const Key('ai-sign-out'));
+    await tester.tap(find.byKey(const Key('ai-sign-out')));
+    await tester.pumpAndSettle();
+
+    expect(revoked, [token]);
+    expect(find.byKey(const Key('ai-login-email')), findsOneWidget);
+    expect(find.byKey(const Key('ai-job-card')), findsNothing);
+    expect(find.byKey(const Key('ai-refresh-status')), findsNothing);
+    expect(find.text('PRIVATE_DIAGNOSIS_QUESTION'), findsNothing);
+    expect(find.text('PRIVATE_CODE_SAMPLE'), findsNothing);
+    expect(find.text('Signed out and the session was revoked.'), findsOneWidget);
+    expect(find.text(token), findsNothing);
+  });
+
+  testWidgets('failed server revocation is never claimed successful in Arabic',
+      (tester) async {
+    await pumpScreen(
+      tester,
+      arabic: true,
+      login: (_, __) async =>
+          const MobileAiSession(token: token, expiresAt: null),
+      logout: (_) async => throw StateError('PRIVATE_SERVER_ERROR'),
+    );
+    await login(tester);
+    await reveal(tester, const Key('ai-sign-out'));
+    await tester.tap(find.byKey(const Key('ai-sign-out')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('ai-login-email')), findsOneWidget);
+    expect(find.textContaining('لم يمكن تأكيد إلغائها على الخادم'),
+        findsOneWidget);
+    expect(find.textContaining('PRIVATE_SERVER_ERROR'), findsNothing);
+    expect(find.text(token), findsNothing);
+  });
+
+  testWidgets('stale status response cannot revive a signed-out job',
+      (tester) async {
+    final statusReply = Completer<MobileAiJob>();
+    var polls = 0;
+    await pumpScreen(
+      tester,
+      login: (_, __) async =>
+          const MobileAiSession(token: token, expiresAt: null),
+      logout: (_) async {},
+      diagnose: (_, __, ___, ____) async => const MobileAiJob(
+        id: jobId, status: 'queued', progressPercent: 0,
+        resultUrl: null, retryAfterSeconds: 1,
+      ),
+      poll: (_, __) {
+        polls++;
+        return statusReply.future;
+      },
+    );
+    await login(tester);
+    await tester.enterText(find.byKey(const Key('ai-technology')), 'API');
+    await tester.enterText(
+        find.byKey(const Key('ai-question')), 'Why did the API fail?');
+    await reveal(tester, const Key('ai-consent'));
+    await tester.tap(find.byKey(const Key('ai-consent')));
+    await reveal(tester, const Key('ai-diagnose-submit'));
+    await tester.tap(find.byKey(const Key('ai-diagnose-submit')));
+    await tester.pumpAndSettle();
+
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pump();
+    await reveal(tester, const Key('ai-refresh-status'));
+    await tester.tap(find.byKey(const Key('ai-refresh-status')));
+    await tester.pump();
+    expect(polls, 1);
+    await revealAbove(tester, const Key('ai-sign-out'));
+    await tester.tap(find.byKey(const Key('ai-sign-out')));
+    await tester.pumpAndSettle();
+
+    statusReply.complete(const MobileAiJob(
+      id: jobId, status: 'completed', progressPercent: 100,
+      resultUrl: '/api/v1/mobile/solutions/$runbookId',
+      retryAfterSeconds: null,
+    ));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('ai-job-card')), findsNothing);
+    expect(find.byKey(const Key('ai-open-solution')), findsNothing);
+    expect(find.byKey(const Key('ai-login-email')), findsOneWidget);
+    expect(find.text('Signed out and the session was revoked.'), findsOneWidget);
+  });
+
+  testWidgets('relogin stays disabled until server logout returns',
+      (tester) async {
+    final revocation = Completer<void>();
+    await pumpScreen(
+      tester,
+      login: (_, __) async =>
+          const MobileAiSession(token: token, expiresAt: null),
+      logout: (_) => revocation.future,
+    );
+    await login(tester);
+    await reveal(tester, const Key('ai-sign-out'));
+    await tester.tap(find.byKey(const Key('ai-sign-out')));
+    await tester.pump();
+    final button = tester.widget<FilledButton>(
+        find.byKey(const Key('ai-login-submit')));
+    expect(button.onPressed, isNull);
+    expect(find.text('Revoking the session on the server...'), findsOneWidget);
+    revocation.complete();
+    await tester.pumpAndSettle();
+    expect(tester.widget<FilledButton>(
+        find.byKey(const Key('ai-login-submit'))).onPressed, isNotNull);
+  });
 }

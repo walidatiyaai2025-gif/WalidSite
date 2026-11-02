@@ -291,6 +291,30 @@ class MobileAiClient {
       throw const FormatException('Invalid save response');
     }
   }
+
+  /// Revoke this exact bearer. Network failure must not be reported as
+  /// successful server-side revocation.
+  Future<void> logout(String token) async {
+    if (token.isEmpty || token.length > 8192) {
+      throw const FormatException('Invalid bearer token');
+    }
+    final response = await _jsonRequest(
+      'POST',
+      '/api/v1/auth/logout',
+      bearer: token,
+    );
+    if (response.key != HttpStatus.ok) {
+      throw MobileAiHttpException(response.key);
+    }
+    final decoded = jsonDecode(response.value);
+    if (decoded is! Map<String, dynamic> ||
+        decoded.length != 1 ||
+        decoded['data'] is! Map<String, dynamic> ||
+        (decoded['data'] as Map<String, dynamic>).length != 1 ||
+        (decoded['data'] as Map<String, dynamic>)['revoked'] != true) {
+      throw const FormatException('Unverified logout response');
+    }
+  }
 }
 
 typedef MobileLoginAction = Future<MobileAiSession> Function(
@@ -304,6 +328,7 @@ typedef MobileDiagnoseAction = Future<MobileAiJob> Function(
   String codeSnippet,
 );
 typedef MobileSaveAction = Future<void> Function(String token, String runbookId);
+typedef MobileLogoutAction = Future<void> Function(String token);
 typedef MobileJobStatusAction = Future<MobileAiJob> Function(
   String token,
   String jobId,
@@ -313,6 +338,7 @@ class AiTroubleshooterScreen extends StatefulWidget {
   const AiTroubleshooterScreen({
     required this.arabic,
     this.loginAction,
+    this.logoutAction,
     this.diagnoseAction,
     this.jobStatusAction,
     this.saveAction,
@@ -324,6 +350,7 @@ class AiTroubleshooterScreen extends StatefulWidget {
 
   final bool arabic;
   final MobileLoginAction? loginAction;
+  final MobileLogoutAction? logoutAction;
   final MobileDiagnoseAction? diagnoseAction;
   final MobileJobStatusAction? jobStatusAction;
   final MobileSaveAction? saveAction;
@@ -348,6 +375,7 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
   DateTime? _expiresAt;
   bool _consent = false;
   bool _busyLogin = false;
+  bool _busyLogout = false;
   bool _busyDiagnosis = false;
   bool _busyPoll = false;
   bool _pollReady = true;
@@ -442,6 +470,9 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
       widget.diagnoseAction != null ||
       MobileAiClient.configuredOrigin() != null;
 
+  MobileLogoutAction get _logout => widget.logoutAction ??
+      (String token) => const MobileAiClient().logout(token);
+
   MobileLoginAction get _login => widget.loginAction ??
       (String email, String password) =>
           const MobileAiClient().login(email, password);
@@ -494,7 +525,7 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
   }
 
   Future<void> _signIn() async {
-    if (_busyLogin) return;
+    if (_busyLogin || _busyLogout) return;
     final email = _email.text.trim();
     final password = _password.text;
     if (email.isEmpty || password.isEmpty) {
@@ -534,6 +565,44 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
       });
     } finally {
       if (mounted) setState(() => _busyLogin = false);
+    }
+  }
+
+  /// Private inputs leave local UI immediately, even on a network failure.
+  /// In-flight status responses cannot resurrect a discarded bearer session.
+  Future<void> _signOut() async {
+    if (_busyLogout || _token == null) return;
+    final token = _token!;
+    setState(() {
+      _busyLogout = true;
+      _token = null;
+      _expiresAt = null;
+      _job = null;
+      _saved = false;
+      _consent = false;
+      _resetPollCooldown();
+      _email.clear();
+      _password.clear();
+      _technology.clear();
+      _question.clear();
+      _code.clear();
+      _message = widget.arabic
+          ? 'جارٍ إلغاء الجلسة على الخادم...'
+          : 'Revoking the session on the server...';
+    });
+    try {
+      await _logout(token);
+      if (!mounted) return;
+      setState(() => _message = widget.arabic
+          ? 'تم تسجيل الخروج وإلغاء صلاحية الجلسة.'
+          : 'Signed out and the session was revoked.');
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _message = widget.arabic
+          ? 'تم مسح الجلسة من الجهاز، لكن لم يمكن تأكيد إلغائها على الخادم.'
+          : 'Signed out on this device; server revocation could not be confirmed.');
+    } finally {
+      if (mounted) setState(() => _busyLogout = false);
     }
   }
 
@@ -607,7 +676,7 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
     });
     try {
       final updated = await _readStatus(token, oldJob.id);
-      if (!mounted) return;
+      if (!mounted || _token != token || _job?.id != oldJob.id) return;
       if (!_requireActiveSession()) return;
       // Never render a different user's or a different request's solution.
       if (updated.id.toLowerCase() != oldJob.id.toLowerCase()) {
@@ -619,7 +688,7 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
         _message = _jobMessage(updated);
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || _token != token || _job?.id != oldJob.id) return;
       setState(() {
         if (error is MobileAiHttpException &&
             (error.statusCode == 401 || error.statusCode == 403)) {
@@ -805,7 +874,7 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
                     const SizedBox(height: 12),
                     FilledButton(
                       key: const Key('ai-login-submit'),
-                      onPressed: _busyLogin ? null : _signIn,
+                      onPressed: _busyLogin || _busyLogout ? null : _signIn,
                       child: Text(_busyLogin
                           ? (ar ? 'جارٍ تسجيل الدخول...' : 'Signing in...')
                           : (ar ? 'تسجيل الدخول' : 'Sign in')),
@@ -819,6 +888,16 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                   ] else ...[
+                    Align(
+                      alignment: AlignmentDirectional.centerEnd,
+                      child: OutlinedButton.icon(
+                        key: const Key('ai-sign-out'),
+                        onPressed: _busyLogout ? null : _signOut,
+                        icon: const Icon(Icons.logout),
+                        label: Text(ar ? 'تسجيل الخروج' : 'Sign out'),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
                     TextField(
                       key: const Key('ai-technology'),
                       controller: _technology,
