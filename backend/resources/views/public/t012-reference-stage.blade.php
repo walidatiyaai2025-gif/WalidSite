@@ -135,8 +135,7 @@ body:has(.t012-reference-stage) .site-footer{margin-top:0}
             if ($search !== '' || $type !== 'all') {
                 $t012SwitchArgs['type'] = $type;
             }
-
-
+        }
     ?>
     <a class="t012-sr-only" href="{{ route($t012Current ?? 'home', $t012SwitchArgs) }}">{{ $t012Ar ? 'English' : 'العربية' }}</a>
 </header>
