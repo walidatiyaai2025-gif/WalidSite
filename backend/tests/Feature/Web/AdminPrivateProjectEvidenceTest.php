@@ -244,7 +244,7 @@ final class AdminPrivateProjectEvidenceTest extends TestCase
             ->assertSee('private-proof-01')->assertSee('private-proof-02')
             ->assertDontSee('private-proof-12')
             ->assertSee('name="_token"', false)
-            ->assertSee('Discard unverified evidence', false) // English remains in markup as a safe alternative label.
+            ->assertSee('رفض الدليل غير المعتمد')
             ->assertHeader('Cache-Control', 'no-store, private');
         $this->assertDatabaseCount('project_evidence', 12);
         Http::assertNothingSent();
