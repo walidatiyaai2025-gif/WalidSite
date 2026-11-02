@@ -28,8 +28,28 @@ class IdentityController extends Controller
             return response()->json(['message' => 'Invalid credentials.'], 422);
         }
 
-        // Mobile bearer tokens have no administrative capability.
-        $token = $user->createToken($data['device_name'], ['mobile'], now()->addDays(7));
+        // The initial password check can race with suspension, deletion,
+        // password rotation or an email change. Account deletion revokes
+        // tokens under the same user-row lock, so issuance must use it too.
+        $verifiedHash = $user->password_hash;
+        $token = DB::transaction(function () use ($user, $data, $verifiedHash) {
+            $locked = User::query()->whereKey($user->getKey())
+                ->lockForUpdate()->first();
+
+            if ($locked === null || $locked->status !== 'active'
+                || ! is_string($locked->password_hash)
+                || ! hash_equals($verifiedHash, $locked->password_hash)
+                || Str::lower($locked->email) !== Str::lower($data['email'])) {
+                return null;
+            }
+
+            // Mobile bearer tokens have no administrative capability.
+            return $locked->createToken($data['device_name'], ['mobile'], now()->addDays(7));
+        }, 3);
+
+        if ($token === null) {
+            return response()->json(['message' => 'Invalid credentials.'], 422);
+        }
 
         return response()->json([
             'data' => [
@@ -67,7 +87,9 @@ class IdentityController extends Controller
             'current_password' => ['required', 'string', 'max:4096'],
         ]);
 
-        if (! $user->password_hash || ! Hash::check($data['current_password'], $user->password_hash)) {
+        $verifiedHash = $user->password_hash;
+        if (! is_string($verifiedHash) || $verifiedHash === ''
+            || ! Hash::check($data['current_password'], $verifiedHash)) {
             return response()->json([
                 'message' => 'The given data was invalid.',
                 'errors' => ['current_password' => ['The current password is invalid.']],
@@ -75,29 +97,47 @@ class IdentityController extends Controller
         }
 
         $email = trim($data['email']);
-        $duplicate = User::query()
-            ->whereKeyNot($user->getKey())
-            ->whereRaw('LOWER(email) = ?', [Str::lower($email)])
-            ->exists();
+        $updated = DB::transaction(function () use ($user, $token, $email, $verifiedHash): ?string {
+            // Serialize with account deletion and other profile edits. Never
+            // write through a User model loaded before an erasure happened.
+            $locked = User::query()->whereKey($user->getKey())
+                ->lockForUpdate()->first();
+            abort_unless(
+                $locked !== null
+                    && $locked->status === 'active'
+                    && is_string($locked->password_hash)
+                    && hash_equals($verifiedHash, $locked->password_hash)
+                    && $locked->tokens()->whereKey($token->getKey())->exists(),
+                403
+            );
 
-        if ($duplicate) {
+            $duplicate = User::query()
+                ->whereKeyNot($locked->getKey())
+                ->whereRaw('LOWER(email) = ?', [Str::lower($email)])
+                ->exists();
+
+            if ($duplicate) {
+                return null;
+            }
+
+            $locked->forceFill(['email' => $email])->save();
+            // The reauthenticated device stays active, all other devices
+            // are revoked in the same transaction.
+            $locked->tokens()->whereKeyNot($token->getKey())->delete();
+
+            return $locked->email;
+        }, 3);
+
+        if ($updated === null) {
             return response()->json([
                 'message' => 'The given data was invalid.',
                 'errors' => ['email' => ['This email address is already in use.']],
             ], 422);
         }
 
-        DB::transaction(function () use ($user, $token, $email): void {
-            $user->forceFill(['email' => $email])->save();
-            // A successful identity edit invalidates every other bearer device.
-            // The exact token that performed the reauthenticated change remains
-            // usable so the current screen can confirm the updated identity.
-            $user->tokens()->whereKeyNot($token->getKey())->delete();
-        });
-
         return response()->json(['data' => [
             'id' => $user->getKey(),
-            'email' => $user->fresh()->email,
+            'email' => $updated,
         ]]);
     }
 
