@@ -1185,6 +1185,119 @@ paths:
           description: Throttled
       security:
       - bearerAuth: []
+  /mobile/account/export:
+    get:
+      operationId: mobileAccountExport
+      summary: mobileAccountExport
+      tags:
+      - mobile
+      x-required-role: authenticated
+      x-response-model: Success
+      responses:
+        '200':
+          description: Portable self-service account export
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '401':
+          description: Unauthenticated
+        '403':
+          description: Forbidden
+        '413':
+          description: Export exceeds safety limit
+        '422':
+          description: Validation error
+        '429':
+          description: Throttled
+      security:
+      - bearerAuth: []
+  /mobile/account:
+    delete:
+      operationId: mobileDeleteAccount
+      summary: mobileDeleteAccount
+      tags:
+      - mobile
+      x-required-role: authenticated
+      x-response-model: Success
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AccountDeletionInput'
+      responses:
+        '200':
+          description: Account deletion completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '401':
+          description: Unauthenticated
+        '403':
+          description: Forbidden
+        '409':
+          description: Account state conflict
+        '422':
+          description: Reauthentication or validation error
+        '429':
+          description: Throttled
+      security:
+      - bearerAuth: []
+  /mobile/notification-preferences:
+    get:
+      operationId: mobileNotificationPreferences
+      summary: mobileNotificationPreferences
+      tags:
+      - mobile
+      x-required-role: authenticated
+      x-response-model: Success
+      responses:
+        '200':
+          description: Current default-deny notification preferences
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '401':
+          description: Unauthenticated
+        '403':
+          description: Forbidden
+        '429':
+          description: Throttled
+      security:
+      - bearerAuth: []
+    put:
+      operationId: mobileUpdateNotificationPreferences
+      summary: mobileUpdateNotificationPreferences
+      tags:
+      - mobile
+      x-required-role: authenticated
+      x-response-model: Success
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotificationPreferencesInput'
+      responses:
+        '200':
+          description: Notification preferences updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Success'
+        '401':
+          description: Unauthenticated
+        '403':
+          description: Forbidden
+        '422':
+          description: Validation error
+        '429':
+          description: Throttled
+      security:
+      - bearerAuth: []
   /mobile/home:
     get:
       operationId: mobileHome
@@ -1857,6 +1970,51 @@ components:
       - question
       - technology
       - consent_to_process
+    AccountDeletionInput:
+      type: object
+      additionalProperties: false
+      properties:
+        password:
+          type: string
+          description: Current account password used only for reauthentication
+        confirmation:
+          type: string
+          enum:
+          - DELETE
+      required:
+      - password
+      - confirmation
+    NotificationPreferencesInput:
+      type: object
+      additionalProperties: false
+      properties:
+        preferences:
+          type: array
+          minItems: 1
+          maxItems: 6
+          items:
+            type: object
+            additionalProperties: false
+            properties:
+              purpose:
+                type: string
+                enum:
+                - account_activity
+                - editorial_updates
+                - product_updates
+              channel:
+                type: string
+                enum:
+                - email
+                - push
+              enabled:
+                type: boolean
+            required:
+            - purpose
+            - channel
+            - enabled
+      required:
+      - preferences
     ApprovalDecisionInput:
       type: object
       additionalProperties: false
