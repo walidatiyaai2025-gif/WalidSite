@@ -162,6 +162,21 @@ details{border:1px solid var(--edge);padding:10px;border-radius:8px}details[open
 @if($project->evidence_count > $project->evidence->count())<p class="muted">{{ $ar ? 'تُعرض أحدث عشرة أدلة خاصة معلقة فقط.' : 'Only the ten newest pending private candidates are shown.' }}</p>@endif
 @endif
 </details>
+@elseif(auth()->user()?->hasRole('owner') && $project->visibility==='public' && $project->published_at!==null)
+<details><summary>{{ $ar ? 'سحب المشروع المنشور' : 'Withdraw published project' }}</summary>
+<p class="muted">{{ $ar ? 'سيتوقف ظهور المشروع فوراً في الصفحات العامة. تظل أدلته المعتمدة محفوظة، ولا يعاد نشره تلقائياً.' : 'This immediately removes the project from public pages. Previously approved evidence remains saved; it is never republished automatically.' }}</p>
+<form method="post" action="{{ route('admin.operations.projects.withdraw', ['project'=>$project->id,'lang'=>$locale]) }}">
+@csrf
+<fieldset>
+<legend>{{ $ar ? 'تأكيد السحب من العرض العام' : 'Confirm public withdrawal' }}</legend>
+<label for="withdraw-{{ $project->id }}">
+<input id="withdraw-{{ $project->id }}" type="checkbox" name="withdrawal_confirmed" value="1" required>
+{{ $ar ? 'أؤكد سحب هذا المشروع المنشور من الموقع العام.' : 'I confirm this published project must be hidden from public view.' }}
+</label>
+<button type="submit">{{ $ar ? 'سحب المشروع من النشر' : 'Withdraw public project' }}</button>
+</fieldset>
+</form>
+</details>
 @else <span class="muted">{{ $ar ? 'مراجعة دليل مطلوبة' : 'Evidence review required' }}</span>
 @endif
 </td></tr>
