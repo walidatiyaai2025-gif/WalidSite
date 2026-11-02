@@ -76,8 +76,31 @@ Route::get('/', function (Request $request) {
         }
     }
 
-    return view('welcome', compact('publicProfile', 'featuredProjects', 'featuredArticles'));
+    $hasVerifiedAiCapability = false;
+    if ($publicProfile !== null) {
+        $ai = app(\App\Http\Controllers\Api\PublicAiExpertiseController::class)
+            ->index($request)->getData(true)['data']['skills'] ?? [];
+        $hasVerifiedAiCapability = is_array($ai) && $ai !== [];
+    }
+
+    return view('welcome', compact(
+        'publicProfile', 'featuredProjects', 'featuredArticles', 'hasVerifiedAiCapability'
+    ));
 })->name('home');
+
+/*
+ * WEB-06 public AI Engineering surface. Reuse the canonical evidence-gated
+ * API projection; do not infer demos, provider availability or private work.
+ */
+Route::get('/ai-engineering', function (Request $request) {
+    $data = app(\App\Http\Controllers\Api\PublicAiExpertiseController::class)
+        ->index($request)->getData(true)['data'];
+
+    return response()->view('public.ai-engineering', ['aiData' => $data])
+        ->header('Cache-Control', 'no-store')
+        ->header('X-Content-Type-Options', 'nosniff');
+})->name('public.ai-engineering')->middleware('throttle:60,1');
+
 
 /*
  * T012 public SEO sitemap: derive destinations from the SAME publication and
@@ -95,7 +118,7 @@ Route::get('/sitemap.xml', function (Request $request) {
     };
 
     foreach ([
-        'home', 'public.about', 'public.expertise', 'public.hire',
+        'home', 'public.about', 'public.expertise', 'public.ai-engineering', 'public.hire',
         'public.projects', 'public.github', 'public.blog', 'public.lab',
         'public.resume',
     ] as $name) {
@@ -1539,6 +1562,9 @@ foreach (['about', 'expertise', 'hire'] as $professionalPage) {
 
         return view('public.professional', [
             'page' => $professionalPage,
+            // The download endpoint returns 404 without a currently
+            // published/active owner. Hide its CTA in the same state.
+            'hasPublishedOwnerCv' => $profile !== null,
             'positions' => $positions,
             'certifications' => $certifications,
             'skills' => $skills,

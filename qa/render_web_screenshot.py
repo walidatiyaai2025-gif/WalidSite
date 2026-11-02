@@ -9,6 +9,12 @@ import os
 from pathlib import Path
 from urllib.parse import urlsplit
 
+# Reference PNGs use grayscale text antialiasing. Disable Chromium LCD
+# subpixel text and use the measured slight FreeType hinting mode; T007
+# diagnostics proved this produces fewer WEB-06 reference mismatches than
+# Chromium default, no-hint, or disable-LCD alone on the pinned CI browser.
+CHROMIUM_RENDER_ARGS = ["--disable-lcd-text", "--font-render-hinting=slight"]
+
 
 class RenderConfigError(ValueError):
     pass
@@ -83,7 +89,10 @@ def render(env=None):
         raise RenderConfigError("Install optional playwright and Chromium locally") from exc
 
     with sync_playwright() as playwright:
-        browser = playwright.chromium.launch(headless=True)
+        browser = playwright.chromium.launch(
+            headless=True,
+            args=CHROMIUM_RENDER_ARGS,
+        )
         try:
             options = {
                 "viewport": size,
