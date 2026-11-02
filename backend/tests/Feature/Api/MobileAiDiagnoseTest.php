@@ -692,6 +692,37 @@ final class MobileAiDiagnoseTest extends TestCase
         $this->assertDatabaseCount('ai_jobs', 1);
     }
 
+    public function test_poll_hides_solution_when_reviewed_title_changes_without_reprocessing(): void
+    {
+        $this->configure();
+        $runbook = $this->reviewedRunbook('title-revoked-after-diagnosis');
+        $owner = $this->user();
+        $bearer = $this->token($owner);
+        Http::fake([
+            'http://127.0.0.1:11434/api/generate' => Http::response([
+                'response' => json_encode(['runbook_id' => $runbook], JSON_THROW_ON_ERROR),
+            ]),
+        ]);
+
+        $jobId = $this->withToken($bearer)
+            ->postJson('/api/v1/mobile/ai/diagnose', $this->payload())
+            ->assertOk()
+            ->assertJsonPath('data.result_url', '/api/v1/mobile/solutions/'.$runbook)
+            ->json('data.id');
+
+        DB::table('runbooks')->where('id', $runbook)
+            ->update(['title' => 'Changed without renewed review']);
+
+        $this->withToken($bearer)
+            ->getJson('/api/v1/mobile/ai/jobs/'.$jobId)
+            ->assertOk()
+            ->assertJsonPath('data.status', 'completed')
+            ->assertJsonPath('data.result_url', null);
+        $this->getJson('/api/v1/mobile/solutions/'.$runbook)->assertNotFound();
+        $this->assertDatabaseHas('ai_jobs', ['id' => $jobId, 'status' => 'completed']);
+        Http::assertSentCount(1);
+    }
+
     public function test_owner_can_poll_completed_job_without_repeating_inference_or_spend(): void
     {
         $this->configure();
