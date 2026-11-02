@@ -47,6 +47,12 @@ a{color:#126DE1}a:focus-visible,button:focus-visible{outline:3px solid var(--foc
 <h2 id="queue-title">{{ $draft->title }} — {{ $ar ? 'أدلة تحتاج إلى مراجعة' : 'Evidence awaiting review' }} ({{ $evidence->total() }})</h2>
 <p class="muted">{{ $ar ? 'هذه روابط خاصة غير متحقق منها. لا تُفتح تلقائياً ولا تُمثّل إثباتاً أو موافقة للنشر. الاعتماد يتطلب تأكيداً صريحاً لمراجعة المصدر وحقوق النشر، ثم تبقى عملية نشر المشروع خطوة منفصلة.' : 'These are private, unverified URLs. They are never fetched or treated as proof or publication approval. Approval requires explicit source and publication-rights confirmation, and project publication remains a separate step.' }}</p>
 <p><strong>{{ $ar ? 'الأدلة العامة المعتمدة لهذا المشروع' : 'Approved public evidence for this project' }}:</strong> {{ $verifiedEvidenceCount }}</p>
+<p><strong>{{ $ar ? 'روابط الأدلة الصالحة للعرض العام' : 'Usable public evidence links' }}:</strong> {{ $usablePublicEvidenceCount }}</p>
+@if($verifiedEvidenceCount > 0 && $usablePublicEvidenceCount === 0)
+<p role="status" class="muted">{{ $ar
+    ? 'الأدلة المعتمدة الحالية لا تصلح لصفحة مشروع عامة، أو أن مسار المشروع غير صالح. أضف رابط دليل عام مطابقًا للسياسة أو صحح مسار المشروع في بياناته قبل النشر.'
+    : 'Approved evidence cannot currently appear on a public case study, or the project slug is not route-safe. Add an allowed public evidence link or correct the project slug before publishing.' }}</p>
+@endif
 @if(session('status'))<p role="status">{{ session('status') }}</p>@endif
 @if($errors->any())<div role="alert"><strong>{{ $ar ? 'لم تُنفذ العملية' : 'Action not saved' }}</strong></div>@endif
 @if($evidence->isEmpty())
@@ -79,7 +85,7 @@ a{color:#126DE1}a:focus-visible,button:focus-visible{outline:3px solid var(--foc
 </tbody></table></div>
 @endif
 <nav aria-label="{{ $ar ? 'صفحات مراجعة الأدلة' : 'Evidence review pages' }}">{{ $evidence->links() }}</nav>
-@if($verifiedEvidenceCount > 0)
+@if($usablePublicEvidenceCount > 0)
 <section class="panel" aria-labelledby="publish-title">
 <h2 id="publish-title">{{ $ar ? 'بوابة نشر المشروع' : 'Project publication gate' }}</h2>
 <p class="muted">{{ $ar ? 'وجود دليل معتمد لا ينشر المشروع تلقائياً. راجع العنوان والملخص والدور بالعربية والإنجليزية، ثم أكد النشر في خطوة مستقلة.' : 'Approved evidence never publishes the project automatically. Review the title, summaries and role in both languages, then confirm publication separately.' }}</p>
