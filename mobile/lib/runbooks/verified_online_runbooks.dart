@@ -464,19 +464,21 @@ class _ReviewedRunbookDetailState extends State<ReviewedRunbookDetail> {
   @override
   void didUpdateWidget(covariant ReviewedRunbookDetail oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.id != widget.id || oldWidget.loader != widget.loader) {
-      // The same State may be reused for another reviewed guide. Never keep
-      // its saved flag, bearer or a prior guide's async action completion.
+    final guideChanged =
+        oldWidget.id != widget.id || oldWidget.loader != widget.loader;
+    final accountChanged = oldWidget.initialBearer != widget.initialBearer;
+    if (guideChanged || accountChanged) {
+      // A different account viewing the SAME guide is as strong an isolation
+      // boundary as opening a different guide. Never transfer a saved flag,
+      // pending bookmark, prior bearer or old asynchronous success to it.
+      // Incrementing the epoch also discards late share/login completions.
       _detailEpoch++;
       _bearer = _validatedBearer(widget.initialBearer);
       _saving = false;
       _sharing = false;
       _saved = false;
       _actionMessage = null;
-      _refresh();
-    } else if (oldWidget.initialBearer != widget.initialBearer &&
-        !_saving && !_saved) {
-      _bearer = _validatedBearer(widget.initialBearer);
+      if (guideChanged) _refresh();
     }
   }
 
