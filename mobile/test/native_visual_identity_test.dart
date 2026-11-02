@@ -113,10 +113,12 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.bySemanticsIdentifier('walidsite.mobile.11'), findsOneWidget);
       expect(find.bySemanticsIdentifier('walidsite.mobile.12'), findsNothing);
+      expect(find.text(arabic ? 'المحفوظات' : 'Saved resources'), findsWidgets);
       await tester.tap(find.byKey(const Key('account-profile-tab')));
       await tester.pumpAndSettle();
       expect(find.bySemanticsIdentifier('walidsite.mobile.12'), findsOneWidget);
       expect(find.bySemanticsIdentifier('walidsite.mobile.11'), findsNothing);
+      expect(find.text(arabic ? 'الملف الشخصي' : 'Personal profile'), findsOneWidget);
       await tester.tap(find.byKey(const Key('account-signout')));
       await tester.pumpAndSettle();
       expect(find.bySemanticsIdentifier('walidsite.mobile.11'), findsNothing);
