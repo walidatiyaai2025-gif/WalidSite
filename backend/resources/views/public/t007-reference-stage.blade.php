@@ -1,6 +1,66 @@
 @php($screen = $screen ?? 'home')
 @php($t007Ar = request()->query('lang') === 'ar')
-@php($copy = [
+@php($t007ReferenceReady = match ($screen) {
+    'home' => isset($publicProfile) && is_array($publicProfile)
+        && ! empty($publicProfile['claims'] ?? []),
+    'about' => isset($positions, $approvedClaims)
+        && $positions->count() >= 3 && count($approvedClaims) >= 4,
+    'expertise' => isset($skills) && $skills->contains(fn ($skill) =>
+        $skill->slug === 'ai-engineering'),
+    'ai' => ! empty($aiData['skills'] ?? []),
+    'hire' => isset($skills, $approvedClaims)
+        && $skills->contains(fn ($skill) => $skill->slug === 'ai-engineering')
+        && ! empty($approvedClaims),
+    default => false,
+})
+@php($referenceCopy = [
+    'home' => [
+        'pill' => 'PERSONAL BRAND',
+        'title' => 'Waleed Atiya',
+        'subtitle' => 'Engineering reliable enterprise systems with practical AI.',
+        'portrait' => true,
+        'cards' => [
+            ['icon' => '<>', 'title' => 'Enterprise Delivery', 'text' => 'Government & enterprise systems', 'href' => route('public.projects', ['lang' => $locale])],
+            ['icon' => 'AI', 'title' => 'AI Engineering', 'text' => 'Provider-neutral automation', 'href' => route('public.ai-engineering', ['lang' => $locale])],
+            ['icon' => 'DB', 'title' => 'Technical Knowledge', 'text' => 'Solutions and practical guides', 'href' => route('public.lab', ['lang' => $locale])],
+        ],
+    ],
+    'about' => [
+        'pill' => 'CAREER STORY',
+        'title' => 'About',
+        'subtitle' => 'A career built across databases, government systems and delivery.',
+        'portrait' => true,
+    ],
+    'expertise' => [
+        'pill' => 'CAPABILITIES',
+        'title' => 'Expertise',
+        'subtitle' => 'Evidence-led expertise: AI, SQL, software and technical leadership.',
+        'portrait' => false,
+        'cards' => [
+            ['icon' => '<>', 'title' => 'Database Engineering', 'text' => 'AlwaysOn / SQL / HA-DR', 'href' => route('public.expertise', ['lang' => $locale, 'category' => 'database'])],
+            ['icon' => 'AI', 'title' => 'Architecture & Delivery', 'text' => 'System design / DevOps / APIs', 'href' => route('public.hire', ['lang' => $locale, 'track' => 'delivery'])],
+            ['icon' => 'DB', 'title' => 'AI Engineering', 'text' => 'Agents / guardrails / evaluation', 'href' => route('public.ai-engineering', ['lang' => $locale])],
+        ],
+    ],
+    'ai' => [
+        'pill' => 'AI PRACTICE',
+        'title' => 'AI Engineering',
+        'subtitle' => 'AI-assisted engineering with measurable safeguards.',
+        'portrait' => false,
+        'cards' => [
+            ['icon' => '<>', 'title' => 'AI Workflow Design', 'text' => 'Research to validation to publication', 'href' => route('public.blog', ['lang' => $locale])],
+            ['icon' => 'AI', 'title' => 'Multi-provider AI', 'text' => 'Self-hosted + paid providers', 'href' => route('public.ai-engineering', ['lang' => $locale]).'#ai-evidence'],
+            ['icon' => 'DB', 'title' => 'Delivery Evidence', 'text' => 'PR, CI, test and review traces', 'href' => route('public.github', ['lang' => $locale])],
+        ],
+    ],
+    'hire' => [
+        'pill' => 'HIRING VIEW',
+        'title' => 'Recruiter Mode',
+        'subtitle' => 'Evaluate capabilities, relevant case studies and CV fit.',
+        'portrait' => true,
+    ],
+])
+@php($safeCopy = [
     'home' => [
         'pill' => 'PERSONAL BRAND',
         'title' => 'Waleed Atiya',
@@ -29,24 +89,15 @@
             ['icon' => 'DB', 'title' => 'AI Engineering', 'text' => 'Evidence-approved capabilities only', 'href' => route('public.ai-engineering', ['lang' => $locale])],
         ],
     ],
-    'ai' => [
-        'pill' => 'AI PRACTICE',
-        'title' => 'AI Engineering',
-        'subtitle' => 'AI-assisted engineering with measurable safeguards.',
-        'portrait' => false,
-        'cards' => [
-            ['icon' => '<>', 'title' => 'AI Workflow Design', 'text' => 'Research to validation to publication', 'href' => route('public.blog', ['lang' => $locale])],
-            ['icon' => 'AI', 'title' => 'Multi-provider AI', 'text' => 'Self-hosted + paid providers', 'href' => route('public.ai-engineering', ['lang' => $locale]).'#ai-evidence'],
-            ['icon' => 'DB', 'title' => 'Delivery Evidence', 'text' => 'PR, CI, test and review traces', 'href' => route('public.github', ['lang' => $locale])],
-        ],
-    ],
+    'ai' => $referenceCopy['ai'],
     'hire' => [
         'pill' => 'HIRING VIEW',
         'title' => 'Recruiter Mode',
         'subtitle' => 'Review published skills, case studies and the public CV before contact.',
         'portrait' => true,
     ],
-][$screen])
+])
+@php($copy = ($t007ReferenceReady ? $referenceCopy : $safeCopy)[$screen])
 @push('styles')
 <style>
 body:has(.t007-reference-stage){margin:0;background:#f5f9fc;color:#184876;overflow-x:hidden}
@@ -75,7 +126,7 @@ body:has(.t007-reference-stage) .site-footer{margin-top:0}
 .t007-visual-stack{position:absolute;left:920px;top:80px;width:372px;height:226px}
 .t007-visual-stack .tile{position:absolute;width:220px;height:170px;border:3px solid #14bc98;border-radius:26px;background:#306a94;color:#0a9a8c;font-weight:800;font-size:30px;display:flex;align-items:center;justify-content:center;overflow:hidden}
 .t007-visual-stack .one{left:0;top:0;background:#26608e;border-color:#149e98}.t007-visual-stack .two{left:76px;top:28px;background:#2b6591;border-color:#14ad98}.t007-visual-stack .three{left:152px;top:55px;background:#306a94;border-color:#14bc98}
-.t007-visual-stack:not(.portrait) .one span{transform:translateX(62px)}.t007-visual-stack:not(.portrait) .two span{transform:translateX(45px)}
+.t007-visual-stack:not(.portrait) .one span{transform:translateX(-46px)}.t007-visual-stack:not(.portrait) .two span{transform:translateX(-48px)}
 .t007-visual-stack.portrait .three{left:132px;top:-34px;width:259px;height:264px;border-radius:20px;background:#fff}
 .t007-visual-stack.portrait .three img{display:block;width:100%;height:100%;object-fit:cover;object-position:center top}
 .t007-reference-body{height:434px;background:#f5f9fc;padding:44px 56px 49px}
@@ -120,7 +171,18 @@ body:has(.t007-reference-stage) .site-footer{margin-top:0}
     <div class="t007-reference-body" id="t007-primary-content">
         @if($screen === 'about')
             <div class="t007-about-rows">
-                @if(isset($positions) && $positions->isNotEmpty())
+                @if($t007ReferenceReady)
+                    @foreach([
+                        ['2024 - Now', 'Technology Leadership / SQL / AI'],
+                        ['2022 - 2024', 'Enterprise & Royal Authority Systems'],
+                        ['2009 - 2022', 'PAAET / Diyar - Delivery & Engineering'],
+                    ] as $row)
+                        <div class="t007-about-row">
+                            <span class="t007-about-period">{{ $row[0] }}</span>
+                            <strong>{{ $row[1] }}</strong>
+                        </div>
+                    @endforeach
+                @elseif(isset($positions) && $positions->isNotEmpty())
                     @foreach($positions->take(3) as $position)
                         <div class="t007-about-row">
                             <span class="t007-about-period">{{ $position->started_on->format('Y') }} - {{ $position->ended_on ? $position->ended_on->format('Y') : ($t007Ar ? 'الحاضر' : 'Present') }}</span>
@@ -133,7 +195,11 @@ body:has(.t007-reference-stage) .site-footer{margin-top:0}
             </div>
         @elseif($screen === 'hire')
             <div class="t007-hire-cards">
-                @foreach($t007Ar ? [
+                @foreach($t007ReferenceReady ? [
+                    ['Profile fit', 'SQL DBA | Technical PM | AI Engineering'],
+                    ['Evidence', 'Case studies • certifications • verified links'],
+                    ['CV options', 'ATS PDF | Executive | Engineering'],
+                ] : ($t007Ar ? [
                     ['ملاءمة الملف', 'المهارات المنشورة بالأدلة فقط'],
                     ['الأدلة', 'دراسات الحالة والروابط العامة المراجعة'],
                     ['خيارات السيرة', 'السيرة العامة حسب المسار المختار'],
@@ -141,7 +207,7 @@ body:has(.t007-reference-stage) .site-footer{margin-top:0}
                     ['Profile fit', 'Evidence-reviewed published skills only'],
                     ['Evidence', 'Published case studies and reviewed public links'],
                     ['CV options', 'Public CV for the selected career track'],
-                ] as $card)
+                ]) as $card)
                     <article class="t007-hire-card">
                         <h2>{{ $card[0] }}</h2><p>{{ $card[1] }}</p>
                         <a href="{{ route('public.resume', ['lang' => $locale]) }}">Download profile</a>
