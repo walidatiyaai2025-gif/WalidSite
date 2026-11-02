@@ -3,6 +3,8 @@
 namespace Tests\Feature\Web;
 
 use App\Models\Article;
+use App\Models\Project;
+use App\Models\ProjectEvidence;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -163,5 +165,122 @@ final class T012ReferenceStageTest extends TestCase
         $this->get('/search?lang=en&q=needle-reference-stage&type=articles')->assertOk()
             ->assertDontSee('Actual search result')
             ->assertDontSee('Unrelated approved article');
+    }
+
+    public function test_search_stage_preserves_query_filter_and_language_without_duplicate_results(): void
+    {
+        $live = $this->article(
+            'preview-stage-bilingual',
+            'Bilingual reviewed search hit',
+            'This guide contains needle-stage-search for a real filtered lookup.'
+        );
+        $this->article(
+            'preview-stage-hidden',
+            'Private needle-stage-search',
+            'needle-stage-search',
+            false
+        );
+
+        foreach (['en', 'ar'] as $lang) {
+            $other = $lang === 'en' ? 'ar' : 'en';
+            foreach (['all', 'articles'] as $type) {
+                $query = [
+                    'lang' => $lang,
+                    'q' => 'needle-stage-search',
+                    'type' => $type,
+                ];
+                $page = $this->get(route('public.search', $query))->assertOk()
+                    ->assertSee('id="t012-top-search"', false)
+                    ->assertSee('value="needle-stage-search"', false)
+                    ->assertSee('name="type" value="'.$type.'"', false)
+                    ->assertSee('href="'.e(route('public.search', [
+                        'lang' => $other,
+                        'q' => 'needle-stage-search',
+                        'type' => $type,
+                    ])).'"', false)
+                    ->assertSee('Bilingual reviewed search hit')
+                    ->assertDontSee('Private needle-stage-search');
+
+                // The three-card preview and accessible remainder together
+                // represent each result exactly once, even with 1–3 hits.
+                $this->assertSame(
+                    1,
+                    substr_count($page->getContent(), '/blog/'.$live->slug.'?')
+                );
+            }
+        }
+    }
+
+    public function test_filtered_projects_use_real_approved_preview_and_keep_type_on_submission(): void
+    {
+        $approved = Project::create([
+            'slug' => 'verified-stage-project',
+            'title' => 'needle-stage-project approved work',
+            'summary_en' => 'Reviewed public evidence',
+            'summary_ar' => 'دليل عام تمت مراجعته',
+            'role_en' => 'Engineer',
+            'role_ar' => 'مهندس',
+            'status' => 'completed',
+            'visibility' => 'public',
+            'published_at' => now()->subDay(),
+        ]);
+        ProjectEvidence::create([
+            'project_id' => $approved->id,
+            'evidence_type' => 'document',
+            'url' => 'https://docs.example.org/verified-project',
+            'visibility' => 'public',
+            'verified_at' => now()->subDay(),
+        ]);
+        Project::create([
+            'slug' => 'unreviewed-stage-project',
+            'title' => 'needle-stage-project unreviewed work',
+            'summary_en' => 'No source evidence',
+            'summary_ar' => 'بدون دليل',
+            'role_en' => 'Engineer',
+            'role_ar' => 'مهندس',
+            'status' => 'completed',
+            'visibility' => 'public',
+            'published_at' => now()->subDay(),
+        ]);
+
+        foreach (['en', 'ar'] as $lang) {
+            $other = $lang === 'en' ? 'ar' : 'en';
+            $page = $this->get(route('public.search', [
+                'lang' => $lang,
+                'q' => 'needle-stage-project',
+                'type' => 'projects',
+            ]))->assertOk()
+                ->assertSee('name="type" value="projects"', false)
+                ->assertSee($lang === 'ar' ? 'مشروع موثق' : 'Verified project')
+                ->assertSee('needle-stage-project approved work')
+                ->assertDontSee('needle-stage-project unreviewed work')
+                ->assertSee('href="'.e(route('public.search', [
+                    'lang' => $other,
+                    'q' => 'needle-stage-project',
+                    'type' => 'projects',
+                ])).'"', false);
+            $this->assertSame(
+                1,
+                substr_count($page->getContent(), '/projects/'.$approved->slug.'?')
+            );
+        }
+    }
+
+    public function test_search_stage_empty_and_user_query_are_not_invented_or_raw_html(): void
+    {
+        $this->get('/search?lang=en&q=unlikely-unmatched-73952&type=all')
+            ->assertOk()
+            ->assertSee('value="unlikely-unmatched-73952"', false)
+            ->assertSee('No verified public matches.')
+            ->assertDontSee('class="t012-search-card"', false);
+
+        $query = '<script>alert(9)</script>';
+        $page = $this->get(route('public.search', [
+            'lang' => 'ar',
+            'q' => $query,
+            'type' => 'articles',
+        ]))->assertOk();
+        $page->assertSee('value="'.e($query).'"', false)
+            ->assertDontSee('value="'.$query.'"', false);
     }
 }
