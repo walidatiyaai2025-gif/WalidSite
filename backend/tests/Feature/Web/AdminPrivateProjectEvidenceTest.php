@@ -134,6 +134,60 @@ final class AdminPrivateProjectEvidenceTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_private_review_queue_is_owner_only_and_rejection_keeps_project_unpublished(): void
+    {
+        Http::fake();
+        $project = $this->project();
+        $owner = $this->account('owner');
+        $this->actingAs($owner, 'web');
+        $this->post('/admin/projects/'.$project->id.'/evidence', $this->form())->assertRedirect();
+        $candidate = $project->evidence()->firstOrFail();
+        $discard = '/admin/projects/'.$project->id.'/evidence/'.$candidate->id;
+
+        $this->actingAs($this->account('admin'), 'web');
+        $this->get('/admin/projects')->assertOk()
+            ->assertDontSee($candidate->url)
+            ->assertDontSee('Discard unverified evidence');
+        $this->delete($discard)->assertForbidden();
+        $this->assertDatabaseHas('project_evidence', ['id' => $candidate->id]);
+
+        $this->actingAs($owner, 'web');
+        $this->get('/admin/projects?lang=en')->assertOk()
+            ->assertSee('Review pending private evidence')
+            ->assertSee($candidate->url)
+            ->assertSee('Discard unverified evidence');
+        $this->delete($discard.'?lang=ar')->assertRedirect(
+            route('admin.operations.projects', ['lang' => 'ar'])
+        )->assertSessionHas('status', 'تم رفض الدليل الخاص غير المعتمد.');
+        $this->assertDatabaseMissing('project_evidence', ['id' => $candidate->id]);
+        $this->assertSame('private', $project->fresh()->visibility);
+        $this->assertNull($project->fresh()->published_at);
+        $this->delete($discard)->assertNotFound();
+        Http::assertNothingSent();
+    }
+
+    public function test_review_rejects_other_project_candidates_public_or_verified_evidence_and_extra_fields(): void
+    {
+        Http::fake();
+        $this->actingAs($this->account('owner'), 'web');
+        $project = $this->project();
+        $other = $this->project();
+        foreach ([$project, $other] as $item) {
+            $this->post('/admin/projects/'.$item->id.'/evidence', $this->form())->assertRedirect();
+        }
+        $candidate = $project->evidence()->firstOrFail();
+        $path = '/admin/projects/'.$project->id.'/evidence/'.$candidate->id;
+        $this->delete($path, ['visibility' => 'public'])->assertRedirect()
+            ->assertSessionHasErrors('evidence');
+        $this->delete('/admin/projects/'.$other->id.'/evidence/'.$candidate->id)->assertNotFound();
+        $candidate->update(['verified_at' => now(), 'visibility' => 'public']);
+        $this->delete($path)->assertStatus(409);
+        $this->assertDatabaseHas('project_evidence', ['id' => $candidate->id]);
+        $published = $this->project(true);
+        $this->delete('/admin/projects/'.$published->id.'/evidence/'.$candidate->id)->assertStatus(409);
+        Http::assertNothingSent();
+    }
+
     public function test_accepted_evidence_types_stay_private_and_do_not_auto_verify(): void
     {
         Http::fake();
