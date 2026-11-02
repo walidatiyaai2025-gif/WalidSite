@@ -145,6 +145,26 @@ Route::get('/sitemap.xml', function (Request $request) {
 })->name('public.sitemap')->middleware('throttle:30,1');
 
 
+/*
+ * Public draft disclosures: accessible for informed contact decisions, but
+ * not indexed until legal controller, processor and retention review passes.
+ */
+Route::get('/privacy', function (Request $request) {
+    $request->validate(['lang' => ['sometimes', 'in:ar,en']]);
+
+    return response()->view('public.privacy')
+        ->header('Cache-Control', 'no-store')
+        ->header('X-Content-Type-Options', 'nosniff');
+})->name('public.privacy')->middleware('throttle:30,1');
+
+Route::get('/terms', function (Request $request) {
+    $request->validate(['lang' => ['sometimes', 'in:ar,en']]);
+
+    return response()->view('public.terms')
+        ->header('Cache-Control', 'no-store')
+        ->header('X-Content-Type-Options', 'nosniff');
+})->name('public.terms')->middleware('throttle:30,1');
+
 Route::get('/admin/login', [WebLoginController::class, 'form'])
     ->middleware('guest:web')->name('login');
 Route::post('/admin/login', [WebLoginController::class, 'login'])
@@ -1410,13 +1430,22 @@ Route::get('/contact', function (Request $request) {
     // Limit the suggestion to the existing 140-character subject field.
     // Visitors can edit it; their inquiry is not verified project evidence.
     $locale = $request->query('lang') === 'ar' ? 'ar' : 'en';
+    $rawTopic = $request->query()['topic'] ?? null;
+    // Only one allowlisted privacy request topic may prefill an editable
+    // subject. Never reflect arbitrary input or override verified context.
+    $privacyTopic = $reportArticle === null && $reportProject === null
+        && ! array_key_exists('article', $request->query())
+        && ! array_key_exists('project', $request->query())
+        && is_string($rawTopic) && $rawTopic === 'privacy';
     $suggestedSubject = $reportArticle !== null
         ? ($locale === 'ar' ? 'ملاحظة بشأن المقال: ' : 'Article issue: ')
             .mb_substr($reportArticle->slug, 0, 100)
         : ($reportProject !== null
             ? ($locale === 'ar' ? 'استفسار عن المشروع: ' : 'Project inquiry: ')
                 .mb_substr($reportProject['slug'], 0, 100)
-            : '');
+            : ($privacyTopic ? ($locale === 'ar'
+                ? 'طلب متعلق بالخصوصية أو البيانات'
+                : 'Privacy or personal data request') : ''));
 
     $recipient = config('mail.contact_recipient');
     $available = is_string($recipient) && filter_var($recipient, FILTER_VALIDATE_EMAIL)
