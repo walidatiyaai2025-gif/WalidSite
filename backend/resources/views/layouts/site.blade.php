@@ -182,6 +182,13 @@
                         @php($rawContactTopic = request()->query()['topic'] ?? null)
                         @if(is_string($rawContactTopic) && $rawContactTopic === 'privacy')
                             @php($languageArgs['topic'] = 'privacy')
+                            {{-- Only copy supported intent keys. Never reflect
+                                 arbitrary query text or an array into links. --}}
+                            @php($rawDataRequest = request()->query()['request'] ?? null)
+                            @if(is_string($rawDataRequest)
+                                && in_array($rawDataRequest, ['access','correction','export','deletion','notifications'], true))
+                                @php($languageArgs['request'] = $rawDataRequest)
+                            @endif
                         @endif
                     @endif
                 @endif
