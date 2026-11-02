@@ -22,7 +22,7 @@ or updates the visual ledger itself. Evidence is admitted only through
 3. Select the **actual visible language** in the app itself. The renderer does
    not change language, impersonate a successful login, seed mock content or
    navigate past UI gates. Its accessibility header must match the requested
-   screen/locale at the top of the viewport; otherwise it fails closed.
+   screen/locale and, on dynamic routes, a native resource-id; otherwise it fails closed.
 4. Configure the emulator resolution and DPR so actual \`screencap -p\` pixels
    equal the original PNG dimensions. The outer visual validator supplies the
    immutable physical dimensions and route; there is no resize or tolerance.
@@ -37,7 +37,7 @@ The source-defined Flutter AppBar headings currently distinguish eight screens:
 | --- | --- | --- |
 | MOBILE-02 | /home | Waleed Tech Companion |
 | MOBILE-03 | /tools/ai-troubleshooter | AI Troubleshooter |
-| MOBILE-05 | /runbooks | Offline runbook library |
+| MOBILE-05 | /runbooks | Verified runbooks |
 | MOBILE-07 | /articles | Technical articles |
 | MOBILE-08 | /learn | Learning paths |
 | MOBILE-09 | /learn/interview | Interview trainer |
@@ -45,13 +45,34 @@ The source-defined Flutter AppBar headings currently distinguish eight screens:
 | MOBILE-13 | /settings | Preferences |
 
 Arabic titles are defined by the actual Flutter source and checked too.
-**MOBILE-01, 04, 06, 11, 12 are intentionally unsupported** by this adapter:
-the current UI does not expose an independently unique static AppBar screen
-identifier for their contract paths. A dynamic title, shared Saved/Profile tab
-heading, or home card is not sufficient evidence; leave them \`pending\` until
-W3 exposes a true screen-identification test hook or a separate verified
-device integration runner exists. Do not use arbitrary target text to bypass it.
 
+## Five dynamic screens now use native accessibility identities
+
+The Flutter app emits Semantics(identifier) markers into the native Android
+UIAutomator resource-id attribute. They do not add any visible text, art or
+pixels. The operator must launch an actual build from the checked-out SHA;
+the renderer verifies the marker AND localized visible text before and after
+screencap -p. No caller can supply a made-up identifier through environment.
+
+| Screen | Contract route | Real Android resource-id | Verified source state |
+| --- | --- | --- | --- |
+| MOBILE-01 | /welcome | walidsite.mobile.01 | Visible localized Welcome screen |
+| MOBILE-04 | /solutions/{id} | walidsite.mobile.04 | Matching reviewed UUID detail loaded, not withdrawn |
+| MOBILE-06 | /runbooks/{id}/offline | walidsite.mobile.06 | Real offline guide detail and localized heading |
+| MOBILE-11 | /saved | walidsite.mobile.11 | Authenticated Saved Resources surface selected |
+| MOBILE-12 | /profile | walidsite.mobile.12 | Authenticated Personal Profile surface selected |
+
+MOBILE-11/12 intentionally expose only walidsite.mobile.account.locked
+before login, after sign-out, after session expiry or when the private profile
+is unavailable. The two private markers are mutually exclusive and follow
+the real selected tab. Screens with dynamic IDs must be opened via in-app
+navigation from a real resource; a canonical pattern is not a synthetic URL.
+
+**All 13 canonical Flutter routes now have a source-based attestation method.**
+This is NOT certification or completed evidence: zero out of 40 references
+may be marked as matched until true physical screenshots pass the immutable
+RGBA comparison. Browser/device runtime is still required; unit test fakes
+are never visual evidence.
 ## Capture and pixel diagnostics
 
 Create a local trusted plan **outside the repository**, e.g.:
@@ -83,8 +104,8 @@ python3 qa/visual_diagnostics.py --plan /private/qa/mobile-plan.json --commit "$
 
 On an allowed route, the renderer runs \`adb -s SERIAL get-state\`, reads only
 the current focused app from \`dumpsys window windows\`, checks Android
-\`uiautomator dump /dev/tty\` for the exact localized AppBar text in the upper
-fifth of the screen, and captures fresh native bytes with
+\`uiautomator dump /dev/tty\` for the actual localized AppBar text or exact native screen resource-id plus its
+localized visible heading, and captures fresh native bytes with
 \`adb -s SERIAL exec-out screencap -p\`. It validates PNG integrity and exact
 source image size, **then rechecks the foreground app and localized visible title
 after capture** to reject a mid-screenshot app or page transition. Only then
@@ -115,7 +136,7 @@ invented route activation or production device proof is permitted.
   navigation integration test. Login/consent must be established lawfully
   through the running app.
 - The accessibility hierarchy is checked at runtime, but Android/Flutter
-  versions can expose accessibility differently. If the title is absent,
+  versions can expose accessibility differently. If a title or marker is absent,
   reject capture, **do not disable the check**.
 - Device screenshots or diagnostic artifacts may contain private information.
   Use nonpersonal QA data and controlled storage. Do not upload private user

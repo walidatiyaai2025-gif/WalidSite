@@ -84,8 +84,10 @@ class CompanionWelcome extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      key: const Key('mobile-welcome-screen'),
+    return Semantics(
+      identifier: 'walidsite.mobile.01',
+      child: Scaffold(
+        key: const Key('mobile-welcome-screen'),
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -153,6 +155,7 @@ class CompanionWelcome extends StatelessWidget {
             ),
           ),
         ),
+      ),
       ),
     );
   }

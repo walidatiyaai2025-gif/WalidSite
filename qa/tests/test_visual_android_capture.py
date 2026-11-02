@@ -4,6 +4,7 @@ Synthetic XML and PNG bytes below test the gate. They never constitute
 screenshots of WalidSite or fulfill visual evidence.
 """
 import io
+import json
 import os
 import subprocess
 import tempfile
@@ -15,7 +16,8 @@ from unittest.mock import Mock, patch
 from PIL import Image
 
 from qa.render_android_screenshot import (
-    AndroidCaptureError, HEADINGS, PACKAGE, _verify_heading, render, main,
+    AndroidCaptureError, HEADINGS, NATIVE_SCREENS, PACKAGE,
+    _verify_heading, _verify_native_identity, render, main,
 )
 
 
@@ -97,13 +99,93 @@ class AndroidScreenCaptureTest(unittest.TestCase):
                 self.assertEqual(render(self.env, runner), self.output)
                 self.output.unlink()
 
+    @staticmethod
+    def native_hierarchy(identifier, title, title_bounds="[0,20][600,110]",
+                         marker_bounds="[0,0][1440,860]", marker_visible=True):
+        from xml.sax.saxutils import escape
+        title = escape(title, {'"': '&quot;'})
+        return (
+            f'UI dump\n<hierarchy rotation="0"><node resource-id="{identifier}" '
+            f'bounds="{marker_bounds}" visible-to-user="{str(marker_visible).lower()}"/>'
+            f'<node text="{title}" bounds="{title_bounds}" '
+            'visible-to-user="true"/></hierarchy>\n'
+        ).encode()
+
+    def test_exactly_thirteen_contract_routes_have_genuine_attestation(self):
+        contracts = json.loads(
+            (Path(__file__).resolve().parents[2] / "contracts" / "screens.json")
+            .read_text(encoding="utf-8")
+        )["screens"]
+        routes = {row["route"] for row in contracts
+                  if row["id"].startswith("MOBILE-")}
+        self.assertEqual(len(routes), 13)
+        self.assertEqual(routes, set(HEADINGS) | set(NATIVE_SCREENS))
+        self.assertEqual(set(HEADINGS).intersection(NATIVE_SCREENS), set())
+
+    def test_five_dynamic_screens_accept_only_actual_native_and_locale(self):
+        for route, (identifier, titles, top) in NATIVE_SCREENS.items():
+            for locale, title in (("en", titles[0]), ("ar", titles[1])):
+                with self.subTest(route=route, locale=locale):
+                    self.env["WALIDSITE_CAPTURE_ROUTE"] = route
+                    self.env["WALIDSITE_CAPTURE_LOCALE"] = locale
+                    runner, calls = self.runner(
+                        xml=self.native_hierarchy(
+                            identifier, title,
+                            title_bounds="[0,20][600,110]" if top
+                            else "[0,300][900,380]"),
+                    )
+                    self.assertEqual(render(self.env, runner), self.output)
+                    self.assertEqual(self.output.read_bytes(), self.png)
+                    self.output.unlink()
+                    self.assertEqual(len(calls), 6)
+
+    def test_native_marker_must_be_visible_unique_and_in_viewport(self):
+        identifier, titles, top = NATIVE_SCREENS["/saved"]
+        good = self.native_hierarchy(identifier, titles[0])
+        _verify_native_identity(good, identifier, titles[0], 1440, 860, top)
+        for xml in (
+            self.native_hierarchy("walidsite.mobile.account.locked", titles[0]),
+            self.native_hierarchy("walidsite.mobile.12", titles[0]),
+            self.native_hierarchy(identifier, titles[1]),
+            self.native_hierarchy(identifier, titles[0], marker_visible=False),
+            self.native_hierarchy(identifier, titles[0], marker_bounds="[0,0][1441,860]"),
+            self.native_hierarchy(identifier, titles[0], title_bounds="[0,300][500,380]"),
+            good.replace(b"</hierarchy>", (
+                f'<node resource-id="{identifier}" bounds="[0,0][1440,860]" '
+                'visible-to-user="true"/></hierarchy>').encode()),
+        ):
+            with self.subTest(xml=xml[:120]):
+                with self.assertRaises(AndroidCaptureError):
+                    _verify_native_identity(xml, identifier, titles[0], 1440, 860, top)
+
+    def test_native_marker_switch_during_screencap_never_creates_evidence(self):
+        self.env["WALIDSITE_CAPTURE_ROUTE"] = "/profile"
+        identifier, titles, _ = NATIVE_SCREENS["/profile"]
+        source, calls = self.runner(xml=self.native_hierarchy(identifier, titles[0]))
+        seen = [0]
+
+        def switched(args, **kwargs):
+            result = source(args, **kwargs)
+            if args[3:] == ["shell", "uiautomator", "dump", "/dev/tty"]:
+                seen[0] += 1
+                if seen[0] == 2:
+                    return SimpleNamespace(
+                        stdout=self.native_hierarchy("walidsite.mobile.11", titles[0]),
+                        stderr=b"hidden", returncode=0,
+                    )
+            return result
+
+        with self.assertRaises(AndroidCaptureError):
+            render(self.env, switched)
+        self.assertEqual(seen[0], 2)
+        self.assertFalse(self.output.exists())
+
     def test_rejects_unsupported_routes_and_untrusted_geometry_before_adb(self):
         cases = [
-            ("WALIDSITE_CAPTURE_ROUTE", "/welcome"),
-            ("WALIDSITE_CAPTURE_ROUTE", "/profile"),
+            ("WALIDSITE_CAPTURE_ROUTE", "/welcome?lang=ar"),
             ("WALIDSITE_CAPTURE_ROUTE", "/solutions/123"),
             ("WALIDSITE_CAPTURE_ROUTE", "/solutions/{id}?secret=x"),
-            ("WALIDSITE_CAPTURE_ROUTE", "/saved"),
+            ("WALIDSITE_CAPTURE_ROUTE", "/profile?auth=false"),
             ("WALIDSITE_CAPTURE_ROUTE", "/home?secret=x"),
             ("WALIDSITE_CAPTURE_LOCALE", "fr"),
             ("WALIDSITE_MOBILE_ADB_SERIAL", ""),

@@ -659,8 +659,12 @@ class _MobileAccountJourneyState extends State<MobileAccountJourney> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text(_showProfile
+    return Semantics(
+      identifier: _validSession && _profile != null
+          ? (_showProfile ? 'walidsite.mobile.12' : 'walidsite.mobile.11')
+          : 'walidsite.mobile.account.locked',
+      child: Scaffold(
+        appBar: AppBar(title: Text(_showProfile
           ? _label('Personal profile', 'الملف الشخصي')
           : _label('Saved resources', 'المحفوظات'))),
       body: SafeArea(child: !_configured
@@ -830,6 +834,7 @@ class _MobileAccountJourneyState extends State<MobileAccountJourney> {
                 ],
               ],
             )),
+      ),
     );
   }
 }
