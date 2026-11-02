@@ -56,9 +56,9 @@ body:has(.t012-reference-stage) .site-footer{margin-top:0}
 .t012-screen-article .t012-reference-hero h1{transform:translate(-1px,3px) scale(1.01,.89);transform-origin:left top}
 .t012-screen-lab .t012-reference-hero h1{transform:translate(-1px,1px) scale(.972,.943);transform-origin:left top}
 .t012-screen-search .t012-reference-hero h1{transform:translate(2px,1px) scale(.986,.943);transform-origin:left top}
-.t012-screen-blog .t012-reference-subtitle{transform:translate(-3px,-1px) scale(1.01,.9);transform-origin:left top}
-.t012-screen-article .t012-reference-subtitle{transform:translate(-1px,1px) scale(1.006,.85);transform-origin:left top}
-.t012-screen-lab .t012-reference-subtitle{transform:translate(-2px,-1px) scale(1.01,.9);transform-origin:left top}
+.t012-screen-blog .t012-reference-subtitle{transform:translateY(-1px) scale(1.01,.9);transform-origin:left top}
+.t012-screen-article .t012-reference-subtitle{transform:scale(1.006,.85);transform-origin:left top}
+.t012-screen-lab .t012-reference-subtitle{transform:translate(-1px,-1px) scale(1.01,.9);transform-origin:left top}
 .t012-screen-search .t012-reference-subtitle{transform:translateY(-1px) scale(1.004,.9);transform-origin:left top}
 .t012-reference-actions{display:flex;gap:19px;margin-top:27px}
 .t012-reference-action{height:63px;width:245px;border-radius:16px;display:flex;align-items:center;padding-left:29px;text-decoration:none;color:#184876;font-size:23px;font-weight:700;letter-spacing:1px}
