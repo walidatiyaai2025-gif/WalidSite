@@ -11,7 +11,7 @@ from pathlib import Path
 
 from PIL import Image
 
-from qa.capture_visual_evidence import CaptureError, capture
+from qa.capture_visual_evidence import CaptureError, capture, main
 from qa.validate_visual_fidelity import audit
 
 
@@ -93,6 +93,23 @@ class CaptureRunnerTest(unittest.TestCase):
         self.assertEqual(audit(self.root), ([], 1, 40))
         with self.assertRaisesRegex(CaptureError, "already has evidence"):
             self.run_capture()
+
+    def test_custom_timeout_is_recorded_and_replayable(self):
+        capture(self.root, "WEB-01", commit=self.sha, locale="ar",
+                dpr=2, route="/", command=self.renderer(), timeout=17)
+        self.assertIn("--timeout 17", self.record()["capture_command"])
+
+    def test_cli_timeout_reaches_capture_and_rejects_invalid_values(self):
+        from unittest.mock import patch
+        argv = ["WEB-01", "--commit", self.sha, "--locale", "ar",
+                "--dpr", "2", "--route", "/", "--timeout", "17",
+                "--", *self.renderer()]
+        with patch("qa.capture_visual_evidence.capture", return_value="qa/visual-captures/WEB-01.png") as mocked:
+            self.assertEqual(main(argv), 0)
+            self.assertEqual(mocked.call_args.kwargs["timeout"], 17)
+        with self.assertRaisesRegex(CaptureError, "timeout"):
+            capture(self.root, "WEB-01", commit=self.sha, locale="ar",
+                    dpr=2, route="/", command=self.renderer(), timeout=True)
 
     def test_pixel_mismatch_fails_closed_and_retains_pending(self):
         with self.assertRaisesRegex(CaptureError, "RGBA pixels differ"):

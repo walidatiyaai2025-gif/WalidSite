@@ -36,6 +36,8 @@ for command in (
     "php artisan migrate:fresh --force",
     "OwnerCvBaselineSeeder",
     "qa/validate_visual_fidelity.py",
+    "python3 qa/validate_pr_ownership.py",
+    "python3 -m unittest qa.tests.test_pr_ownership -v",
     "python -m unittest discover -s qa/tests -p 'test_visual_*.py'",
 ):
     if command not in ci:
