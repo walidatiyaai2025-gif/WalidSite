@@ -9,11 +9,12 @@ return new class extends Migration {
     {
         Schema::create('legacy_import_receipts', function (Blueprint $table): void {
             $table->uuid('id')->primary();
-            $table->string('source_name', 180);
+            $table->unsignedTinyInteger('source_schema_version');
+            $table->char('source_name_hash', 64);
             $table->char('source_sha256', 64);
             $table->char('record_hash', 64)->unique();
             $table->string('source_table', 40);
-            $table->string('source_key', 180);
+            $table->char('source_key_hash', 64);
             $table->string('target_type', 40);
             $table->uuid('target_id');
             $table->timestamp('imported_at');
