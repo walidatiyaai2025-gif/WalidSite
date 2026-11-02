@@ -486,6 +486,8 @@ final class AdminProductController extends Controller
                 ->where('users.status', 'active')
                 ->where('preference.enabled', true)
                 ->whereNotNull('preference.consented_at')
+                // A future timestamp cannot authorize a recipient.
+                ->where('preference.consented_at', '<=', now('UTC'))
                 ->whereNull('preference.revoked_at')
                 ->distinct()
                 ->count('preference.user_id');
