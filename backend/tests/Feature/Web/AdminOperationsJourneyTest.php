@@ -339,7 +339,7 @@ final class AdminOperationsJourneyTest extends TestCase
             ->assertHeader('Cache-Control', 'no-store, private')
             ->assertHeader('X-Content-Type-Options', 'nosniff')
             ->streamedContent();
-        $this->assertStringContainsString('UTC period start,UTC period end,Currency,Receipts,Cost (minor units)', $csv);
+        $this->assertStringContainsString('"UTC period start","UTC period end",Currency,Receipts,"Cost (minor units)"', $csv);
         $this->assertStringContainsString(now('UTC')->subDays(6)->toDateString().','.$day.',USD,2,40', $csv);
         $this->assertStringNotContainsString('KWD', $csv);
         $this->assertStringNotContainsString('Private provider identifier', $csv);
