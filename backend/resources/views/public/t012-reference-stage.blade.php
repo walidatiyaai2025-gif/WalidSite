@@ -63,8 +63,8 @@ body:has(.t012-reference-stage) .site-footer{margin-top:0}
 .t012-screen-search .t012-reference-subtitle{transform:translateY(-1px) scale(1.004,.9);transform-origin:left top}
 .t012-reference-actions{display:flex;gap:19px;margin-top:27px}
 .t012-reference-action{height:63px;width:245px;border-radius:16px;display:flex;align-items:center;padding-left:29px;text-decoration:none;color:#184876;font-size:23px;font-weight:700;letter-spacing:1px}
-.t012-reference-action.primary{background:#0a9a8c;padding-bottom:4px}
-.t012-reference-action.secondary{width:249px;background:#fff;border:2px solid #0a9a8c;padding-left:33px;padding-bottom:2px;font-weight:500;letter-spacing:-.3px}
+.t012-reference-action.primary{background:#0a9a8c;padding-bottom:2px;letter-spacing:1.3px}
+.t012-reference-action.secondary{width:249px;background:#fff;border:2px solid #0a9a8c;padding-left:34px;padding-bottom:0;font-weight:400;letter-spacing:-.3px}
 .t012-visual-stack{position:absolute;left:920px;top:80px;width:372px;height:226px}
 .t012-visual-stack .tile{position:absolute;width:221px;height:171px;border:3px solid #14bc98;border-radius:21px;background:#306a94;color:#0a9a8c;font-weight:800;font-size:30px;display:flex;align-items:center;justify-content:center;overflow:hidden}
 .t012-visual-stack .one{left:0;top:0;background:#26608e;border-color:#149e98}.t012-visual-stack .two{left:75px;top:27px;background:#2b6591;border-color:#14ad98}.t012-visual-stack .three{left:150px;top:54px;background:#306a94;border-color:#14bc98}
