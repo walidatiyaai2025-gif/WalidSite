@@ -104,6 +104,9 @@ final class AdminPrivateProjectEvidenceTest extends TestCase
 
     public function test_disallowed_fields_and_unsafe_urls_never_create_review_evidence(): void
     {
+        // This matrix intentionally sends more than ten requests. Isolate
+        // validation from the independent production rate-limit protection.
+        $this->withoutMiddleware(\Illuminate\Routing\Middleware\ThrottleRequests::class);
         Http::fake();
         $this->actingAs($this->account('owner'), 'web');
         $project = $this->project();
