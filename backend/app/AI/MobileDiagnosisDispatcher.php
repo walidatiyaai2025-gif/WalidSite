@@ -178,6 +178,10 @@ final class MobileDiagnosisDispatcher
 
             $selected = $selection['runbook_id'];
             if ($selected === null) {
+                // A real paid inference has already been receipted. Its result
+                // is still not authorized if the account was disabled while
+                // the provider call was in flight.
+                $this->ensureActiveRequester($request);
                 $request->forceFill(['request_blob' => null])->save();
                 return null;
             }
@@ -185,6 +189,11 @@ final class MobileDiagnosisDispatcher
                 throw new RuntimeException('Diagnosis provider selected an unavailable solution.');
             }
 
+            // The HTTP round-trip and public runbook revalidation are async
+            // boundaries. Do not publish a selection for a requester whose
+            // account was disabled after the preflight authorization check.
+            // Keep the paid usage receipt, but erase the retained question.
+            $this->ensureActiveRequester($request);
             $request->forceFill([
                 'selected_runbook_id' => $selected,
                 'request_blob' => null,
