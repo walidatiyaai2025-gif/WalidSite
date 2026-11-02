@@ -4,6 +4,7 @@
 This is a fail-closed evidence validator, NOT a screenshot-rendering substitute.
 The actual web or Flutter UI must be rendered independently before marking matched.
 """
+import argparse
 import hashlib
 import json
 import re
@@ -17,7 +18,7 @@ def _json(path):
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def audit(root: Path):
+def audit(root: Path, require_complete: bool = False):
     root = root.resolve()
     errors = []
     matched = 0
@@ -123,6 +124,13 @@ def audit(root: Path):
             errors.append(f"{screen_id}: invalid/placeholder screenshot provenance")
             continue
 
+        # A byte-for-byte copy of the approved mockup is not independent
+        # runtime evidence. Pixel parity alone cannot prove provenance, but
+        # this explicit fail-closed check prevents the simplest false claim.
+        if screenshot.read_bytes() == raw:
+            errors.append(f"{screen_id}: capture is a byte-for-byte copy of its reference, not runtime evidence")
+            continue
+
         try:
             with Image.open(reference_file) as image:
                 reference_pixels = image.convert("RGBA")
@@ -152,12 +160,24 @@ def audit(root: Path):
         except (UnidentifiedImageError, OSError, ValueError) as exc:
             errors.append(f"{screen_id}: invalid captured screenshot: {exc}")
 
+    if require_complete and matched != len(expected):
+        errors.append(
+            f"Final visual release gate: {len(expected) - matched}/{len(expected)} "
+            "screens lack verified runtime pixel-parity evidence"
+        )
     return errors, matched, len(expected)
 
 
-def main():
+def main(argv=None):
+    parser = argparse.ArgumentParser(description="Validate 40 immutable visual references and capture evidence")
+    parser.add_argument(
+        "--require-complete",
+        action="store_true",
+        help="Fail release acceptance if any of the 40 screens is still pending or invalid",
+    )
+    args = parser.parse_args(argv)
     root = Path(__file__).resolve().parents[1]
-    errors, matched, total = audit(root)
+    errors, matched, total = audit(root, require_complete=args.require_complete)
     if errors:
         print("FAIL ADR-010 visual fidelity evidence:\n" + "\n".join(errors))
         return 1

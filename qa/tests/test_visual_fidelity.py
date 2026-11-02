@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 
 from PIL import Image
+from PIL.PngImagePlugin import PngInfo
 
 from qa.validate_visual_fidelity import audit
 
@@ -57,7 +58,12 @@ class VisualFidelityGateTest(unittest.TestCase):
     def _mark_matched(self):
         ref = self.root / self.entries["WEB-01"]["reference_image"]
         capture = "qa/visual-captures/WEB-01.png"
-        (self.root / capture).write_bytes(ref.read_bytes())
+        # A synthetic independently encoded image tests the RGBA comparator.
+        # This fixture never claims to prove a real website/device rendering.
+        metadata = PngInfo()
+        metadata.add_text("unit_test", "RGBA comparator regression fixture")
+        with Image.open(ref) as source:
+            source.save(self.root / capture, pnginfo=metadata)
         self.entries["WEB-01"] = {
             **self.entries["WEB-01"],
             "status": "matched",
@@ -81,6 +87,25 @@ class VisualFidelityGateTest(unittest.TestCase):
         errors, matched, total = audit(self.root)
         self.assertEqual(errors, [])
         self.assertEqual((matched, total), (1, 40))
+
+    def test_byte_identical_reference_is_not_accepted_as_runtime_capture(self):
+        capture = self._mark_matched()
+        reference = self.root / self.entries["WEB-01"]["reference_image"]
+        capture.write_bytes(reference.read_bytes())
+
+        errors, matched, _ = audit(self.root)
+        self.assertEqual(matched, 0)
+        self.assertTrue(any("byte-for-byte copy" in error for error in errors))
+
+    def test_final_release_gate_rejects_pending_evidence(self):
+        errors, matched, total = audit(self.root, require_complete=True)
+        self.assertEqual((matched, total), (0, 40))
+        self.assertTrue(any("40/40" in error and "release gate" in error for error in errors))
+
+        self._mark_matched()
+        errors, matched, _ = audit(self.root, require_complete=True)
+        self.assertEqual(matched, 1)
+        self.assertTrue(any("39/40" in error and "release gate" in error for error in errors))
 
     def test_a_single_rgb_pixel_difference_fails_even_if_alpha_is_identical(self):
         capture = self._mark_matched()
