@@ -481,8 +481,14 @@ final class AdminProductController extends Controller
         $consentTable = Schema::hasTable('notification_preferences');
         $consented = 0;
         if ($consentTable) {
-            $consented = (int) DB::table('notification_preferences')
-                ->where('enabled', true)->count();
+            $consented = (int) DB::table('notification_preferences as preference')
+                ->join('users', 'users.id', '=', 'preference.user_id')
+                ->where('users.status', 'active')
+                ->where('preference.enabled', true)
+                ->whereNotNull('preference.consented_at')
+                ->whereNull('preference.revoked_at')
+                ->distinct()
+                ->count('preference.user_id');
         }
 
         return response()->json([
