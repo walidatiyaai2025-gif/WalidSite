@@ -11,6 +11,7 @@ import 'solutions/offline_solution_finder.dart';
 import 'ai/ai_troubleshooter.dart';
 import 'account/account_journey.dart';
 import 'preferences/mobile_preferences.dart';
+import 'home/mobile_home_feed.dart';
 
 void main() => runApp(const WaleedTechApp());
 
@@ -211,6 +212,20 @@ class CompanionHome extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
           children: [
             _IntroPanel(arabic: arabic),
+            const SizedBox(height: 16),
+            MobileHomeFeedPanel(
+              arabic: arabic,
+              onOpenArticles: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => VerifiedArticleLibrary(arabic: arabic),
+                ),
+              ),
+              onOpenRunbooks: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => ReviewedRunbookLibrary(arabic: arabic),
+                ),
+              ),
+            ),
             const SizedBox(height: 16),
             Card(
               child: ListTile(
