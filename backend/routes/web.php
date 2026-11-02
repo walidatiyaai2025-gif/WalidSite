@@ -2291,8 +2291,15 @@ Route::middleware('auth:web')->prefix('admin')->group(function (): void {
             ->where('project_id', $draft->id)
             ->where('visibility', 'public')->whereNotNull('verified_at')
             ->where('verified_at', '<=', now('UTC'))->count();
+        // The publish action must not appear for a reviewed but unusable URL.
+        // Share its actual public serializer gate (including URL allowlist and
+        // route-safe slug), not a separate approximation from DB flags.
+        $publicProof = app(\App\Http\Controllers\Api\PublicPortfolioController::class)
+            ->publicProjectData($draft, $request);
+        $usablePublicEvidenceCount = count($publicProof['evidence_urls']);
         return response()->view('admin.project-evidence-review', compact(
-            'draft', 'evidence', 'locale', 'verifiedEvidenceCount'
+            'draft', 'evidence', 'locale', 'verifiedEvidenceCount',
+            'usablePublicEvidenceCount'
         ))->header('Cache-Control', 'no-store, private')
             ->header('X-Content-Type-Options', 'nosniff');
     })->whereUuid('project')->name('admin.operations.projects.evidence.review')

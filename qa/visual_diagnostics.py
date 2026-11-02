@@ -41,9 +41,12 @@ def _compare_rgba(reference: Image.Image, actual: Image.Image, diff_path: Path) 
 
 
 def diagnose(root: Path, plan: object, commit: str, *, runner=subprocess.run,
-             dry_run: bool = False) -> dict:
+             dry_run: bool = False, group: str | None = None) -> dict:
     """Never edit design/visual-fidelity-evidence.json or source PNGs."""
     root = root.resolve()
+    # Group names are a finite, trusted set: no user-controlled path segments.
+    if group is not None and group not in ("web", "admin", "mobile"):
+        raise CapturePlanError("Unknown diagnostic output group")
     # Complete plan validation and real Git SHA first: invalid plans never execute.
     entries = validate_plan(root, plan)
     if not verified_head(root, commit):
@@ -65,7 +68,7 @@ def diagnose(root: Path, plan: object, commit: str, *, runner=subprocess.run,
 
     qa_dir = root / "qa"
     parent = qa_dir / "visual-diagnostics"
-    target = parent / commit
+    target = parent / (commit + ("-" + group if group else ""))
     if qa_dir.is_symlink() or parent.is_symlink() or target.exists() or target.is_symlink():
         raise CapturePlanError("Refusing unsafe or existing diagnostics destination")
     parent.mkdir(parents=True, exist_ok=True)
@@ -173,11 +176,12 @@ def main(argv=None) -> int:
     parser.add_argument("--plan", type=Path, required=True)
     parser.add_argument("--commit", required=True)
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--group", choices=("web", "admin", "mobile"))
     args = parser.parse_args(argv)
     try:
         plan = json.loads(args.plan.read_text(encoding="utf-8"))
         report = diagnose(Path(__file__).resolve().parents[1], plan,
-                          args.commit, dry_run=args.dry_run)
+                          args.commit, dry_run=args.dry_run, group=args.group)
     except (OSError, ValueError) as exc:
         print("DIAGNOSTIC PLAN REJECTED: " + str(exc), file=sys.stderr)
         return 2
