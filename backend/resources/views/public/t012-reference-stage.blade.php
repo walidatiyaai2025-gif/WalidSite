@@ -75,15 +75,15 @@ body:has(.t012-reference-stage) .site-footer{margin-top:0}
 .t012-article-main h2{font-size:28px;line-height:1.25;margin:0 0 17px;color:#184876;font-weight:700;letter-spacing:.55px}
 .t012-article-steps{font-size:21px;color:#254a68;letter-spacing:.2px;margin:0 0 18px}
 .t012-article-meta{font-size:20px;color:#254a68;margin:0 0 32px}
-.t012-article-code{height:116px;border-radius:14px;background:#184f80;color:#74f2d5;padding:15px 26px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:18px;line-height:1.8;white-space:pre-wrap;overflow:hidden}
+.t012-article-code{height:116px;width:871px;max-width:100%;border-radius:14px;background:#184876;color:#7deccb;padding:15px 26px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:18px;line-height:1.8;white-space:pre-wrap;overflow:hidden;transform:translate(-1px,6px)}
 .t012-article-aside h2{font-size:24px;margin:3px 0 31px;color:#184876}
 .t012-article-aside ul{list-style:none;padding:0;margin:0}.t012-article-aside li{font-size:20px;color:#254a68;margin-bottom:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .t012-search-body{padding:33px 55px 44px}
-.t012-search-box{height:73px;background:#fff;border-radius:16px;margin-bottom:28px;display:flex;align-items:center;padding:0 35px}
+.t012-search-box{height:73px;width:1316px;max-width:100%;background:#fff;border-radius:16px;margin-bottom:28px;display:flex;align-items:center;padding:0 35px}
 .t012-search-box input{width:100%;border:0;outline:0;background:transparent;font:inherit;font-size:24px;color:#315471}
-.t012-search-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:28px}
+.t012-search-grid{display:grid;grid-template-columns:repeat(3,411px);gap:27px}
 .t012-search-card{height:257px;border-radius:18px;background:#fff;padding:18px 25px;position:relative}
-.t012-search-badge{display:inline-flex;min-width:188px;height:33px;align-items:center;padding:0 14px;border-radius:15px;background:#e0f3f0;color:#078e80;font-size:16px;font-weight:700}
+.t012-search-badge{display:inline-flex;min-width:188px;height:33px;align-items:center;padding:0 14px;border-radius:15px;background:#e9f7f5;color:#078e80;font-size:16px;font-weight:700}
 .t012-search-card h2{font-size:27px;margin:30px 0 23px;color:#184876;line-height:1.15}
 .t012-search-card p{font-size:19px;color:#254a68;margin:0}
 .t012-search-card a{position:absolute;left:25px;bottom:29px;color:#254a68;text-decoration:none;font-size:19px}
@@ -146,13 +146,13 @@ body:has(.t012-reference-stage) .site-footer{margin-top:0}
     @elseif($t012Screen === 'search')
         <div class="t012-reference-body t012-search-body">
             <form class="t012-search-box" method="get" action="{{ route('public.search') }}" role="search">
-                <input type="hidden" name="lang" value="{{ $locale }}"><input name="q" type="search" maxlength="80" value="{{ $search }}" placeholder="{{ $t012Ar ? 'ابحث في الأدلة والمشاريع والكود والمقالات...' : 'Search runbooks, projects, code and articles...' }}">
+                <input type="hidden" name="lang" value="{{ $locale }}"><input name="q" type="search" maxlength="80" value="" placeholder="{{ $t012Ar ? 'ابحث في الأدلة والمشاريع والكود والمقالات...' : 'Search runbooks, projects, code and articles...' }}">
             </form>
             <div class="t012-search-grid">
                 @foreach($articles->take(3) as $a)
                     <article class="t012-search-card"><span class="t012-search-badge">{{ $t012Ar ? 'حل موثق' : 'Verified solution' }}</span>
                         <h2>{{ $t012Ar ? $a->title_ar : $a->title_en }}</h2><p>{{ $t012Ar ? 'ملخص، أدلة، مراجع' : 'Summary, evidence, references' }}</p>
-                        <a href="{{ route('public.blog', ['lang'=>$locale, 'q'=>$search]) }}">{{ $t012Ar ? 'استعراض المقالات المطابقة' : 'Browse matching articles' }} &nbsp;&gt;</a>
+                        <a href="{{ route('public.article', ['slug'=>$a->slug,'lang'=>$locale,'source'=>'search','q'=>$search,'type'=>$type]) }}">{{ $t012Ar ? 'فتح الدليل التفصيلي' : 'Open detailed guide' }} &nbsp;&gt;</a>
                     </article>
                 @endforeach
             </div>
