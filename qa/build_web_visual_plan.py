@@ -2,7 +2,8 @@
 """Build a safe, source-contract Web visual plan without inventing public content.
 
 Static pages are capturable even with an empty canonical owner CV. Dynamic
-WEB-05 and WEB-08 are omitted until real, verified PUBLIC slugs are supplied.
+WEB-05 and WEB-08 require real, verified PUBLIC slugs. WEB-06 remains
+explicitly excluded until its missing Laravel route is merged via T007 #8.
 """
 import argparse
 import json
@@ -29,10 +30,13 @@ class WebPlanError(ValueError):
 
 
 def build_web_plan(root: Path, *, project_slug: str | None = None,
-                   article_slug: str | None = None, locale: str = "en",
+                   article_slug: str | None = None,
+                   include_ai_engineering: bool = False, locale: str = "en",
                    dpr: float = 1.0, timeout: int = 120,
                    require_all: bool = False) -> dict:
     root = root.resolve()
+    if type(include_ai_engineering) is not bool:
+        raise WebPlanError("AI Engineering inclusion must be explicit")
     if locale not in ("en", "ar"):
         raise WebPlanError("Web capture locale must be ar or en")
     if type(dpr) not in (int, float) or not 0 < dpr <= 8:
@@ -44,8 +48,8 @@ def build_web_plan(root: Path, *, project_slug: str | None = None,
             not isinstance(slug, str) or not SAFE_SLUG.fullmatch(slug)
         ):
             raise WebPlanError("Invalid public %s slug" % label)
-    if require_all and (not project_slug or not article_slug):
-        raise WebPlanError("All 14 screens require two verified published slugs")
+    if require_all and (not project_slug or not article_slug or not include_ai_engineering):
+        raise WebPlanError("All 14 screens require verified published slugs and WEB-06 availability")
 
     try:
         screens = json.loads(
@@ -61,6 +65,10 @@ def build_web_plan(root: Path, *, project_slug: str | None = None,
     supplied = {"WEB-05": project_slug, "WEB-08": article_slug}
     captures = []
     for screen_id in WEB_IDS:
+        # WEB-06 is not yet on main; it is owned by T007 draft PR #499.
+        # Never fabricate a 200 response or silently call an absent route captured.
+        if screen_id == "WEB-06" and not include_ai_engineering:
+            continue
         screen = by_id[screen_id]
         route = screen.get("route")
         if screen.get("surface") != "web" or not isinstance(route, str):
@@ -94,6 +102,7 @@ def build_web_plan(root: Path, *, project_slug: str | None = None,
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--project-slug")
+    parser.add_argument("--include-ai-engineering", action="store_true")
     parser.add_argument("--article-slug")
     parser.add_argument("--locale", choices=("ar", "en"), default="en")
     parser.add_argument("--dpr", type=float, default=1.0)
@@ -106,6 +115,7 @@ def main(argv=None) -> int:
             Path(__file__).resolve().parents[1],
             project_slug=args.project_slug,
             article_slug=args.article_slug,
+            include_ai_engineering=args.include_ai_engineering,
             locale=args.locale, dpr=args.dpr,
             timeout=args.timeout, require_all=args.require_all,
         )
