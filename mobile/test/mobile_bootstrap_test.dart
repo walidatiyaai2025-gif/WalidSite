@@ -135,10 +135,7 @@ void main() {
         body: MobileBootstrapPanel(
           arabic: false,
           fetch: (_) async => MobileBootstrapCapabilities.parse(
-            bootstrap(
-              aiAvailable: true,
-              privacy: '/privacy?lang=en',
-            ),
+            bootstrap(aiAvailable: true),
             false,
             Uri.parse(origin),
           ),
@@ -161,7 +158,10 @@ void main() {
         body: MobileBootstrapPanel(
           arabic: false,
           fetch: (_) async => MobileBootstrapCapabilities.parse(
-            bootstrap(aiAvailable: true),
+            bootstrap(
+              aiAvailable: true,
+              privacy: '/privacy?lang=en',
+            ),
             false,
             Uri.parse(origin),
           ),
