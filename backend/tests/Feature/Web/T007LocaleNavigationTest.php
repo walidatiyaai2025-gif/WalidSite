@@ -139,4 +139,21 @@ class T007LocaleNavigationTest extends TestCase
                 ->assertDontSee('track%5B0%5D=', false);
         }
     }
+
+    public function test_supplemental_navigation_is_localized_and_keyboard_discoverable_on_all_five_screens(): void
+    {
+        $screens = ['/', '/about', '/expertise', '/ai-engineering', '/hire'];
+        foreach ($screens as $screen) {
+            foreach (['en', 'ar'] as $locale) {
+                $page = $this->get($screen.'?lang='.$locale)->assertOk();
+                $page->assertSee('id="t007-primary-content" tabindex="-1"', false)
+                    ->assertSee('href="#t007-primary-content"', false)
+                    ->assertSee('.t007-sr-only:focus-visible', false)
+                    ->assertSee('href="'.route('public.lab', ['lang' => $locale]).'"', false)
+                    ->assertSee('href="'.route('public.search', ['lang' => $locale]).'"', false)
+                    ->assertSee($locale === 'ar' ? 'المختبر التقني' : 'Tech lab')
+                    ->assertSee($locale === 'ar' ? 'البحث في الموقع' : 'Site search');
+            }
+        }
+    }
 }
