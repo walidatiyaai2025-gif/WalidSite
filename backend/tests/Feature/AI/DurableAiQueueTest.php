@@ -421,6 +421,39 @@ class DurableAiQueueTest extends TestCase
         $this->assertNull($queue->claimNext('worker-a'));
     }
 
+    public function test_paid_inference_receipt_survives_budget_reduction_during_active_lease(): void
+    {
+        $queue = new DurableAiQueue();
+        $provider = $this->provider('openai-compatible', 100);
+        $job = $queue->enqueue($provider, 'draft', 'receipt:budget-reduced-in-flight',
+            ['write'], 80, 3);
+        $unstarted = $queue->enqueue($provider, 'draft',
+            'receipt:unstarted-over-new-budget', ['write'], 30, 3);
+        $this->assertSame($job, $queue->claimNext('paid-worker')?->id);
+
+        // Once the external paid HTTP request has started, a new lower cap
+        // must block NEW requests, never erase the call's incurred estimate.
+        DB::table('ai_providers')->where('id', $provider->id)
+            ->update(['daily_budget_minor' => 20]);
+
+        $this->assertTrue($queue->recordUsage($job, 'paid-worker',
+            'receipt:budget-down', 80, 'USD', 'image-or-text-model'));
+        $this->assertFalse($queue->recordUsage($job, 'paid-worker',
+            'receipt:budget-down', 80, 'USD', 'image-or-text-model'));
+        $this->assertDatabaseHas('ai_usage', [
+            'job_id' => $job, 'cost_minor' => 80, 'cost_currency' => 'USD',
+        ]);
+        $this->assertSame(1, DB::table('ai_usage')->where('job_id', $job)->count());
+
+        $queue->completeStep($job, 'paid-worker', 'write', 'drafts/private');
+        $queue->completeJob($job, 'paid-worker');
+        // Never treat the recorded 80 as new headroom under the reduced 20 cap.
+        $this->assertNull($queue->claimNext('competing-worker'));
+        $this->assertDatabaseHas('ai_jobs', [
+            'id' => $unstarted, 'status' => 'queued',
+        ]);
+    }
+
     public function test_provider_spend_cap_rejects_excess_charges_without_partial_writes(): void
     {
         $queue = new DurableAiQueue();
