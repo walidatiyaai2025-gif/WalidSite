@@ -94,6 +94,65 @@ final class TrustedReleaseUpdateJourney
     }
 
     /**
+     * Live-source entrypoint: publisher signed metadata -> pinned HTTPS ZIP
+     * acquisition -> real recovery proof -> health-gated code pointer update.
+     *
+     * There is no arbitrary download URL argument, and the web-facing owner
+     * authorization/maintenance implementation must be provided separately.
+     *
+     * @param array<string,string> $paths Same private paths as execute().
+     * @param callable():bool $writesQuiesced External maintenance/queue gate.
+     * @param callable():bool $healthCheck Live application health probe.
+     * @return array<string,int|string>
+     */
+    public function downloadAndExecute(
+        PDO $liveDatabase,
+        PDO $disposableRestoreDatabase,
+        string $signedEnvelope,
+        string $publisherPublicKeyBase64,
+        string $pinnedHttpsOrigin,
+        string $installedVersion,
+        array $paths,
+        callable $writesQuiesced,
+        callable $healthCheck,
+        ?TrustedReleaseDownloader $downloader = null,
+    ): array {
+        if ($writesQuiesced() !== true) {
+            throw new DomainException('The site must be read-only before fetching or applying a release.');
+        }
+
+        $signed = (new TrustedReleaseMetadata())->verify(
+            $signedEnvelope, $publisherPublicKeyBase64,
+            $pinnedHttpsOrigin, $installedVersion,
+        );
+        $archiveName = basename((string) parse_url($signed['artifact_url'], PHP_URL_PATH));
+        $incoming = realpath($paths['incoming']);
+        if ($incoming === false || is_link($paths['incoming'])
+            || $paths['archive'] !== $incoming.'/'.$archiveName) {
+            throw new DomainException('Configured release location must match the exact signed artifact name.');
+        }
+
+        $received = ($downloader ?? new TrustedReleaseDownloader())->download(
+            $signedEnvelope, $publisherPublicKeyBase64,
+            $pinnedHttpsOrigin, $installedVersion,
+            $paths['incoming'], $paths['public'],
+        );
+        if ($received['path'] !== $paths['archive']
+            || ! hash_equals($signed['artifact_sha256'], $received['artifact_sha256'])) {
+            throw new DomainException('Downloaded artifact is not the approved signed release.');
+        }
+
+        // execute() rechecks the write gate, Ed25519 publisher, archive SHA,
+        // complete candidate seal, isolated file + MariaDB restore, then the
+        // health and rollback behavior of the atomic code pointer.
+        return $this->execute(
+            $liveDatabase, $disposableRestoreDatabase, $signedEnvelope,
+            $publisherPublicKeyBase64, $pinnedHttpsOrigin, $installedVersion,
+            $paths, $writesQuiesced, $healthCheck,
+        );
+    }
+
+    /**
      * Hash every byte and relative name, reject linked/special/changed paths.
      * The caller is responsible for exclusive write/queue isolation.
      */
