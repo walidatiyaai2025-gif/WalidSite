@@ -60,10 +60,13 @@ class PublicHomeLandingTest extends TestCase
             ->assertSee('class="w26-portrait"', false)
             ->assertSee('class="w26-devices"', false)
             ->assertSee('class="w26-ribbon"', false)
-            ->assertSee('Verified projects &amp; case studies', false)
-            ->assertSee('Latest source-checked articles')
-            ->assertSee('No evidence-verified public case studies')
-            ->assertSee('No source-verified published articles')
+            ->assertDontSee('Verified projects &amp; case studies', false)
+            ->assertDontSee('Latest source-checked articles')
+            ->assertDontSee('No evidence-verified public case studies')
+            ->assertDontSee('No source-verified published articles')
+            ->assertDontSee('id="landing-projects-title"', false)
+            ->assertDontSee('id="landing-articles-title"', false)
+            ->assertSee('body:has(.w26-landing) .site-footer { display: none; }', false)
             ->assertSee('href="'.route('public.github', ['lang' => 'en']).'"', false)
             ->assertDontSee('1,248')
             ->assertDontSee('PMP®')
@@ -72,11 +75,11 @@ class PublicHomeLandingTest extends TestCase
         $this->get('/?lang=ar')->assertOk()
             ->assertSee('dir="rtl"', false)
             ->assertSee('استكشف المشاريع')
-            ->assertSee('لا توجد دراسات حالة عامة')
-            ->assertSee('لا توجد مقالات منشورة وموثقة');
+            ->assertDontSee('لا توجد دراسات حالة عامة')
+            ->assertDontSee('لا توجد مقالات منشورة وموثقة');
     }
 
-    public function test_home_exposes_only_verified_case_studies_and_published_checked_articles(): void
+    public function test_home_has_no_featured_panels_but_verified_content_remains_in_its_directories(): void
     {
         $this->project('verified-case');
         $this->project('draft-case', false);
@@ -85,17 +88,23 @@ class PublicHomeLandingTest extends TestCase
         $this->article('private-draft', false);
 
         $this->get('/')->assertOk()
-            ->assertSee('Project verified-case')
-            ->assertSee('Article verified-guide')
-            ->assertSee('href="'.route('public.project', ['slug' => 'verified-case', 'lang' => 'en']).'"', false)
-            ->assertSee('href="'.route('public.article', ['slug' => 'verified-guide', 'lang' => 'en']).'"', false)
+            ->assertDontSee('Project verified-case')
+            ->assertDontSee('Article verified-guide')
             ->assertDontSee('Project draft-case')
             ->assertDontSee('Project unsafe-case')
             ->assertDontSee('Article private-draft');
 
+        $this->get('/projects?lang=en')->assertOk()
+            ->assertSee('Project verified-case')
+            ->assertDontSee('Project draft-case')
+            ->assertDontSee('Project unsafe-case');
+        $this->get('/blog?lang=en')->assertOk()
+            ->assertSee('Article verified-guide')
+            ->assertDontSee('Article private-draft');
+
         $this->get('/?lang=ar')->assertOk()
-            ->assertSee('مقال verified-guide')
-            ->assertSee('تسليم هندسي موثق');
+            ->assertDontSee('مقال verified-guide')
+            ->assertDontSee('تسليم هندسي موثق');
     }
 
     public function test_home_never_publishes_claims_of_inactive_owner_or_unapproved_cv(): void
@@ -121,8 +130,10 @@ class PublicHomeLandingTest extends TestCase
         $this->get('/')->assertDontSee('Claim pending approval');
 
         ProfessionalClaim::query()->update(['status' => 'approved']);
-        $this->get('/')->assertSee('Claim pending approval')
-            ->assertSee('https://example.org/public-source')
+        // Removing the lower homepage panels never leaks even approved CV claims.
+        $this->get('/')->assertOk()
+            ->assertDontSee('Claim pending approval')
+            ->assertDontSee('https://example.org/public-source')
             ->assertDontSee('Private employer secret');
     }
 }
