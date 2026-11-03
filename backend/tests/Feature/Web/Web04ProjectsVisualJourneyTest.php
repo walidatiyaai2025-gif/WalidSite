@@ -121,6 +121,37 @@ final class Web04ProjectsVisualJourneyTest extends TestCase
         }
     }
 
+    public function test_accessible_locale_switch_preserves_only_validated_listing_filters(): void
+    {
+        $this->reviewedProject('approved-public', 1);
+
+        foreach (['en', 'ar'] as $locale) {
+            $opposite = $locale === 'en' ? 'ar' : 'en';
+            $html = $this->get('/projects?lang='.$locale.'&q=approved&status=completed&unsafe=PRIVATE_TOKEN')
+                ->assertOk()
+                ->assertSee($locale === 'ar' ? 'تغيير اللغة' : 'Change language')
+                ->assertDontSee('PRIVATE_TOKEN')
+                ->getContent();
+            $this->assertStringContainsString(
+                'class="case-locale-switch"',
+                $html
+            );
+            $this->assertStringContainsString(
+                'href="'.e(route('public.projects', [
+                    'lang' => $opposite,
+                    'q' => 'approved',
+                    'status' => 'completed',
+                ])).'"',
+                $html
+            );
+            $this->get(route('public.projects', [
+                'lang' => $opposite,
+                'q' => 'approved',
+                'status' => 'completed',
+            ]))->assertOk()->assertSee('Reviewed approved-public');
+        }
+    }
+
     public function test_first_three_canonical_cards_link_to_real_published_case_studies(): void
     {
         for ($day = 1; $day <= 4; $day++) {
