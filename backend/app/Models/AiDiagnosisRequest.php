@@ -16,10 +16,12 @@ final class AiDiagnosisRequest extends Model
         'model_id',
         'selected_runbook_id',
         'request_blob',
+        'idempotency_key_hash',
+        'request_fingerprint',
         'expires_at',
     ];
 
-    protected $hidden = ['request_blob'];
+    protected $hidden = ['request_blob', 'idempotency_key_hash', 'request_fingerprint'];
 
     protected function casts(): array
     {
