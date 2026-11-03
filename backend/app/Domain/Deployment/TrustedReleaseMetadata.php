@@ -1,0 +1,143 @@
+<?php
+
+namespace App\Domain\Deployment;
+
+use DomainException;
+use JsonException;
+
+/**
+ * A pure trust boundary: verifies the publisher's signed immutable release
+ * descriptor. Never downloads, extracts or executes an artifact.
+ */
+final class TrustedReleaseMetadata
+{
+    private const MAX_ENVELOPE_BYTES = 16384;
+    private const MAX_PAYLOAD_BYTES = 8192;
+    private const MAX_ARTIFACT_BYTES = 1073741824;
+
+    /**
+     * @return array{product:string,version:string,source_sha:string,artifact_sha256:string,artifact_size:int,min_php:string,artifact_url:string}
+     */
+    public function verify(
+        string $envelopeJson,
+        string $publisherPublicKeyBase64,
+        string $approvedOrigin,
+        string $installedVersion,
+        string $expectedProduct = 'walidsite',
+    ): array {
+        if (strlen($envelopeJson) > self::MAX_ENVELOPE_BYTES || ! function_exists('sodium_crypto_sign_verify_detached')) {
+            throw new DomainException('Release metadata cannot be verified.');
+        }
+
+        $envelope = $this->decodeObject($envelopeJson);
+        $this->requireKeys($envelope, ['payload', 'signature']);
+        $payload = $this->decodeBase64($envelope['payload'], self::MAX_PAYLOAD_BYTES);
+        $signature = $this->decodeBase64($envelope['signature'], SODIUM_CRYPTO_SIGN_BYTES);
+        $publicKey = $this->decodeBase64($publisherPublicKeyBase64, SODIUM_CRYPTO_SIGN_PUBLICKEYBYTES);
+
+        if (strlen($signature) !== SODIUM_CRYPTO_SIGN_BYTES
+            || strlen($publicKey) !== SODIUM_CRYPTO_SIGN_PUBLICKEYBYTES
+            || ! sodium_crypto_sign_verify_detached($signature, $payload, $publicKey)) {
+            throw new DomainException('Untrusted release signature.');
+        }
+
+        $metadata = $this->decodeObject($payload);
+        $this->requireKeys($metadata, [
+            'product', 'version', 'source_sha', 'artifact_sha256', 'artifact_size', 'min_php', 'artifact_file',
+        ]);
+
+        foreach (['product', 'version', 'source_sha', 'artifact_sha256', 'min_php', 'artifact_file'] as $field) {
+            if (! is_string($metadata[$field])) {
+                throw new DomainException('Invalid signed release metadata.');
+            }
+        }
+
+        if ($metadata['product'] !== $expectedProduct || ! preg_match('/^[a-z][a-z0-9-]{1,63}$/D', $expectedProduct)) {
+            throw new DomainException('Release product mismatch.');
+        }
+
+        $stableVersion = '/^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$/D';
+        if (! preg_match($stableVersion, $metadata['version'])
+            || ! preg_match($stableVersion, $installedVersion)
+            || version_compare($metadata['version'], $installedVersion, '<=')) {
+            throw new DomainException('Release version is invalid or not newer.');
+        }
+
+        if (! preg_match('/^[a-f0-9]{40}$/D', $metadata['source_sha'])
+            || ! preg_match('/^[a-f0-9]{64}$/D', $metadata['artifact_sha256'])
+            || ! is_int($metadata['artifact_size'])
+            || $metadata['artifact_size'] < 1
+            || $metadata['artifact_size'] > self::MAX_ARTIFACT_BYTES) {
+            throw new DomainException('Release artifact integrity metadata is invalid.');
+        }
+
+        if (! preg_match($stableVersion, $metadata['min_php'])
+            || version_compare(PHP_VERSION, $metadata['min_php'], '<')) {
+            throw new DomainException('Incompatible release PHP requirement.');
+        }
+
+        $filename = 'WalidSite-update-v'.$metadata['version'].'.zip';
+        if ($metadata['artifact_file'] !== $filename) {
+            throw new DomainException('Release artifact path is not approved.');
+        }
+
+        $parts = parse_url($approvedOrigin);
+        if ($parts === false || ($parts['scheme'] ?? '') !== 'https'
+            || ! isset($parts['host']) || ! preg_match('/^[a-z0-9.-]+$/iD', $parts['host'])
+            || isset($parts['user']) || isset($parts['pass']) || isset($parts['query'])
+            || isset($parts['fragment']) || isset($parts['path'])
+            || isset($parts['port']) || str_contains($approvedOrigin, '\')) {
+            throw new DomainException('Release origin must be a pinned HTTPS host.');
+        }
+
+        return [
+            'product' => $metadata['product'],
+            'version' => $metadata['version'],
+            'source_sha' => $metadata['source_sha'],
+            'artifact_sha256' => $metadata['artifact_sha256'],
+            'artifact_size' => $metadata['artifact_size'],
+            'min_php' => $metadata['min_php'],
+            'artifact_url' => $approvedOrigin.'/releases/'.$filename,
+        ];
+    }
+
+    /** @return array<string,mixed> */
+    private function decodeObject(string $json): array
+    {
+        try {
+            $value = json_decode($json, true, 16, JSON_THROW_ON_ERROR);
+        } catch (JsonException) {
+            throw new DomainException('Malformed release metadata.');
+        }
+
+        if (! is_array($value) || array_is_list($value)) {
+            throw new DomainException('Release metadata must be an object.');
+        }
+
+        return $value;
+    }
+
+    /** @param array<string,mixed> $actual @param list<string> $keys */
+    private function requireKeys(array $actual, array $keys): void
+    {
+        $actualKeys = array_keys($actual);
+        sort($actualKeys);
+        sort($keys);
+        if ($actualKeys !== $keys) {
+            throw new DomainException('Unexpected release metadata fields.');
+        }
+    }
+
+    private function decodeBase64(mixed $encoded, int $limit): string
+    {
+        if (! is_string($encoded) || strlen($encoded) > 4 * ($limit + 2) / 3 + 4) {
+            throw new DomainException('Malformed encoded release metadata.');
+        }
+        $decoded = base64_decode($encoded, true);
+        if ($decoded === false || strlen($decoded) > $limit || base64_encode($decoded) !== $encoded) {
+            throw new DomainException('Malformed encoded release metadata.');
+        }
+
+        return $decoded;
+    }
+}
