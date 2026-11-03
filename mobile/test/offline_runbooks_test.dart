@@ -266,8 +266,14 @@ void main() {
       verifiedAt: null,
       items: [item],
     );
-    await tester.pumpWidget(const MaterialApp(
-      home: OfflineRunbookDetail(arabic: true, item: item, pack: pack),
+    // Real path_provider I/O cannot run inside FakeAsync widget frames.
+    // Inject a deterministic store; disk/restart semantics have a separate
+    // real-async filesystem test below.
+    await tester.pumpWidget(MaterialApp(
+      home: OfflineRunbookDetail(
+        arabic: true, item: item, pack: pack,
+        progressStore: MemoryProgressStore(),
+      ),
     ));
     final first = find.byKey(const Key('runbook-step-1-complete'));
     final second = find.byKey(const Key('runbook-step-2-complete'));
