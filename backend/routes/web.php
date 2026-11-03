@@ -2404,6 +2404,7 @@ Route::middleware('auth:web')->prefix('admin')->group(function (): void {
             'slug' => ['required', 'string', 'max:140', 'regex:/\\A[a-z0-9]+(?:-[a-z0-9]+)*\\z/D',
                 'unique:projects,slug'],
             'title' => ['required', 'string', 'min:2', 'max:220'],
+            'title_ar' => ['sometimes', 'nullable', 'string', 'min:2', 'max:220'],
             'summary_en' => ['required', 'string', 'min:5', 'max:5000'],
             'summary_ar' => ['required', 'string', 'min:5', 'max:5000'],
             'role_en' => ['required', 'string', 'min:2', 'max:200'],
@@ -2413,7 +2414,7 @@ Route::middleware('auth:web')->prefix('admin')->group(function (): void {
             'portfolio_featured' => ['sometimes', 'boolean'],
         ]);
         if (array_diff(array_keys($request->request->all()), [
-            '_token', 'slug', 'title', 'summary_en', 'summary_ar', 'role_en', 'role_ar',
+            '_token', 'slug', 'title', 'title_ar', 'summary_en', 'summary_ar', 'role_en', 'role_ar',
             'status', 'portfolio_category', 'portfolio_featured',
         ]) !== []) {
             throw \Illuminate\Validation\ValidationException::withMessages([
@@ -2424,6 +2425,7 @@ Route::middleware('auth:web')->prefix('admin')->group(function (): void {
             $draft = \App\Models\Project::query()->create([
                 'slug' => $input['slug'],
                 'title' => $input['title'],
+                'title_ar' => $input['title_ar'] ?? null,
                 'summary_en' => $input['summary_en'],
                 'summary_ar' => $input['summary_ar'],
                 'role_en' => $input['role_en'],
@@ -2668,6 +2670,7 @@ Route::middleware('auth:web')->prefix('admin')->group(function (): void {
         $input = $request->validate([
             'lang' => ['sometimes', 'in:ar,en'],
             'title' => ['required', 'string', 'min:2', 'max:220'],
+            'title_ar' => ['sometimes', 'nullable', 'string', 'min:2', 'max:220'],
             'summary_en' => ['required', 'string', 'min:5', 'max:5000'],
             'summary_ar' => ['required', 'string', 'min:5', 'max:5000'],
             'role_en' => ['nullable', 'string', 'max:200'],
@@ -2677,7 +2680,7 @@ Route::middleware('auth:web')->prefix('admin')->group(function (): void {
             'portfolio_featured' => ['sometimes', 'boolean'],
         ]);
         if (array_diff(array_keys($request->request->all()), [
-            '_token', '_method', 'title', 'summary_en', 'summary_ar', 'role_en', 'role_ar',
+            '_token', '_method', 'title', 'title_ar', 'summary_en', 'summary_ar', 'role_en', 'role_ar',
             'status', 'portfolio_category', 'portfolio_featured',
         ]) !== []) {
             throw \Illuminate\Validation\ValidationException::withMessages([
@@ -2691,7 +2694,7 @@ Route::middleware('auth:web')->prefix('admin')->group(function (): void {
             $row = \App\Models\Project::query()->whereKey($project)->lockForUpdate()->firstOrFail();
             abort_unless($row->visibility === 'private' && $row->published_at === null, 409);
             $row->fill(collect($input)->only([
-                'title', 'summary_en', 'summary_ar', 'role_en', 'role_ar',
+                'title', 'title_ar', 'summary_en', 'summary_ar', 'role_en', 'role_ar',
                 'status', 'portfolio_category', 'portfolio_featured',
             ])->all())->save();
             \Illuminate\Support\Facades\DB::table('project_audit_events')->insert([
