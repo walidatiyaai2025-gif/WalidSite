@@ -226,6 +226,16 @@ def reconcile_orphan_480(candidate: Orphaned480Branch, api, repo: str, tested_ma
         return "preserved"
 
     prefix = "repos/" + repo + "/"
+    ref_path = prefix + "git/ref/heads/" + candidate.branch
+    try:
+        current = api.get(ref_path)
+    except HTTPError as error:
+        if error.code == 404:
+            return "already_absent"
+        raise
+    if (current.get("object") or {}).get("sha") != candidate.sha:
+        return "preserved"
+
     main_ref_path = prefix + "git/ref/heads/main"
     main_ref = api.get(main_ref_path)
     if (main_ref.get("object") or {}).get("sha") != tested_main_sha:
@@ -262,16 +272,6 @@ def reconcile_orphan_480(candidate: Orphaned480Branch, api, repo: str, tested_ma
         current_file = api.get(prefix + "contents/" + path + "?ref=" + tested_main_sha)
         if not isinstance(current_file, dict) or current_file.get("sha") != witness_sha:
             return "preserved"
-
-    ref_path = prefix + "git/ref/heads/" + candidate.branch
-    try:
-        current = api.get(ref_path)
-    except HTTPError as error:
-        if error.code == 404:
-            return "already_absent"
-        raise
-    if (current.get("object") or {}).get("sha") != candidate.sha:
-        return "preserved"
 
     owner = repo.split("/")[0]
     prs_path = prefix + "pulls?state=all&per_page=100&head=" + quote(
