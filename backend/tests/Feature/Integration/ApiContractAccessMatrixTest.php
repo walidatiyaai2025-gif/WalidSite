@@ -8,7 +8,6 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Str;
 use Illuminate\Routing\Route as LaravelRoute;
 use Illuminate\Support\Facades\Route;
 use Tests\TestCase;
@@ -161,7 +160,7 @@ final class ApiContractAccessMatrixTest extends TestCase
     {
         // These matrix calls are about authorization, not throttle policy;
         // dedicated throttle tests continue to exercise the real limiter.
-        $this->withoutMiddleware(\\Illuminate\\Routing\\Middleware\\ThrottleRequests::class);
+        $this->withoutMiddleware(\Illuminate\Routing\Middleware\ThrottleRequests::class);
         Http::preventStrayRequests();
 
         $reader = User::create([
@@ -190,9 +189,13 @@ final class ApiContractAccessMatrixTest extends TestCase
             $this->assertNotNull($this->registeredRoute($operation['method'], $operation['path']), $label);
             foreach ($bearers as $token) {
                 Auth::forgetGuards();
-                $this->withToken($token)->json(
+                $response = $this->withToken($token)->json(
                     $operation['method'], '/api/v1'.$operation['path'], []
-                )->assertForbidden($label.' must reject a non-admin role or unscoped bearer.');
+                );
+                $this->assertSame(
+                    403, $response->status(),
+                    $label.' must reject a non-admin role or unscoped bearer.'
+                );
             }
             $tested++;
         }
