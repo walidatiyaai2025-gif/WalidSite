@@ -85,7 +85,6 @@ class T007LocaleNavigationTest extends TestCase
     public function test_t007_hero_and_evidence_gated_cards_render_bilingual_rtl_content(): void
     {
         $screens = [
-            ['/', 'الهوية المهنية', 'وليد عطية', 'مشاريع تم التحقق منها', 'PERSONAL BRAND'],
             ['/about', 'المسيرة المهنية', 'نبذة', 'تُعرض فقط السجلات المهنية', 'CAREER STORY'],
             ['/expertise', 'القدرات المهنية', 'الخبرات', 'قواعد البيانات والموثوقية', 'CAPABILITIES'],
             ['/ai-engineering', 'تطبيقات الذكاء الاصطناعي', 'هندسة الذكاء الاصطناعي', 'سلامة الذكاء الاصطناعي', 'AI PRACTICE'],
@@ -105,10 +104,23 @@ class T007LocaleNavigationTest extends TestCase
         }
     }
 
+    public function test_new_owner_home_supersedes_old_reference_stage_in_both_locales(): void
+    {
+        foreach (['en', 'ar'] as $locale) {
+            $page = $this->get('/?lang='.$locale)->assertOk()
+                ->assertSee('class="w26-desktop"', false)
+                ->assertSee('class="w26-mobile"', false)
+                ->assertDontSee('class="t007-reference-stage"', false);
+            $page->assertSee($locale === 'ar'
+                ? 'قيادة تقنية المؤسسات وهندسة حلول الذكاء الاصطناعي'
+                : 'Enterprise Technology &amp; AI Solutions Architecture', false);
+        }
+    }
+
     public function test_t007_arabic_cards_link_to_real_localized_routes_without_unverified_cv_claims(): void
     {
         $this->get('/?lang=ar')->assertOk()
-            ->assertSee('دراسات الحالة المنشورة فقط')
+            ->assertSee('المشاريع ودراسات الحالة المتحقق منها')
             ->assertSee('href="'.route('public.projects', ['lang' => 'ar']).'"', false);
         $this->get('/about?lang=ar')->assertOk()
             ->assertSee('لا توجد فترات مهنية اجتازت التحقق والنشر بعد.')
@@ -142,7 +154,7 @@ class T007LocaleNavigationTest extends TestCase
 
     public function test_supplemental_navigation_is_localized_and_keyboard_discoverable_on_all_five_screens(): void
     {
-        $screens = ['/', '/about', '/expertise', '/ai-engineering', '/hire'];
+        $screens = ['/about', '/expertise', '/ai-engineering', '/hire'];
         foreach ($screens as $screen) {
             foreach (['en', 'ar'] as $locale) {
                 $page = $this->get($screen.'?lang='.$locale)->assertOk();
@@ -156,14 +168,25 @@ class T007LocaleNavigationTest extends TestCase
             }
         }
     }
+    public function test_new_home_navigation_keeps_screen_reader_and_search_destinations(): void
+    {
+        foreach (['en', 'ar'] as $locale) {
+            $page = $this->get('/?lang='.$locale)->assertOk();
+            $page->assertSee('href="#main-content"', false)
+                ->assertSee('id="main-content" tabindex="-1"', false)
+                ->assertSee('href="'.route('public.search', ['lang' => $locale]).'"', false)
+                ->assertSee('href="'.route('public.lab', ['lang' => $locale]).'"', false);
+        }
+    }
+
     public function test_home_primary_navigation_marks_only_current_page_and_anchors_are_functional(): void
     {
         foreach (['ar', 'en'] as $locale) {
             $home = $this->get('/?lang='.$locale)->assertOk();
             $home->assertSee('href="'.route('home', ['lang' => $locale]).'"', false)
                 ->assertSee('aria-current="page"', false);
-            $home->assertSee('href="#t007-primary-content"', false)
-                ->assertSee('id="t007-primary-content" tabindex="-1"', false);
+            $home->assertSee('href="#main-content"', false)
+                ->assertSee('id="main-content" tabindex="-1"', false);
         }
     }
 

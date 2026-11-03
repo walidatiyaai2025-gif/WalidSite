@@ -36,7 +36,7 @@ final class PublicReachableProjectDiscoveryTest extends TestCase
         return $record;
     }
 
-    public function test_home_web_listing_and_public_api_share_reachable_case_studies_and_true_page_totals(): void
+    public function test_home_omits_cards_while_web_listing_and_public_api_share_reachable_case_studies(): void
     {
         // Leading rows pass published+evidence checks but cannot match the
         // WEB-05 /projects/{slug} route. No broken card may consume slots.
@@ -75,10 +75,10 @@ final class PublicReachableProjectDiscoveryTest extends TestCase
             );
             $this->assertCount(14, array_unique($slugs));
 
-            $home = $this->get(route('home', ['lang' => $locale]))->assertOk()
-                ->assertSee('reachable-case-1')
-                ->assertSee('reachable-case-2')
-                ->assertSee('reachable-case-3')
+            // WEB-01 no longer embeds featured cards. Discovery still works
+            // through the real /projects directory and public API below.
+            $this->get(route('home', ['lang' => $locale]))->assertOk()
+                ->assertDontSee('reachable-case-1')
                 ->assertDontSee('reachable-case-4')
                 ->assertDontSee('invalid_slug_')
                 ->assertDontSee('unsafe-proof-case');
@@ -147,7 +147,7 @@ final class PublicReachableProjectDiscoveryTest extends TestCase
             ->assertSee('No evidence-verified public case studies')
             ->assertDontSee('unrouteable_project');
         $this->get('/')->assertOk()
-            ->assertSee('No evidence-verified public case studies are available yet.')
+            ->assertDontSee('No evidence-verified public case studies are available yet.')
             ->assertDontSee('unrouteable_project');
         $this->getJson('/api/v1/public/projects/'.$record->slug)->assertNotFound();
         $this->get('/projects/'.$record->slug)->assertNotFound();

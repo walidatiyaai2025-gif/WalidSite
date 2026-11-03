@@ -41,11 +41,11 @@ final class Web02AboutVisualActionTest extends TestCase
             $this->get(route('public.resume', ['lang' => $locale]))->assertOk();
         }
 
-        // The shared header/hero is reused by multiple T007 screens. This
-        // change must never send their "View evidence" button to About.
+        // The new owner-directed WEB-01 has an independent visual hero.
+        // Its project CTA must stay on Projects, never jump to About's evidence.
         $this->get('/?lang=en')->assertOk()
-            ->assertSee('class="t007-reference-action secondary" href="'.route('public.projects', ['lang' => 'en']).'"', false)
-            ->assertDontSee('class="t007-reference-action secondary" href="#about-evidence"', false);
+            ->assertSee('class="w26-laptop" href="'.route('public.projects', ['lang' => 'en']).'"', false)
+            ->assertDontSee('href="#about-evidence"', false);
 
         Http::assertNothingSent();
     }
