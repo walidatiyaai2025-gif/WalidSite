@@ -91,8 +91,14 @@ table{width:100%;border-collapse:collapse}td,th{text-align:start;border-bottom:1
 @endif
 
 @if($selected->status !== 'published' && $selected->isReadyToPublish() && ! $requiresExceptionReview)
-<form method="post" action="{{ route('admin.content.publish', ['article'=>$selected->id,'lang'=>$locale]) }}">@csrf
-<button type="submit">{{ $locale === 'ar' ? 'اعتماد ونشر الإصدار الموثّق' : 'Approve and publish verified revision' }}</button></form>
+    @if($revisions->first()?->canBeIndependentlyReviewedBy(auth()->user()) === true)
+    <form method="post" action="{{ route('admin.content.publish', ['article'=>$selected->id,'lang'=>$locale]) }}">@csrf
+    <button type="submit">{{ $locale === 'ar' ? 'اعتماد ونشر الإصدار الموثّق' : 'Approve and publish verified revision' }}</button></form>
+    @else
+    <p role="status">{{ $locale === 'ar'
+        ? 'النشر محجوب: يتطلب الإصدار مراجعة مستقلة عن مؤلفه وآخر محرر له. الإصدارات القديمة بلا سجل مؤلف لا يجوز اعتمادها.'
+        : 'Publishing blocked: an independent checker other than the author and last editor is required. Legacy revisions with unknown authorship cannot be approved.' }}</p>
+    @endif
 @endif
 
 @if($selected->status !== 'published' && ! $selected->isReadyToPublish())

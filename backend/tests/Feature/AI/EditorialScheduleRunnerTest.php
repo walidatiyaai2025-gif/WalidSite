@@ -278,12 +278,20 @@ class EditorialScheduleRunnerTest extends TestCase
         $this->assertSame('draft', $article->fresh()->status);
 
         $approved = $article->revisions()->where('revision_no', 1)->firstOrFail();
-        $article->revisions()->create([
+        $replacement = $article->revisions()->create([
             'revision_no' => 2,
             'body_md' => 'Independently reviewed replacement guidance',
             'citations_json' => $approved->citations_json,
             'validation_json' => $approved->validation_json,
             'status' => 'validated',
+        ]);
+        // This refresh test exercises a legitimate replacement, not an
+        // anonymous legacy revision. Maker/Checker requires a named writer
+        // distinct from the admin who performs the publication review.
+        $writer = $this->actor();
+        DB::table('article_revisions')->where('id', $replacement->id)->update([
+            'author_user_id' => $writer->id,
+            'last_editor_user_id' => $writer->id,
         ]);
         $this->actingAs($actor, 'web')
             ->post('/admin/content/'.$article->id.'/publish')

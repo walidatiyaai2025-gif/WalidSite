@@ -92,7 +92,14 @@ button{min-height:44px;border:0;border-radius:9px;padding:8px 14px;font:inherit;
 <option value="technical_reviewed">{{ $ar ? 'تمت المراجعة التقنية' : 'Technical review complete' }}</option>
 <option value="legal_reviewed">{{ $ar ? 'تمت المراجعة القانونية' : 'Legal review complete' }}</option>
 </select></div>
-<button type="submit" name="decision" value="approve" @disabled($item->requires_owner && !auth()->user()?->hasRole('owner'))>{{ $ar ? 'اعتماد ونشر' : 'Approve & publish' }}</button>
+<button type="submit" name="decision" value="approve"
+    @disabled(! $item->independent_review_allowed || ($item->requires_owner && !auth()->user()?->hasRole('owner')))
+    @if(! $item->independent_review_allowed) aria-describedby="independent-review-{{ $item->article_id }}" @endif>{{ $ar ? 'اعتماد ونشر' : 'Approve & publish' }}</button>
+@if(! $item->independent_review_allowed)
+    <span id="independent-review-{{ $item->article_id }}" role="status" class="muted">{{ $ar
+        ? 'الاعتماد محجوب: يلزم مراجع مستقل عن كاتب المسودة وآخر محرر لها، ولا يجوز اعتماد إصدارات بلا سجل مؤلف.'
+        : 'Approval blocked: independent reviewer required. The author, last editor, or unknown legacy author cannot approve.' }}</span>
+@endif
 <button type="submit" name="decision" value="reject">{{ $ar ? 'رفض' : 'Reject' }}</button>
 <button type="submit" name="decision" value="defer">{{ $ar ? 'تأجيل' : 'Defer' }}</button>
 </div>
