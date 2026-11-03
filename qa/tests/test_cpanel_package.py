@@ -1,11 +1,12 @@
 """Unit tests for secure cPanel installation ZIP generation."""
+import hashlib
 import json
 import tempfile
 import unittest
 import zipfile
 from pathlib import Path
 
-from qa.build_cpanel_package import build, verify_archive
+from qa.build_cpanel_package import PRIVATE_GUARD_PATHS, PRIVATE_TREE_DENY, build, verify_archive
 
 
 class TestCpanelPackage(unittest.TestCase):
@@ -53,6 +54,7 @@ class TestCpanelPackage(unittest.TestCase):
                 "public_html/index.php", "public_html/.htaccess",
                 "public_html/assets/portraits/portrait-light-derived.jpg",
                 "application/storage/framework/views/.gitignore",
+                *PRIVATE_GUARD_PATHS,
                 "INSTALL-CPANEL-AR.md", "PACKAGE-MANIFEST.json",
             ):
                 self.assertIn(name, names)
@@ -169,6 +171,8 @@ class TestCpanelPackage(unittest.TestCase):
             self.assertFalse((app / "tests").exists())
             self.assertFalse((app / "database/dump.sql").exists())
             self.assertFalse((public / "backend").exists())
+            for guard in PRIVATE_GUARD_PATHS:
+                self.assertEqual((home / guard).read_bytes(), PRIVATE_TREE_DENY)
             self.assertTrue((app / "storage/framework/views").is_dir())
             self.assertTrue((app / "storage/app/private").is_dir())
             self.assertEqual(
@@ -191,8 +195,56 @@ class TestCpanelPackage(unittest.TestCase):
             self.assertTrue((document_root / "public_html/index.php").exists())
             self.assertFalse((document_root / "index.php").exists())
             self.assertFalse((home / "application/vendor/autoload.php").exists())
+            # The wrong location is NOT a supported install. These guards
+            # only mitigate some accidental public exposure on Apache.
+            for guard in PRIVATE_GUARD_PATHS:
+                self.assertEqual((document_root / guard).read_bytes(), PRIVATE_TREE_DENY)
 
 
+
+    def test_private_directory_denial_survives_one_extract_and_is_manifest_pinned(self):
+        build(self.root, self.output, "3" * 40)
+        with zipfile.ZipFile(self.output) as archive:
+            names = set(archive.namelist())
+            for path in PRIVATE_GUARD_PATHS:
+                self.assertIn(path, names)
+                self.assertEqual(archive.read(path), PRIVATE_TREE_DENY)
+                self.assertIn(b"Require all denied", archive.read(path))
+                self.assertIn(b"Deny from all", archive.read(path))
+                self.assertIn(path, json.loads(archive.read("PACKAGE-MANIFEST.json"))["files"])
+        self.assertEqual(verify_archive(self.output, "3" * 40)["source_sha"], "3" * 40)
+
+    def test_rehashed_but_weakened_private_apache_guard_is_rejected(self):
+        build(self.root, self.output, "4" * 40)
+        with zipfile.ZipFile(self.output) as archive:
+            files = {name: archive.read(name) for name in archive.namelist()}
+        path = "application/.htaccess"
+        files[path] = b"Require all granted\\n"
+        manifest = json.loads(files["PACKAGE-MANIFEST.json"])
+        manifest["files"][path] = {
+            "sha256": hashlib.sha256(files[path]).hexdigest(),
+            "bytes": len(files[path]),
+        }
+        files["PACKAGE-MANIFEST.json"] = (json.dumps(manifest, sort_keys=True) + "\\n").encode()
+        with zipfile.ZipFile(self.output, "w") as archive:
+            for name, data in files.items():
+                archive.writestr(name, data)
+        with self.assertRaisesRegex(ValueError, "Private-directory HTTP denial"):
+            verify_archive(self.output, "4" * 40)
+
+    def test_missing_private_contracts_guard_rejected_even_with_rebuilt_manifest(self):
+        build(self.root, self.output, "5" * 40)
+        with zipfile.ZipFile(self.output) as archive:
+            files = {name: archive.read(name) for name in archive.namelist()}
+        del files["contracts/.htaccess"]
+        manifest = json.loads(files["PACKAGE-MANIFEST.json"])
+        del manifest["files"]["contracts/.htaccess"]
+        files["PACKAGE-MANIFEST.json"] = (json.dumps(manifest, sort_keys=True) + "\\n").encode()
+        with zipfile.ZipFile(self.output, "w") as archive:
+            for name, data in files.items():
+                archive.writestr(name, data)
+        with self.assertRaisesRegex(ValueError, "Required deployment payload missing"):
+            verify_archive(self.output, "5" * 40)
 
 if __name__ == "__main__":
     unittest.main()
