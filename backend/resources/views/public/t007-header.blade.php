@@ -1,3 +1,4 @@
+@if(!request()->routeIs('home'))
 @php($t007Locale = request()->query('lang') === 'ar' ? 'ar' : 'en')
 @php($t007Current = request()->route()?->getName())
 <header class="t007-nav-shell" aria-label="{{ $t007Locale === 'ar' ? 'التنقل الرئيسي' : 'Primary navigation' }}">
@@ -37,3 +38,5 @@
     <a class="t007-sr-only" href="{{ route('public.lab', ['lang' => $t007Locale]) }}">{{ $t007Locale === 'ar' ? 'المختبر التقني' : 'Tech lab' }}</a>
     <a class="t007-sr-only" href="{{ route('public.search', ['lang' => $t007Locale]) }}">{{ $t007Locale === 'ar' ? 'البحث في الموقع' : 'Search' }}</a>
 </header>
+
+@endif
