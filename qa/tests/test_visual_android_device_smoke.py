@@ -141,6 +141,7 @@ class AndroidDeviceSmokeTest(unittest.TestCase):
     def test_install_launch_and_process_fail_closed(self):
         for target, output in (("install", "Failed to install"),
                                ("am", "Status: error\nActivity: " + PACKAGE + "/.MainActivity"),
+                               ("am", "Status: ok\nActivity: " + PACKAGE + "_malicious/.MainActivity"),
                                ("pidof", "")):
             self.requests.clear()
             self.installed = False
