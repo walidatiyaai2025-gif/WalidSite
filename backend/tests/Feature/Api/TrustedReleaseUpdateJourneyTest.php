@@ -181,6 +181,64 @@ final class TrustedReleaseUpdateJourneyTest extends TestCase
         );
     }
 
+    public function test_unsupported_document_root_blocks_remote_download_before_transport(): void
+    {
+        $signed = $this->signedZip();
+        $bytes = file_get_contents($this->paths['archive']);
+        unlink($this->paths['archive']);
+
+        // This symlink resolves to the same files, but does NOT follow the
+        // approved current/public_html indirection and cannot auto-update.
+        self::assertTrue(unlink($this->paths['public']));
+        self::assertTrue(symlink(
+            $this->paths['releases'].'/v1/public_html', $this->paths['public'],
+        ));
+
+        $requests = 0;
+        $transport = new TrustedReleaseDownloader(
+            static function (string $url, \Closure $write) use (&$requests, $bytes): int {
+                $requests++;
+                $write($bytes);
+                return 200;
+            },
+        );
+
+        try {
+            (new TrustedReleaseUpdateJourney())->downloadAndExecute(
+                $this->liveDb, $this->restoreDb, $signed,
+                $this->publicKey, 'https://updates.example.test', '1.0.0',
+                $this->paths, static fn (): bool => true,
+                static fn (): bool => true, $transport,
+            );
+            self::fail('Incompatible public_html topology cannot permit update download.');
+        } catch (DomainException $error) {
+            self::assertStringContainsString('BLOCKED HOSTING', $error->getMessage());
+            self::assertSame(0, $requests);
+            self::assertSame('LIVE-vA', file_get_contents($this->paths['public'].'/index.php'));
+            self::assertSame([], glob($this->paths['incoming'].'/WalidSite-update-*') ?: []);
+            self::assertSame([], glob($this->paths['backup_vault'].'/mariadb-*') ?: []);
+            self::assertSame(1, (int) $this->liveDb->query('SELECT COUNT(*) FROM billing')->fetchColumn());
+        }
+    }
+
+    public function test_unsupported_document_root_blocks_offline_promotion_before_backups(): void
+    {
+        $signed = $this->signedZip();
+        self::assertTrue(unlink($this->paths['public']));
+        self::assertTrue(symlink(
+            $this->paths['releases'].'/v1/public_html', $this->paths['public'],
+        ));
+        try {
+            $this->update($signed);
+            self::fail('Incompatible host must not stage a signed ZIP even offline.');
+        } catch (DomainException $error) {
+            self::assertStringContainsString('BLOCKED HOSTING', $error->getMessage());
+            self::assertSame([], glob($this->paths['releases'].'/v1.2*') ?: []);
+            self::assertSame([], glob($this->paths['backup_vault'].'/mariadb-*') ?: []);
+            self::assertSame('LIVE-vA', file_get_contents($this->paths['public'].'/index.php'));
+        }
+    }
+
     public function test_remote_signed_download_through_real_mariadb_restore_and_vb_cutover(): void
     {
         $signed = $this->signedZip();

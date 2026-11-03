@@ -64,6 +64,12 @@ final class TrustedReleaseUpdateJourney
             throw new DomainException('The site must be in verified read-only maintenance before updating.');
         }
 
+        $signed = (new TrustedReleaseMetadata())->verify(
+            $signedEnvelope, $publisherPublicKeyBase64,
+            $pinnedHttpsOrigin, $installedVersion,
+        );
+        (new TrustedUpdateHostPreflight())->assertReady($paths, $signed['artifact_size']);
+
         $candidate = (new TrustedCodeCandidatePromoter())->promote(
             $signedEnvelope, $publisherPublicKeyBase64, $pinnedHttpsOrigin,
             $installedVersion, $paths['quarantine'], $paths['incoming'],
@@ -168,6 +174,8 @@ final class TrustedReleaseUpdateJourney
             $signedEnvelope, $publisherPublicKeyBase64,
             $pinnedHttpsOrigin, $installedVersion,
         );
+        (new TrustedUpdateHostPreflight())->assertReady($paths, $signed['artifact_size']);
+
         $archiveName = basename((string) parse_url($signed['artifact_url'], PHP_URL_PATH));
         $incoming = realpath($paths['incoming']);
         if ($incoming === false || is_link($paths['incoming'])
