@@ -105,7 +105,7 @@ final class FirstInstallManagedPageContentTest extends TestCase
             ->assertHeader('Cache-Control','no-store, private')
             ->assertSee('Manage site page content')
             ->assertSee('Save draft')
-            ->assertSee('Review &amp; publish text', false);
+            ->assertDontSee('Review &amp; publish text', false);
         $this->get('/admin/page-content?page_key=expertise&section_key=ai&lang=ar')
             ->assertOk()->assertSee('lang="ar" dir="rtl"',false)
             ->assertSee('حفظ المسودة');
@@ -118,6 +118,8 @@ final class FirstInstallManagedPageContentTest extends TestCase
             'revision'=>0,
         ])->assertRedirect();
         $this->assertSame('Unique owner approved CMS review line',$row->fresh()->draft_text);
+        $this->get('/admin/page-content?page_key=home&section_key=hero&lang=en')
+            ->assertOk()->assertSee('Review &amp; publish text', false);
         $this->get('/?lang=en')->assertOk()->assertDontSee('Unique owner approved CMS review line');
 
         $this->post(route('admin.page-content.publish',['entry'=>$row->id]),[
