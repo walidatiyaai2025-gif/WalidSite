@@ -103,13 +103,17 @@ final class ExpertiseCategoryFilterTest extends TestCase
         $this->addSkill($profile, 'private-owner', 'Software & Integration');
         $this->get('/expertise?category=integration&lang=en')->assertOk()
             ->assertDontSee('Claim private-owner')
-            ->assertSee('No skills have been approved with verified evidence yet.');
+            ->assertSee('No evidence-verified published skills match this specialty.')
+            ->assertSee('Matching verified skills: 0')
+            ->assertSee('View all specialties');
 
         $profile->update(['publish_status' => 'published']);
         $profile->user->update(['status' => 'pending_activation']);
         $this->get('/expertise?category=integration&lang=ar')->assertOk()
             ->assertDontSee('مهارة private-owner')
-            ->assertSee('لم تُعتمد مهارات للنشر بعد.');
+            ->assertSee('لا توجد مهارات منشورة وموثقة في هذا التخصص.')
+            ->assertSee('المهارات الموثقة المطابقة: 0')
+            ->assertSee('عرض جميع التخصصات');
     }
 
     public function test_language_switch_and_seo_keep_each_verified_expertise_category(): void
