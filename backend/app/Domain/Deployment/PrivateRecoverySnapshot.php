@@ -44,6 +44,14 @@ final class PrivateRecoverySnapshot
             throw new DomainException('Recovery paths must be existing non-linked private sources.');
         }
 
+        // The uploads parent is treated as a public document root. A backup
+        // placed beside uploads under public_html would disclose .env bytes.
+        $publicRoot = realpath(dirname($publicUploads));
+        if ($publicRoot === false || $publicRoot === $root
+            || $this->within($root, $publicRoot) || $this->within($publicRoot, $root)) {
+            throw new DomainException('Recovery backup must be outside the public document root.');
+        }
+
         foreach ($sources as $source) {
             if ($source === $root || $this->within($source, $root) || $this->within($root, $source)) {
                 throw new DomainException('Recovery backup cannot overlap a source.');
@@ -209,6 +217,10 @@ final class PrivateRecoverySnapshot
     ): void {
         if (is_link($source) || ! is_file($source) || ! is_readable($source)) {
             throw new DomainException('Recovery source is not a regular readable file.');
+        }
+        $status = stat($source);
+        if ($status === false || ($status['nlink'] ?? 0) !== 1) {
+            throw new DomainException('Hard-linked private recovery inputs are forbidden.');
         }
         $size = filesize($source);
         if ($size === false || $size < 0 || ++$count > self::MAX_FILES
