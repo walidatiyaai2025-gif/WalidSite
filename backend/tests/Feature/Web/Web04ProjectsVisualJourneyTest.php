@@ -65,6 +65,93 @@ final class Web04ProjectsVisualJourneyTest extends TestCase
         }
     }
 
+    public function test_no_published_projects_use_truthful_three_card_navigation_in_both_locales(): void
+    {
+        // A real empty database must never render the reference mockup's fictitious case-study titles.
+        $this->reviewedProject('private-claim', 1, false);
+
+        foreach (['en', 'ar'] as $locale) {
+            $html = $this->get('/projects?lang='.$locale)
+                ->assertOk()
+                ->assertSee($locale === 'ar' ? 'التحقق قيد الانتظار' : 'Verification pending')
+                ->assertSee($locale === 'ar' ? 'المستودعات العامة' : 'Public repositories')
+                ->assertSee($locale === 'ar' ? 'تواصل حول مشروع' : 'Discuss a project')
+                ->assertDontSee('private-claim')
+                ->assertDontSee('FOODEX')
+                ->assertDontSee('AIMWWeb')
+                ->getContent();
+
+            $preview = explode('</section>', explode('<section class="web04-preview"', $html, 2)[1], 2)[0];
+            $this->assertSame(3, substr_count($preview, '<article class="web04-preview-card'));
+            $this->assertStringNotContainsString('public.project', $preview);
+            $this->assertStringContainsString(
+                'href="'.e(route('public.github', ['lang' => $locale])).'"', $preview
+            );
+            $this->assertStringContainsString(
+                'href="'.e(route('public.contact', ['lang' => $locale])).'"', $preview
+            );
+            $this->assertStringContainsString('href="#web04-project-catalog"', $preview);
+            $this->assertStringContainsString(
+                $locale === 'ar' ? 'حالة المشاريع والروابط المفيدة' : 'Project availability and resources',
+                $preview
+            );
+        }
+    }
+
+    public function test_empty_out_of_range_page_keeps_global_publication_status_truthful(): void
+    {
+        $this->reviewedProject('actually-published', 1);
+
+        foreach (['en', 'ar'] as $locale) {
+            $html = $this->get('/projects?lang='.$locale.'&page=7')
+                ->assertOk()
+                ->assertSee($locale === 'ar'
+                    ? 'لا تظهر دراسات حالة عامة موثقة في هذه الصفحة. عد إلى الصفحة الأولى.'
+                    : 'No evidence-verified public case studies on this page. Return to the first page.')
+                ->assertSee($locale === 'ar' ? 'الصفحة الأولى' : 'First page')
+                ->assertDontSee($locale === 'ar'
+                    ? 'لا توجد حاليًا مشاريع منشورة تستوفي أدلة النشر العامة.'
+                    : 'No published projects currently meet the public evidence checks.')
+                ->getContent();
+            $preview = explode('</section>', explode('<section class="web04-preview"', $html, 2)[1], 2)[0];
+            $this->assertSame(3, substr_count($preview, '<article class="web04-preview-card'));
+            $this->assertStringContainsString(
+                'href="'.e(route('public.projects', ['lang' => $locale])).'"', $preview
+            );
+        }
+    }
+
+    public function test_accessible_locale_switch_preserves_only_validated_listing_filters(): void
+    {
+        $this->reviewedProject('approved-public', 1);
+
+        foreach (['en', 'ar'] as $locale) {
+            $opposite = $locale === 'en' ? 'ar' : 'en';
+            $html = $this->get('/projects?lang='.$locale.'&q=approved&status=completed&unsafe=PRIVATE_TOKEN')
+                ->assertOk()
+                ->assertSee($locale === 'ar' ? 'تغيير اللغة' : 'Change language')
+                ->assertDontSee('PRIVATE_TOKEN')
+                ->getContent();
+            $this->assertStringContainsString(
+                'class="case-locale-switch"',
+                $html
+            );
+            $this->assertStringContainsString(
+                'href="'.e(route('public.projects', [
+                    'lang' => $opposite,
+                    'q' => 'approved',
+                    'status' => 'completed',
+                ])).'"',
+                $html
+            );
+            $this->get(route('public.projects', [
+                'lang' => $opposite,
+                'q' => 'approved',
+                'status' => 'completed',
+            ]))->assertOk()->assertSee('Reviewed approved-public');
+        }
+    }
+
     public function test_first_three_canonical_cards_link_to_real_published_case_studies(): void
     {
         for ($day = 1; $day <= 4; $day++) {
@@ -106,6 +193,10 @@ final class Web04ProjectsVisualJourneyTest extends TestCase
             $this->get('/projects?lang='.$locale.'&q=missing&status=completed')
                 ->assertOk()
                 ->assertSee($locale === 'ar'
+                    ? 'لا توجد دراسات حالة عامة موثقة تطابق البحث أو المرشحات.'
+                    : 'No evidence-verified public case studies match your search or filters.')
+                ->assertSee($locale === 'ar' ? 'مسح المرشحات' : 'Clear filters')
+                ->assertDontSee($locale === 'ar'
                     ? 'لا توجد حاليًا مشاريع منشورة تستوفي أدلة النشر العامة.'
                     : 'No published projects currently meet the public evidence checks.')
                 ->assertDontSee('Reviewed approved-public')
