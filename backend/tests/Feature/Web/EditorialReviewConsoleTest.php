@@ -7,6 +7,7 @@ use App\Models\Asset;
 use App\Models\Role;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
@@ -34,7 +35,7 @@ class EditorialReviewConsoleTest extends TestCase
             'title_ar' => 'مقال تقني للمراجعة',
             'canonical_lang' => 'ar',
         ]);
-        $article->revisions()->create([
+        $revision = $article->revisions()->create([
             'revision_no' => 1,
             'status' => $verified ? 'validated' : 'draft',
             'body_md' => '# Reviewed material',
@@ -49,6 +50,17 @@ class EditorialReviewConsoleTest extends TestCase
                 'contains_professional_claims' => false,
             ],
         ]);
+        // The original creator must be someone other than the reviewer.
+        $author = User::create([
+            'email' => Str::lower(Str::random(16)).'@example.test',
+            'status' => 'active',
+            'password_hash' => null,
+        ]);
+        DB::table('article_revisions')->where('id', $revision->id)->update([
+            'author_user_id' => $author->id,
+            'last_editor_user_id' => $author->id,
+        ]);
+
         return $article;
     }
 
