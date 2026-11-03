@@ -86,7 +86,6 @@ class T007LocaleNavigationTest extends TestCase
     {
         $screens = [
             ['/about', 'المسيرة المهنية', 'نبذة', 'تُعرض فقط السجلات المهنية', 'CAREER STORY'],
-            ['/expertise', 'القدرات المهنية', 'الخبرات', 'قواعد البيانات والموثوقية', 'CAPABILITIES'],
             ['/ai-engineering', 'تطبيقات الذكاء الاصطناعي', 'هندسة الذكاء الاصطناعي', 'سلامة الذكاء الاصطناعي', 'AI PRACTICE'],
             ['/hire', 'عرض التوظيف', 'مساحة التوظيف', 'المهارات المنشورة بالأدلة فقط', 'HIRING VIEW'],
         ];
@@ -102,6 +101,22 @@ class T007LocaleNavigationTest extends TestCase
                 ->assertSee('dir="ltr"', false)
                 ->assertSee($englishPill);
         }
+    }
+
+    public function test_new_owner_expertise_four_state_hero_supersedes_legacy_reference_stage(): void
+    {
+        $this->get('/expertise?lang=en')->assertOk()
+            ->assertSee('CAPABILITIES')
+            ->assertSee('Expertise')
+            ->assertSee('Database Administration &amp; Reliability', false)
+            ->assertSee('class="expertise-tab-nav"', false)
+            ->assertDontSee('class="t007-reference-stage"', false);
+
+        $this->get('/expertise?lang=ar')->assertOk()
+            ->assertSee('القدرات المهنية')
+            ->assertSee('الخبرات')
+            ->assertSee('إدارة قواعد البيانات والموثوقية')
+            ->assertDontSee('class="t007-reference-stage"', false);
     }
 
     public function test_new_owner_home_supersedes_old_reference_stage_in_both_locales(): void
