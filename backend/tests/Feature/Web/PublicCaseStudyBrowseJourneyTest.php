@@ -15,7 +15,8 @@ final class PublicCaseStudyBrowseJourneyTest extends TestCase
         string $slug,
         string $status = 'completed',
         string $visibility = 'public',
-        bool $verified = true
+        bool $verified = true,
+        int $publishedMinutesAgo = 0
     ): Project {
         $project = Project::create([
             'slug' => $slug,
@@ -26,7 +27,7 @@ final class PublicCaseStudyBrowseJourneyTest extends TestCase
             'role_ar' => 'مهندس',
             'status' => $status,
             'visibility' => $visibility,
-            'published_at' => now()->subDay(),
+            'published_at' => now()->subDay()->subMinutes($publishedMinutesAgo),
         ]);
         ProjectEvidence::create([
             'project_id' => $project->id,
@@ -41,8 +42,10 @@ final class PublicCaseStudyBrowseJourneyTest extends TestCase
 
     public function test_filtered_verified_project_list_is_accessible_and_case_study_returns_to_same_page(): void
     {
+        // Projects sort by published_at DESC, id ASC. UUID ids are not insert-ordered;
+        // give fixtures stable, distinct publish times so case 10 is on page 2.
         for ($i = 1; $i <= 10; $i++) {
-            $this->documentedProject('atlas-case-'.$i);
+            $this->documentedProject('atlas-case-'.$i, publishedMinutesAgo: $i);
         }
         $this->documentedProject('private-atlas', 'completed', 'private');
         $this->documentedProject('unverified-atlas', 'completed', 'public', false);
