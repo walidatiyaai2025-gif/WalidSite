@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -33,6 +34,27 @@ String response(
 });
 
 void main() {
+  test('MOBILE-04 reviewed solution stream has one total timeout', () async {
+    final neverEndingBody = Completer<void>();
+    await expectLater(
+      ReviewedRunbookReader.withinDeadline(
+        () async {
+          await neverEndingBody.future;
+          return 'not reached';
+        },
+        timeout: const Duration(milliseconds: 10),
+      ),
+      throwsA(isA<TimeoutException>()),
+    );
+    expect(
+      await ReviewedRunbookReader.withinDeadline(
+        () async => '# published',
+        timeout: const Duration(seconds: 1),
+      ),
+      '# published',
+    );
+  });
+
   test('parses reviewed UUID guide, version, UTC timestamp and bounded pages', () {
     final page = ReviewedRunbookPage.parse(response(1, [
       guide(title: 'إدارة النسخ الاحتياطية', body: '# مراجعة نسخة موثقة'),
