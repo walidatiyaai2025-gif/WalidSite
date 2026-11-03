@@ -8,6 +8,7 @@ use App\Support\Deployment\SiteInstaller;
 use App\Support\Deployment\SiteUpdater;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class SiteMaintenanceTest extends TestCase
@@ -73,6 +74,22 @@ class SiteMaintenanceTest extends TestCase
             $this->assertTrue($owner->hasRole('owner'));
             $this->assertTrue(Hash::check($password, $owner->password_hash));
             $this->assertFileExists($path);
+            // Real browser Setup also seeds CMS fields in the same atomic
+            // owner activation, rather than requiring a second CLI command.
+            $this->assertGreaterThan(150, DB::table('site_page_texts')->count());
+            $this->assertSame('Enterprise Technology & AI Solutions Architecture',
+                DB::table('site_page_texts')
+                    ->where('page_key','home')->where('section_key','hero')
+                    ->where('field_key','tagline')->where('locale','en')
+                    ->value('published_text'));
+            $this->assertNull(DB::table('site_page_texts')
+                ->where('page_key','expertise')->where('section_key','ai')
+                ->where('field_key','hero_description')->where('locale','en')
+                ->value('published_text'));
+            $this->assertNotNull(DB::table('site_page_texts')
+                ->where('page_key','expertise')->where('section_key','ai')
+                ->where('field_key','hero_description')->where('locale','en')
+                ->value('draft_text'));
             $this->get('/setup')->assertNotFound();
             $this->get('/')->assertOk();
         } finally {

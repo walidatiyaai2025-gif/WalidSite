@@ -1,4 +1,5 @@
 @php($w26Ar = $ar ?? false)
+@php($w26Copy = app(\App\Domain\Content\PageContentRepository::class)->publishedMap('home', $locale))
 {{-- Owner-directed replacement of WEB-01's top fold; functional data sections remain in welcome.blade.php.
      Composition is drawn in HTML/CSS so links and accessibility remain real, not a screenshot-as-website.
      Claims/statistics in the supplied design are illustrative and deliberately not published as facts. --}}
@@ -128,9 +129,9 @@
         </a>
         <div class="w26-headline">
             <h1 id="w26-title"><span lang="en">Waleed <span>Atiya</span></span></h1>
-            <p class="w26-tagline">{{ $w26Ar ? 'قيادة تقنية المؤسسات وهندسة حلول الذكاء الاصطناعي' : 'Enterprise Technology & AI Solutions Architecture' }}</p>
+            <p class="w26-tagline">{{ $w26Copy['hero']['tagline'] ?? ($w26Ar ? 'قيادة تقنية المؤسسات وهندسة حلول الذكاء الاصطناعي' : 'Enterprise Technology & AI Solutions Architecture') }}</p>
             <span class="w26-accent" aria-hidden="true"></span>
-            <p class="w26-intro">{{ $w26Ar ? 'قواعد البيانات، الأنظمة المؤسسية، هندسة البرمجيات، وتسليم المشاريع وتطوير حلول الذكاء الاصطناعي.' : 'Database & infrastructure, enterprise systems, software engineering, project delivery, and AI-driven development.' }}</p>
+            <p class="w26-intro">{{ $w26Copy['hero']['intro'] ?? ($w26Ar ? 'قواعد البيانات، الأنظمة المؤسسية، هندسة البرمجيات، وتسليم المشاريع وتطوير حلول الذكاء الاصطناعي.' : 'Database & infrastructure, enterprise systems, software engineering, project delivery, and AI-driven development.') }}</p>
         </div>
         <div class="w26-globe" aria-hidden="true">
             <svg viewBox="0 0 590 360" role="presentation" xmlns="http://www.w3.org/2000/svg">
@@ -147,10 +148,10 @@
         </div>
         <div class="w26-signature" aria-hidden="true">Waleed Atiya</div>
         <div class="w26-skills" aria-label="{{ $w26Ar ? 'المجالات التقنية' : 'Technology domains' }}">
-            <span class="w26-skill"><span class="w26-skill-icon" aria-hidden="true">▣</span>{{ $w26Ar ? 'إدارة المشاريع' : 'Project Delivery' }}</span>
-            <span class="w26-skill"><span class="w26-skill-icon" aria-hidden="true">▤</span>{{ $w26Ar ? 'قواعد البيانات' : 'SQL Server / DBA' }}</span>
-            <span class="w26-skill"><span class="w26-skill-icon" aria-hidden="true">⌘</span>{{ $w26Ar ? 'هندسة البرمجيات' : 'Software Engineering' }}</span>
-            <span class="w26-skill w26-skill--ai"><span class="w26-skill-icon" aria-hidden="true">▧</span>{{ $w26Ar ? 'هندسة الذكاء الاصطناعي' : 'AI Engineering' }}</span>
+            <span class="w26-skill"><span class="w26-skill-icon" aria-hidden="true">▣</span>{{ $w26Copy['skills']['project'] ?? ($w26Ar ? 'إدارة المشاريع' : 'Project Delivery') }}</span>
+            <span class="w26-skill"><span class="w26-skill-icon" aria-hidden="true">▤</span>{{ $w26Copy['skills']['database'] ?? ($w26Ar ? 'قواعد البيانات' : 'SQL Server / DBA') }}</span>
+            <span class="w26-skill"><span class="w26-skill-icon" aria-hidden="true">⌘</span>{{ $w26Copy['skills']['engineering'] ?? ($w26Ar ? 'هندسة البرمجيات' : 'Software Engineering') }}</span>
+            <span class="w26-skill w26-skill--ai"><span class="w26-skill-icon" aria-hidden="true">▧</span>{{ $w26Copy['skills']['ai'] ?? ($w26Ar ? 'هندسة الذكاء الاصطناعي' : 'AI Engineering') }}</span>
         </div>
         <div class="w26-proof" aria-label="{{ $w26Ar ? 'مراجع العمل' : 'Public work and learning tracks' }}">
             <span>{{ $w26Ar ? 'مشاريع موثقة' : 'Verified projects' }}</span><span>{{ $w26Ar ? 'أدلة تقنية' : 'Technical guides' }}</span>
@@ -159,7 +160,7 @@
         <div class="w26-devices">
             <a class="w26-laptop" href="{{ route('public.projects', ['lang' => $locale]) }}" aria-label="{{ $w26Ar ? 'استكشف المشاريع ودراسات الحالة' : 'Explore projects and case studies' }}">
                 <div class="w26-laptop-screen"><div class="w26-laptop-nav"><strong>W Waleed Atiya</strong><span>Home　 About　 Expertise　 Projects　 AI Lab</span></div>
-                    <div class="w26-laptop-body"><div class="w26-laptop-copy"><strong>{{ $w26Ar ? 'هندسة التقنية وحلول الذكاء الاصطناعي' : 'Enterprise Technology & AI Solutions' }}</strong><p>{{ $w26Ar ? 'المشاريع ودراسات الحالة المتحقق منها' : 'Verified engineering projects and case studies' }}</p><span class="w26-device-button">{{ $w26Ar ? 'استكشف المشاريع' : 'Explore projects' }} →</span></div><div class="w26-chip-illustration" aria-hidden="true"><i></i><b>AI</b></div></div>
+                    <div class="w26-laptop-body"><div class="w26-laptop-copy"><strong>{{ $w26Copy['laptop']['heading'] ?? ($w26Ar ? 'هندسة التقنية وحلول الذكاء الاصطناعي' : 'Enterprise Technology & AI Solutions') }}</strong><p>{{ $w26Copy['laptop']['description'] ?? ($w26Ar ? 'المشاريع ودراسات الحالة المتحقق منها' : 'Verified engineering projects and case studies') }}</p><span class="w26-device-button">{{ $w26Ar ? 'استكشف المشاريع' : 'Explore projects' }} →</span></div><div class="w26-chip-illustration" aria-hidden="true"><i></i><b>AI</b></div></div>
                 </div><div class="w26-laptop-base" aria-hidden="true"></div>
             </a>
             <a class="w26-phone" href="{{ route('public.lab', ['lang' => $locale]) }}" aria-label="{{ $w26Ar ? 'افتح المختبر التقني' : 'Open technical knowledge hub' }}">
@@ -178,17 +179,17 @@
             <ul><li><a href="{{ route('public.github', ['lang' => $locale]) }}">{{ $w26Ar ? 'المستودعات' : 'Repositories' }}</a></li><li><a href="{{ route('public.projects', ['lang' => $locale]) }}">{{ $w26Ar ? 'المشاريع' : 'Projects' }}</a></li><li>{{ $w26Ar ? 'المساهمات' : 'Commits & releases' }}</li><li>{{ $w26Ar ? 'التطوير والتكامل' : 'CI/CD' }}</li><li>{{ $w26Ar ? 'النشاط العام' : 'Activity' }}</li></ul>
         </div>
         <nav class="w26-ribbon" aria-label="{{ $w26Ar ? 'أقسام المنصة' : 'Platform sections' }}">
-            <a href="{{ route('public.expertise', ['lang' => $locale]) }}"><span class="w26-ribbon-icon" aria-hidden="true">▤</span><span><strong>Database & Infra</strong><small>SQL Server, HA/DR,<br>Security & Compliance</small></span></a>
-            <a href="{{ route('public.projects', ['lang' => $locale]) }}"><span class="w26-ribbon-icon" aria-hidden="true">⌘</span><span><strong>Software Engineering</strong><small>Laravel, Flutter,<br>APIs & Enterprise Systems</small></span></a>
-            <a href="{{ route('public.hire', ['lang' => $locale]) }}"><span class="w26-ribbon-icon" aria-hidden="true">◇</span><span><strong>Project Delivery</strong><small>Governance, review,<br>UAT & Rollout</small></span></a>
-            <a href="{{ route('public.ai-engineering', ['lang' => $locale]) }}"><span class="w26-ribbon-icon" aria-hidden="true">♧</span><span><strong>AI Engineering</strong><small>AI Tools, Automation,<br>Content & Code</small></span></a>
-            <a href="{{ route('public.github', ['lang' => $locale]) }}"><span class="w26-ribbon-icon" aria-hidden="true">◉</span><span><strong>GitHub & DevOps</strong><small>Repositories, CI/CD,<br>Versioning</small></span></a>
-            <a href="{{ route('public.lab', ['lang' => $locale]) }}"><span class="w26-ribbon-icon" aria-hidden="true">▱</span><span><strong>Knowledge Hub</strong><small>Technical Blog, Solutions,<br>Runbooks & Learning</small></span></a>
+            <a href="{{ route('public.expertise', ['lang' => $locale]) }}"><span class="w26-ribbon-icon" aria-hidden="true">▤</span><span><strong>{{ $w26Copy['ribbon']['database_title'] ?? 'Database & Infra' }}</strong><small>{!! nl2br(e($w26Copy['ribbon']['database_description'] ?? "SQL Server, HA/DR,\nSecurity & Compliance")) !!}</small></span></a>
+            <a href="{{ route('public.projects', ['lang' => $locale]) }}"><span class="w26-ribbon-icon" aria-hidden="true">⌘</span><span><strong>{{ $w26Copy['ribbon']['software_title'] ?? 'Software Engineering' }}</strong><small>{!! nl2br(e($w26Copy['ribbon']['software_description'] ?? "Laravel, Flutter,\nAPIs & Enterprise Systems")) !!}</small></span></a>
+            <a href="{{ route('public.hire', ['lang' => $locale]) }}"><span class="w26-ribbon-icon" aria-hidden="true">◇</span><span><strong>{{ $w26Copy['ribbon']['delivery_title'] ?? 'Project Delivery' }}</strong><small>{!! nl2br(e($w26Copy['ribbon']['delivery_description'] ?? "Governance, review,\nUAT & Rollout")) !!}</small></span></a>
+            <a href="{{ route('public.ai-engineering', ['lang' => $locale]) }}"><span class="w26-ribbon-icon" aria-hidden="true">♧</span><span><strong>{{ $w26Copy['ribbon']['ai_title'] ?? 'AI Engineering' }}</strong><small>{!! nl2br(e($w26Copy['ribbon']['ai_description'] ?? "AI Tools, Automation,\nContent & Code")) !!}</small></span></a>
+            <a href="{{ route('public.github', ['lang' => $locale]) }}"><span class="w26-ribbon-icon" aria-hidden="true">◉</span><span><strong>{{ $w26Copy['ribbon']['github_title'] ?? 'GitHub & DevOps' }}</strong><small>{!! nl2br(e($w26Copy['ribbon']['github_description'] ?? "Repositories, CI/CD,\nVersioning")) !!}</small></span></a>
+            <a href="{{ route('public.lab', ['lang' => $locale]) }}"><span class="w26-ribbon-icon" aria-hidden="true">▱</span><span><strong>{{ $w26Copy['ribbon']['knowledge_title'] ?? 'Knowledge Hub' }}</strong><small>{!! nl2br(e($w26Copy['ribbon']['knowledge_description'] ?? "Technical Blog, Solutions,\nRunbooks & Learning")) !!}</small></span></a>
         </nav>
     </section>
     <section class="w26-mobile" aria-labelledby="w26-mobile-title">
         <div class="w26-mobile-header"><div style="display:flex;align-items:center;gap:10px"><span class="w26-mobile-logo" aria-hidden="true">W</span><strong>Waleed Atiya</strong></div><a href="{{ route('home', ['lang' => $w26Ar ? 'en' : 'ar']) }}">{{ $w26Ar ? 'English' : 'العربية' }}</a></div>
-        <div class="w26-mobile-hero"><div><h1 id="w26-mobile-title">Waleed <span>Atiya</span></h1><p>{{ $w26Ar ? 'هندسة التقنية المؤسسية وحلول الذكاء الاصطناعي' : 'Enterprise Technology & AI Solutions Architecture' }}</p></div>
+        <div class="w26-mobile-hero"><div><h1 id="w26-mobile-title">Waleed <span>Atiya</span></h1><p>{{ $w26Copy['mobile']['description'] ?? ($w26Ar ? 'هندسة التقنية المؤسسية وحلول الذكاء الاصطناعي' : 'Enterprise Technology & AI Solutions Architecture') }}</p></div>
             <figure class="w26-mobile-photo"><img src="{{ route('public.owner-portrait') }}" alt="{{ $w26Ar ? 'الصورة الشخصية الأصلية المعتمدة لوليد عطية' : 'Approved real portrait of Waleed Atiya' }}" loading="lazy" width="640" height="760"></figure></div>
         <div class="w26-mobile-actions"><a href="{{ route('public.projects', ['lang' => $locale]) }}">{{ $w26Ar ? 'استكشف المشاريع' : 'Explore projects' }}</a><a href="{{ route('public.ai-engineering', ['lang' => $locale]) }}">{{ $w26Ar ? 'هندسة الذكاء الاصطناعي' : 'AI Engineering' }}</a></div>
         <nav class="w26-mobile-nav" aria-label="{{ $w26Ar ? 'أقسام المنصة' : 'Platform sections' }}"><a href="{{ route('public.about', ['lang' => $locale]) }}">{{ $w26Ar ? 'نبذة' : 'About' }}</a><a href="{{ route('public.expertise', ['lang' => $locale]) }}">{{ $w26Ar ? 'الخبرات' : 'Expertise' }}</a><a href="{{ route('public.github', ['lang' => $locale]) }}">GitHub & DevOps</a><a href="{{ route('public.lab', ['lang' => $locale]) }}">{{ $w26Ar ? 'المختبر التقني' : 'Tech lab' }}</a><a href="{{ route('public.blog', ['lang' => $locale]) }}">{{ $w26Ar ? 'المدونة التقنية' : 'Technical blog' }}</a><a href="{{ route('public.contact', ['lang' => $locale]) }}">{{ $w26Ar ? 'تواصل' : 'Contact' }}</a><a href="{{ route('public.resume', ['lang' => $locale]) }}">{{ $w26Ar ? 'السيرة العامة' : 'Public resume' }}</a><a href="{{ route('public.search', ['lang' => $locale]) }}">{{ $w26Ar ? 'البحث' : 'Search' }}</a></nav>

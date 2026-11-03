@@ -29,6 +29,7 @@ table{width:100%;border-collapse:collapse}td,th{text-align:start;border-bottom:1
 <nav aria-label="{{ $locale === 'ar' ? 'التنقل الإداري' : 'Admin navigation' }}">
 <a href="{{ route('admin.home', ['lang'=>$locale]) }}">{{ $locale === 'ar' ? 'الرئيسية' : 'Overview' }}</a>
 <a href="{{ route('admin.providers.index', ['lang'=>$locale]) }}">{{ $locale === 'ar' ? 'مزودو AI' : 'AI providers' }}</a>
+<a href="{{ route('admin.page-content.index', ['lang'=>$locale]) }}">{{ $locale === 'ar' ? 'إدارة نصوص الصفحات' : 'Site page editor' }}</a>
 <a href="{{ route('admin.content.index', ['lang'=>$locale]) }}" aria-current="page">{{ $locale === 'ar' ? 'مراجعة المحتوى' : 'Editorial review' }}</a>
 <a href="{{ route('admin.editorial.index', ['lang'=>$locale]) }}">{{ $locale === 'ar' ? 'جدولة النشر' : 'Publish automation' }}</a>
 </nav></aside><main id="content">

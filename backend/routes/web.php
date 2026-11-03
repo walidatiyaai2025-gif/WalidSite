@@ -196,6 +196,17 @@ Route::post('/admin/login', [WebLoginController::class, 'login'])
 Route::middleware('auth:web')->group(function (): void {
     Route::post('/admin/logout', [WebLoginController::class, 'logout'])->name('admin.logout');
 
+    // P0 first-install CMS: authenticated owner alone may create a missing
+    // owner-design slot, save drafts, or publish after source/rights attestation.
+    Route::get('/admin/page-content', [\App\Http\Controllers\AdminPageContentController::class, 'index'])
+        ->name('admin.page-content.index')->middleware('throttle:30,1');
+    Route::post('/admin/page-content/slots', [\App\Http\Controllers\AdminPageContentController::class, 'add'])
+        ->name('admin.page-content.add')->middleware('throttle:10,1');
+    Route::post('/admin/page-content/{entry}/draft', [\App\Http\Controllers\AdminPageContentController::class, 'save'])
+        ->whereUuid('entry')->name('admin.page-content.draft')->middleware('throttle:20,1');
+    Route::post('/admin/page-content/{entry}/publish', [\App\Http\Controllers\AdminPageContentController::class, 'publish'])
+        ->whereUuid('entry')->name('admin.page-content.publish')->middleware('throttle:10,1');
+
     Route::get('/admin', function (Request $request) {
         abort_unless($request->user()?->canAccessAdmin(), 403);
         $stats = [
