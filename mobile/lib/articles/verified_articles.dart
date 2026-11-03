@@ -733,7 +733,7 @@ class _VerifiedArticleFreshDetailState extends State<VerifiedArticleFreshDetail>
     // Schedule the request after FutureBuilder has subscribed to the new
     // future. A fast 404/rejection must be rendered as the safe unavailable
     // state, not surface as an unhandled error during a Retry tap.
-    _detail = Future<VerifiedArticle>(() async {
+    final request = Future<VerifiedArticle>(() async {
       final article = await (widget.loader != null
           ? widget.loader!(widget.slug)
           : const VerifiedArticleReader().loadDetail(
@@ -743,6 +743,12 @@ class _VerifiedArticleFreshDetailState extends State<VerifiedArticleFreshDetail>
       }
       return article;
     });
+    // A very fast denied/revoked reply may beat the next widget frame during
+    // a Retry tap. Attach an immediate error observer so that no transient
+    // unhandled error escapes while FutureBuilder subscribes; the UI still
+    // observes this original request and displays its safe failure state.
+    unawaited(request.then<void>((_) {}, onError: (Object _, StackTrace __) {}));
+    _detail = request;
   }
 
   @override
