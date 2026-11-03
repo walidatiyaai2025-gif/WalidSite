@@ -521,6 +521,7 @@ jobs:
           python3 - <<'PY'
           import hashlib
           import json
+          import os
           from pathlib import Path
           apk = Path("mobile/build/app/outputs/flutter-apk/app-debug.apk")
           data = json.loads(Path("dist/android-qa-verification.json").read_text())
@@ -530,7 +531,7 @@ jobs:
           assert not data["distribution_signing_identity_verified"]
           assert not data["device_install_launch_verified"]
           assert not data["ios_build_verified"]
-          assert data["source_sha_supplied_not_attested"] == Path(".git/HEAD").read_text().strip() or len(data["source_sha_supplied_not_attested"]) == 40
+          assert data["source_sha_supplied_not_attested"] == os.environ["SOURCE_SHA"]
           target = Path("dist/WalidSite-Android-debug-QA.apk")
           target.write_bytes(apk.read_bytes())
           (Path("dist") / (target.name + ".sha256")).write_text(checksum + "  " + target.name + "\n")
