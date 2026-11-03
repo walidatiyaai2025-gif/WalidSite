@@ -191,7 +191,9 @@
                         {{-- Recruiter topic is public, but only server-supported
                              focus keys may pass through the language toggle. --}}
                         @php($rawContactTrack = request()->query()['track'] ?? null)
-                        @if(is_string($rawContactTrack)
+                        @if(!array_key_exists('topic', request()->query())
+                            && !array_key_exists('request', request()->query())
+                            && is_string($rawContactTrack)
                             && in_array($rawContactTrack, ['database', 'software', 'delivery'], true))
                             @php($languageArgs['track'] = $rawContactTrack)
                         @endif
