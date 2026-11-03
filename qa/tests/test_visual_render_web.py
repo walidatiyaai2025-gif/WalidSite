@@ -67,7 +67,8 @@ class RealWebCaptureConfigTest(unittest.TestCase):
             localized_target("https://preview.example.test", "/about?token=private", "ar")
 
     def _render_fake(self, locale="ar", page_lang="ar", direction="rtl",
-                     redirect_after_fonts=False):
+                     redirect_after_fonts=False, redirect_during_screenshot=False,
+                     change_locale_during_screenshot=False):
         # This tests the real render() orchestration without installing a
         # browser. Synthetic responses are NOT WalidSite screenshot evidence.
         with tempfile.TemporaryDirectory() as temp:
@@ -95,6 +96,19 @@ class RealWebCaptureConfigTest(unittest.TestCase):
                 def navigate_after_font_load(script):
                     page.url = "http://127.0.0.1:8000/login"
                 page.evaluate.side_effect = navigate_after_font_load
+            if redirect_during_screenshot:
+                def navigate_during_screenshot(**kwargs):
+                    output.write_bytes(b"synthetic-png-placeholder")
+                    page.url = "http://127.0.0.1:8000/login"
+                page.screenshot.side_effect = navigate_during_screenshot
+            if change_locale_during_screenshot:
+                def relocalize_during_screenshot(**kwargs):
+                    output.write_bytes(b"synthetic-png-placeholder")
+                    html.get_attribute.side_effect = lambda name: {
+                        "lang": "en" if locale == "ar" else "ar",
+                        "dir": "ltr" if locale == "ar" else "rtl",
+                    }[name]
+                page.screenshot.side_effect = relocalize_during_screenshot
             browser_context = Mock()
             browser_context.new_page.return_value = page
             browser = Mock()
@@ -120,6 +134,14 @@ class RealWebCaptureConfigTest(unittest.TestCase):
                     with self.assertRaisesRegex(RenderConfigError, "navigated"):
                         render(env)
                     page.screenshot.assert_not_called()
+                elif redirect_during_screenshot or change_locale_during_screenshot:
+                    expected_error = ("navigated during screenshot"
+                                      if redirect_during_screenshot
+                                      else "changed during screenshot")
+                    with self.assertRaisesRegex(RenderConfigError, expected_error):
+                        render(env)
+                    page.screenshot.assert_called_once()
+                    self.assertFalse(output.exists(), "Wrong-page candidate must be removed")
                 else:
                     render(env)
                     page.goto.assert_called_once_with(
@@ -145,6 +167,30 @@ class RealWebCaptureConfigTest(unittest.TestCase):
 
     def test_real_renderer_rejects_delayed_login_redirect_before_screenshot(self):
         self._render_fake(redirect_after_fonts=True)
+
+    def test_real_renderer_discards_late_redirect_after_screenshot(self):
+        self._render_fake(redirect_during_screenshot=True)
+
+    def test_real_renderer_discards_late_locale_change_after_screenshot(self):
+        self._render_fake(change_locale_during_screenshot=True)
+
+    def test_public_capture_rejects_authenticated_owner_storage(self):
+        with tempfile.TemporaryDirectory() as temp:
+            state = Path(temp) / "storage.json"
+            state.write_text("{}", encoding="utf-8")
+            env = {
+                "WALIDSITE_RENDER_BASE_URL": "http://127.0.0.1:8000",
+                "WALIDSITE_CAPTURE_ROUTE": "/projects",
+                "WALIDSITE_CAPTURE_LOCALE": "en",
+                "WALIDSITE_CAPTURE_DPR": "1",
+                "WALIDSITE_CAPTURE_WIDTH": "1440",
+                "WALIDSITE_CAPTURE_HEIGHT": "860",
+                "WALIDSITE_CAPTURE_PATH": str(Path(temp) / "runtime.png"),
+                "WALIDSITE_CAPTURE_STORAGE_STATE": str(state),
+            }
+            with self.assertRaisesRegex(RenderConfigError, "anonymous browser"):
+                render(env)
+            self.assertFalse(Path(env["WALIDSITE_CAPTURE_PATH"]).exists())
 
 
 if __name__ == "__main__":
