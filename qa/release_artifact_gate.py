@@ -59,7 +59,8 @@ def verify(folder: Path, manifest_path: Path, source_sha: str | None = None) -> 
         if not isinstance(item, dict) or set(item) != {"name", "kind", "bytes", "sha256"}:
             raise ValueError("Invalid artifact record")
         name, kind, size, digest = (item[k] for k in ("name", "kind", "bytes", "sha256"))
-        if not artifact_name(name) or kind not in KINDS or not name.endswith(KINDS[kind]):
+        if (not artifact_name(name) or not isinstance(kind, str)
+                or kind not in KINDS or not name.endswith(KINDS[kind])):
             raise ValueError("Unsafe artifact name or mismatched file kind")
         if name in seen:
             raise ValueError("Duplicate release artifact")
