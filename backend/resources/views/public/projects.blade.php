@@ -80,9 +80,12 @@
     .web04-preview-card h2 { font-size:26px; line-height:1.25; margin:36px 0 22px; color:#184876; font-weight:700; letter-spacing:1.5px; overflow-wrap:anywhere; }
     .web04-preview-card p { font-size:16px; line-height:1.5; margin:0; color:#254a68; letter-spacing:.55px; overflow-wrap:anywhere; }
     .web04-card-rule { height:2px; background:#dce7ec; position:absolute; left:19px; right:29px; top:244px; }
-    .web04-card-link { position:absolute; top:271px; left:26px; color:#0a7e74; text-decoration:none; font-size:20px; font-weight:600; letter-spacing:1.15px; }
-    .web04-preview-card--empty { grid-column:1 / -1; }
-    .web04-preview-card--empty p { max-width:80ch; }
+    .web04-card-link { position:absolute; top:271px; left:26px; min-height:44px; display:inline-flex; align-items:center; color:#0a7e74; text-decoration:none; font-size:20px; font-weight:600; letter-spacing:1.15px; }
+    /* Keep the original three-card rhythm even when there are no publishable case studies.
+       Resource cards are navigation, never fabricated project records. */
+    .web04-preview-card--empty h2 { font-size:24px; letter-spacing:0; }
+    .web04-preview-card--empty p { max-width:36ch; }
+    .web04-preview-card--resource h2 { letter-spacing:0; }
     :lang(ar) .web04-nav { direction:rtl; }
     :lang(ar) .web04-brand { margin:0 0 0 25px; }
     :lang(ar) .web04-brand strong { margin:0 4px 0 0; }
@@ -118,7 +121,6 @@
         .web04-preview { padding:28px; }
         .web04-preview-grid { grid-template-columns:1fr; gap:18px; }
         .web04-preview-card { height:315px; }
-        .web04-preview-card--empty { grid-column:1; }
         .web04-card-rule { top:230px; }
         .web04-card-link { top:252px; }
     }
@@ -171,7 +173,7 @@
         </div>
     </section>
     @php($web04Preview = $projects->take(3)->values())
-    <section class="web04-preview" aria-label="{{ $locale === 'ar' ? 'دراسات الحالة المنشورة' : 'Published case studies' }}">
+    <section class="web04-preview" aria-label="{{ $web04Preview->isEmpty() ? ($locale === 'ar' ? 'حالة المشاريع والروابط المفيدة' : 'Project availability and resources') : ($locale === 'ar' ? 'دراسات الحالة المنشورة' : 'Published case studies') }}">
         <div class="web04-preview-grid">
             @forelse($web04Preview as $project)
                 <article class="web04-preview-card">
@@ -182,12 +184,29 @@
                     <a class="web04-card-link" href="{{ route('public.project', ['slug' => $project['slug'], 'lang' => $locale]) }}">{{ $locale === 'ar' ? 'عرض التفاصيل' : 'View details' }} &gt;</a>
                 </article>
             @empty
+                {{-- The reference contains three cards. No fictional case studies may fill an empty production dataset. --}}
                 <article class="web04-preview-card web04-preview-card--empty">
                     <div class="web04-card-icon" aria-hidden="true">&lt;&gt;</div>
-                    <h2>{{ $locale === 'ar' ? 'دراسات الحالة قيد التحقق' : 'Case studies pending verification' }}</h2>
-                    <p role="status">{{ $locale === 'ar' ? 'لا توجد حاليًا مشاريع منشورة تستوفي أدلة النشر العامة.' : 'No published projects currently meet the public evidence checks.' }}</p>
+                    <h2>{{ $filtersApplied ? ($locale === 'ar' ? 'لا توجد نتائج مطابقة' : 'No matching projects') : ($locale === 'ar' ? 'التحقق قيد الانتظار' : 'Verification pending') }}</h2>
+                    <p role="status">{{ $filtersApplied
+                        ? ($locale === 'ar' ? 'لا توجد دراسات حالة عامة موثقة تطابق البحث أو المرشحات.' : 'No evidence-verified public case studies match your search or filters.')
+                        : ($locale === 'ar' ? 'لا توجد حاليًا مشاريع منشورة تستوفي أدلة النشر العامة.' : 'No published projects currently meet the public evidence checks.') }}</p>
                     <div class="web04-card-rule" aria-hidden="true"></div>
-                    <a class="web04-card-link" href="{{ route('public.github', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'عرض المستودعات العامة' : 'Browse public repositories' }} &gt;</a>
+                    <a class="web04-card-link" href="{{ $filtersApplied ? route('public.projects', ['lang' => $locale]) : '#web04-project-catalog' }}">{{ $filtersApplied ? ($locale === 'ar' ? 'مسح المرشحات' : 'Clear filters') : ($locale === 'ar' ? 'استعراض القائمة' : 'Browse catalog') }} &gt;</a>
+                </article>
+                <article class="web04-preview-card web04-preview-card--resource">
+                    <div class="web04-card-icon" aria-hidden="true">GH</div>
+                    <h2>{{ $locale === 'ar' ? 'المستودعات العامة' : 'Public repositories' }}</h2>
+                    <p>{{ $locale === 'ar' ? 'استعرض معلومات المستودعات المصرح بعرضها علنًا فقط.' : 'Explore only repository information approved for public display.' }}</p>
+                    <div class="web04-card-rule" aria-hidden="true"></div>
+                    <a class="web04-card-link" href="{{ route('public.github', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'عرض المستودعات' : 'Browse repositories' }} &gt;</a>
+                </article>
+                <article class="web04-preview-card web04-preview-card--resource">
+                    <div class="web04-card-icon" aria-hidden="true">@</div>
+                    <h2>{{ $locale === 'ar' ? 'تواصل حول مشروع' : 'Discuss a project' }}</h2>
+                    <p>{{ $locale === 'ar' ? 'للاستفسار عن الأعمال العامة الموثقة أو التواصل المهني.' : 'Enquire about documented public work or make professional contact.' }}</p>
+                    <div class="web04-card-rule" aria-hidden="true"></div>
+                    <a class="web04-card-link" href="{{ route('public.contact', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'تواصل' : 'Get in touch' }} &gt;</a>
                 </article>
             @endforelse
         </div>
@@ -230,8 +249,8 @@
     @if ($projects->isEmpty())
         <div class="case-empty" role="status">
             <p>{{ $locale === 'ar'
-                ? 'لا توجد دراسات حالة عامة موثقة تطابق البحث.'
-                : 'No evidence-verified public case studies match your search.' }}</p>
+                ? ($filtersApplied ? 'لا توجد دراسات حالة عامة موثقة تطابق البحث.' : 'لا توجد حاليًا مشاريع منشورة تستوفي أدلة النشر العامة.')
+                : ($filtersApplied ? 'No evidence-verified public case studies match your search.' : 'No published projects currently meet the public evidence checks.') }}</p>
             <a href="{{ route('public.github', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'تصفح مستودعات GitHub العامة الموثقة' : 'Browse verified public GitHub repositories' }}</a>
         </div>
     @else
