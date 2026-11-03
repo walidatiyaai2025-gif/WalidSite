@@ -160,9 +160,8 @@ html[dir="rtl"] .t012-screen-blog .t012-visual-stack{left:55px;right:auto}
         } elseif ($t012Current === 'public.blog') {
             // Preserve only the values accepted by the blog route validator;
             // never echo arbitrary request parameters into the locale link.
-            if ($search !== '') {
-                $t012SwitchArgs['q'] = $search;
-            }
+            // Keep the SEO-visible alternate href free of untrusted search
+            // terms; deliberate click navigation enhances it client-side.
             if ($category !== '') {
                 $t012SwitchArgs['category'] = $category;
             }
@@ -178,7 +177,7 @@ html[dir="rtl"] .t012-screen-blog .t012-visual-stack{left:55px;right:auto}
             }
         }
     ?>
-    <a class="t012-sr-only t012-locale-switch" lang="{{ $t012Ar ? 'en' : 'ar' }}" hreflang="{{ $t012Ar ? 'en' : 'ar' }}" href="{{ route($t012Current ?? 'home', $t012SwitchArgs) }}">{{ $t012Ar ? 'English' : 'العربية' }}</a>
+    <a class="t012-sr-only t012-locale-switch" @if($t012Screen === 'blog') data-web07-locale-switch @endif lang="{{ $t012Ar ? 'en' : 'ar' }}" hreflang="{{ $t012Ar ? 'en' : 'ar' }}" href="{{ route($t012Current ?? 'home', $t012SwitchArgs) }}">{{ $t012Ar ? 'English' : 'العربية' }}</a>
 </header>
 <section class="t012-reference-stage t012-screen-{{ $t012Screen }}" aria-label="{{ $t012Copy['title'] }}">
     <div class="t012-reference-hero">
@@ -280,6 +279,32 @@ html[dir="rtl"] .t012-screen-blog .t012-visual-stack{left:55px;right:auto}
         </div>
     @endif
 </section>
+
+@if($t012Screen === 'blog')
+{{-- WEB-07: canonical/alternate hrefs must never advertise search terms.
+     Preserve a user-entered search only on intentional navigation, without
+     changing the safe no-JavaScript language link or echoing it into href. --}}
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    'use strict';
+    const toggle = document.querySelector('[data-web07-locale-switch]');
+    const query = document.getElementById('blog-query');
+    if (!toggle || !query) return;
+    toggle.addEventListener('click', event => {
+        if (event.defaultPrevented || event.button !== 0
+            || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+        const term = query.value.trim().slice(0, 80);
+        if (!term) return;
+        // Only navigate to the app's own canonical blog route.
+        const url = new URL(toggle.href, window.location.href);
+        if (url.origin !== window.location.origin || url.pathname !== @json(route('public.blog', [], false))) return;
+        url.searchParams.set('q', term);
+        event.preventDefault();
+        window.location.assign(url.pathname + url.search);
+    });
+});
+</script>
+@endif
 
 @if($t012Screen === 'article')
 {{-- Keep the source-backed outline as readable text without JavaScript. Only
