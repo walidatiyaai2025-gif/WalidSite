@@ -135,76 +135,8 @@
 @endpush
 
 @section('content')
-@include('public.t007-reference-stage', ['screen' => 'home'])
-<div class="t007-functional">
+@include('public.owner-landing-2026')
 <div class="landing">
-    <section class="landing-hero" aria-labelledby="landing-title">
-        <div class="site-wrap landing-grid">
-            <figure class="landing-portrait">
-                <img src="{{ route('public.owner-portrait') }}"
-                    width="640" height="760" decoding="async" fetchpriority="high"
-                    alt="{{ $ar ? 'الصورة الشخصية الأصلية المعتمدة لوليد عطية' : 'Approved real portrait of Waleed Atiya' }}">
-            </figure>
-            <div class="landing-copy">
-                <span class="landing-kicker">{{ $ar ? 'وليد عطية | منصة تقنية شخصية' : 'Waleed Atiya | Personal technology platform' }}</span>
-                <h1 id="landing-title"><span lang="en">Waleed</span> <span lang="en">Atiya</span></h1>
-                <p class="landing-subtitle">{{ $ar ? 'هندسة البرمجيات وقواعد البيانات وحلول الذكاء الاصطناعي' : 'Software, Database & AI Engineering' }}</p>
-                <p class="landing-description">{{ $ar
-                    ? 'اكتشف مشاريع تقنية موثقة، ودراسات حالة، ومحتوى هندسي منشور بعد التحقق من المصادر. منصة تجمع الخبرات العملية والتعلم والتطوير.'
-                    : 'Explore evidence-verified projects, engineering case studies and source-checked technical insights, with practical paths into software, data and AI.' }}</p>
-                <div class="landing-accent-line" aria-hidden="true"></div>
-                <div class="landing-actions">
-                    <a class="landing-button landing-button--primary" href="{{ route('public.projects', ['lang' => $locale]) }}">{{ $ar ? 'استكشف المشاريع' : 'Explore projects' }}</a>
-                    <a class="landing-button landing-button--secondary" href="{{ route('public.github', ['lang' => $locale]) }}">{{ $ar ? 'مشاريع GitHub الموثقة' : 'Verified GitHub' }}</a>
-                    <a class="landing-button landing-button--secondary" href="{{ route('public.resume', ['lang' => $locale]) }}">{{ $ar ? 'السيرة المهنية' : 'Public resume' }}</a>
-                </div>
-                <ul class="landing-topics" aria-label="{{ $ar ? 'المجالات التقنية' : 'Technology topics' }}">
-                    <li>{{ $ar ? 'قواعد البيانات والبنية التحتية' : 'Databases & infrastructure' }}</li>
-                    <li>{{ $ar ? 'تطوير البرمجيات' : 'Software engineering' }}</li>
-                    <li>{{ $ar ? 'إدارة المشاريع' : 'Project delivery' }}</li>
-                    <li>{{ $ar ? 'هندسة الذكاء الاصطناعي' : 'AI engineering' }}</li>
-                </ul>
-            </div>
-        </div>
-    </section>
-
-    <div class="site-wrap landing-workspace" aria-label="{{ $ar ? 'مسارات استكشاف المنصة' : 'Platform discovery shortcuts' }}">
-        <div class="device-row">
-            <a class="device device--laptop" href="{{ route('public.projects', ['lang' => $locale]) }}">
-                <div class="device-top"><span><span class="device-mark">W</span> Waleed Atiya</span><span>{{ $ar ? 'المنصة' : 'Portfolio' }}</span></div>
-                <div class="device-screen">
-                    <h2>{{ $ar ? 'المشاريع والأعمال الهندسية' : 'Engineering projects & case studies' }}</h2>
-                    <p>{{ $ar ? 'أعمال موثقة بمصادر عامة' : 'Public work backed by source evidence' }}</p>
-                    <span class="device-link">{{ $ar ? 'استعراض الأعمال' : 'Explore work' }}</span>
-                </div>
-            </a>
-            <a class="device device--phone" href="{{ route('public.lab', ['lang' => $locale]) }}">
-                <div class="device-top"><span class="device-mark">W</span><span>{{ $ar ? 'المعرفة' : 'Learn' }}</span></div>
-                <div class="device-screen">
-                    <h2>{{ $ar ? 'المختبر التقني' : 'Tech lab' }}</h2>
-                    <p>{{ $ar ? 'أدوات ومواد للتعلم' : 'Engineering tools and learning' }}</p>
-                    <span class="device-link">{{ $ar ? 'افتح المختبر' : 'Open lab' }}</span>
-                </div>
-            </a>
-            <a class="device device--tablet" href="{{ route('public.about', ['lang' => $locale]) }}">
-                <div class="device-top"><span class="device-mark">W</span><span>{{ $ar ? 'المسار المهني' : 'Professional profile' }}</span></div>
-                <div class="device-screen">
-                    <h2>{{ $ar ? 'الخبرات والمعلومات المتحقق منها' : 'Experience with verifiable evidence' }}</h2>
-                    <p>{{ $ar ? 'نبذة مهنية ومراجع عامة عند توفرها' : 'Published professional profile and public references' }}</p>
-                    <span class="device-link">{{ $ar ? 'اطّلع على النبذة' : 'View profile' }}</span>
-                </div>
-            </a>
-        </div>
-    </div>
-
-    <nav class="site-wrap capability-strip" aria-label="{{ $ar ? 'مجالات المنصة' : 'Platform sections' }}">
-        <a href="{{ route('public.expertise', ['lang' => $locale]) }}"><span class="capability-symbol" aria-hidden="true">▤</span><span><strong>{{ $ar ? 'قواعد البيانات والبنية التحتية' : 'Database & Infra' }}</strong><small>{{ $ar ? 'المهارات الهندسية' : 'Verified expertise' }}</small></span></a>
-        <a href="{{ route('public.projects', ['lang' => $locale]) }}"><span class="capability-symbol" aria-hidden="true">⌘</span><span><strong>{{ $ar ? 'هندسة البرمجيات' : 'Software Engineering' }}</strong><small>{{ $ar ? 'المشاريع ودراسات الحالة' : 'Projects & case studies' }}</small></span></a>
-        <a href="{{ route('public.hire', ['lang' => $locale]) }}"><span class="capability-symbol" aria-hidden="true">◇</span><span><strong>{{ $ar ? 'إدارة وتسليم المشاريع' : 'Project Delivery' }}</strong><small>{{ $ar ? 'الملف المهني' : 'Recruiter overview' }}</small></span></a>
-        <a href="{{ route('public.github', ['lang' => $locale]) }}"><span class="capability-symbol" aria-hidden="true">⌁</span><span><strong>{{ $ar ? 'GitHub والتطوير' : 'GitHub & DevOps' }}</strong><small>{{ $ar ? 'المستودعات العامة' : 'Public repositories' }}</small></span></a>
-        <a href="{{ route('public.blog', ['lang' => $locale]) }}"><span class="capability-symbol" aria-hidden="true">◈</span><span><strong>{{ $ar ? 'المعرفة والذكاء الاصطناعي' : 'AI & Knowledge' }}</strong><small>{{ $ar ? 'المقالات التقنية' : 'Technical articles' }}</small></span></a>
-    </nav>
-
     @if (!empty($publicProfile['claims']))
         <section class="landing-section landing-section--white" aria-labelledby="landing-proof-title">
             <div class="site-wrap">
@@ -264,6 +196,5 @@
             @endif
         </div>
     </section>
-</div>
 </div>
 @endsection
