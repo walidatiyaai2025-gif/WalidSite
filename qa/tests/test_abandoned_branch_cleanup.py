@@ -377,6 +377,25 @@ class Orphan480BranchCleanupTest(unittest.TestCase):
                 self.assertEqual(api.deleted, [])
 
 
+    def test_privacy_witnesses_match_reviewed_merge_730_files(self):
+        """Merged recruiter/privacy separation must not silently stale the gate."""
+        root = Path(__file__).resolve().parents[2]
+        for candidate in ORPHANED_480[1:]:
+            witnesses = dict(candidate.main_witnesses)
+            for path in (
+                "backend/resources/views/layouts/site.blade.php",
+                "backend/resources/views/public/contact.blade.php",
+            ):
+                with self.subTest(branch=candidate.branch, path=path):
+                    source = (root / path).read_bytes()
+                    git_sha = hashlib.sha1(
+                        b"blob " + str(len(source)).encode("ascii") + b"\0" + source
+                    ).hexdigest()
+                    self.assertEqual(
+                        git_sha, witnesses[path],
+                        "Re-audit changed merged privacy/recruiter source before deleting",
+                    )
+
     def test_actual_checkout_matches_both_pinned_route_closures(self):
         """Pin the full accepted privacy/admin logic, not just a few predicates."""
         route_bytes = (Path(__file__).resolve().parents[2] / "backend/routes/web.php").read_bytes()
