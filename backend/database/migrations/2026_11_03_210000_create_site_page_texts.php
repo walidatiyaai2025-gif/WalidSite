@@ -30,6 +30,7 @@ return new class extends Migration {
             $table->foreignUuid('site_page_text_id')->constrained('site_page_texts')->restrictOnDelete();
             $table->foreignUuid('actor_id')->constrained('users')->restrictOnDelete();
             $table->string('action', 24);
+            $table->string('source_note', 240)->nullable();
             $table->unsignedInteger('revision');
             $table->char('old_hash', 64)->nullable();
             $table->char('new_hash', 64)->nullable();
