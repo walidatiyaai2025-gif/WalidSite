@@ -119,13 +119,21 @@
         .web04-hero p { max-width:100%; }
         .web04-actions { flex-wrap:wrap; }
         .web04-action,.web04-action.secondary { max-width:100%; min-width:0; width:auto; padding-inline:22px; }
-        .web04-visual-stack { position:relative; left:auto; right:auto; top:auto; margin:30px auto 0; transform:scale(.78); transform-origin:top left; }
+        /* Make the overlap stack shrink in its actual layout box. A transform alone
+           paints at 78% while still allocating the overflowing 372px box. */
+        .web04-visual-stack { position:relative; left:auto; right:auto; top:auto; width:min(100%,372px);
+            height:auto; aspect-ratio:372 / 226; margin:30px auto 0; transform:none; }
+        .web04-visual-stack .tile { width:59.41%; height:75.66%; font-size:clamp(18px,3.5vw,30px); }
+        .web04-visual-stack .two { left:20.16%; top:11.95%; }
+        .web04-visual-stack .three { left:40.32%; top:23.89%; }
         :lang(ar) .web04-visual-stack { left:auto; }
         .web04-preview { padding:28px; }
         .web04-preview-grid { grid-template-columns:1fr; gap:18px; }
-        .web04-preview-card { height:315px; }
-        .web04-card-rule { top:230px; }
-        .web04-card-link { top:252px; }
+        /* Content may be longer in Arabic or in genuine published case studies.
+           Let each card grow; never overlay its text with an absolute CTA. */
+        .web04-preview-card { height:auto; min-height:315px; display:flex; flex-direction:column; }
+        .web04-card-rule { position:static; width:100%; flex-shrink:0; margin-top:auto; }
+        .web04-card-link { position:static; margin-top:10px; align-self:flex-start; }
     }
     @media (max-width:600px) {
         .web04-brand span { font-size:34px; }
