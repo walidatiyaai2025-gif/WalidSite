@@ -52,7 +52,9 @@ jobs:
           python qa/validate_visual_fidelity.py
           python -m unittest discover -s qa/tests -p 'test_visual_*.py'
       - name: Verify cPanel ZIP safety rules
-        run: python3 -m unittest discover -s qa/tests -p test_cpanel_package.py
+        run: |
+          python3 -m unittest discover -s qa/tests -p test_cpanel_package.py
+          python3 -m unittest qa.tests.test_staging_smoke -v
       - name: Validate active CI workflow policy
         run: python3 qa/validate_ci_policy.py
       - name: Enforce exclusive Issue, branch and PR ownership
