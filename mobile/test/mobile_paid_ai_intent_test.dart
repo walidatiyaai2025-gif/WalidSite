@@ -50,6 +50,28 @@ void main() {
     }
   });
 
+  test('two concurrent screens cannot create different paid keys',
+      () async {
+    final root = await Directory.systemTemp.createTemp('paid-key-race-');
+    final first = FileMobileAiIntentStore(rootDirectory: () async => root);
+    final second = FileMobileAiIntentStore(rootDirectory: () async => root);
+    final keyA = MobileAiIntentKey.generate();
+    final keyB = MobileAiIntentKey.generate();
+    try {
+      final outcomes = await Future.wait<bool>([
+        first.saveKey('owner@example.test', keyA)
+            .then((_) => true).catchError((Object _) => false),
+        second.saveKey('owner@example.test', keyB)
+            .then((_) => true).catchError((Object _) => false),
+      ]);
+      expect(outcomes.where((success) => success).length, 1);
+      expect(await first.readKey('owner@example.test'), anyOf(keyA, keyB));
+      await first.clearKey('owner@example.test');
+    } finally {
+      await root.delete(recursive: true);
+    }
+  });
+
   test('manual lost-ack HTTP retry sends the exact same opaque header',
       () async {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
