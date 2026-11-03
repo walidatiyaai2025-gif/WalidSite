@@ -217,4 +217,92 @@ class SiteMaintenanceTest extends TestCase
         $this->actingAs($owner)->get('/admin/updates')->assertOk();
         $this->post('/admin/updates/apply')->assertForbidden();
     }
+
+    public function test_bilingual_setup_displays_exact_current_stage_and_truthful_prerequisites(): void
+    {
+        $token = str_repeat('q', 40);
+        config([
+            'site.setup_enabled' => true,
+            'site.setup_token' => $token,
+            'site.setup_database_ready' => true,
+        ]);
+
+        foreach (['en' => 'ltr', 'ar' => 'rtl'] as $lang => $direction) {
+            $page = $this->get('/setup?lang='.$lang)->assertOk()
+                ->assertSee('<html lang="'.$lang.'" dir="'.$direction.'">', false)
+                ->assertSee('aria-current="step"', false)
+                ->assertSee($lang === 'ar' ? 'الترحيب ومتطلبات التثبيت' : 'Welcome and installation requirements')
+                ->assertSee($lang === 'ar' ? 'هذه متطلبات يجب تجهيزها' : 'This list is not a completed server preflight.')
+                ->assertDontSee($token);
+            $this->assertSame(1, substr_count($page->getContent(), 'aria-current="step"'));
+        }
+
+        $this->post('/setup/unlock', ['token' => $token])->assertRedirect('/setup');
+        $database = $this->get('/setup?lang=en')->assertOk()
+            ->assertSee('Step 3: Install database schema')
+            ->assertDontSee('Welcome and installation requirements');
+        $this->assertSame(1, substr_count($database->getContent(), 'aria-current="step"'));
+        $this->post('/setup/database')->assertRedirect('/setup');
+        $ready = $this->get('/setup?lang=ar')->assertOk()
+            ->assertSee('الخطوة 4: نشر الموقع وتفعيل المالك')
+            ->assertSee('نشر الموقع وتفعيل المالك')
+            ->assertSee('minlength="14"', false);
+        $this->assertSame(1, substr_count($ready->getContent(), 'aria-current="step"'));
+    }
+
+    public function test_installer_completion_notice_and_public_entry_work_in_both_login_locales(): void
+    {
+        $ownerNotice = 'Installation complete. Sign in with your owner email.';
+        foreach (['ar' => 'rtl', 'en' => 'ltr'] as $lang => $direction) {
+            $page = $this->withSession(['status' => $ownerNotice])
+                ->get('/admin/login?lang='.$lang)->assertOk()
+                ->assertSee('<html lang="'.$lang.'" dir="'.$direction.'">', false)
+                ->assertSee('role="status"', false)
+                ->assertSee('href="'.e(route('home', ['lang' => $lang])).'"', false)
+                ->assertSee('type="password" name="password"', false)
+                ->assertSee('autocomplete="username"', false);
+            $page->assertSee($lang === 'ar'
+                ? 'اكتمل تثبيت الموقع وتفعيل حساب المالك.'
+                : 'Installation complete. Sign in using the approved owner email.');
+            $page->assertDontSee('site-first-run.json');
+            $this->assertSame(1, substr_count($page->getContent(), 'name="password"'));
+        }
+    }
+
+    public function test_owner_update_panel_does_not_misrepresent_migrations_as_code_upgrades(): void
+    {
+        config(['site.release_ref' => 'unidentified']);
+        $owner = User::create([
+            'email' => 'update-w2-owner@example.test',
+            'password_hash' => 'unused',
+            'status' => 'active',
+        ]);
+        $owner->roles()->attach(Role::firstOrCreate(['name' => 'owner'])->id);
+        $this->actingAs($owner);
+
+        foreach (['en' => 'ltr', 'ar' => 'rtl'] as $lang => $direction) {
+            $page = $this->get('/admin/updates?lang='.$lang)->assertOk()
+                ->assertSee('<html lang="'.$lang.'" dir="'.$direction.'">', false)
+                ->assertSee('data-testid="trusted-code-update-unavailable"', false)
+                ->assertSee('role="status"', false)
+                ->assertSee('href="'.e(route('admin.updates.index', ['lang' => $lang])).'"', false)
+                ->assertSee('action="'.e(route('admin.updates.apply', ['lang' => $lang])).'"', false)
+                ->assertSee('type="submit"', false);
+            $html = $page->getContent();
+            $this->assertSame(1, substr_count($html, 'action="'.e(route('admin.updates.apply', ['lang' => $lang])).'"'));
+            $this->assertStringNotContainsString('name="release_url"', $html);
+            $page->assertSee($lang === 'ar'
+                ? 'التحديث الآمن للكود غير متاح بعد.'
+                : 'Trusted code updates are not yet available.');
+            $page->assertSee($lang === 'ar'
+                ? 'تطبيق الترحيلات الموجودة فقط'
+                : 'Apply deployed migrations only');
+        }
+
+        $this->get('/admin/updates?lang=en')
+            ->assertSee('Unidentified')
+            ->assertSee('Not verified')
+            ->assertSee('Not available');
+    }
+
 }
