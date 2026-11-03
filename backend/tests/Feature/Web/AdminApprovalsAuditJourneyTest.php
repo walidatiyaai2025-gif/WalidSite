@@ -212,9 +212,14 @@ final class AdminApprovalsAuditJourneyTest extends TestCase
         $highRisk = $this->article('high', true);
         $this->actingAs($admin, 'web');
 
-        $this->get('/admin/approvals?lang=en')->assertOk()
-            ->assertSee('Owner approval required')
-            ->assertSee('value="approve" disabled', false);
+        $highRiskPage = $this->get('/admin/approvals?lang=en')->assertOk()
+            ->assertSee('Owner approval required');
+        // Blade renders the disabled attribute on its own line; assert the
+        // actual approve button, not fragile adjacent HTML whitespace.
+        $this->assertMatchesRegularExpression(
+            '/<button[^>]*value="approve"\\s+disabled\\b/s',
+            $highRiskPage->getContent()
+        );
 
         $this->post('/admin/approvals/'.$highRisk->id.'/decision', [
             'decision' => 'approve',
@@ -388,8 +393,11 @@ final class AdminApprovalsAuditJourneyTest extends TestCase
         ]);
         foreach (['en', 'ar'] as $lang) {
             $page = $this->get('/admin/approvals?lang='.$lang)->assertOk()
-                ->assertSee('value="approve"', false)
-                ->assertSee('value="approve" disabled', false);
+                ->assertSee('value="approve"', false);
+            $this->assertMatchesRegularExpression(
+                '/<button[^>]*value="approve"\\s+disabled\\b/s',
+                $page->getContent()
+            );
             $page->assertSee($lang === 'ar'
                 ? 'الاعتماد محجوب: يلزم مراجع مستقل'
                 : 'Approval blocked: independent reviewer required.');
