@@ -217,7 +217,7 @@ class VerifiedArticleReader {
 
   Uri? _origin() => _testingOrigin == null
       ? configuredOrigin()
-      : validatedOrigin(_testingOrigin!);
+      : validatedOrigin(_testingOrigin);
 
   HttpClient _newClient() => (_clientFactory?.call() ?? HttpClient())
     ..connectionTimeout = const Duration(seconds: 8);
