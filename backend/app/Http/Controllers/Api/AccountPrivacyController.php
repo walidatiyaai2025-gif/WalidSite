@@ -182,26 +182,47 @@ final class AccountPrivacyController extends Controller
                     'channel' => $inputPreference['channel'],
                 ]);
 
+                // Only an effective, currently verified grant is a consent.
+                // A stale future date or a prior revoke cannot establish one.
+                $wasConsented = $preference->exists
+                    && $preference->enabled === true
+                    && $preference->consented_at !== null
+                    && ! $preference->consented_at->isFuture()
+                    && $preference->revoked_at === null;
                 $enable = (bool) $inputPreference['enabled'];
+                $occurredAt = now('UTC');
                 if ($enable) {
-                    // The user is actively opting in here. Imported or
-                    // corrupted future timestamps are not valid prior consent;
-                    // replace them with the verified current opt-in time.
-                    if (! $preference->exists
-                        || $preference->enabled !== true
-                        || $preference->consented_at === null
-                        || $preference->consented_at->isFuture()
-                        || $preference->revoked_at !== null) {
-                        $preference->consented_at = now('UTC');
+                    // An explicit grant replaces invalid imported/future dates.
+                    // Retrying an already-effective grant does not change the
+                    // timestamp or invent another audit transition.
+                    if (! $wasConsented) {
+                        $preference->consented_at = $occurredAt;
                     }
                     $preference->enabled = true;
                     $preference->revoked_at = null;
                 } else {
                     $preference->enabled = false;
-                    $preference->revoked_at = now('UTC');
+                    // Preserve the first revoke time across idempotent retries.
+                    if ($wasConsented || $preference->revoked_at === null) {
+                        $preference->revoked_at = $occurredAt;
+                    }
                 }
 
                 $preference->save();
+
+                if ($enable !== $wasConsented) {
+                    // Consent must never outlive a failed transaction, and an
+                    // audit record must never make an ineligible user eligible.
+                    // No email, IP, token, request body or message is stored.
+                    DB::table('notification_consent_events')->insert([
+                        'id' => (string) Str::uuid(),
+                        'user_id' => $locked->id,
+                        'purpose' => $preference->purpose,
+                        'channel' => $preference->channel,
+                        'transition' => $enable ? 'granted' : 'revoked',
+                        'occurred_at' => $occurredAt,
+                    ]);
+                }
             }
         }, 3);
 
@@ -292,6 +313,11 @@ final class AccountPrivacyController extends Controller
             // account lock and transaction as token revocation.
             DB::table('mobile_interview_sessions')->where('user_id', $locked->id)->delete();
             DB::table('saved_resources')->where('user_id', $locked->id)->delete();
+            // Account deletion is an erasure event, not a license to retain
+            // reconstructible per-purpose consent timelines indefinitely.
+            // Delete the audit history inside the same user-row-locked
+            // transaction as token revocation and preference deletion.
+            DB::table('notification_consent_events')->where('user_id', $locked->id)->delete();
             NotificationPreference::query()->where('user_id', $locked->id)->delete();
             DB::table('role_user')->where('user_id', $locked->id)->delete();
             $locked->tokens()->delete();
