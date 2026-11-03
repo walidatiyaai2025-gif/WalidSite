@@ -49,7 +49,7 @@ final class OwnerProjectsPortfolioPreviewTest extends TestCase
 
         $foodex = Project::query()->where('title', 'FOODEX')->firstOrFail();
         $this->assertSame('public', $foodex->visibility);
-        $this->assertSame('ai', $foodex->portfolio_category);
+        $this->assertSame('enterprise', $foodex->portfolio_category);
         $this->assertSame('https://raw.githubusercontent.com/walidatiyaai2025-gif/FOOD/main/README.md', $foodex->evidence()->firstOrFail()->url);
         $this->get('/projects/github-foodex?lang=en')->assertOk()
             ->assertSee('FOODEX')
