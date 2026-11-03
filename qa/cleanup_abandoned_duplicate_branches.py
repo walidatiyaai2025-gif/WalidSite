@@ -175,6 +175,10 @@ class Orphaned480Branch:
     main_witnesses: tuple[tuple[str, str], ...]
 
 
+# For the two privacy branches, merged #730 refined contact/recruiter context in
+# layouts/site.blade.php and public/contact.blade.php. Their new full-blob
+# witnesses below were independently re-audited without relaxing the exact
+# changed-file and approved route-closure safety gates. See Issue #718.
 # Three orphan heads audited against main on 2026-11-03. Their old commits
 # carry no surviving behavior absent from main. See Issue #718 for evidence.
 # Keep this narrower than the legacy abandoned-PR allowlist above.
@@ -194,8 +198,8 @@ ORPHANED_480 = (
         "120c31d7e0db630311d52866db52e9d624330951", 5, 506,
         (
             ("backend/routes/web.php", "8ec5c9130aefba22164b273b5271a04bd7870873"),
-            ("backend/resources/views/layouts/site.blade.php", "f7bb04c019d2faa0824952ee9cc853e5bfa94e0e"),
-            ("backend/resources/views/public/contact.blade.php", "844cd96dd42f4be653053a1c4552b13492014c1e"),
+            ("backend/resources/views/layouts/site.blade.php", "1b3e4032cd4db4e4e3304b4162f35b5e0b99fa0e"),
+            ("backend/resources/views/public/contact.blade.php", "9c3415422072a49d2f24cee228507e860ae12c39"),
             ("backend/resources/views/public/privacy.blade.php", "f29900d670bf2a2fbf730ffb07892dd725854d86"),
             ("backend/tests/Feature/Web/PrivacyRightsRequestJourneyTest.php", "4bb517c8ffec54391832379d569299f75d7374ef"),
         ),
@@ -206,8 +210,8 @@ ORPHANED_480 = (
         "120c31d7e0db630311d52866db52e9d624330951", 6, 506,
         (
             ("backend/routes/web.php", "8ec5c9130aefba22164b273b5271a04bd7870873"),
-            ("backend/resources/views/layouts/site.blade.php", "f7bb04c019d2faa0824952ee9cc853e5bfa94e0e"),
-            ("backend/resources/views/public/contact.blade.php", "844cd96dd42f4be653053a1c4552b13492014c1e"),
+            ("backend/resources/views/layouts/site.blade.php", "1b3e4032cd4db4e4e3304b4162f35b5e0b99fa0e"),
+            ("backend/resources/views/public/contact.blade.php", "9c3415422072a49d2f24cee228507e860ae12c39"),
             ("backend/resources/views/public/privacy.blade.php", "f29900d670bf2a2fbf730ffb07892dd725854d86"),
             ("backend/resources/views/public/terms.blade.php", "cebc35745d404c07cc6bcce848c2479f988d7824"),
             ("backend/tests/Feature/Web/PrivacyDataRequestJourneyTest.php", "7275d46282eee17340ae8fcde20417d66b4296f3"),
