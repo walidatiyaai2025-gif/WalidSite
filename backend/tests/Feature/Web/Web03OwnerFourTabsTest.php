@@ -113,6 +113,28 @@ final class Web03OwnerFourTabsTest extends TestCase
         }
     }
 
+    public function test_english_feature_cards_tags_and_highlights_are_ltr_without_regressing_arabic(): void
+    {
+        // Regression: a comma-separated CSS selector previously scoped only
+        // the first selector to :lang(ar), forcing all other grids RTL in English.
+        $rtlOnly = ':lang(ar) .expertise-hero,:lang(ar) .expertise-feature-grid,'
+            .':lang(ar) .expertise-highlight-bar,:lang(ar) .expertise-tags{direction:rtl}';
+        $broken = ':lang(ar) .expertise-hero,.expertise-feature-grid,'
+            .'.expertise-highlight-bar,.expertise-tags{direction:rtl}';
+
+        foreach (['overview', 'delivery', 'technology', 'ai'] as $section) {
+            $this->get('/expertise?lang=en&section='.$section)->assertOk()
+                ->assertSee('<html lang="en" dir="ltr">', false)
+                ->assertSee('.expertise-screen{direction:ltr;text-align:left}', false)
+                ->assertSee($rtlOnly, false)
+                ->assertDontSee($broken, false);
+            $this->get('/expertise?lang=ar&section='.$section)->assertOk()
+                ->assertSee('<html lang="ar" dir="rtl">', false)
+                ->assertSee(':lang(ar) .expertise-screen{direction:rtl;text-align:right}', false)
+                ->assertSee($rtlOnly, false);
+        }
+    }
+
     public function test_invalid_tab_never_reflects_raw_query_or_discloses_unpublished_skills(): void
     {
         foreach ([
