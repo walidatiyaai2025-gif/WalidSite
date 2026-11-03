@@ -1630,6 +1630,13 @@ foreach (['about', 'expertise', 'hire'] as $professionalPage) {
  * serializer so public web cannot bypass the backend evidence URL policy.
  */
 Route::get('/projects', function (Request $request) {
+    // The public route IS the real database-backed portfolio; no mockup,
+    // preview flag or second unreviewed set of projects is served here.
+    $rawCategory = $request->query('category', 'featured');
+    $portfolioCategory = is_string($rawCategory) && in_array($rawCategory, [
+        'featured', 'government', 'education', 'workflows', 'ai', 'enterprise',
+    ], true) ? $rawCategory : 'featured';
+
     $rawSearch = $request->query('q', '');
     $search = is_string($rawSearch) ? mb_substr(trim($rawSearch), 0, 80) : '';
     // Never interpolate untrusted filter values into the query or reveal
@@ -1639,6 +1646,9 @@ Route::get('/projects', function (Request $request) {
         && in_array($rawStatus, ['completed', 'in_progress', 'research', 'archived'], true)
             ? $rawStatus : '';
     $query = \App\Models\Project::query()->publiclyVerified();
+    if ($portfolioCategory !== 'featured') {
+        $query->where('portfolio_category', $portfolioCategory);
+    }
     if ($status !== '') {
         $query->where('status', $status);
     }
@@ -1666,7 +1676,8 @@ Route::get('/projects', function (Request $request) {
         ->where('visibility', 'public')
         ->whereNotNull('verified_at')->where('verified_at', '<=', now())
         ->orderBy('id')->limit(50)])
-        ->orderByDesc('published_at')->orderBy('id')->lazy(100) as $record) {
+        ->orderByDesc('portfolio_featured')->orderByDesc('published_at')
+        ->orderBy('id')->lazy(100) as $record) {
         $project = $api->publicProjectData($record, $request);
         if (empty($project['evidence_urls'])) {
             continue;
@@ -1683,7 +1694,9 @@ Route::get('/projects', function (Request $request) {
         ]
     );
 
-    return view('public.projects', compact('projects', 'paginated', 'search', 'status'));
+    return view('public.projects', compact(
+        'projects', 'paginated', 'search', 'status', 'portfolioCategory'
+    ));
 })->name('public.projects');
 
 Route::get('/projects/{slug}', function (Request $request, string $slug) {
@@ -2395,6 +2408,63 @@ Route::middleware('auth:web')->prefix('admin')->group(function (): void {
         ])->header('Cache-Control', 'no-store, private');
     })->name('admin.operations.projects')->middleware('throttle:30,1');
 
+    // Owner-created projects are always private drafts until the existing
+    // separate evidence-review and publication actions are completed.
+    Route::post('/projects', function (Request $request) {
+        abort_unless($request->user()?->canAccessAdmin() && $request->user()->hasRole('owner'), 403);
+        $input = $request->validate([
+            'slug' => ['required', 'string', 'max:140', 'regex:/\\A[a-z0-9]+(?:-[a-z0-9]+)*\\z/D',
+                'unique:projects,slug'],
+            'title' => ['required', 'string', 'min:2', 'max:220'],
+            'title_ar' => ['sometimes', 'nullable', 'string', 'min:2', 'max:220'],
+            'summary_en' => ['required', 'string', 'min:5', 'max:5000'],
+            'summary_ar' => ['required', 'string', 'min:5', 'max:5000'],
+            'role_en' => ['required', 'string', 'min:2', 'max:200'],
+            'role_ar' => ['required', 'string', 'min:2', 'max:200'],
+            'status' => ['required', 'in:completed,in_progress,research,archived'],
+            'portfolio_category' => ['required', 'in:government,education,workflows,ai,enterprise'],
+            'portfolio_featured' => ['sometimes', 'boolean'],
+        ]);
+        if (array_diff(array_keys($request->request->all()), [
+            '_token', 'slug', 'title', 'title_ar', 'summary_en', 'summary_ar', 'role_en', 'role_ar',
+            'status', 'portfolio_category', 'portfolio_featured',
+        ]) !== []) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'project' => 'Unsupported project creation fields.',
+            ]);
+        }
+        \Illuminate\Support\Facades\DB::transaction(function () use ($input, $request): void {
+            $draft = \App\Models\Project::query()->create([
+                'slug' => $input['slug'],
+                'title' => $input['title'],
+                'title_ar' => $input['title_ar'] ?? null,
+                'summary_en' => $input['summary_en'],
+                'summary_ar' => $input['summary_ar'],
+                'role_en' => $input['role_en'],
+                'role_ar' => $input['role_ar'],
+                'status' => $input['status'],
+                'portfolio_category' => $input['portfolio_category'],
+                'portfolio_featured' => (bool) ($input['portfolio_featured'] ?? false),
+                'portfolio_source' => 'Owner dashboard',
+                'visibility' => 'private',
+                'published_at' => null,
+            ]);
+            \Illuminate\Support\Facades\DB::table('project_audit_events')->insert([
+                'id' => (string) \Illuminate\Support\Str::uuid(),
+                'project_id' => $draft->id,
+                'evidence_id' => null,
+                'actor_id' => $request->user()->id,
+                'action' => 'draft_created',
+                'created_at' => now('UTC'),
+            ]);
+        }, 3);
+        return redirect()->route('admin.operations.projects', [
+            'lang' => $request->query('lang') === 'ar' ? 'ar' : 'en',
+        ])->with('status', $request->query('lang') === 'ar'
+            ? 'أُنشئت مسودة المشروع الخاصة؛ يلزم اعتماد الدليل قبل النشر.'
+            : 'Private project draft created. Approve evidence before publishing.');
+    })->name('admin.operations.projects.store')->middleware('throttle:10,1');
+
     // ADMIN-09: owner-only, paginated review of ALL pending private draft
     // evidence. Previously only ten newest candidates were reachable.
     Route::get('/projects/{project}/evidence', function (Request $request, string $project) {
@@ -2612,13 +2682,18 @@ Route::middleware('auth:web')->prefix('admin')->group(function (): void {
         $input = $request->validate([
             'lang' => ['sometimes', 'in:ar,en'],
             'title' => ['required', 'string', 'min:2', 'max:220'],
+            'title_ar' => ['sometimes', 'nullable', 'string', 'min:2', 'max:220'],
             'summary_en' => ['required', 'string', 'min:5', 'max:5000'],
             'summary_ar' => ['required', 'string', 'min:5', 'max:5000'],
             'role_en' => ['nullable', 'string', 'max:200'],
             'role_ar' => ['nullable', 'string', 'max:200'],
+            'status' => ['sometimes', 'in:completed,in_progress,research,archived'],
+            'portfolio_category' => ['sometimes', 'in:government,education,workflows,ai,enterprise'],
+            'portfolio_featured' => ['sometimes', 'boolean'],
         ]);
         if (array_diff(array_keys($request->request->all()), [
-            '_token', '_method', 'title', 'summary_en', 'summary_ar', 'role_en', 'role_ar',
+            '_token', '_method', 'title', 'title_ar', 'summary_en', 'summary_ar', 'role_en', 'role_ar',
+            'status', 'portfolio_category', 'portfolio_featured',
         ]) !== []) {
             throw \Illuminate\Validation\ValidationException::withMessages([
                 'project' => 'Unsupported project edit fields.',
@@ -2631,7 +2706,8 @@ Route::middleware('auth:web')->prefix('admin')->group(function (): void {
             $row = \App\Models\Project::query()->whereKey($project)->lockForUpdate()->firstOrFail();
             abort_unless($row->visibility === 'private' && $row->published_at === null, 409);
             $row->fill(collect($input)->only([
-                'title', 'summary_en', 'summary_ar', 'role_en', 'role_ar',
+                'title', 'title_ar', 'summary_en', 'summary_ar', 'role_en', 'role_ar',
+                'status', 'portfolio_category', 'portfolio_featured',
             ])->all())->save();
             \Illuminate\Support\Facades\DB::table('project_audit_events')->insert([
                 'id' => (string) \Illuminate\Support\Str::uuid(),

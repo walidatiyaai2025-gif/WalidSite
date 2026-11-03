@@ -1,5 +1,5 @@
-{{-- WEB-03: only owner-published, evidence-verified skills from the route's scoped query.
-     The reference art is decorative; no mockup claims/metrics are data. --}}
+{{-- WEB-03 final-design preview: new 4-tab showcase. Its skills catalog retains
+     exact public/owner/verified filtering from the existing controller. --}}
 @php($categoryLabelsAr = [
     'Database & Reliability' => 'قواعد البيانات والموثوقية',
     'Software & Integration' => 'البرمجيات والتكامل',
@@ -18,79 +18,11 @@
     'Infrastructure & Security' => 'security',
     'Project Delivery' => 'delivery',
 ])
-@push('styles')
-<style>
-body:has(.expertise-screen){overflow-x:clip}
-body:has(.expertise-screen) .site-header{background:#1C4976;border-bottom:0}
-body:has(.expertise-screen) .brand{color:#fff;font-size:20px}
-body:has(.expertise-screen) .brand-mark{background:transparent;color:#00A999;width:auto;border-radius:0;font-size:32px}
-body:has(.expertise-screen) .language-link{background:transparent;border-color:transparent;color:#e6f2fa;border-radius:8px}
-body:has(.expertise-screen) .language-link[aria-current="page"]{color:#00A999}
-body:has(.expertise-screen) .header-links a[href*="/contact"]{background:#00A999;color:#123C5F;border-radius:14px}
-.expertise-screen{padding:0 0 60px}
-.expertise-hero{position:relative;z-index:0;display:grid;grid-template-columns:minmax(0,1fr) 390px;align-items:center;gap:36px;
-    min-height:326px;padding:34px 0;background:#EAF5FB}
-.expertise-hero::before{content:"";position:absolute;z-index:-1;inset:0 auto 0 50%;width:100vw;transform:translateX(-50%);background:#EAF5FB}
-.expertise-kicker{display:inline-block;min-width:190px;padding:7px 15px;margin:0 0 20px;border-radius:15px;background:#D8F4EF;color:#078E80;font-size:16px;font-weight:800}
-.expertise-hero h2{font-size:clamp(34px,4vw,48px);color:#1C4976;line-height:1.2;margin:0 0 18px}
-.expertise-hero p{color:#315471;font-size:19px;margin:0;max-width:750px}
-.expertise-hero-actions{display:flex;flex-wrap:wrap;gap:18px;margin-top:25px}
-.expertise-hero-actions a{display:inline-flex;min-height:54px;align-items:center;justify-content:center;min-width:190px;
-    border:1px solid #009B91;border-radius:17px;padding:10px 20px;color:#174870;background:#fff;text-decoration:none;font-weight:800;font-size:17px}
-.expertise-hero-actions a:first-child{background:#099F95;color:#fff}
-.expertise-art{position:relative;height:235px;margin:0;isolation:isolate}
-.expertise-art span{position:absolute;inset-block-start:18px;inset-inline-end:160px;width:198px;height:170px;background:#27638F;
-    border:3px solid #00A999;border-radius:26px;display:grid;place-items:center;color:#00A999;font-size:27px;font-weight:800}
-.expertise-art span:nth-child(2){inset-block-start:46px;inset-inline-end:94px}
-.expertise-art span:nth-child(3){inset-block-start:74px;inset-inline-end:24px}
-.expertise-body{padding-top:40px}
-.expertise-section-heading{color:#163B66;margin:0 0 13px;font-size:23px}
-.expertise-filter{display:flex;flex-wrap:wrap;gap:12px;align-items:end;margin-bottom:25px}
-.expertise-filter label{display:block;color:#163B66;font-weight:700;margin-bottom:5px}
-.expertise-filter select{display:block;min-width:240px;min-height:44px;padding:8px;border:1px solid #97B4C8;background:#fff;color:#142E4D;border-radius:10px;font:inherit}
-.expertise-filter button,.expertise-filter a{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:10px 18px;border:1px solid #00A999;border-radius:10px;
-    background:#00A999;color:#123C5F;font:inherit;font-weight:800;text-decoration:none;cursor:pointer}
-.expertise-filter a{background:#fff}
-.expertise-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:26px;align-items:stretch}
-.expertise-card{background:#fff;border:1px solid #D3E3ED;border-radius:20px;padding:23px 24px;display:flex;flex-direction:column;min-height:280px}
-.expertise-symbol{width:66px;height:66px;display:grid;place-items:center;background:#EAF5FB;border-radius:15px;color:#009F92;font-size:22px;font-weight:800;margin-bottom:24px}
-.expertise-card h3{color:#163B66;font-size:24px;line-height:1.25;margin:0 0 18px;overflow-wrap:anywhere}
-.expertise-card .expertise-skills{display:flex;flex-wrap:wrap;gap:7px;color:#315471;margin:0 0 20px;list-style:none;padding:0}
-.expertise-card .expertise-skills li{overflow-wrap:anywhere}
-.expertise-card .expertise-skills li:not(:last-child)::after{content:" / ";white-space:pre}
-.expertise-card-footer{border-top:2px solid #E4EEF5;padding-top:16px;margin-top:auto;display:flex;flex-wrap:wrap;gap:12px}
-.expertise-card a{min-height:44px;display:inline-flex;align-items:center;color:#008578;font-weight:800;text-underline-offset:3px}
-.expertise-proof-links{display:flex;gap:16px;flex-wrap:wrap;margin-top:28px}
-.expertise-proof-links a{display:inline-flex;min-height:44px;align-items:center;padding:10px 16px;border:1px solid #D3E3ED;border-radius:11px;color:#163B66;background:#fff;font-weight:700;text-decoration:none}
-.expertise-empty{background:#fff;border:1px dashed #97B4C8;border-radius:16px;padding:25px;color:#315471}
-.expertise-empty p{margin:0 0 12px}
-.expertise-empty a{display:inline-flex;align-items:center;min-height:44px;padding:8px 14px;border:1px solid #00A999;border-radius:10px;color:#006D65;font-weight:800;text-decoration:none}
-.expertise-filter-status{margin:0 0 18px;padding:12px 16px;border-inline-start:4px solid #00A999;background:#EAF5FB;color:#163B66;line-height:1.55}
-.expertise-filter-status strong{overflow-wrap:anywhere}
-.expertise-visually-hidden{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
-@media(max-width:440px){.expertise-card{padding:18px;min-width:0}.expertise-hero{gap:12px}.expertise-filter select{min-width:0}.expertise-card-footer a{overflow-wrap:anywhere}}
-.expertise-screen a:focus-visible,.expertise-screen button:focus-visible,.expertise-screen select:focus-visible{outline:3px solid #126DE1;outline-offset:3px}
-@media(max-width:1100px){.expertise-cards{grid-template-columns:repeat(2,minmax(0,1fr))}.expertise-hero{grid-template-columns:minmax(0,1fr) 300px}.expertise-art{transform:scale(.8);transform-origin:center}}
-@media(max-width:720px){.expertise-hero{grid-template-columns:1fr;gap:10px}.expertise-art{max-width:380px;width:100%;height:185px;transform:scale(.8);transform-origin:top right}.expertise-cards{grid-template-columns:1fr}.expertise-hero-actions a{flex:1 1 170px}.expertise-filter>*{flex:1 1 100%}.expertise-filter select{width:100%}}
-@media(prefers-reduced-motion:reduce){.expertise-screen{scroll-behavior:auto}}
-</style>
-@endpush
 <div class="expertise-screen">
-    <header class="expertise-hero" aria-labelledby="expertise-title">
-        <div>
-            <span class="expertise-kicker">{{ $locale === 'ar' ? 'القدرات الموثقة' : 'CAPABILITIES' }}</span>
-            <h2 id="expertise-title">{{ $locale === 'ar' ? 'الخبرات التقنية' : 'Expertise' }}</h2>
-            <p>{{ $locale === 'ar'
-                ? 'استكشف مجالات المهارات التقنية التي تمت الموافقة على نشر أدلتها، دون ادعاءات خبرة أو شهادات غير موثقة.'
-                : 'Explore engineering capabilities backed by reviewed public evidence, without unverified qualifications or claims.' }}</p>
-            <nav class="expertise-hero-actions" aria-label="{{ $locale === 'ar' ? 'روابط استكشاف الخبرات' : 'Explore expertise' }}">
-                <a href="#expertise-catalog">{{ $locale === 'ar' ? 'استكشاف التخصصات' : 'Explore' }}</a>
-                <a href="{{ route('public.projects', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'دراسات حالة موثقة' : 'Verified case studies' }}</a>
-            </nav>
-        </div>
-        <div class="expertise-art" aria-hidden="true"><span>{ }</span><span>&lt;/&gt;</span><span>DB</span></div>
-    </header>
-    <section id="expertise-catalog" class="expertise-body" aria-labelledby="professional-section" tabindex="-1">
+    @include('public.expertise-2026-showcase')
+    <details class="expertise-proven-panel" id="expertise-catalog" @if($expertiseCategory !== '' || $skills->isNotEmpty()) open @endif>
+        <summary>{{ $locale === 'ar' ? 'المهارات المنشورة التي تم التحقق من أدلتها' : 'Verified public skills & evidence' }}</summary>
+    <section class="expertise-body" aria-labelledby="professional-section" tabindex="-1">
         <h2 class="expertise-section-heading" id="professional-section">{{ $locale === 'ar' ? 'المهارات المعتمدة' : 'Evidence-verified skills' }}</h2>
         <form class="expertise-filter" action="{{ route('public.expertise') }}" method="get" role="search"
               aria-label="{{ $locale === 'ar' ? 'تصفية المهارات الموثقة' : 'Filter verified skills' }}">
@@ -170,4 +102,5 @@ body:has(.expertise-screen) .header-links a[href*="/contact"]{background:#00A999
             <a href="{{ route('public.contact', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'التواصل بشأن المجال' : 'Contact about this focus' }}</a>
         </nav>
     </section>
+    </details>
 </div>

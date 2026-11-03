@@ -6,6 +6,7 @@ use App\Models\Role;
 use App\Models\User;
 use Database\Seeders\OwnerCvBaselineSeeder;
 use Database\Seeders\WebsitePageContentSeeder;
+use Database\Seeders\OwnerProjectsPortfolioSeeder;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -120,6 +121,18 @@ final class SiteInstaller
                 // source-classified public CV subset become visible.
                 app(\App\Domain\Profile\OwnerCvPublisher::class)
                     ->publishAfterVerifiedActivation($owner->fresh());
+                // Import the owner's real portfolio records as part of the
+                // initial web setup. CV-only employer work stays private;
+                // the seven publicly reviewed repository summaries have
+                // public README evidence, never private infrastructure data.
+                $projectsSeed = Artisan::call('db:seed', [
+                    '--class' => OwnerProjectsPortfolioSeeder::class,
+                    '--force' => true,
+                    '--no-interaction' => true,
+                ]);
+                if ($projectsSeed !== 0) {
+                    throw new RuntimeException('Owner project portfolio initialization failed.');
+                }
             });
 
             // Exclusive filesystem creation is a second permanent installation

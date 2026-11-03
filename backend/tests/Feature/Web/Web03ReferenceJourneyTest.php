@@ -55,7 +55,9 @@ final class Web03ReferenceJourneyTest extends TestCase
         foreach (['en', 'ar'] as $locale) {
             $response = $this->get(route('public.expertise', ['lang' => $locale]))
                 ->assertOk()
-                ->assertSee('class="t007-reference-stage"', false)
+                ->assertDontSee('class="t007-reference-stage"', false)
+                ->assertSee('class="expertise-hero"', false)
+                ->assertSee('class="expertise-tab-nav"', false)
                 ->assertSee('id="expertise-title"', false)
                 ->assertSee('id="expertise-catalog"', false)
                 ->assertSee('aria-labelledby="expertise-title"', false)
@@ -67,9 +69,9 @@ final class Web03ReferenceJourneyTest extends TestCase
             preg_match_all('/<h1(?:\\s|>)/i', $response->getContent(), $headings);
             $this->assertCount(1, $headings[0], 'WEB-03 must have one primary heading ('.$locale.')');
             $this->assertStringContainsString(
-                '<h2 id="expertise-title">',
+                '<h1 id="expertise-title">',
                 $response->getContent(),
-                'The second expertise panel must not duplicate the page h1.'
+                'The approved four-state hero must supply one true page h1.'
             );
         }
     }

@@ -147,6 +147,42 @@ summary{cursor:pointer;min-height:44px;padding:8px}
 <section class="panel" aria-labelledby="projects-title">
 <h2 id="projects-title">{{ $ar ? 'سجل المشاريع والدليل' : 'Project & evidence register' }} ({{ $projects->total() }})</h2>
 <p class="muted">{{ $ar ? 'تعديل المسودات الخاصة فقط. لا يوجد زر نشر يتجاوز مراجعة الادعاءات والدليل.' : 'Only unpublished private drafts may be edited. Publication and professional claims require independent evidence review.' }}</p>
+
+@php($portfolioGroups = [
+    'government' => ['Government', 'حكومي'],
+    'education' => ['Education', 'تعليم'],
+    'workflows' => ['Workflows', 'إجراءات'],
+    'ai' => ['AI & Products', 'الذكاء والمنتجات'],
+    'enterprise' => ['Enterprise', 'الأعمال'],
+])
+@if(auth()->user()?->hasRole('owner'))
+<details class="panel" id="new-project-form">
+<summary style="font-weight:800;cursor:pointer;min-height:44px">{{ $ar ? 'إضافة مشروع حقيقي جديد إلى قاعدة البيانات' : 'Create a real project in the database' }}</summary>
+<p class="muted">{{ $ar
+    ? 'يُحفظ المشروع مسودة خاصة دائمًا. لا يظهر علنًا إلا بعد الموافقة على أدلته ثم نشره بشكل مستقل.'
+    : 'New records are private drafts. Evidence approval and explicit publication are always required before appearing publicly.' }}</p>
+<form method="post" action="{{ route('admin.operations.projects.store', ['lang'=>$locale]) }}">
+@csrf
+<div class="field-grid">
+<div><label for="new-project-slug">Slug (a-z, 0-9, -)</label><input id="new-project-slug" name="slug" required maxlength="140" pattern="[a-z0-9]+(-[a-z0-9]+)*" placeholder="my-real-project" value="{{ old('slug') }}"></div>
+<div><label for="new-project-title">{{ $ar ? 'اسم المشروع' : 'Project title' }}</label><input id="new-project-title" name="title" maxlength="220" required value="{{ old('title') }}"></div>
+<div><label for="new-project-title-ar">اسم المشروع بالعربية</label><input id="new-project-title-ar" name="title_ar" maxlength="220" value="{{ old('title_ar') }}"></div>
+<div><label for="new-project-role-en">My role (EN)</label><input id="new-project-role-en" name="role_en" maxlength="200" required value="{{ old('role_en') }}"></div>
+<div><label for="new-project-role-ar">دوري (AR)</label><input id="new-project-role-ar" name="role_ar" maxlength="200" required value="{{ old('role_ar') }}"></div>
+<div><label for="new-project-category">{{ $ar ? 'التصنيف' : 'Category' }}</label><select id="new-project-category" name="portfolio_category" required>
+@foreach($portfolioGroups as $key=>$labels)<option value="{{ $key }}" @selected(old('portfolio_category','enterprise')===$key)>{{ $labels[$ar ? 1 : 0] }}</option>@endforeach
+</select></div>
+<div><label for="new-project-status">{{ $ar ? 'الحالة' : 'Status' }}</label><select id="new-project-status" name="status" required>
+@foreach(['completed','in_progress','research','archived'] as $key)<option value="{{ $key }}" @selected(old('status','in_progress')===$key)>{{ $statusLabels[$key][$ar ? 1 : 0] }}</option>@endforeach
+</select></div>
+<div><label for="new-project-featured">{{ $ar ? 'المميز' : 'Featured' }}</label><select name="portfolio_featured" id="new-project-featured"><option value="0">{{ $ar?'لا':'No' }}</option><option value="1">{{ $ar?'نعم':'Yes' }}</option></select></div>
+<div><label for="new-project-summary-en">Summary (EN)</label><textarea id="new-project-summary-en" name="summary_en" maxlength="5000" required>{{ old('summary_en') }}</textarea></div>
+<div><label for="new-project-summary-ar">الملخص (AR)</label><textarea id="new-project-summary-ar" name="summary_ar" maxlength="5000" required>{{ old('summary_ar') }}</textarea></div>
+</div>
+<button type="submit">{{ $ar ? 'حفظ المسودة الجديدة' : 'Save new private draft' }}</button>
+</form>
+</details>
+@endif
 {{-- ADMIN-09: review the exact published owner CV, never private drafts
      or self-reported claims from an unrelated/inactive account. The public
      preview and downloadable binary use the same evidence-gated routes as
@@ -199,7 +235,7 @@ summary{cursor:pointer;min-height:44px;padding:8px}
 <th scope="col">{{ $ar ? 'المشروع' : 'Project' }}</th><th scope="col">{{ $ar ? 'الحالة' : 'Status' }}</th><th scope="col">{{ $ar ? 'الظهور' : 'Visibility' }}</th><th scope="col">{{ $ar ? 'دليل عام متحقق' : 'Verified public evidence' }}</th><th scope="col">{{ $ar ? 'المراجعة' : 'Review' }}</th>
 </tr></thead><tbody>
 @foreach($projects as $project)
-<tr><td>{{ $project->title }}<p class="muted">{{ $project->slug }}</p></td>
+<tr><td>{{ $project->title }}<p class="muted">{{ $project->slug }}</p><p class="muted">{{ $portfolioGroups[$project->portfolio_category ?? 'enterprise'][$ar ? 1 : 0] ?? ($ar ? 'أعمال' : 'Enterprise') }} — {{ $project->portfolio_source ?? ($ar?'سجل إداري':'Admin record') }}</p></td>
 <td>{{ $statusLabels[$project->status][$ar ? 1 : 0] ?? $project->status }}</td><td>{{ $visibilityLabels[$project->visibility][$ar ? 1 : 0] ?? $project->visibility }}</td>
 <td>{{ $project->verified_public_evidence_count }} / {{ $project->evidence_count }}
 <p class="muted">{{ $ar ? 'روابط أدلة صالحة للعرض العام' : 'Usable public evidence links' }}: <strong>{{ $project->usable_public_evidence_count }}</strong></p>
@@ -221,8 +257,19 @@ summary{cursor:pointer;min-height:44px;padding:8px}
 @csrf @method('PATCH')
 <div class="field-grid">
 <div><label for="title-{{ $project->id }}">Title</label><input id="title-{{ $project->id }}" name="title" maxlength="220" required value="{{ $project->title }}"></div>
+<div><label for="title-ar-{{ $project->id }}">اسم المشروع بالعربية</label><input id="title-ar-{{ $project->id }}" name="title_ar" maxlength="220" value="{{ $project->title_ar }}"></div>
 <div><label for="role-en-{{ $project->id }}">Role (EN)</label><input id="role-en-{{ $project->id }}" name="role_en" maxlength="200" value="{{ $project->role_en }}"></div>
 <div><label for="role-ar-{{ $project->id }}">الدور (AR)</label><input id="role-ar-{{ $project->id }}" name="role_ar" maxlength="200" value="{{ $project->role_ar }}"></div>
+<div><label for="category-{{ $project->id }}">{{ $ar ? 'التصنيف' : 'Category' }}</label>
+<select id="category-{{ $project->id }}" name="portfolio_category">
+@foreach($portfolioGroups as $key=>$labels)<option value="{{ $key }}" @selected(($project->portfolio_category ?? 'enterprise')===$key)>{{ $labels[$ar ? 1 : 0] }}</option>@endforeach
+</select></div>
+<div><label for="project-status-{{ $project->id }}">{{ $ar ? 'الحالة' : 'Status' }}</label>
+<select id="project-status-{{ $project->id }}" name="status">
+@foreach(['completed','in_progress','research','archived'] as $key)<option value="{{ $key }}" @selected($project->status===$key)>{{ $statusLabels[$key][$ar ? 1 : 0] }}</option>@endforeach
+</select></div>
+<div><label for="featured-{{ $project->id }}">{{ $ar ? 'مشروع مميز' : 'Featured project' }}</label>
+<select name="portfolio_featured" id="featured-{{ $project->id }}"><option value="0" @selected(!$project->portfolio_featured)>{{ $ar?'لا':'No' }}</option><option value="1" @selected($project->portfolio_featured)>{{ $ar?'نعم':'Yes' }}</option></select></div>
 <div><label for="summary-en-{{ $project->id }}">Summary (EN)</label><textarea id="summary-en-{{ $project->id }}" name="summary_en" maxlength="5000" required>{{ $project->summary_en }}</textarea></div>
 <div><label for="summary-ar-{{ $project->id }}">الملخص (AR)</label><textarea id="summary-ar-{{ $project->id }}" name="summary_ar" maxlength="5000" required>{{ $project->summary_ar }}</textarea></div>
 </div><button type="submit">{{ $ar ? 'حفظ المسودة الخاصة' : 'Save private draft' }}</button>
