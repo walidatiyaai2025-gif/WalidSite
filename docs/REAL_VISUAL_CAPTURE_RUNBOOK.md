@@ -17,6 +17,23 @@ Only two narrowly scoped types of local changes are permitted for a **resumable 
 
 If the check says the source checkout was changed, stop, review the changes and commit legitimate source edits through the normal PR process, then run against the **new** SHA. Do not use `--force`, fake a commit value or copy original reference PNGs to bypass it.
 
+## Find real published dynamic WEB-05 / WEB-08 routes (no fixtures)
+
+The default Web plan includes 12 currently routable static pages. WEB-05 and WEB-08 cannot be selected from a guessed slug: start an actual local Laravel server with reviewed, already-published public project/article data, then run:
+
+```bash
+python3 qa/discover_published_web_screens.py \
+  --origin http://127.0.0.1:8000 --locale en --dpr 1 \
+  --output /tmp/walidsite-verified-web-14.json
+sha="$(git rev-parse HEAD)"
+python3 qa/visual_diagnostics.py \
+  --plan /tmp/walidsite-verified-web-14.json --commit "$sha" --group web
+```
+
+The discovery tool makes read-only **GET** requests to numeric `127.0.0.1` only, without credentials or redirects. It checks both public list/detail API projections and the real project/article HTML detail page. It fails without writing a plan if either public content type lacks an accessible, currently evidence/citation-bearing record. No remote origin, private data, test-only slug, synthetic article or unverified publication is substituted. If no eligible records exist, leave those two screens **uncaptured and pending**; fix legitimate publication/content readiness independently rather than seeding fake claims. Local HTTP response evidence identifies a candidate route only: it does not prove professional provenance, visual similarity, responsive behavior, or WCAG acceptance.
+
+The resulting plan uses exactly 14 canonical Web screen IDs and the existing real Chromium renderer. As with any other plan, an absolute plan file outside the checkout is required so the untracked plan cannot invalidate the Git source SHA preflight. The diagnostic image/report outputs are **not** admission into `design/visual-fidelity-evidence.json`. A visual match requires the independent exact decoded-RGBA gate, matching approved dimensions, locale and DPR, full renderer provenance, and subsequent AR/EN/device/accessibility checks. Do not call 14/14 screens pixel-matched merely because discovery or the diagnostic script ran.
+
 ## Execute a checked, resumable plan
 
 Create a **trusted local** JSON plan (not a checked-in credentials file). Example for two real public-page captures:
