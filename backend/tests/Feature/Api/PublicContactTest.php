@@ -162,4 +162,71 @@ final class PublicContactTest extends TestCase
             ->assertStatus(429);
         Mail::assertSentCount(4);
     }
+
+    public function test_valid_contact_body_succeeds_with_both_supported_url_locales(): void
+    {
+        $this->enableDelivery();
+        Mail::fake();
+
+        foreach (['en', 'ar'] as $index => $locale) {
+            $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.'.(60 + $index)]);
+            $response = $this->postJson('/api/v1/public/contact?lang='.$locale, $this->contact())
+                ->assertOk()
+                ->assertJsonPath('ok', true)
+                ->assertJsonPath('data.accepted_by_transport', true)
+                ->assertDontSee('visitor@example.test')
+                ->assertDontSee('configured-owner@example.test')
+                ->assertDontSee('مهندس البرمجيات');
+            $this->assertStringContainsString('no-store', $response->headers->get('Cache-Control', ''));
+        }
+
+        Mail::assertSentCount(2);
+    }
+
+    public function test_contact_query_has_strict_locale_only_allowlist_and_cannot_supply_body_fields(): void
+    {
+        $this->enableDelivery();
+        Mail::fake();
+
+        foreach ([
+            '/api/v1/public/contact?lang=fr',
+            '/api/v1/public/contact?lang[]=en',
+            '/api/v1/public/contact?lang=en&subject=override',
+            '/api/v1/public/contact?email=attacker%40example.test',
+            '/api/v1/public/contact?lang=ar&privacy_consent=1',
+        ] as $index => $url) {
+            $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.'.(70 + $index)]);
+            $this->postJson($url, $this->contact())
+                ->assertUnprocessable()
+                ->assertJsonValidationErrors('query')
+                ->assertDontSee('visitor@example.test');
+        }
+
+        Mail::assertNothingSent();
+    }
+
+    public function test_contact_rejects_body_locale_extra_fields_and_validates_only_body_consent(): void
+    {
+        $this->enableDelivery();
+        Mail::fake();
+
+        $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.81']);
+        $this->postJson('/api/v1/public/contact?lang=en', $this->contact(['lang' => 'en']))
+            ->assertUnprocessable()->assertJsonValidationErrors('payload');
+
+        $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.82']);
+        $this->postJson('/api/v1/public/contact?lang=ar', $this->contact(['attachment' => 'file.txt']))
+            ->assertUnprocessable()->assertJsonValidationErrors('payload');
+
+        $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.83']);
+        $this->postJson('/api/v1/public/contact?lang=ar', [])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['name', 'email', 'message', 'privacy_consent']);
+
+        $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.84']);
+        $this->postJson('/api/v1/public/contact?lang=en', $this->contact(['privacy_consent' => false]))
+            ->assertUnprocessable()->assertJsonValidationErrors('privacy_consent');
+
+        Mail::assertNothingSent();
+    }
 }
