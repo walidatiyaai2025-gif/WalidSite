@@ -180,7 +180,7 @@ final class MobileAiDiagnoseController extends Controller
         }
 
         return $this->jobResponse($diagnosis, $runbooks);
-
+    }
 
     /**
      * Caller must hold a transaction while validating the persisted account.
