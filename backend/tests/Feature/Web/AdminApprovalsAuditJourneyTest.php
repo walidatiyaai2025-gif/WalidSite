@@ -357,7 +357,9 @@ final class AdminApprovalsAuditJourneyTest extends TestCase
             ->assertDontSee('internal_diagnostic');
 
         $this->get('/admin/audit?domain=media')->assertOk()
-            ->assertDontSee('requires_review')
+            // Filter controls legitimately list possible action names;
+            // assert the actual query result count, not the select options.
+            ->assertSee('Editorial & media decisions (0)')
             ->assertDontSee('internal_diagnostic');
     }
 
