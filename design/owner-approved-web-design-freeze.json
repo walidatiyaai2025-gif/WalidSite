@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "approval_id": "owner-2026-11-03-web-01-03-04",
+  "approval_date": "2026-11-03",
+  "authority": "explicit direct repository-owner acceptance of current code and rendered design in conversation",
+  "approved_main_sha": "cf5b72f129d9daa11f3aa1d55a9d6d52740eeb0b",
+  "acceptance_type": "owner_visual_and_current_code_signoff",
+  "runtime_zero_rgba_comparison": "not_asserted",
+  "preserve_visual_evidence_ledger": "design/visual-fidelity-evidence.json",
+  "policy": "locked screen design source files must keep their Git blob hashes; an approved future redesign requires a NEW explicit owner directive and a reviewed versioned manifest change. Never silently revert to outdated v6 visuals.",
+  "screens": {
+    "WEB-01": {
+      "route": "/",
+      "issue": 798,
+      "pr": 799,
+      "implementation_merge_sha": "70647725b51b34280174358e84dae3f7dd56cccd",
+      "files": {
+        "backend/resources/views/welcome.blade.php": {
+          "git_blob_sha1": "ac77909b01d71fb7e50b907575556ff241c56c32"
+        },
+        "backend/resources/views/public/owner-landing-2026.blade.php": {
+          "git_blob_sha1": "be588fde75771d0bcb5c52e203435a3bb549c847"
+        }
+      },
+      "status": "owner_approved_frozen"
+    },
+    "WEB-03": {
+      "route": "/expertise",
+      "issue": 652,
+      "pr": 800,
+      "implementation_merge_sha": "cf5b72f129d9daa11f3aa1d55a9d6d52740eeb0b",
+      "files": {
+        "backend/resources/views/public/expertise-screen.blade.php": {
+          "git_blob_sha1": "0f047353bb7aa45116d21b19b3beba2679d66d47"
+        },
+        "backend/resources/views/public/expertise-2026-showcase.blade.php": {
+          "git_blob_sha1": "72a92287b20c82ac0f594693289df7f0e60bebfc"
+        },
+        "backend/resources/views/public/expertise-2026-icon.blade.php": {
+          "git_blob_sha1": "99e02d4b358168c75487242486de13c9397de785"
+        }
+      },
+      "status": "owner_approved_frozen"
+    },
+    "WEB-04": {
+      "route": "/projects",
+      "issue": 659,
+      "pr": 800,
+      "implementation_merge_sha": "cf5b72f129d9daa11f3aa1d55a9d6d52740eeb0b",
+      "files": {
+        "backend/resources/views/public/projects.blade.php": {
+          "git_blob_sha1": "2c50fc0a2481af9db48ea9260163a5627ced1dda"
+        },
+        "backend/resources/views/public/projects-2026-live.blade.php": {
+          "git_blob_sha1": "8aeb1045b06ceb6a9331a0dd0bc2a8697c2f4eb3"
+        }
+      },
+      "status": "owner_approved_frozen"
+    }
+  }
+}

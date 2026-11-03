@@ -1,3 +1,11 @@
+## P0 — OWNER-FROZEN FINAL DESIGNS: WEB-01, WEB-03, WEB-04 (2026-11-03)
+
+**Later and more specific owner directive; applies before any ordinary W2/LEAD visual task.** The repository owner directly accepted the CURRENT main@cf5b72f129d9daa11f3aa1d55a9d6d52740eeb0b code and rendered visual design for (1) Landing (/, WEB-01), (2) four-tab Expertise (/expertise, WEB-03), and (3) Projects (/projects, WEB-04). Owner acceptance is a valid **design sign-off**. These three screens must NOT be re-designed, "improved", replaced with original v6 artwork, or changed by autonomous workers without a NEW explicit owner instruction.
+
+**Enforced freeze:** design/owner-approved-web-design-freeze.json locks the seven page-specific source templates to their exact approved Git blob IDs; qa/validate_owner_design_freeze.py fails mandatory CI when they drift. See docs/OWNER_APPROVED_WEB_DESIGN_FREEZE.md. A security/functional defect requiring design file changes needs narrowly reviewed NEW owner authorization; ordinary CMS content/data edits and unrelated shared layout work are not forbidden. Shared changes must preserve these approved results.
+
+**Truth boundary:** This is owner review of existing design/code, NOT measured zero-mismatch PNG comparison, browser capture, publication of private CV/projects, or a deployed release. Do not mark any screen matched in design/visual-fidelity-evidence.json without genuine decoded-RGBA evidence. Issue #481 continues independent QA for the original 40-screen reference pack. Original v6 reference artwork is unmodified and historically documented, but superseded as active owner-selected design for only these three routes. Issues #652/#659 may close for the owner-frozen design scope; unrelated QA/release blockers remain open.
+
 # Waleed Atiya — worker entrypoint (v6 baseline)
 
 ## P0 — OWNER ORDER: Reproduce the exact supplied visual designs (ADR-010, 2026-11-01)
