@@ -142,7 +142,7 @@ final class OwnerProjectsPortfolioPreviewTest extends TestCase
         ])->assertRedirect()->assertSessionHas('status');
         $this->get('/projects/real-admin-work?lang=ar')->assertOk()
             ->assertSee('عمل إداري تم تعديله')
-            ->assertSee('Published evidence', false)->assertSee('docs.example.org');
+            ->assertSee('أدلة منشورة')->assertSee('docs.example.org');
         $this->post('/admin/projects/'.$draft->id.'/withdraw', [
             'withdrawal_confirmed'=>'1',
         ])->assertRedirect();
