@@ -250,4 +250,50 @@ final class MobileAiIdempotencyTest extends TestCase
         $this->assertDatabaseCount('ai_diagnosis_requests', 1);
         $this->assertNull(DB::table('ai_diagnosis_requests')->value('idempotency_key_hash'));
     }
+
+    public function test_query_parameters_cannot_supply_required_ai_consent_or_opaque_key(): void
+    {
+        $this->setupPaidDiagnosis();
+        $user = $this->user();
+        $token = $this->token($user);
+        $key = (string) Str::uuid();
+        $payload = $this->payload();
+        unset($payload['consent_to_process']);
+
+        Auth::forgetGuards();
+        $this->withToken($token)->withHeader('Idempotency-Key', $key)
+            ->postJson('/api/v1/mobile/ai/diagnose?lang=ar&consent_to_process=1', $payload)
+            ->assertUnprocessable()->assertJsonValidationErrors('query');
+
+        Auth::forgetGuards();
+        $this->withToken($token)->withHeader('Idempotency-Key', $key)
+            ->postJson('/api/v1/mobile/ai/diagnose?lang=en', $payload)
+            ->assertUnprocessable()->assertJsonValidationErrors('consent_to_process');
+
+        Auth::forgetGuards();
+        $this->withToken($token)->withHeader('Idempotency-Key', $key)
+            ->postJson('/api/v1/mobile/ai/diagnose?lang[]=en', $this->payload())
+            ->assertUnprocessable()->assertJsonValidationErrors('query');
+
+        Http::assertNothingSent();
+        $this->assertDatabaseCount('ai_jobs', 0);
+    }
+
+    public function test_distinct_users_with_distinct_keys_get_independent_paid_jobs(): void
+    {
+        $this->setupPaidDiagnosis();
+        $first = $this->user();
+        $second = $this->user();
+
+        $a = $this->submit($this->token($first), (string) Str::uuid())
+            ->assertOk()->json('data.id');
+        $b = $this->submit($this->token($second), (string) Str::uuid())
+            ->assertOk()->json('data.id');
+
+        $this->assertNotSame($a, $b);
+        $this->assertDatabaseCount('ai_diagnosis_requests', 2);
+        $this->assertSame(50, (int) DB::table('ai_usage')->sum('cost_minor'));
+        Http::assertSentCount(2);
+    }
+
 }

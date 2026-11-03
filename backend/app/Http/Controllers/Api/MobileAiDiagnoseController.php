@@ -13,6 +13,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -43,12 +44,29 @@ final class MobileAiDiagnoseController extends Controller
             'code_snippet' => ['sometimes', 'nullable', 'string', 'max:8000'],
             'consent_to_process' => ['required', 'boolean', 'accepted'],
         ];
-        if (array_diff(array_keys($request->all()), array_keys($rules)) !== []) {
+        // Query arguments are not diagnosis consent or body data.
+        // An accepted key must never authenticate a URL-supplied prompt or
+        // consent, and real multipart files are not part of this JSON schema.
+        $query = $request->query();
+        if (array_diff(array_keys($query), ['lang']) !== []
+            || (array_key_exists('lang', $query)
+                && (! is_string($query['lang'])
+                    || ! in_array($query['lang'], ['en', 'ar'], true)))) {
+            throw ValidationException::withMessages([
+                'query' => 'Unsupported diagnosis query parameters.',
+            ]);
+        }
+
+        $payload = $request->isJson()
+            ? $request->json()->all()
+            : $request->request->all();
+        if ($request->allFiles() !== []
+            || array_diff(array_keys($payload), array_keys($rules)) !== []) {
             throw ValidationException::withMessages([
                 'request' => 'Only the documented diagnosis fields are accepted.',
             ]);
         }
-        $input = $request->validate($rules);
+        $input = Validator::make($payload, $rules)->validate();
 
         // The header is opt-in during the W3 client roll-out. Once W3
         // ships stable keys for every intended diagnosis, LEAD can require
