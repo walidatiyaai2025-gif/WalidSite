@@ -128,6 +128,25 @@ class VerifiedArticle {
     }
     return List.unmodifiable(articles);
   }
+
+  /// Re-validate an exact detail against published evidence before display.
+  static VerifiedArticle parseDetail(String body, String expectedSlug) {
+    if (!RegExp(r'^[A-Za-z0-9-]{1,180}$').hasMatch(expectedSlug) ||
+        body.length > 2 * 1024 * 1024) {
+      throw const FormatException('Invalid article detail');
+    }
+    final payload = jsonDecode(body);
+    if (payload is! Map<String, dynamic> ||
+        payload.length != 1 ||
+        payload['data'] is! Map<String, dynamic>) {
+      throw const FormatException('Invalid article detail');
+    }
+    final article = parseList(jsonEncode({'data': [payload['data']]})).single;
+    if (article.slug != expectedSlug) {
+      throw const FormatException('Mismatched article detail');
+    }
+    return article;
+  }
 }
 
 
@@ -224,6 +243,46 @@ class VerifiedArticleReader {
 
   Future<List<VerifiedArticle>> load(bool arabic) async =>
       (await loadPage(arabic, 1)).articles;
+
+  /// A Home preview can be revoked since its list was fetched.
+  Future<VerifiedArticle> loadDetail(bool arabic, String slug) async {
+    if (!RegExp(r'^[A-Za-z0-9-]{1,180}$').hasMatch(slug)) {
+      throw const FormatException('Invalid article slug');
+    }
+    final origin = configuredOrigin();
+    if (origin == null) {
+      throw const FormatException('Article API not configured');
+    }
+    final url = origin.replace(
+      path: '/api/v1/public/articles/$slug',
+      queryParameters: {'lang': arabic ? 'ar' : 'en'},
+    );
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
+    try {
+      return await (() async {
+        final request = await client.getUrl(url);
+        request.followRedirects = false;
+        request.headers.set(HttpHeaders.acceptHeader, 'application/json');
+        final response = await request.close();
+        if (response.statusCode != HttpStatus.ok) {
+          throw const HttpException('Reviewed article unavailable');
+        }
+        final bytes = BytesBuilder(copy: false);
+        await for (final chunk in response) {
+          if (bytes.length + chunk.length > _limit) {
+            throw const FormatException('Article response exceeds size limit');
+          }
+          bytes.add(chunk);
+        }
+        return VerifiedArticle.parseDetail(
+          utf8.decode(bytes.takeBytes(), allowMalformed: false),
+          slug,
+        );
+      })().timeout(const Duration(seconds: 12));
+    } finally {
+      client.close(force: true);
+    }
+  }
 
   Future<VerifiedArticlePage> loadPage(bool arabic, int page) async {
     if (page < 1 || page > 10000) {

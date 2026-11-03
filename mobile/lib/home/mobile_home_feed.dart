@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -161,6 +162,13 @@ class MobileHomeReader {
 
   static const _limit = 1024 * 1024;
 
+  /// A slow-drip body must not keep the guest Home feed pending forever.
+  @visibleForTesting
+  static Future<T> withinDeadline<T>(
+    Future<T> Function() operation, {
+    Duration timeout = const Duration(seconds: 12),
+  }) => Future<T>.sync(operation).timeout(timeout);
+
   static Uri? configuredOrigin() => VerifiedArticleReader.configuredOrigin();
 
   Future<MobileHomeFeed> load(bool arabic) async {
@@ -174,25 +182,28 @@ class MobileHomeReader {
     );
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
     try {
-      final request = await client.getUrl(url).timeout(const Duration(seconds: 8));
-      request.followRedirects = false;
-      request.headers.set(HttpHeaders.acceptHeader, 'application/json');
-      final response = await request.close().timeout(const Duration(seconds: 8));
-      if (response.statusCode != HttpStatus.ok) {
-        throw const HttpException('Mobile home unavailable');
-      }
-      final bytes = BytesBuilder(copy: false);
-      await for (final chunk in response.timeout(const Duration(seconds: 8))) {
-        if (bytes.length + chunk.length > _limit) {
-          throw const FormatException('Mobile home response too large');
+      return await withinDeadline(() async {
+        final request = await client.getUrl(url);
+        request.followRedirects = false;
+        request.headers.set(HttpHeaders.acceptHeader, 'application/json');
+        final response = await request.close();
+        if (response.statusCode != HttpStatus.ok) {
+          throw const HttpException('Mobile home unavailable');
         }
-        bytes.add(chunk);
-      }
-      return MobileHomeFeed.parse(
-        utf8.decode(bytes.takeBytes(), allowMalformed: false),
-        arabic,
-      );
+        final bytes = BytesBuilder(copy: false);
+        await for (final chunk in response) {
+          if (bytes.length + chunk.length > _limit) {
+            throw const FormatException('Mobile home response too large');
+          }
+          bytes.add(chunk);
+        }
+        return MobileHomeFeed.parse(
+          utf8.decode(bytes.takeBytes(), allowMalformed: false),
+          arabic,
+        );
+      });
     } finally {
+      // Abort pending sockets when the overall deadline fires.
       client.close(force: true);
     }
   }
@@ -205,6 +216,8 @@ class MobileHomeFeedPanel extends StatefulWidget {
     required this.arabic,
     required this.onOpenArticles,
     required this.onOpenRunbooks,
+    this.onOpenArticle,
+    this.onOpenRunbook,
     this.fetch,
     super.key,
   });
@@ -212,6 +225,8 @@ class MobileHomeFeedPanel extends StatefulWidget {
   final bool arabic;
   final VoidCallback onOpenArticles;
   final VoidCallback onOpenRunbooks;
+  final ValueChanged<String>? onOpenArticle;
+  final ValueChanged<String>? onOpenRunbook;
   final MobileHomeFetch? fetch;
 
   @override
@@ -344,7 +359,18 @@ class _MobileHomeFeedPanelState extends State<MobileHomeFeedPanel> {
                   Text(label('Latest reviewed articles', 'أحدث المقالات المراجعة'),
                       style: const TextStyle(fontWeight: FontWeight.w700)),
                   ...feed.articles.take(3).map(
-                    (article) => Text('• ${article.title}'),
+                    (article) => ListTile(
+                      key: Key('mobile-home-article-${article.slug}'),
+                      contentPadding: EdgeInsets.zero,
+                      dense: true,
+                      leading: const Icon(Icons.article_outlined),
+                      title: Text(article.title),
+                      trailing: Icon(widget.arabic
+                          ? Icons.chevron_left : Icons.chevron_right),
+                      onTap: () => widget.onOpenArticle == null
+                          ? widget.onOpenArticles()
+                          : widget.onOpenArticle!(article.slug),
+                    ),
                   ),
                   const SizedBox(height: 8),
                   TextButton.icon(
@@ -359,7 +385,18 @@ class _MobileHomeFeedPanelState extends State<MobileHomeFeedPanel> {
                   Text(label('Reviewed runbooks', 'أدلة تشغيل مراجعة'),
                       style: const TextStyle(fontWeight: FontWeight.w700)),
                   ...feed.runbooks.take(3).map(
-                    (runbook) => Text('• ${runbook.title}'),
+                    (runbook) => ListTile(
+                      key: Key('mobile-home-runbook-${runbook.id}'),
+                      contentPadding: EdgeInsets.zero,
+                      dense: true,
+                      leading: const Icon(Icons.menu_book_outlined),
+                      title: Text(runbook.title),
+                      trailing: Icon(widget.arabic
+                          ? Icons.chevron_left : Icons.chevron_right),
+                      onTap: () => widget.onOpenRunbook == null
+                          ? widget.onOpenRunbooks()
+                          : widget.onOpenRunbook!(runbook.id),
+                    ),
                   ),
                   const SizedBox(height: 8),
                   TextButton.icon(
@@ -372,6 +409,98 @@ class _MobileHomeFeedPanelState extends State<MobileHomeFeedPanel> {
               ],
             ),
           ),
+        );
+      },
+    );
+  }
+}
+
+/// An exact Home article target, not a list-page approximation. The server is
+/// consulted again so revoked articles cannot be opened from stale Home data.
+class MobileHomeArticleRoute extends StatefulWidget {
+  const MobileHomeArticleRoute({
+    required this.arabic,
+    required this.slug,
+    this.fetch,
+    super.key,
+  });
+
+  final bool arabic;
+  final String slug;
+  final Future<VerifiedArticle> Function(bool, String)? fetch;
+
+  @override
+  State<MobileHomeArticleRoute> createState() => _MobileHomeArticleRouteState();
+}
+
+class _MobileHomeArticleRouteState extends State<MobileHomeArticleRoute> {
+  late Future<VerifiedArticle> _detail;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void didUpdateWidget(covariant MobileHomeArticleRoute oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.slug != widget.slug ||
+        oldWidget.arabic != widget.arabic ||
+        oldWidget.fetch != widget.fetch) {
+      _load();
+    }
+  }
+
+  void _load() {
+    _detail = (widget.fetch ?? const VerifiedArticleReader().loadDetail)(
+      widget.arabic,
+      widget.slug,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<VerifiedArticle>(
+      future: _detail,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return Scaffold(
+            appBar: AppBar(title: Text(widget.arabic ? 'مقال موثق' : 'Verified article')),
+            body: const Center(child: CircularProgressIndicator(
+              key: Key('mobile-home-article-loading'),
+            )),
+          );
+        }
+        if (snapshot.hasError ||
+            !snapshot.hasData ||
+            snapshot.data!.slug != widget.slug) {
+          return Scaffold(
+            appBar: AppBar(title: Text(widget.arabic ? 'مقال موثق' : 'Verified article')),
+            body: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    widget.arabic
+                        ? 'المقال غير متاح أو لم يعد موثقًا.'
+                        : 'This article is unavailable or no longer verified.',
+                    key: const Key('mobile-home-article-error'),
+                  ),
+                  const SizedBox(height: 12),
+                  FilledButton(
+                    key: const Key('mobile-home-article-retry'),
+                    onPressed: () => setState(_load),
+                    child: Text(widget.arabic ? 'إعادة المحاولة' : 'Retry'),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+        return VerifiedArticleDetail(
+          article: snapshot.data!,
+          arabic: widget.arabic,
         );
       },
     );

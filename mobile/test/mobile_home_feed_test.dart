@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:waleed_tech_companion/home/mobile_home_feed.dart';
+import 'package:waleed_tech_companion/articles/verified_articles.dart';
 import 'package:waleed_tech_companion/main.dart';
 
 Map<String, dynamic> runbook(String id, String title) => {
@@ -146,8 +148,8 @@ void main() {
 
     expect(find.byKey(const Key('mobile-home-feed')), findsOneWidget);
     expect(find.text('Verified project'), findsOneWidget);
-    expect(find.text('• Reviewed article'), findsOneWidget);
-    expect(find.text('• Reviewed runbook'), findsOneWidget);
+    expect(find.text('Reviewed article'), findsOneWidget);
+    expect(find.text('Reviewed runbook'), findsOneWidget);
 
     await tester.ensureVisible(find.byKey(const Key('mobile-home-open-articles')));
     await tester.tap(find.byKey(const Key('mobile-home-open-articles')));
@@ -217,4 +219,119 @@ void main() {
     expect(locales, [false, false]);
     expect(find.byKey(const Key('mobile-home-feed')), findsOneWidget);
   });
+
+  test('MOBILE-02 deadline covers a never-completing HTTP body', () async {
+    final hung = Completer<void>();
+    await expectLater(
+      MobileHomeReader.withinDeadline(
+        () async => hung.future,
+        timeout: const Duration(milliseconds: 10),
+      ),
+      throwsA(isA<TimeoutException>()),
+    );
+  });
+
+  test('MOBILE-02 article detail rejects revoked or mismatched evidence', () {
+    final published = jsonEncode({
+      'data': {
+        'slug': 'reviewed-article',
+        'title': 'Reviewed article',
+        'body_markdown': '# Evidence',
+        'citations': ['https://docs.example.org/guide'],
+        'tested_status': 'documented',
+        'published_at': '2026-11-02T10:00:00Z',
+      },
+    });
+    final ok = VerifiedArticle.parseDetail(published, 'reviewed-article');
+    expect(ok.slug, 'reviewed-article');
+    expect(ok.body, '# Evidence');
+
+    expect(
+      () => VerifiedArticle.parseDetail(published, 'wrong-article'),
+      throwsFormatException,
+    );
+    expect(
+      () => VerifiedArticle.parseDetail(
+        published.replaceFirst('"documented"', '"revoked"'),
+        'reviewed-article',
+      ),
+      throwsFormatException,
+    );
+    expect(
+      () => VerifiedArticle.parseDetail(
+        published.replaceFirst('https://docs.example.org/guide', 'http://127.0.0.1/private'),
+        'reviewed-article',
+      ),
+      throwsFormatException,
+    );
+    expect(
+      () => VerifiedArticle.parseDetail('{"data":{},"private":true}', 'reviewed-article'),
+      throwsFormatException,
+    );
+    expect(
+      () => VerifiedArticle.parseDetail(published, '../reviewed-article'),
+      throwsFormatException,
+    );
+  });
+
+  testWidgets('MOBILE-02 reviewed resource rows dispatch exact slugs and ids', (tester) async {
+    String? slug;
+    String? id;
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: ListView(children: [
+          MobileHomeFeedPanel(
+            arabic: false,
+            fetch: (_) async => MobileHomeFeed.parse(feed(), false),
+            onOpenArticles: () {},
+            onOpenRunbooks: () {},
+            onOpenArticle: (value) => slug = value,
+            onOpenRunbook: (value) => id = value,
+          ),
+        ]),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const Key('mobile-home-article-reviewed-article')));
+    await tester.tap(find.byKey(const Key('mobile-home-article-reviewed-article')));
+    await tester.pump();
+    expect(slug, 'reviewed-article');
+
+    const runbookId = '00000000-0000-4000-8000-000000000001';
+    await tester.ensureVisible(find.byKey(const Key('mobile-home-runbook-$runbookId')));
+    await tester.tap(find.byKey(const Key('mobile-home-runbook-$runbookId')));
+    await tester.pump();
+    expect(id, runbookId);
+  });
+
+  testWidgets('MOBILE-02 detail rechecks evidence and retries without leaking exceptions',
+      (tester) async {
+    var calls = 0;
+    Future<VerifiedArticle> load(bool ar, String slug) async {
+      calls++;
+      if (calls == 1) throw const FormatException('PRIVATE_FAILURE');
+      return const VerifiedArticle(
+        slug: 'reviewed-article',
+        title: 'Reviewed article',
+        body: 'Evidence rechecked',
+        citations: ['https://docs.example.org/guide'],
+      );
+    }
+    await tester.pumpWidget(MaterialApp(
+      home: MobileHomeArticleRoute(
+        arabic: false,
+        slug: 'reviewed-article',
+        fetch: load,
+      ),
+    ));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('mobile-home-article-error')), findsOneWidget);
+    expect(find.textContaining('PRIVATE_FAILURE'), findsNothing);
+    await tester.tap(find.byKey(const Key('mobile-home-article-retry')));
+    await tester.pumpAndSettle();
+    expect(calls, 2);
+    expect(find.byKey(const Key('verified-article-body')), findsOneWidget);
+    expect(find.text('Evidence rechecked'), findsOneWidget);
+  });
+
 }
