@@ -108,6 +108,67 @@ final class PublicContactTest extends TestCase
         Mail::assertNothingSent();
     }
 
+    public function test_locale_query_does_not_reject_valid_json_or_form_contact_bodies(): void
+    {
+        $this->enableDelivery();
+        Mail::fake();
+
+        foreach (['en', 'ar'] as $index => $locale) {
+            $this->withServerVariables(['REMOTE_ADDR' => '192.0.2.'.(210 + $index)]);
+            $this->postJson('/api/v1/public/contact?lang='.$locale, $this->contact())
+                ->assertOk()
+                ->assertJsonPath('ok', true)
+                ->assertJsonPath('data.accepted_by_transport', true)
+                ->assertDontSee('visitor@example.test');
+        }
+
+        // Existing form-encoded clients also supply body fields, not query fields.
+        $this->withServerVariables(['REMOTE_ADDR' => '192.0.2.212']);
+        $this->post('/api/v1/public/contact?lang=ar', $this->contact(), [
+            'Accept' => 'application/json',
+        ])->assertOk()->assertJsonPath('data.accepted_by_transport', true);
+
+        Mail::assertSentCount(3);
+    }
+
+    public function test_url_query_values_cannot_supply_consent_or_override_json_body(): void
+    {
+        $this->enableDelivery();
+        Mail::fake();
+
+        $noConsent = $this->contact();
+        unset($noConsent['privacy_consent']);
+        $this->withServerVariables(['REMOTE_ADDR' => '192.0.2.220']);
+        $this->postJson('/api/v1/public/contact?lang=en&privacy_consent=1', $noConsent)
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('privacy_consent');
+
+        // No body fields can be smuggled through the query string.
+        $this->withServerVariables(['REMOTE_ADDR' => '192.0.2.221']);
+        $this->postJson('/api/v1/public/contact?name=Test&email=attacker%40example.test&privacy_consent=1', [])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['name', 'email', 'message', 'privacy_consent']);
+
+        // A conflicting query address is ignored, not substituted or mailed.
+        $this->withServerVariables(['REMOTE_ADDR' => '192.0.2.222']);
+        $this->postJson('/api/v1/public/contact?lang=ar&email=attacker%40example.test', $this->contact())
+            ->assertOk()
+            ->assertDontSee('attacker@example.test')
+            ->assertDontSee('visitor@example.test');
+
+        // Extra JSON body properties remain blocked even when named lang.
+        $this->withServerVariables(['REMOTE_ADDR' => '192.0.2.223']);
+        $this->postJson('/api/v1/public/contact?lang=en', $this->contact(['lang' => 'ar']))
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('payload');
+
+        Mail::assertSentCount(1);
+        Mail::assertSent(Mailable::class, static fn (Mailable $mail): bool =>
+            str_contains($mail->viewData['messageBody'] ?? '', 'visitor@example.test')
+            && ! str_contains($mail->viewData['messageBody'] ?? '', 'attacker@example.test')
+        );
+    }
+
     public function test_failed_transport_is_503_and_logs_only_an_exception_type(): void
     {
         $this->enableDelivery();
