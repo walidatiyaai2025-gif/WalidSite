@@ -24,7 +24,7 @@ h1,h2,h3{line-height:1.3}header{display:flex;gap:16px;flex-wrap:wrap;justify-con
 .card h3{overflow-wrap:anywhere;font-size:16px;margin:0 0 12px}
 label{display:block;font-weight:750;margin:10px 0 4px}
 textarea{width:100%;min-height:120px;padding:10px;border:1px solid #9db9cd;border-radius:9px;resize:vertical}
-input[type=text]{width:100%;min-height:42px;padding:8px;border:1px solid #9db9cd;border-radius:9px}
+input[type=text],input[type=number]{width:100%;min-height:42px;padding:8px;border:1px solid #9db9cd;border-radius:9px}
 .field-state{color:#385773;font-size:13px}.checkbox{display:flex;align-items:start;gap:9px;font-weight:500}
 .checkbox input{margin-top:6px}.controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px}
 .draft{background:#fff9eb;border:1px solid #efdcb0;border-radius:9px;padding:10px}
@@ -114,6 +114,59 @@ select{max-width:100%;padding:7px;border:1px solid #9db9cd;border-radius:9px}
 {{ $rows->links() }}
 </section>
 
+
+@if($selectedPage === 'about')
+<section class="panel" id="career-manager" aria-labelledby="career-editor-heading">
+<h2 id="career-editor-heading">{{ $ar ? 'إدارة الخبرات المهنية (مسودة ← مراجعة ← نشر)' : 'Career timeline (draft → review → publish)' }}</h2>
+<p>{{ $ar ? 'لا تظهر أي وظيفة جديدة أو تعديل قبل اعتماد المالك وحقوق النشر. لا تُغيّر الفترات المنسوخة من السيرة إلا بعد مراجعة المصدر.' : 'Changes stay private until explicit owner source and publication-rights review. Existing CV periods stay live until a reviewed replacement is published.' }}</p>
+<div class="cards">
+@foreach($careerRows as $position)
+@php($draft = $position->draft_json ?? [])
+<article class="card">
+<h3>{{ $position->org_name }} · {{ $position->role_en }}</h3>
+<p class="field-state">{{ $position->started_on?->format('Y') }} – {{ $position->ended_on?->format('Y') ?? 'Present' }} · {{ $position->verified && $position->publishable ? ($ar ? 'منشورة' : 'Published') : ($ar ? 'غير منشورة' : 'Unpublished') }} · {{ $ar ? 'المراجعة' : 'Revision' }} {{ $position->cms_revision }}</p>
+<form action="{{ route('admin.about-career.draft',['position'=>$position->id,'lang'=>$locale]) }}" method="post">
+@csrf<input type="hidden" name="revision" value="{{ $position->cms_revision }}">
+<label>{{ $ar ? 'جهة العمل' : 'Organization' }}<input type="text" name="org_name" required maxlength="200" value="{{ old('org_name',$draft['org_name'] ?? $position->org_name) }}"></label>
+<label>{{ $ar ? 'المسمى الإنجليزي' : 'English role' }}<input type="text" name="role_en" required maxlength="200" value="{{ old('role_en',$draft['role_en'] ?? $position->role_en) }}"></label>
+<label>{{ $ar ? 'المسمى العربي' : 'Arabic role' }}<input type="text" name="role_ar" required maxlength="200" value="{{ old('role_ar',$draft['role_ar'] ?? $position->role_ar) }}"></label>
+<label>{{ $ar ? 'سنة البداية' : 'Start year' }}<input type="number" min="1900" max="2100" name="start_year" value="{{ $draft['start_year'] ?? $position->started_on?->format('Y') }}" required></label>
+<label>{{ $ar ? 'سنة النهاية (فارغة للحالي)' : 'End year (blank for current)' }}<input type="number" min="1900" max="2100" name="end_year" value="{{ $draft['end_year'] ?? $position->ended_on?->format('Y') }}"></label>
+<div class="controls"><button type="submit">{{ $ar ? 'حفظ تعديل كمسودة' : 'Save private revision' }}</button></div>
+</form>
+@if($position->draft_json)
+<form action="{{ route('admin.about-career.publish',['position'=>$position->id,'lang'=>$locale]) }}" method="post" class="draft">
+@csrf<input type="hidden" name="revision" value="{{ $position->cms_revision }}">
+<p>{{ $ar ? 'المسودة في انتظار المراجعة' : 'Private career revision pending review' }}</p>
+<label>{{ $ar ? 'المصدر والتوثيق' : 'Career source/evidence note' }}<input type="text" name="source_note" required minlength="12" maxlength="240"></label>
+<label class="checkbox"><input type="checkbox" name="source_reviewed" value="1" required>{{ $ar ? 'راجعت مصدر الخبرة والتواريخ' : 'I verified employer, role, and dates' }}</label>
+<label class="checkbox"><input type="checkbox" name="publication_rights_confirmed" value="1" required>{{ $ar ? 'أؤكد حق نشر بيانات الوظيفة' : 'I confirm rights to publish this professional record' }}</label>
+<div class="controls"><button type="submit">{{ $ar ? 'اعتماد ونشر الفترة' : 'Review & publish career period' }}</button></div>
+</form>
+@endif
+@if($position->publishable)
+<form action="{{ route('admin.about-career.retract',['position'=>$position->id,'lang'=>$locale]) }}" method="post">
+@csrf<input type="hidden" name="revision" value="{{ $position->cms_revision }}">
+<div class="controls"><button type="submit">{{ $ar ? 'سحب الوظيفة من الموقع' : 'Unpublish career period' }}</button></div>
+</form>
+@endif
+</article>
+@endforeach
+</div>
+<h3>{{ $ar ? 'إضافة خبرة مهنية جديدة كمسودة خاصة' : 'Add a private career period' }}</h3>
+<form action="{{ route('admin.about-career.create',['lang'=>$locale]) }}" method="post" class="card">
+@csrf
+<div class="cards">
+<div><label for="career-org">{{ $ar ? 'جهة العمل' : 'Organization' }}</label><input id="career-org" type="text" name="org_name" required maxlength="200"></div>
+<div><label for="career-en">{{ $ar ? 'المسمى الإنجليزي' : 'English role' }}</label><input id="career-en" type="text" name="role_en" required maxlength="200"></div>
+<div><label for="career-ar">{{ $ar ? 'المسمى العربي' : 'Arabic role' }}</label><input id="career-ar" type="text" name="role_ar" required maxlength="200"></div>
+<div><label for="career-start">{{ $ar ? 'سنة البداية' : 'Start year' }}</label><input id="career-start" type="number" name="start_year" min="1900" max="2100" required></div>
+<div><label for="career-end">{{ $ar ? 'سنة النهاية' : 'End year' }}</label><input id="career-end" type="number" name="end_year" min="1900" max="2100"></div>
+</div>
+<div class="controls"><button type="submit">{{ $ar ? 'إضافة مسودة جديدة' : 'Add private draft' }}</button></div>
+</form>
+</section>
+@endif
 @if($selectedPage === 'about')
 <section class="panel" aria-labelledby="media-heading">
 <h2 id="media-heading">{{ $ar ? 'الشعارات والصور والأيقونات' : 'About images, employer logos & technology icons' }}</h2>
