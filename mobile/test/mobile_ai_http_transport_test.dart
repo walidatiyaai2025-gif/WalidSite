@@ -149,4 +149,116 @@ void main() {
       await server.close(force: true);
     }
   });
+
+  test('dropped AI diagnosis acknowledgement fails without a second POST',
+      () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    var requests = 0;
+    final listener = server.listen((request) async {
+      requests++;
+      request.response.headers.contentType = ContentType.json;
+      request.response.write('{"data":');
+      await request.response.flush();
+      // The server commits receipt bytes, then interrupts the response.
+      await server.close(force: true);
+    });
+    try {
+      await expectLater(
+        MobileAiClient.boundedExchange(
+          'POST',
+          Uri.parse('http://127.0.0.1:${server.port}/api/v1/mobile/ai/diagnose'),
+          bearer: 'private-loopback-only-token',
+          body: const {
+            'question': 'Explain safe recovery',
+            'technology': 'Flutter',
+            'code_snippet': '',
+            'consent_to_process': true,
+          },
+          totalTimeout: const Duration(seconds: 2),
+        ),
+        throwsA(isA<Exception>()),
+      );
+      expect(requests, 1);
+    } finally {
+      await listener.cancel();
+      await server.close(force: true);
+    }
+  });
+
+  test('invalid UTF-8 AI response is rejected before any DTO is shown',
+      () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    var requests = 0;
+    final listener = server.listen((request) async {
+      requests++;
+      request.response.headers.contentType = ContentType.json;
+      request.response.add([0xC3, 0x28]);
+      await request.response.close();
+    });
+    try {
+      await expectLater(
+        MobileAiClient.boundedExchange(
+          'GET',
+          Uri.parse('http://127.0.0.1:${server.port}/bad-utf8'),
+          bearer: 'never-echo-private-token',
+          totalTimeout: const Duration(seconds: 2),
+        ),
+        throwsFormatException,
+      );
+      expect(requests, 1);
+    } finally {
+      await listener.cancel();
+      await server.close(force: true);
+    }
+  });
+
+  test('refused AI connection fails closed and cannot disclose auth header',
+      () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final closedPort = server.port;
+    await server.close(force: true);
+    try {
+      await MobileAiClient.boundedExchange(
+        'POST',
+        Uri.parse('http://127.0.0.1:$closedPort/api/v1/mobile/ai/diagnose'),
+        bearer: 'private-never-report-this-bearer',
+        body: const {'consent_to_process': true},
+        totalTimeout: const Duration(milliseconds: 600),
+      );
+      fail('A deliberately closed loopback port must not succeed');
+    } catch (error) {
+      expect(error, isA<Exception>());
+      expect('$error', isNot(contains('private-never-report-this-bearer')));
+    }
+  });
+
+  test('HTTP 429 remains explicit with one attempt and no token in response',
+      () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    var requests = 0;
+    final listener = server.listen((request) async {
+      requests++;
+      request.response.statusCode = HttpStatus.tooManyRequests;
+      request.response.headers.contentType = ContentType.json;
+      request.response.write('{"error":{"code":"quota_reached"}}');
+      await request.response.close();
+    });
+    try {
+      final result = await MobileAiClient.boundedExchange(
+        'POST',
+        Uri.parse('http://127.0.0.1:${server.port}/api/v1/mobile/ai/diagnose'),
+        bearer: 'never-echo-private-token',
+        body: const {'consent_to_process': true},
+        totalTimeout: const Duration(seconds: 3),
+      );
+      expect(result.key, HttpStatus.tooManyRequests);
+      expect(result.value, contains('quota_reached'));
+      expect(result.value, isNot(contains('never-echo-private-token')));
+      expect(requests, 1);
+    } finally {
+      await listener.cancel();
+      await server.close(force: true);
+    }
+  });
+
 }
