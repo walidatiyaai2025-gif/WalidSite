@@ -104,8 +104,8 @@ body:has(.project-case-live) .site-header{display:none}
       <div class="pc-facts">
         <section class="pc-panel" aria-labelledby="case-facts">
           <h2 id="case-facts">{{ $isArabic?'تفاصيل تم التحقق منها':'Verified facts' }}</h2>
+          <p class="pc-status-line">{{ $isArabic ? 'الحالة' : 'Status' }}: {{ $statusLabels[$project['status']] ?? ($isArabic?'غير محددة':'Unavailable') }}</p>
           <dl>
-            <dt>{{ $isArabic?'الحالة':'Status' }}</dt><dd><span class="pc-status">{{ $statusLabels[$project['status']] ?? ($isArabic?'غير محددة':'Unavailable') }}</span></dd>
             <dt>{{ $isArabic?'الدور':'Role' }}</dt><dd>{{ $project['role'] ?: ($isArabic?'غير محدد':'Unavailable') }}</dd>
             <dt>{{ $isArabic?'التصنيف':'Category' }}</dt><dd>{{ $groupLabels[$project['category'] ?? 'enterprise'] ?? 'Enterprise' }}</dd>
             @if(!empty($project['source_label']))<dt>{{ $isArabic?'المصدر':'Source' }}</dt><dd>{{ $project['source_label'] }}</dd>@endif
@@ -116,7 +116,7 @@ body:has(.project-case-live) .site-header{display:none}
           <h2>{{ $isArabic?'تواصل ومزيد من المعلومات':'Next steps' }}</h2>
           <div class="pc-links-more">
             <a href="{{ route('public.projects', ['lang'=>$locale,'status'=>$project['status']]) }}">{{ $isArabic?'مشاريع أخرى بالحالة نفسها':'View projects with this status' }}</a>
-            <a href="{{ route('public.contact', ['lang'=>$locale,'project'=>$project['slug']]) }}">{{ $isArabic?'اسأل عن دراسة الحالة':'Ask about this verified case study' }}</a>
+            <a href="{{ route('public.contact', ['lang'=>$locale,'project'=>$project['slug']]) }}">{{ $isArabic?'استفسر عن دراسة الحالة الموثقة':'Ask about this verified case study' }}</a>
             <a href="{{ route('public.resume', ['lang'=>$locale]) }}">{{ $isArabic?'عرض السيرة المهنية الموثقة':'View verified public resume' }}</a>
           </div>
         </section>
