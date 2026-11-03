@@ -42,16 +42,19 @@ final class PublicArticleSlugDiscoveryTest extends TestCase
         $safe = $this->published('routable-guide');
         $safe->forceFill(['published_at' => now()->subDays(3)])->save();
 
-        // Even more than 15 invalid public rows must not consume homepage,
-        // blog, lab or search result slots ahead of the working destination.
+        // Invalid published rows must not consume blog, lab or search results.
+        // The homepage no longer has an article discovery panel.
         for ($i = 1; $i <= 18; $i++) {
             $bad = $this->published('unroutable_guide_'.$i);
             $bad->forceFill(['published_at' => now()->subMinute()])->save();
         }
 
         foreach (['en', 'ar'] as $lang) {
+            $this->get('/?lang='.$lang)->assertOk()
+                ->assertDontSee('Routeproof routable-guide')
+                ->assertDontSee('دليل روابط routable-guide')
+                ->assertDontSee('unroutable_guide_');
             foreach ([
-                '/?lang='.$lang,
                 '/blog?lang='.$lang,
                 '/lab?lang='.$lang,
                 '/search?q=Routeproof&lang='.$lang,
