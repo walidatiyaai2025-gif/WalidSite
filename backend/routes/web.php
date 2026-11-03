@@ -1624,10 +1624,12 @@ Route::get('/projects', function (Request $request) {
     // never be indexed or substituted for the publication-gated catalog.
     // Exact scalar opt-in prevents array/query input from controlling view selection.
     if ($request->query('preview') === 'cv') {
+        // Symfony's BinaryFileResponse defaults to public caching unless we
+        // explicitly mark the preview private after creating the response.
         return response()->file(public_path('portfolio-projects-preview.html'), [
             'X-Robots-Tag' => 'noindex, nofollow',
             'Cache-Control' => 'no-store, private',
-        ]);
+        ])->setPrivate();
     }
 
     $rawSearch = $request->query('q', '');
