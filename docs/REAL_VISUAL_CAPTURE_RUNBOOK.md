@@ -22,11 +22,11 @@ If the check says the source checkout was changed, stop, review the changes and 
 The default Web plan includes 12 currently routable static pages. WEB-05 and WEB-08 cannot be selected from a guessed slug: start an actual local Laravel server with reviewed, already-published public project/article data, then run:
 
 ```bash
-python3 qa/discover_published_web_screens.py \\
-  --origin http://127.0.0.1:8000 --locale en --dpr 1 \\
+python3 qa/discover_published_web_screens.py \
+  --origin http://127.0.0.1:8000 --locale en --dpr 1 \
   --output /tmp/walidsite-verified-web-14.json
 sha="$(git rev-parse HEAD)"
-python3 qa/visual_diagnostics.py \\
+python3 qa/visual_diagnostics.py \
   --plan /tmp/walidsite-verified-web-14.json --commit "$sha" --group web
 ```
 
