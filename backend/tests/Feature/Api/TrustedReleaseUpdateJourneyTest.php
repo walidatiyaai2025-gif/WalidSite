@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Api;
 
+use App\Domain\Deployment\TrustedReleaseCatalog;
 use App\Domain\Deployment\TrustedReleaseDownloader;
 use App\Domain\Deployment\TrustedReleaseUpdateJourney;
 use DomainException;
@@ -237,6 +238,124 @@ final class TrustedReleaseUpdateJourneyTest extends TestCase
             self::assertSame([], glob($this->paths['backup_vault'].'/mariadb-*') ?: []);
             self::assertSame('LIVE-vA', file_get_contents($this->paths['public'].'/index.php'));
         }
+    }
+
+    public function test_complete_catalog_discovery_and_verified_zip_to_real_mariadb_recovery_and_vb_switch(): void
+    {
+        $signed = $this->signedZip();
+        $bytes = file_get_contents($this->paths['archive']);
+        self::assertIsString($bytes);
+        self::assertTrue(unlink($this->paths['archive']));
+        $catalogCalls = 0;
+        $zipCalls = 0;
+
+        $catalog = new TrustedReleaseCatalog(static function (string $url, \Closure $write) use (
+            $signed, &$catalogCalls,
+        ): int {
+            self::assertSame('https://updates.example.test/releases/latest.json', $url);
+            $catalogCalls++;
+            self::assertSame(strlen($signed), $write($signed));
+            return 200;
+        });
+        $downloader = new TrustedReleaseDownloader(static function (string $url, \Closure $write) use (
+            $bytes, &$zipCalls,
+        ): int {
+            self::assertSame('https://updates.example.test/releases/WalidSite-update-v1.2.0.zip', $url);
+            $zipCalls++;
+            foreach (str_split($bytes, 29) as $chunk) {
+                self::assertSame(strlen($chunk), $write($chunk));
+            }
+            return 200;
+        });
+
+        $result = (new TrustedReleaseUpdateJourney())->discoverAndExecute(
+            $this->liveDb, $this->restoreDb,
+            $this->publicKey, 'https://updates.example.test', '1.0.0',
+            $this->paths,
+            static fn (): bool => true,
+            fn (): bool => file_get_contents($this->paths['public'].'/index.php') === 'NEW-vB',
+            $catalog, $downloader,
+        );
+
+        self::assertSame(1, $catalogCalls);
+        self::assertSame(1, $zipCalls);
+        self::assertSame('switched', $result['state']);
+        self::assertSame('1.2.0', $result['version']);
+        self::assertSame('NEW-vB', file_get_contents($this->paths['public'].'/index.php'));
+        self::assertSame('APP_KEY=keep-existing-secret', file_get_contents($this->paths['environment']));
+        self::assertSame("\x00\xffUPLOAD", file_get_contents($this->paths['uploads'].'/avatar.png'));
+        self::assertSame('محتوى عربي',
+            $this->restoreDb->query('SELECT memo FROM billing WHERE id=1')->fetchColumn());
+        self::assertSame($bytes, file_get_contents($this->paths['archive']));
+    }
+
+    public function test_untrusted_catalog_never_starts_zip_transfer_or_backup(): void
+    {
+        $signed = $this->signedZip(true);
+        self::assertTrue(unlink($this->paths['archive']));
+        $zipCalls = 0;
+        $catalog = new TrustedReleaseCatalog(static function (string $url, \Closure $write) use ($signed): int {
+            $write($signed);
+            return 200;
+        });
+        $downloader = new TrustedReleaseDownloader(static function () use (&$zipCalls): int {
+            $zipCalls++;
+            return 200;
+        });
+
+        try {
+            (new TrustedReleaseUpdateJourney())->discoverAndExecute(
+                $this->liveDb, $this->restoreDb,
+                $this->publicKey, 'https://updates.example.test', '1.0.0',
+                $this->paths,
+                static fn (): bool => true, static fn (): bool => true,
+                $catalog, $downloader,
+            );
+            self::fail('Unknown publisher cannot start an executable update.');
+        } catch (DomainException $failure) {
+            self::assertSame(0, $zipCalls);
+            self::assertSame('LIVE-vA', file_get_contents($this->paths['public'].'/index.php'));
+            self::assertSame([], glob($this->paths['backup_vault'].'/mariadb-*') ?: []);
+            self::assertSame([], glob($this->paths['incoming'].'/WalidSite-update-*') ?: []);
+            self::assertSame(1, (int) $this->liveDb->query('SELECT COUNT(*) FROM billing')->fetchColumn());
+        }
+    }
+
+    public function test_catalog_redirect_and_unquiesced_writes_never_start_signed_zip_transfer(): void
+    {
+        $signed = $this->signedZip();
+        self::assertTrue(unlink($this->paths['archive']));
+        $catalogCalls = 0;
+        $zipCalls = 0;
+        $catalog = new TrustedReleaseCatalog(static function (string $url, \Closure $write) use (
+            &$catalogCalls, $signed,
+        ): int {
+            $catalogCalls++;
+            $write($signed);
+            return 302;
+        });
+        $downloader = new TrustedReleaseDownloader(static function () use (&$zipCalls): int {
+            $zipCalls++;
+            return 200;
+        });
+
+        foreach ([true, false] as $quiesced) {
+            try {
+                (new TrustedReleaseUpdateJourney())->discoverAndExecute(
+                    $this->liveDb, $this->restoreDb,
+                    $this->publicKey, 'https://updates.example.test', '1.0.0',
+                    $this->paths,
+                    static fn (): bool => $quiesced, static fn (): bool => true,
+                    $catalog, $downloader,
+                );
+                self::fail('Publisher redirect or active writers cannot trigger an update.');
+            } catch (DomainException) {
+                self::assertSame(0, $zipCalls);
+                self::assertSame('LIVE-vA', file_get_contents($this->paths['public'].'/index.php'));
+            }
+        }
+        self::assertSame(1, $catalogCalls);
+        self::assertSame([], glob($this->paths['backup_vault'].'/mariadb-*') ?: []);
     }
 
     public function test_remote_signed_download_through_real_mariadb_restore_and_vb_cutover(): void
