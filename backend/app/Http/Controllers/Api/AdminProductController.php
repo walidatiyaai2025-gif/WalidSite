@@ -727,14 +727,42 @@ final class AdminProductController extends Controller
     public function audit(Request $request): JsonResponse
     {
         $this->authorizeAdmin($request);
+
+        $allowedQuery = ['page', 'editorial_page', 'domain', 'action', 'lang'];
+        if (array_diff(array_keys($request->query()), $allowedQuery) !== []) {
+            throw ValidationException::withMessages([
+                'query' => 'Unsupported audit query parameters.',
+            ]);
+        }
+
+        $providerActions = ['created', 'updated', 'tested', 'deleted'];
+        $editorialActions = [
+            'manual_published', 'manual_unpublished', 'manual_rejected',
+            'scheduled', 'requires_review', 'refresh_required',
+            'refresh_superseded', 'media_rights_approved', 'media_rights_revoked',
+        ];
         $input = $request->validate([
             'page' => ['sometimes', 'integer', 'between:1,10000'],
-            'action' => ['sometimes', Rule::in([
-                'created', 'updated', 'tested', 'deleted',
-                'manual_published', 'manual_rejected', 'scheduled',
-                'requires_review', 'refresh_required', 'refresh_superseded',
-            ])],
+            'editorial_page' => ['sometimes', 'integer', 'between:1,10000'],
+            'lang' => ['sometimes', Rule::in(['ar', 'en'])],
+            'domain' => ['sometimes', Rule::in(['all', 'provider', 'editorial'])],
+            'action' => ['sometimes', Rule::in(array_merge(
+                $providerActions, $editorialActions
+            ))],
         ]);
+        $domain = $input['domain'] ?? 'all';
+        $action = $input['action'] ?? null;
+
+        // An action filter always applies to BOTH families. A mismatched
+        // domain/action pair is a caller error, not permission to return
+        // unfiltered unrelated audit records.
+        if ($action !== null
+            && (($domain === 'provider' && ! in_array($action, $providerActions, true))
+                || ($domain === 'editorial' && ! in_array($action, $editorialActions, true)))) {
+            throw ValidationException::withMessages([
+                'action' => 'Audit action does not belong to the selected domain.',
+            ]);
+        }
 
         $providerQuery = DB::table('ai_provider_audit_events as event')
             ->join('ai_providers as provider', 'provider.id', '=', 'event.provider_id')
@@ -743,17 +771,13 @@ final class AdminProductController extends Controller
                 'event.changed_fields_json', 'event.created_at',
                 'provider.display_name',
             ])
-            ->when(isset($input['action']) && in_array(
-                $input['action'], ['created', 'updated', 'tested', 'deleted'], true
-            ), static fn ($q) => $q->where('event.action', $input['action']))
+            ->whereIn('event.action', $providerActions)
+            ->when($action !== null, static fn ($q) => $q->where('event.action', $action))
+            ->when($domain === 'editorial', static fn ($q) => $q->whereRaw('1 = 0'))
             ->orderByDesc('event.created_at')->orderByDesc('event.id');
 
-        $providers = $providerQuery->paginate(
-            20,
-            ['*'],
-            'page',
-            (int) ($input['page'] ?? 1)
-        );
+        $providers = $providerQuery->paginate(20, ['*'], 'page',
+            (int) ($input['page'] ?? 1));
 
         $allowedFields = [
             'display_name', 'provider_type', 'base_url', 'enabled',
@@ -773,33 +797,44 @@ final class AdminProductController extends Controller
                     'id' => $event->id,
                     'provider_id' => $event->provider_id,
                     'provider_name' => $event->display_name,
-                    'action' => in_array(
-                        $event->action, ['created', 'updated', 'tested', 'deleted'], true
-                    ) ? $event->action : 'other',
+                    'action' => $event->action,
                     'changed_fields' => $fields,
                     'created_at' => (string) $event->created_at,
                 ];
             }
         )->values()->all();
 
-        $editorial = DB::table('editorial_events')
-            ->select([
-                'id', 'article_id', 'revision_no',
-                'action', 'reason', 'created_at',
-            ])
-            ->when(isset($input['action']) && ! in_array(
-                $input['action'], ['created', 'updated', 'tested', 'deleted'], true
-            ), static fn ($q) => $q->where('action', $input['action']))
+        $editorialPage = DB::table('editorial_events')
+            ->select(['id', 'article_id', 'revision_no', 'action', 'reason', 'created_at'])
+            ->whereIn('action', $editorialActions)
+            ->when($action !== null, static fn ($q) => $q->where('action', $action))
+            ->when($domain === 'provider', static fn ($q) => $q->whereRaw('1 = 0'))
             ->orderByDesc('created_at')->orderByDesc('id')
-            ->limit(50)->get()
-            ->map(static fn ($event): array => [
-                'id' => $event->id,
-                'article_id' => $event->article_id,
-                'revision_no' => $event->revision_no,
-                'action' => $event->action,
-                'reason' => $event->reason,
-                'created_at' => (string) $event->created_at,
-            ])->all();
+            ->paginate(50, ['*'], 'editorial_page',
+                (int) ($input['editorial_page'] ?? 1));
+
+        $editorial = $editorialPage->getCollection()->map(
+            static function ($event): array {
+                // The event store may contain imported/legacy free text.
+                // Show only non-sensitive reason codes or opaque asset UUIDs;
+                // never reflect passwords, API keys, emails or raw prompts.
+                $reason = $event->reason;
+                $safeCode = is_string($reason)
+                    && preg_match('/\\A[a-z][a-z0-9_]{0,79}\\z/D', $reason) === 1
+                    && preg_match('/(?:password|secret|token|api_key|credential)/i', $reason) !== 1;
+                $safeAssetId = is_string($reason)
+                    && preg_match('/\\Aasset:[0-9a-f-]{36}\\z/iD', $reason) === 1;
+
+                return [
+                    'id' => $event->id,
+                    'article_id' => $event->article_id,
+                    'revision_no' => $event->revision_no,
+                    'action' => $event->action,
+                    'reason' => $safeCode || $safeAssetId ? $reason : null,
+                    'created_at' => (string) $event->created_at,
+                ];
+            }
+        )->values()->all();
 
         return response()->json([
             'data' => [
@@ -807,13 +842,17 @@ final class AdminProductController extends Controller
                 'editorial_events' => $editorial,
             ],
             'meta' => [
+                'domain' => $domain,
                 'current_page' => $providers->currentPage(),
                 'last_page' => $providers->lastPage(),
                 'provider_total' => $providers->total(),
                 'editorial_limit' => 50,
+                'editorial_current_page' => $editorialPage->currentPage(),
+                'editorial_last_page' => $editorialPage->lastPage(),
+                'editorial_total' => $editorialPage->total(),
                 'secrets_and_raw_payloads_excluded' => true,
             ],
-        ])->header('Cache-Control', 'no-store');
+        ])->header('Cache-Control', 'no-store, private');
     }
 
     private function eligibleImageModels()
