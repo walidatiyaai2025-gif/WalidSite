@@ -2,6 +2,7 @@
 
 namespace App\Domain\Deployment;
 
+use Closure;
 use DomainException;
 
 /**
@@ -13,6 +14,9 @@ use DomainException;
  */
 final class TrustedUpdateHostPreflight
 {
+    /** @param ?Closure(string):int|float|false $diskSpace Only injected by filesystem acceptance tests. */
+    public function __construct(private readonly ?Closure $diskSpace = null) {}
+
     /** @param array<string,string> $paths */
     public function assertReady(array $paths, int $artifactBytes): void
     {
@@ -108,7 +112,9 @@ final class TrustedUpdateHostPreflight
             [$release, $workingBudget],
             [$vault, $vaultBudget],
         ] as [$directory, $minimum]) {
-            $free = @disk_free_space($directory);
+            $free = $this->diskSpace !== null
+                ? ($this->diskSpace)($directory)
+                : @disk_free_space($directory);
             if ($free === false || $free < $minimum) {
                 throw new DomainException('BLOCKED HOSTING: insufficient available disk space for recoverable update.');
             }
