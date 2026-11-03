@@ -142,9 +142,10 @@
                         @php($languageArgs['page'] = (int) $rawResultPage)
                     @endif
                 @endif
-                @if(request()->routeIs('public.projects'))
-                    {{-- Keep project search/filter context on AR/EN links without
-                         reflecting array-valued or unsupported query inputs. --}}
+                @if(request()->routeIs('public.projects', 'public.project'))
+                    {{-- Preserve the verified project-list context across the
+                         entire WEB-04 -> WEB-05 -> WEB-04 bilingual journey.
+                         Never relay raw URL/redirect parameters or arrays. --}}
                     @php($projectParams = request()->query())
                     @php($rawProjectSearch = $projectParams['q'] ?? '')
                     @php($projectSearch = is_string($rawProjectSearch) ? mb_substr(trim($rawProjectSearch), 0, 80) : '')
@@ -155,6 +156,17 @@
                     @endif
                     @if($projectStatus !== '')
                         @php($languageArgs['status'] = $projectStatus)
+                    @endif
+                    {{-- A route-safe page number is part of the return-to-results
+                         context. For the listing, do not persist a page beyond
+                         the current verified result set's last page. --}}
+                    @php($rawProjectPage = $projectParams['page'] ?? null)
+                    @if((is_string($rawProjectPage) || is_int($rawProjectPage))
+                        && ctype_digit((string) $rawProjectPage)
+                        && (int) $rawProjectPage > 1 && (int) $rawProjectPage <= 10000
+                        && (request()->routeIs('public.project')
+                            || (isset($paginated) && (int) $rawProjectPage <= $paginated->lastPage())))
+                        @php($languageArgs['page'] = (int) $rawProjectPage)
                     @endif
                 @endif
                 @if(request()->routeIs('public.expertise'))
