@@ -1,5 +1,6 @@
 {{-- WEB-02: source-verified public About screen. No private biography, invented
      credentials, fake experience lengths or unreviewed employer details. --}}
+@php($aboutCopy = app(\App\Domain\Content\PageContentRepository::class)->publishedMap('about', $locale))
 @push('styles')
 <style>
 .about-screen{display:grid;gap:24px}
@@ -108,7 +109,7 @@ body:has(.about-screen) .header-links a[href*="/contact"]{background:#00A999;col
     <header class="about-hero">
         <div>
             <p class="about-kicker">{{ $locale === 'ar' ? 'المسيرة المهنية المنشورة بعد مراجعة الأدلة' : 'Evidence-gated public profile' }}</p>
-            <h1 id="about-screen-title">{{ $locale === 'ar' ? 'نبذة' : 'About' }}</h1>
+            <h1 id="about-screen-title">{{ $aboutCopy['intro']['heading'] ?? ($locale === 'ar' ? 'نبذة' : 'About') }}</h1>
             <p>{{ $locale === 'ar'
                 ? 'الخبرات والشهادات المعروضة هنا مستمدة من سجلات المالك المعتمدة للنشر. لا تظهر بيانات أصحاب الحسابات الأخرى أو الادعاءات التي لم تجتز مراجعة المصادر.'
                 : 'The experience and credentials below come from the owner’s publication-reviewed records. Other accounts and unapproved career statements remain private.' }}</p>

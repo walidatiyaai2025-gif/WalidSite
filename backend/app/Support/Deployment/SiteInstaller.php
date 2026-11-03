@@ -5,6 +5,7 @@ namespace App\Support\Deployment;
 use App\Models\Role;
 use App\Models\User;
 use Database\Seeders\OwnerCvBaselineSeeder;
+use Database\Seeders\WebsitePageContentSeeder;
 use Database\Seeders\OwnerProjectsPortfolioSeeder;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
@@ -94,6 +95,18 @@ final class SiteInstaller
                 ]);
                 if ($result !== 0) {
                     throw new RuntimeException('Owner CV initialization failed.');
+                }
+                // The approved home text and draft-only proposed page copy
+                // must exist after the very first browser install. Run the
+                // insert-only seed in the same install transaction; owner
+                // edits are never clobbered by a subsequent seeder invocation.
+                $pageSeed = Artisan::call('db:seed', [
+                    '--class' => WebsitePageContentSeeder::class,
+                    '--force' => true,
+                    '--no-interaction' => true,
+                ]);
+                if ($pageSeed !== 0) {
+                    throw new RuntimeException('Managed page-copy initialization failed.');
                 }
                 $owner = User::query()->where('email', $email)->firstOrFail();
                 $role = Role::firstOrCreate(['name' => 'owner']);

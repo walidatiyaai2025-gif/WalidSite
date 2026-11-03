@@ -32,6 +32,7 @@ button{background:transparent;color:#fff;border:1px solid #fff;border-radius:8px
 <a href="{{ route('admin.operations.projects', ['lang'=>$locale]) }}">{{ $locale === 'ar' ? 'المشاريع والسيرة' : 'Projects & CV' }}</a>
 <a href="{{ route('admin.operations.audience', ['lang'=>$locale]) }}">{{ $locale === 'ar' ? 'الجمهور والموافقات' : 'Audience & consent' }}</a>
 <a href="{{ route('admin.operations.analytics', ['lang'=>$locale]) }}">{{ $locale === 'ar' ? 'التحليلات' : 'Analytics' }}</a>
+<a href="{{ route('admin.page-content.index', ['lang'=>$locale]) }}">{{ $locale === 'ar' ? 'إدارة نصوص الصفحات' : 'Site page editor' }}</a>
 <a href="{{ route('admin.content.index', ['lang'=>$locale]) }}">{{ $locale === 'ar' ? 'مراجعة المحتوى' : 'Editorial review' }}</a>
 <a href="{{ route('admin.media.index', ['lang'=>$locale]) }}">{{ $locale === 'ar' ? 'حقوق الصور' : 'Media rights' }}</a>
 <a href="{{ route('admin.quality.index', ['lang'=>$locale]) }}">{{ $locale === 'ar' ? 'بوابات الجودة' : 'Quality gates' }}</a>
