@@ -56,8 +56,7 @@ class MobileAiIdempotencyContractTest(unittest.TestCase):
         self.assertTrue(block.startswith("    post:\n"))
         self.assertIn("same data.id", block)
         self.assertIn("different request fingerprint", block)
-        self.assertIn("no additional paid", block.lower().replace("second paid", "additional paid")
-                      if False else "without a second paid admission", block)
+        self.assertIn("without a second paid admission", block)
         self.assertIn("No prompt, bearer or raw opaque key", block)
 
     def test_backend_and_flutter_current_protocol_agree_with_contract(self) -> None:
