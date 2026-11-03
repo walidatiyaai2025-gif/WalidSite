@@ -51,7 +51,7 @@ final class PublicProjectDiscoveryLinksTest extends TestCase
                 ->assertOk()
                 ->assertSee('href="'.e($next).'"', false)
                 ->assertSee('href="'.$clean.'"', false)
-                ->assertSee($locale === 'ar' ? 'مسح المرشحات' : 'Clear filters')
+                ->assertSee($locale === 'ar' ? 'مسح البحث والمرشحات' : 'Clear search and filters')
                 ->assertDontSee('PRIVATE_TRACKING_TOKEN')
                 ->assertDontSee('LEAK');
 
@@ -75,7 +75,7 @@ final class PublicProjectDiscoveryLinksTest extends TestCase
             ->assertSee('href="'.e($pageTwo).'"', false)
             ->assertDontSee('HIDDEN')
             ->assertDontSee('PRIVATE_DEBUG')
-            ->assertDontSee('Clear filters');
+            ->assertDontSee('Clear search and filters');
 
         $this->get('/projects?lang=ar&q%5Btoken%5D=HIDDEN&status=completed&extra=PRIVATE_DEBUG')
             ->assertOk()
