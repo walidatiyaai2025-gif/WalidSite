@@ -1,0 +1,147 @@
+"""Offline adversarial contract tests; these do NOT assert a native build ran."""
+import io
+import json
+import tempfile
+import unittest
+import warnings
+import zipfile
+from contextlib import redirect_stderr, redirect_stdout
+from pathlib import Path
+from unittest.mock import patch
+from subprocess import CompletedProcess
+
+from qa.native_android_acceptance import ApkAcceptanceError, inspect, main
+
+SHA = "a" * 40
+BADGING = """package: name='com.example.waleed_tech_companion' versionCode='1' versionName='0.1.0'
+sdkVersion:'23'
+targetSdkVersion:'36'
+application-label:'WalidSite'
+"""
+PERMISSIONS = "uses-permission: name='android.permission.INTERNET'\n"
+
+
+class NativeAndroidAcceptanceTest(unittest.TestCase):
+    def setUp(self):
+        self.t = tempfile.TemporaryDirectory()
+        self.addCleanup(self.t.cleanup)
+        self.apk = Path(self.t.name) / "test.apk"
+        with zipfile.ZipFile(self.apk, "w") as archive:
+            archive.writestr("AndroidManifest.xml", b"synthetic, not a real Android manifest")
+            archive.writestr("classes.dex", b"synthetic, not Dalvik bytecode")
+        self.args = dict(kind="debug", expected_id="com.example.waleed_tech_companion",
+                         expected_version="0.1.0", expected_code=1, source_sha=SHA)
+
+    @staticmethod
+    def command(args):
+        if args[0] == "aapt":
+            return CompletedProcess(args, 0, BADGING if args[2] == "badging" else PERMISSIONS, "")
+        return CompletedProcess(args, 0, "Verified using v2 scheme: true", "")
+
+    def test_synthetic_parser_requires_tools_and_does_not_claim_distribution(self):
+        with patch("qa.native_android_acceptance._command", side_effect=self.command) as proc:
+            result = inspect(self.apk, **self.args)
+        self.assertEqual(proc.call_count, 3)
+        self.assertTrue(result["apk_integrity_verified"])
+        self.assertTrue(result["debug_signature_verified"])
+        self.assertEqual(result["package_id"], self.args["expected_id"])
+        self.assertEqual(result["permissions"], ["android.permission.INTERNET"])
+        self.assertFalse(result["production_ready"])
+        self.assertFalse(result["distribution_signing_identity_verified"])
+        self.assertFalse(result["device_install_launch_verified"])
+        self.assertEqual(result["source_sha_supplied_not_attested"], SHA)
+
+    def test_release_qa_requires_non_debuggable_but_not_distribution_signature(self):
+        def unsigned(args):
+            if args[0] == "apksigner":
+                return CompletedProcess(args, 1, "", "DOES NOT VERIFY")
+            return self.command(args)
+        with patch("qa.native_android_acceptance._command", side_effect=unsigned):
+            result = inspect(self.apk, **{**self.args, "kind": "release-qa"})
+        self.assertTrue(result["apk_integrity_verified"])
+        self.assertFalse(result["apk_signature_cryptographically_valid"])
+        self.assertFalse(result["production_ready"])
+
+        def debuggable(args):
+            base = self.command(args)
+            if args[0] == "aapt" and args[2] == "badging":
+                base.stdout += "application-debuggable\n"
+            return base
+        with patch("qa.native_android_acceptance._command", side_effect=debuggable):
+            with self.assertRaises(ApkAcceptanceError):
+                inspect(self.apk, **{**self.args, "kind": "release-qa"})
+
+    def test_identity_version_and_permission_fail_closed(self):
+        for key, value in (("expected_id", "com.other.site"),
+                           ("expected_version", "0.2.0"),
+                           ("expected_code", 2), ("source_sha", "f" * 39),
+                           ("expected_code", True)):
+            with self.subTest(key=key):
+                with patch("qa.native_android_acceptance._command", side_effect=self.command):
+                    with self.assertRaises(ApkAcceptanceError):
+                        inspect(self.apk, **{**self.args, key: value})
+        with patch("qa.native_android_acceptance._command", side_effect=lambda args:
+                   CompletedProcess(args, 0, BADGING if args[2] == "badging" else "", "")
+                   if args[0] == "aapt" else CompletedProcess(args, 0, "", "")):
+            with self.assertRaisesRegex(ApkAcceptanceError, "INTERNET"):
+                inspect(self.apk, **self.args)
+
+    def test_debug_bad_signature_and_missing_sdk_fail_closed(self):
+        def unsigned(args):
+            result = self.command(args)
+            if args[0] == "apksigner":
+                result.returncode = 1
+            return result
+        with patch("qa.native_android_acceptance._command", side_effect=unsigned):
+            with self.assertRaisesRegex(ApkAcceptanceError, "signature"):
+                inspect(self.apk, **self.args)
+        with patch("qa.native_android_acceptance.subprocess.run", side_effect=OSError("missing")):
+            with self.assertRaises(ApkAcceptanceError):
+                inspect(self.apk, **self.args)
+
+    def test_zip_tamper_duplicate_traversal_and_symlink_fail_before_aapt(self):
+        cases = [
+            [("AndroidManifest.xml", b"a")],
+            [("AndroidManifest.xml", b"a"), ("classes.dex", b"b"),
+             ("classes.dex", b"duplicate")],
+            [("AndroidManifest.xml", b"a"), ("classes.dex", b"b"),
+             ("../private", b"payload")],
+        ]
+        for entries in cases:
+            with self.subTest(entries=[e[0] for e in entries]):
+                with warnings.catch_warnings():
+                    warnings.filterwarnings("ignore", message="Duplicate name")
+                    with zipfile.ZipFile(self.apk, "w") as archive:
+                        for name, contents in entries:
+                            archive.writestr(name, contents)
+                with patch("qa.native_android_acceptance._command", side_effect=AssertionError("called")):
+                    with self.assertRaises(ApkAcceptanceError):
+                        inspect(self.apk, **self.args)
+        self.apk.unlink()
+        other = Path(self.t.name) / "other.apk"
+        other.write_bytes(b"not-an-apk")
+        self.apk.symlink_to(other)
+        with self.assertRaises(ApkAcceptanceError):
+            inspect(self.apk, **self.args)
+
+    def test_cli_fails_closed_without_exposing_user_paths(self):
+        with redirect_stderr(io.StringIO()) as stream:
+            code = main(["--apk", str(self.apk), "--kind", "debug",
+                         "--package-id", self.args["expected_id"],
+                         "--version-name", "0.1.0", "--version-code", "1",
+                         "--source-sha", SHA])
+        self.assertEqual(code, 1)
+        failure = json.loads(stream.getvalue())
+        self.assertFalse(failure["production_ready"])
+        self.assertNotIn(str(self.apk), stream.getvalue())
+        with patch("qa.native_android_acceptance._command", side_effect=self.command):
+            with redirect_stdout(io.StringIO()) as output:
+                self.assertEqual(main(["--apk", str(self.apk), "--kind", "debug",
+                                       "--package-id", self.args["expected_id"],
+                                       "--version-name", "0.1.0", "--version-code", "1",
+                                       "--source-sha", SHA]), 0)
+        self.assertFalse(json.loads(output.getvalue())["production_ready"])
+
+
+if __name__ == "__main__":
+    unittest.main()
