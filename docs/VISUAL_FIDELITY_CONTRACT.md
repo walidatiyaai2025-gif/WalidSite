@@ -1,3 +1,10 @@
+## Owner-approved design supersession for three routes (2026-11-03)
+
+**Specific later owner instruction:** WEB-01 (`/`), WEB-03 (`/expertise`) and WEB-04 (`/projects`) are accepted in their current implemented code and visual composition as of `main@cf5b72f129d9daa11f3aa1d55a9d6d52740eeb0b`. Their selected current design is frozen in `design/owner-approved-web-design-freeze.json` and guarded in CI. No worker may change these seven page-specific templates or restore the now-superseded original art without a new explicit owner instruction. See `docs/OWNER_APPROVED_WEB_DESIGN_FREEZE.md` for owner sign-off, issue/PR traceability and exception policy.
+
+This is **owner sign-off on current design/code**, not a fabricated zero-difference comparison. The untouched 40-screen strict evidence ledger remains `pending` until independently captured runtime pixels actually satisfy the original v6 comparison; do not relabel any entry as `matched` on owner sign-off alone. The original reference artwork remains immutable. For all other screens, every requirement of ADR-010 remains unchanged.
+
+---
 # ADR-010 — Exact visual fidelity to the supplied 40 reference screens
 
 **Status:** Mandatory owner directive, 2026-11-01. **Authority:** [Program Issue #1](https://github.com/walidatiyaai2025-gif/WalidSite/issues/1). **Applies:** website, Admin and Flutter; W2, W3, LEAD and T024 QA. **Priority:** P0 visual acceptance, without weakening mandatory security, truthfulness, accessibility or functioning behavior.
