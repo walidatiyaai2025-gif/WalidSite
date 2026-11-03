@@ -1,6 +1,9 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
+
+import 'package:flutter/foundation.dart';
 
 import '../articles/verified_articles.dart';
 
@@ -28,6 +31,14 @@ class ReviewedRunbookActionsClient {
   static Uri? configuredOrigin() =>
       VerifiedArticleReader.validatedOrigin(apiOrigin);
 
+  /// One wall-clock deadline for an entire authenticated request. A slow
+  /// stream cannot extend the deadline by delivering individual bytes.
+  @visibleForTesting
+  static Future<T> withinDeadline<T>(
+    Future<T> Function() operation, {
+    Duration timeout = const Duration(seconds: 12),
+  }) => Future<T>.sync(operation).timeout(timeout);
+
   Future<MapEntry<int, String>> _jsonRequest(
     String method,
     String path, {
@@ -38,34 +49,53 @@ class ReviewedRunbookActionsClient {
     if (origin == null) {
       throw const FormatException('API origin is not configured');
     }
-    final url = origin.replace(path: path);
+    // The production caller selects only this validated HTTPS origin.
+    return boundedExchange(
+      method,
+      origin.replace(path: path),
+      body: body,
+      bearer: bearer,
+    );
+  }
+
+  /// Production transport exposed for deterministic loopback fixture tests.
+  /// No caller can override the configured production origin at runtime.
+  @visibleForTesting
+  static Future<MapEntry<int, String>> boundedExchange(
+    String method,
+    Uri url, {
+    Map<String, Object?>? body,
+    String? bearer,
+    Duration totalTimeout = const Duration(seconds: 12),
+  }) async {
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
     try {
-      final request =
-          await client.openUrl(method, url).timeout(const Duration(seconds: 8));
-      request.followRedirects = false;
-      request.headers.set(HttpHeaders.acceptHeader, 'application/json');
-      request.headers.set(HttpHeaders.contentTypeHeader, 'application/json');
-      if (bearer != null) {
-        request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $bearer');
-      }
-      if (body != null) {
-        request.add(utf8.encode(jsonEncode(body)));
-      }
-      final response =
-          await request.close().timeout(const Duration(seconds: 8));
-      final bytes = BytesBuilder(copy: false);
-      await for (final chunk in response.timeout(const Duration(seconds: 8))) {
-        if (bytes.length + chunk.length > _maxResponseBytes) {
-          throw const FormatException('API response too large');
+      return await withinDeadline(() async {
+        final request = await client.openUrl(method, url);
+        request.followRedirects = false;
+        request.headers.set(HttpHeaders.acceptHeader, 'application/json');
+        request.headers.set(HttpHeaders.contentTypeHeader, 'application/json');
+        if (bearer != null) {
+          request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $bearer');
         }
-        bytes.add(chunk);
-      }
-      return MapEntry(
-        response.statusCode,
-        utf8.decode(bytes.takeBytes(), allowMalformed: false),
-      );
+        if (body != null) {
+          request.add(utf8.encode(jsonEncode(body)));
+        }
+        final response = await request.close();
+        final bytes = BytesBuilder(copy: false);
+        await for (final chunk in response) {
+          if (bytes.length + chunk.length > _maxResponseBytes) {
+            throw const FormatException('API response too large');
+          }
+          bytes.add(chunk);
+        }
+        return MapEntry(
+          response.statusCode,
+          utf8.decode(bytes.takeBytes(), allowMalformed: false),
+        );
+      }, timeout: totalTimeout);
     } finally {
+      // Abort stalled streams even if the peer never closes the body.
       client.close(force: true);
     }
   }

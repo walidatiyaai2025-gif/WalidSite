@@ -23,6 +23,68 @@ ReviewedRunbook reviewed({
     );
 
 void main() {
+  testWidgets('double guest Save tap opens exactly one login dialog',
+      (tester) async {
+    var loginCalls = 0;
+    var saveCalls = 0;
+    await tester.pumpWidget(MaterialApp(
+      home: ReviewedRunbookDetail(
+        id: runbookId,
+        arabic: false,
+        loader: (_) async => reviewed(),
+        loginAction: (_, __) async {
+          loginCalls++;
+          return const RunbookSession(token: bearer, expiresAt: null);
+        },
+        saveAction: (_, __) async { saveCalls++; },
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('online-runbook-save')), 200,
+    );
+    await tester.ensureVisible(find.byKey(const Key('online-runbook-save')));
+    await tester.tap(find.byKey(const Key('online-runbook-save')));
+    await tester.tap(find.byKey(const Key('online-runbook-save')));
+    await tester.pumpAndSettle();
+    expect(find.byType(AlertDialog), findsOneWidget);
+    expect(loginCalls, 0);
+    expect(saveCalls, 0);
+  });
+
+  testWidgets('unknown save outcome never claims success in English or Arabic',
+      (tester) async {
+    for (final arabic in [false, true]) {
+      var calls = 0;
+      await tester.pumpWidget(MaterialApp(
+        home: ReviewedRunbookDetail(
+          key: ValueKey(arabic),
+          id: runbookId,
+          arabic: arabic,
+          initialBearer: bearer,
+          loader: (_) async => reviewed(),
+          saveAction: (_, __) async {
+            calls++;
+            throw TimeoutException('PRIVATE_SERVER_DETAIL');
+          },
+        ),
+      ));
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('online-runbook-save')), 200,
+      );
+      await tester.ensureVisible(find.byKey(const Key('online-runbook-save')));
+      await tester.tap(find.byKey(const Key('online-runbook-save')));
+      await tester.pumpAndSettle();
+      expect(calls, 1);
+      expect(find.textContaining('PRIVATE_SERVER_DETAIL'), findsNothing);
+      expect(find.text(arabic
+          ? 'لم يصل تأكيد الحفظ. تحقق من محفوظات حسابك قبل إعادة المحاولة.'
+          : 'Save confirmation was not received. Check your saved resources before retrying.'), findsOneWidget);
+      expect(find.text(arabic ? 'تم الحفظ' : 'Saved'), findsNothing);
+    }
+  });
+
   Future<void> pumpDetail(
     WidgetTester tester, {
     bool arabic = false,
