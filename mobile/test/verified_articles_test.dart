@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -222,6 +223,9 @@ void main() {
       home: VerifiedArticleLibrary(
         arabic: false,
         loader: () => SynchronousFuture<List<VerifiedArticle>>(items),
+        detailLoader: (slug) =>
+            SynchronousFuture<VerifiedArticle>(
+                items.singleWhere((article) => article.slug == slug)),
       ),
     ));
     await tester.pumpAndSettle();
@@ -232,6 +236,98 @@ void main() {
     expect(find.byKey(const Key('verified-article-body')), findsOneWidget);
     expect(find.textContaining('Verified recovery guide'), findsOneWidget);
     expect(find.text('https://docs.example.org/recovery'), findsOneWidget);
+  });
+
+  testWidgets('withdrawn article is never opened from a stale verified list', (tester) async {
+    final cached = VerifiedArticle.parseList(safeJson);
+    var reads = 0;
+    await tester.pumpWidget(MaterialApp(
+      home: VerifiedArticleLibrary(
+        arabic: false,
+        loader: () => SynchronousFuture<List<VerifiedArticle>>(cached),
+        detailLoader: (slug) async {
+          reads++;
+          // A revoked server publication returns HTTP 404. The earlier
+          // verified list is not authorization to show its former body.
+          throw StateError('publication withdrawn');
+        },
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('article-database-recovery')));
+    await tester.pumpAndSettle();
+
+    expect(reads, 1);
+    expect(find.byKey(const Key('verified-article-unavailable')), findsOneWidget);
+    expect(find.byKey(const Key('verified-article-body')), findsNothing);
+    expect(find.textContaining('Verified recovery guide'), findsNothing);
+    expect(find.text('https://docs.example.org/recovery'), findsNothing);
+
+    await tester.tap(find.byKey(const Key('verified-article-retry')));
+    await tester.pumpAndSettle();
+    expect(reads, 2, reason: 'Only the explicit retry may recheck a withdrawn article');
+    expect(find.byKey(const Key('verified-article-body')), findsNothing);
+  });
+
+  testWidgets('fresh article detail is awaited and rejects wrong publication slug', (tester) async {
+    final cached = VerifiedArticle.parseList(safeJson);
+    final first = Completer<VerifiedArticle>();
+    var reads = 0;
+    await tester.pumpWidget(MaterialApp(
+      home: VerifiedArticleLibrary(
+        arabic: false,
+        loader: () => SynchronousFuture<List<VerifiedArticle>>(cached),
+        detailLoader: (slug) {
+          reads++;
+          if (reads == 1) return first.future;
+          return SynchronousFuture<VerifiedArticle>(cached.single);
+        },
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('article-database-recovery')));
+    await tester.pump();
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    expect(find.byKey(const Key('verified-article-body')), findsNothing);
+    first.complete(const VerifiedArticle(
+      slug: 'different-publication',
+      title: 'Unrelated title',
+      body: 'Untrusted stale content',
+      citations: ['https://docs.example.org/other'],
+    ));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('verified-article-unavailable')), findsOneWidget);
+    expect(find.text('Untrusted stale content'), findsNothing);
+
+    await tester.tap(find.byKey(const Key('verified-article-retry')));
+    await tester.pumpAndSettle();
+    expect(reads, 2);
+    expect(find.byKey(const Key('verified-article-body')), findsOneWidget);
+    expect(find.textContaining('Verified recovery guide'), findsOneWidget);
+    expect(find.text('https://docs.example.org/recovery'), findsOneWidget);
+  });
+
+  testWidgets('Arabic withdrawn article gives safe RTL recovery', (tester) async {
+    final cached = VerifiedArticle.parseList(safeJson);
+    await tester.pumpWidget(MaterialApp(
+      locale: const Locale('ar'),
+      home: Directionality(
+        textDirection: TextDirection.rtl,
+        child: VerifiedArticleLibrary(
+          arabic: true,
+          loader: () => SynchronousFuture<List<VerifiedArticle>>(cached),
+          detailLoader: (_) async => throw StateError('revoked'),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('article-database-recovery')));
+    await tester.pumpAndSettle();
+    final notice = find.byKey(const Key('verified-article-unavailable'));
+    expect(notice, findsOneWidget);
+    expect(Directionality.of(tester.element(notice)), TextDirection.rtl);
+    expect(find.text('إعادة التحقق'), findsOneWidget);
+    expect(find.byKey(const Key('verified-article-body')), findsNothing);
   });
 
   testWidgets('Arabic library renders genuine data with RTL layout', (tester) async {
