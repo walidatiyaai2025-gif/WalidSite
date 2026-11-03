@@ -1,0 +1,240 @@
+<?php
+
+namespace Tests\Feature\Api;
+
+use App\Domain\Deployment\TrustedReleaseUpdateJourney;
+use DomainException;
+use FilesystemIterator;
+use PDO;
+use PHPUnit\Framework\TestCase;
+use RecursiveDirectoryIterator;
+use RecursiveIteratorIterator;
+use RuntimeException;
+use ZipArchive;
+
+final class TrustedReleaseUpdateJourneyTest extends TestCase
+{
+    private PDO $rootDb;
+    private PDO $liveDb;
+    private PDO $restoreDb;
+    private string $sourceSchema;
+    private string $targetSchema;
+    private string $home;
+    private string $privateKey;
+    private string $publicKey;
+    private array $paths;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        if (getenv('GITHUB_ACTIONS') !== 'true') {
+            self::markTestSkipped('Real MariaDB 10.11 + ZIP acceptance runs in GitHub CI.');
+        }
+        if (! class_exists(ZipArchive::class) || ! function_exists('sodium_crypto_sign_detached')) {
+            self::markTestSkipped('Both ext-zip and sodium are required.');
+        }
+
+        $pair = sodium_crypto_sign_keypair();
+        $this->privateKey = sodium_crypto_sign_secretkey($pair);
+        $this->publicKey = base64_encode(sodium_crypto_sign_publickey($pair));
+
+        $dsn = 'mysql:host=127.0.0.1;port=3306;charset=utf8mb4';
+        $this->rootDb = new PDO($dsn, 'root', 'walidsite-root', [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+        ]);
+        $nonce = bin2hex(random_bytes(5));
+        $this->sourceSchema = 'signed_live_'.$nonce;
+        $this->targetSchema = 'signed_restore_'.$nonce;
+        $this->rootDb->exec('CREATE DATABASE '.$this->ident($this->sourceSchema).' CHARACTER SET utf8mb4');
+        $this->rootDb->exec('CREATE DATABASE '.$this->ident($this->targetSchema).' CHARACTER SET utf8mb4');
+        $this->liveDb = new PDO($dsn.';dbname='.$this->sourceSchema, 'root', 'walidsite-root', [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+        ]);
+        $this->restoreDb = new PDO($dsn.';dbname='.$this->targetSchema, 'root', 'walidsite-root', [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+        ]);
+        $this->liveDb->exec('CREATE TABLE billing (id INT NOT NULL PRIMARY KEY, memo VARCHAR(100), payload VARBINARY(32)) ENGINE=InnoDB');
+        $stmt = $this->liveDb->prepare('INSERT INTO billing (id,memo,payload) VALUES (?,?,?)');
+        self::assertTrue($stmt->execute([1, 'محتوى عربي', "\x00\xffDATA"]));
+
+        $this->home = sys_get_temp_dir().'/walidsite-trusted-journey-'.bin2hex(random_bytes(8));
+        $this->paths = [
+            'quarantine' => $this->home.'/quarantine',
+            'incoming' => $this->home.'/quarantine/incoming',
+            'archive' => $this->home.'/quarantine/incoming/WalidSite-update-v1.2.0.zip',
+            'releases' => $this->home.'/releases',
+            'current' => $this->home.'/current',
+            'public' => $this->home.'/public_html',
+            'environment' => $this->home.'/runtime/.env',
+            'private_data' => $this->home.'/runtime/storage',
+            'uploads' => $this->home.'/user-public/uploads',
+            'backup_vault' => $this->home.'/backup-vault',
+            'disposable_files' => $this->home.'/disposable-files',
+        ];
+        foreach ([
+            $this->paths['incoming'],
+            $this->paths['releases'],
+            $this->paths['private_data'],
+            $this->paths['uploads'],
+            $this->paths['backup_vault'],
+            $this->paths['disposable_files'],
+        ] as $directory) {
+            self::assertTrue(mkdir($directory, 0700, true));
+        }
+
+        $old = $this->paths['releases'].'/v1';
+        foreach (['application/bootstrap', 'application/vendor', 'public_html'] as $dir) {
+            self::assertTrue(mkdir($old.'/'.$dir, 0700, true));
+        }
+        foreach ([
+            'application/bootstrap/app.php',
+            'application/vendor/autoload.php',
+            'public_html/index.php',
+            'public_html/.htaccess',
+        ] as $path) {
+            file_put_contents($old.'/'.$path, 'LIVE-vA');
+        }
+        self::assertTrue(symlink($old, $this->paths['current']));
+        self::assertTrue(symlink($this->paths['current'].'/public_html', $this->paths['public']));
+        file_put_contents($this->paths['environment'], 'APP_KEY=keep-existing-secret');
+        file_put_contents($this->paths['private_data'].'/memo.txt', 'keep-private');
+        file_put_contents($this->paths['uploads'].'/avatar.png', "\x00\xffUPLOAD");
+    }
+
+    protected function tearDown(): void
+    {
+        if (isset($this->liveDb)) {
+            unset($this->liveDb, $this->restoreDb);
+        }
+        if (isset($this->rootDb)) {
+            foreach ([$this->sourceSchema ?? '', $this->targetSchema ?? ''] as $name) {
+                if ($name !== '') {
+                    $this->rootDb->exec('DROP DATABASE IF EXISTS '.$this->ident($name));
+                }
+            }
+        }
+        if (isset($this->home) && is_dir($this->home)) {
+            $it = new RecursiveIteratorIterator(
+                new RecursiveDirectoryIterator($this->home, FilesystemIterator::SKIP_DOTS),
+                RecursiveIteratorIterator::CHILD_FIRST,
+            );
+            foreach ($it as $file) {
+                $file->isDir() && ! $file->isLink()
+                    ? @rmdir($file->getPathname()) : @unlink($file->getPathname());
+            }
+            @rmdir($this->home);
+        }
+        parent::tearDown();
+    }
+
+    private function ident(string $name): string
+    {
+        return chr(96).$name.chr(96);
+    }
+
+    private function signedZip(bool $wrongSignature = false): string
+    {
+        $zip = new ZipArchive();
+        self::assertTrue($zip->open($this->paths['archive'], ZipArchive::CREATE | ZipArchive::OVERWRITE) === true);
+        foreach ([
+            'application/bootstrap/app.php' => 'NEW-vB',
+            'application/vendor/autoload.php' => 'NEW-vB',
+            'public_html/index.php' => 'NEW-vB',
+            'public_html/.htaccess' => 'NEW-vB',
+            'contracts/product.json' => '{"product":"walidsite"}',
+        ] as $path => $bytes) {
+            self::assertTrue($zip->addFromString($path, $bytes));
+        }
+        self::assertTrue($zip->close());
+        $payload = json_encode([
+            'product' => 'walidsite',
+            'version' => '1.2.0',
+            'source_sha' => str_repeat('a', 40),
+            'artifact_sha256' => hash_file('sha256', $this->paths['archive']),
+            'artifact_size' => filesize($this->paths['archive']),
+            'min_php' => '8.3.0',
+            'artifact_file' => 'WalidSite-update-v1.2.0.zip',
+        ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+        $key = $wrongSignature
+            ? sodium_crypto_sign_secretkey(sodium_crypto_sign_keypair()) : $this->privateKey;
+        return json_encode([
+            'payload' => base64_encode($payload),
+            'signature' => base64_encode(sodium_crypto_sign_detached($payload, $key)),
+        ], JSON_THROW_ON_ERROR);
+    }
+
+    private function update(string $signed, ?callable $writes = null, ?callable $health = null): array
+    {
+        return (new TrustedReleaseUpdateJourney())->execute(
+            $this->liveDb, $this->restoreDb,
+            $signed, $this->publicKey, 'https://updates.example.test',
+            '1.0.0', $this->paths,
+            $writes ?? static fn (): bool => true,
+            $health ?? fn (): bool => file_get_contents($this->paths['public'].'/index.php') === 'NEW-vB',
+        );
+    }
+
+    public function test_signed_zip_to_isolated_restore_to_version_switch_preserves_live_data(): void
+    {
+        $result = $this->update($this->signedZip());
+        self::assertSame('switched', $result['state']);
+        self::assertSame('1.2.0', $result['version']);
+        self::assertSame(3, $result['files']);
+        self::assertSame(1, $result['database_tables']);
+        self::assertSame(1, $result['database_rows']);
+        self::assertSame('NEW-vB', file_get_contents($this->paths['public'].'/index.php'));
+        self::assertSame('LIVE-vA', file_get_contents($this->paths['releases'].'/v1/public_html/index.php'));
+        self::assertSame('APP_KEY=keep-existing-secret', file_get_contents($this->paths['environment']));
+        self::assertSame("\x00\xffUPLOAD", file_get_contents($this->paths['uploads'].'/avatar.png'));
+        self::assertSame('محتوى عربي', $this->restoreDb->query('SELECT memo FROM billing WHERE id=1')->fetchColumn());
+        self::assertSame("\x00\xffDATA", $this->restoreDb->query('SELECT payload FROM billing WHERE id=1')->fetchColumn());
+    }
+
+    public function test_untrusted_publisher_never_creates_candidate_or_touches_live_site(): void
+    {
+        try {
+            $this->update($this->signedZip(true));
+            self::fail('Wrong publisher signature should fail closed.');
+        } catch (DomainException) {
+            self::assertSame('LIVE-vA', file_get_contents($this->paths['public'].'/index.php'));
+            self::assertSame([], glob($this->paths['releases'].'/v1.2*') ?: []);
+            self::assertSame([], glob($this->paths['backup_vault'].'/mariadb-*') ?: []);
+        }
+    }
+
+    public function test_unavailable_quiescence_blocks_all_backups_and_pointer_switches(): void
+    {
+        try {
+            $this->update($this->signedZip(), static fn (): bool => false);
+            self::fail('Writer activity must prevent any update.');
+        } catch (DomainException) {
+            self::assertSame('LIVE-vA', file_get_contents($this->paths['public'].'/index.php'));
+            self::assertSame([], glob($this->paths['backup_vault'].'/mariadb-*') ?: []);
+        }
+    }
+
+    public function test_nonempty_recovery_database_prevents_cutover_after_signed_promotion(): void
+    {
+        $this->restoreDb->exec('CREATE TABLE preexisting (id INT) ENGINE=InnoDB');
+        try {
+            $this->update($this->signedZip());
+            self::fail('Recovery must be proven against an empty disposable database.');
+        } catch (DomainException) {
+            self::assertSame('LIVE-vA', file_get_contents($this->paths['public'].'/index.php'));
+            self::assertSame('APP_KEY=keep-existing-secret', file_get_contents($this->paths['environment']));
+        }
+    }
+
+    public function test_health_failure_rolls_back_code_without_destroying_user_data(): void
+    {
+        try {
+            $this->update($this->signedZip(), null, static fn (): bool => false);
+            self::fail('An unhealthy signed release cannot remain active.');
+        } catch (RuntimeException $error) {
+            self::assertStringContainsString('previous release restored', $error->getMessage());
+            self::assertSame('LIVE-vA', file_get_contents($this->paths['public'].'/index.php'));
+            self::assertSame('keep-private', file_get_contents($this->paths['private_data'].'/memo.txt'));
+            self::assertSame(1, (int) $this->liveDb->query('SELECT COUNT(*) FROM billing')->fetchColumn());
+        }
+    }
+}
