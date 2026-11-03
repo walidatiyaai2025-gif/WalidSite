@@ -96,14 +96,12 @@ final class PublicContractOperationJourneyTest extends TestCase
 
                 if ($operation['method'] === 'POST') {
                     $this->assertSame('/public/contact', $operation['path'], $label);
-                    // The current ContactInput is closed even to query 'lang'
-                    // because Laravel merges query parameters into request
-                    // input. Record this real limitation instead of claiming
-                    // localized POST success or relaxing the API's validation.
+                    // URL lang is legal metadata, not a ContactInput field.
+                    // With an empty actual body, report missing required data
+                    // even when the query contains a supported locale.
                     $this->postJson($url, [])->assertUnprocessable()
-                        ->assertJsonValidationErrors('payload');
-                    // Separately prove required-field validation when there
-                    // are no unexpected query parameters. No mail is sent.
+                        ->assertJsonValidationErrors(['name', 'email', 'message', 'privacy_consent']);
+                    // Also prove the same required-field checks with no query.
                     $this->postJson('/api/v1/public/contact', [])->assertUnprocessable()
                         ->assertJsonValidationErrors(['name', 'email', 'message', 'privacy_consent']);
                     $invalidContact++;
