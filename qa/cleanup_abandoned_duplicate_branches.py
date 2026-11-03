@@ -157,10 +157,162 @@ def reconcile_one(candidate: AbandonedDuplicate, api, repo: str) -> str:
     return "deleted"
 
 
+
+@dataclass(frozen=True)
+class Orphaned480Branch:
+    """An independently audited orphan without a historical source PR."""
+
+    branch: str
+    sha: str
+    merge_base: str
+    ahead: int
+    superseded_by: int
+    # SHA-1 blob witnesses for every W2 file originally touched by this branch.
+    # Any later edit to a witness deliberately requires a fresh human audit.
+    main_witnesses: tuple[tuple[str, str], ...]
+
+
+# Three orphan heads audited against main on 2026-11-03. Their old commits
+# carry no surviving behavior absent from main. See Issue #718 for evidence.
+# Keep this narrower than the legacy abandoned-PR allowlist above.
+ORPHANED_480 = (
+    Orphaned480Branch(
+        "fix/480-admin-audience-consent-time-parity",
+        "f3263c14b84cff7e9331cd2acab5a220467ccf4b",
+        "e9751b0eaf0bbe4cb36568f9f7ec178ccf09b7cd", 2, 506,
+        (
+            ("backend/routes/web.php", "8ec5c9130aefba22164b273b5271a04bd7870873"),
+            ("backend/tests/Feature/Web/AdminOperationsJourneyTest.php", "47431ec2413d6d00a8f9cfc96d154e6bf5ba4d98"),
+        ),
+    ),
+    Orphaned480Branch(
+        "feat/480-privacy-rights-requests",
+        "3ac76582673a46779dc614801d2eb927534aab25",
+        "120c31d7e0db630311d52866db52e9d624330951", 5, 506,
+        (
+            ("backend/routes/web.php", "8ec5c9130aefba22164b273b5271a04bd7870873"),
+            ("backend/resources/views/layouts/site.blade.php", "f7bb04c019d2faa0824952ee9cc853e5bfa94e0e"),
+            ("backend/resources/views/public/contact.blade.php", "844cd96dd42f4be653053a1c4552b13492014c1e"),
+            ("backend/resources/views/public/privacy.blade.php", "f29900d670bf2a2fbf730ffb07892dd725854d86"),
+            ("backend/tests/Feature/Web/PrivacyRightsRequestJourneyTest.php", "4bb517c8ffec54391832379d569299f75d7374ef"),
+        ),
+    ),
+    Orphaned480Branch(
+        "feat/480-privacy-data-request-journey",
+        "0a59fea2eec883543029ca38743228205f950012",
+        "120c31d7e0db630311d52866db52e9d624330951", 6, 506,
+        (
+            ("backend/routes/web.php", "8ec5c9130aefba22164b273b5271a04bd7870873"),
+            ("backend/resources/views/layouts/site.blade.php", "f7bb04c019d2faa0824952ee9cc853e5bfa94e0e"),
+            ("backend/resources/views/public/contact.blade.php", "844cd96dd42f4be653053a1c4552b13492014c1e"),
+            ("backend/resources/views/public/privacy.blade.php", "f29900d670bf2a2fbf730ffb07892dd725854d86"),
+            ("backend/resources/views/public/terms.blade.php", "cebc35745d404c07cc6bcce848c2479f988d7824"),
+            ("backend/tests/Feature/Web/PrivacyDataRequestJourneyTest.php", "7275d46282eee17340ae8fcde20417d66b4296f3"),
+        ),
+    ),
+)
+
+
+def reconcile_orphan_480(candidate: Orphaned480Branch, api, repo: str, tested_main_sha: str) -> str:
+    """Fail-closed one-time reconciliation, callable only after green main CI."""
+    if (
+        candidate not in ORPHANED_480
+        or not re.fullmatch(r"walidatiyaai2025-gif/WalidSite", repo)
+        or not candidate.branch.startswith(("feat/480-", "fix/480-"))
+        or not all(_sha(sha) for sha in (candidate.sha, candidate.merge_base, tested_main_sha))
+        or not candidate.main_witnesses
+        or any(not _sha(sha) for _, sha in candidate.main_witnesses)
+    ):
+        return "preserved"
+
+    prefix = "repos/" + repo + "/"
+    main_ref_path = prefix + "git/ref/heads/main"
+    main_ref = api.get(main_ref_path)
+    if (main_ref.get("object") or {}).get("sha") != tested_main_sha:
+        return "preserved"
+
+    successor = api.get(prefix + "pulls/" + str(candidate.superseded_by))
+    if (
+        not isinstance(successor, dict)
+        or successor.get("merged") is not True
+        or (successor.get("base") or {}).get("ref") != "main"
+        or not _sha(successor.get("merge_commit_sha"))
+    ):
+        return "preserved"
+    merge_sha = successor["merge_commit_sha"]
+    merged_compare = api.get(prefix + "compare/" + merge_sha + "..." + tested_main_sha)
+    if (
+        not isinstance(merged_compare, dict)
+        or (merged_compare.get("merge_base_commit") or {}).get("sha") != merge_sha
+        or merged_compare.get("status") not in ("identical", "ahead")
+    ):
+        return "preserved"
+
+    # The reviewed branch history and exact accepted main code/test blobs must
+    # still match. A later rewrite (even if it looks equivalent) blocks deletion.
+    history = api.get(prefix + "compare/" + tested_main_sha + "..." + candidate.sha)
+    if (
+        not isinstance(history, dict)
+        or (history.get("merge_base_commit") or {}).get("sha") != candidate.merge_base
+        or history.get("ahead_by") != candidate.ahead
+        or history.get("status") != "diverged"
+    ):
+        return "preserved"
+    for path, witness_sha in candidate.main_witnesses:
+        current_file = api.get(prefix + "contents/" + path + "?ref=" + tested_main_sha)
+        if not isinstance(current_file, dict) or current_file.get("sha") != witness_sha:
+            return "preserved"
+
+    ref_path = prefix + "git/ref/heads/" + candidate.branch
+    try:
+        current = api.get(ref_path)
+    except HTTPError as error:
+        if error.code == 404:
+            return "already_absent"
+        raise
+    if (current.get("object") or {}).get("sha") != candidate.sha:
+        return "preserved"
+
+    owner = repo.split("/")[0]
+    prs_path = prefix + "pulls?state=all&per_page=100&head=" + quote(
+        owner + ":" + candidate.branch, safe=""
+    )
+    # These are explicitly *orphan* branches; unexpected historic or open PR
+    # provenance needs a new audit. Draft PRs are included in state=all.
+    if api.get(prs_path) != []:
+        return "preserved"
+
+    # Two reads of BOTH main and the orphan ref immediately before DELETE.
+    if (api.get(main_ref_path).get("object") or {}).get("sha") != tested_main_sha:
+        return "preserved"
+    try:
+        latest = api.get(ref_path)
+    except HTTPError as error:
+        if error.code == 404:
+            return "already_absent"
+        raise
+    if (latest.get("object") or {}).get("sha") != candidate.sha:
+        return "preserved"
+
+    api.delete(prefix + "git/refs/heads/" + candidate.branch)
+    return "deleted"
+
+
 def main() -> int:
     repo = os.environ.get("GITHUB_REPOSITORY", "")
     api = GitHubApi(os.environ.get("GH_TOKEN", ""))
     failures = 0
+    if os.environ.get("RECONCILE_480_ORPHANS") == "1":
+        tested_main_sha = os.environ.get("GITHUB_SHA", "")
+        for candidate in ORPHANED_480:
+            try:
+                outcome = reconcile_orphan_480(candidate, api, repo, tested_main_sha)
+                print(f"Orphan {candidate.branch}: {outcome}")
+            except Exception as error:
+                print(f"Orphan {candidate.branch}: preserved (API error: {type(error).__name__})")
+                failures += 1
+        return 1 if failures else 0
+
     for candidate in DUPLICATES:
         try:
             outcome = reconcile_one(candidate, api, repo)
