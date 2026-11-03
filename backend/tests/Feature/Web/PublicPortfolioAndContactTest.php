@@ -342,6 +342,32 @@ class PublicPortfolioAndContactTest extends TestCase
         Mail::assertNothingSent();
     }
 
+    public function test_contact_consent_failure_has_accessible_localized_recovery_without_sending(): void
+    {
+        config(['mail.contact_recipient' => 'contact@example.test', 'mail.default' => 'smtp']);
+        Mail::fake();
+
+        foreach (['en', 'ar'] as $locale) {
+            $response = $this->from('/contact?lang='.$locale)
+                ->followingRedirects()
+                ->post('/contact?lang='.$locale, [
+                    'name' => 'Visitor',
+                    'email' => 'visitor@example.test',
+                    'subject' => 'Technical inquiry',
+                    'message' => 'A sufficiently detailed technical inquiry.',
+                ]);
+
+            $response->assertOk()
+                ->assertSee('href="#contact-privacy-consent"', false)
+                ->assertSee('id="contact-privacy-consent-error"', false)
+                ->assertSee('aria-describedby="contact-privacy-consent-error"', false)
+                ->assertSee('aria-invalid="true"', false)
+                ->assertSee('lang="'.$locale.'"', false);
+        }
+
+        Mail::assertNothingSent();
+    }
+
     public function test_contact_form_validates_and_honeypot_never_sends(): void
     {
         config(['mail.contact_recipient' => 'contact@example.test', 'mail.default' => 'smtp']);
