@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Article;
 use App\Models\ArticleRevision;
+use App\Models\Category;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -16,11 +17,16 @@ class PublicArticleController extends Controller
             'lang' => ['sometimes', 'in:ar,en'],
             'q' => ['sometimes', 'string', 'max:80'],
             'page' => ['sometimes', 'integer', 'min:1', 'max:10000'],
+            'category' => ['sometimes', 'string', 'max:60', 'regex:/^[a-z0-9]+(?:-[a-z0-9]+)*$/D'],
         ]);
         $locale = ($query['lang'] ?? '') === 'ar' ? 'ar' : 'en';
         $search = trim($query['q'] ?? '');
 
         $articles = Article::query()->publiclyVisible();
+        if (isset($query['category'])) {
+            $articles->whereHas('categories', static fn ($category) =>
+                $category->where('categories.slug', $query['category']));
+        }
         if ($search !== '') {
             // Explicit LIKE escape is needed on both SQLite (CI) and
             // MariaDB (production). Backslash without ESCAPE is not portable.
@@ -80,6 +86,7 @@ class PublicArticleController extends Controller
         return response()->json(['data' => $data, 'meta' => [
             'current_page' => $currentPage,
             'has_more_pages' => $hasMorePages,
+            'categories' => $this->verifiedCategoryOptions($locale),
         ]])->header('Cache-Control', 'no-store');
     }
 
@@ -95,6 +102,65 @@ class PublicArticleController extends Controller
             $revision,
             ($query['lang'] ?? '') === 'ar' ? 'ar' : 'en'
         )])->header('Cache-Control', 'no-store');
+    }
+
+    /**
+     * Only categories attached to currently public, independently verified
+     * articles can be advertised. This is a live, revocable taxonomy, never
+     * a static list that would disclose draft-only or withdrawn editorial work.
+     *
+     * @return list<array{slug:string,name:string}>
+     */
+    private function verifiedCategoryOptions(string $locale): array
+    {
+        $options = [];
+        $categories = Category::query()->whereHas('articles',
+            static fn ($articles) => $articles->publiclyVisible())
+            ->orderBy('slug')->lazy(100);
+
+        foreach ($categories as $category) {
+            if (! $this->validCategory($category)) {
+                continue;
+            }
+            foreach ($category->articles()->publiclyVisible()->lazy(100) as $article) {
+                if (preg_match('/\A[A-Za-z0-9-]+\z/D', (string) $article->slug) !== 1
+                    || ! $article->publicRevision() instanceof ArticleRevision) {
+                    continue;
+                }
+                $options[] = $this->categoryData($category, $locale);
+                break;
+            }
+        }
+
+        return $options;
+    }
+
+    /** @return list<array{slug:string,name:string}> */
+    private function articleCategories(Article $article, string $locale): array
+    {
+        $result = [];
+        foreach ($article->categories()->orderBy('slug')->get() as $category) {
+            if ($this->validCategory($category)) {
+                $result[] = $this->categoryData($category, $locale);
+            }
+        }
+        return $result;
+    }
+
+    private function validCategory(Category $category): bool
+    {
+        return preg_match('/\A[a-z0-9]+(?:-[a-z0-9]+)*\z/D', (string) $category->slug) === 1
+            && trim((string) $category->name_en) !== ''
+            && trim((string) $category->name_ar) !== '';
+    }
+
+    /** @return array{slug:string,name:string} */
+    private function categoryData(Category $category, string $locale): array
+    {
+        return [
+            'slug' => $category->slug,
+            'name' => $locale === 'ar' ? $category->name_ar : $category->name_en,
+        ];
     }
 
     private function serialize(Article $article, ArticleRevision $revision, string $lang): array
@@ -113,6 +179,7 @@ class PublicArticleController extends Controller
             // No public signed-media endpoint is implemented yet. Never expose
             // raw storage_key, guessed CDN URLs, or private object locations.
             'hero_image_url' => null,
+            'categories' => $this->articleCategories($article, $lang),
             'published_at' => $article->published_at?->toIso8601String(),
         ];
     }
