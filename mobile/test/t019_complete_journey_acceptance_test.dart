@@ -333,6 +333,9 @@ void main() {
             loads++;
             return SynchronousFuture<List<VerifiedArticle>>(articles);
           },
+          detailLoader: (slug) => SynchronousFuture<VerifiedArticle>(
+            articles.singleWhere((article) => article.slug == slug),
+          ),
         ),
       ),
     ));
