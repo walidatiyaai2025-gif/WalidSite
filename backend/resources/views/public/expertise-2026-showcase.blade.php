@@ -127,6 +127,20 @@ $w3Dest = static fn (string $route, array $args = []) => route($route, array_mer
 @endphp
 @push('styles')
 <style>
+/* WEB-03 standalone navigation skin: other professional screens keep their own T007 CSS. */
+body:has(.expertise-screen) .t007-nav-shell{height:60px;min-height:60px;display:flex;align-items:center;gap:30px;padding:0 max(5%,32px);background:#17436e;color:#fff;box-shadow:0 2px 9px #173f652b}
+body:has(.expertise-screen) .t007-brand{display:inline-flex;align-items:center;text-decoration:none;white-space:nowrap;gap:6px;margin-inline-end:30px}
+body:has(.expertise-screen) .t007-brand span{font-size:29px;font-weight:900;line-height:1;letter-spacing:-1px;color:#00b8a7}
+body:has(.expertise-screen) .t007-brand strong{font-size:21px;font-weight:850;color:#fff}
+body:has(.expertise-screen) .t007-nav-links{display:flex;align-items:stretch;justify-content:space-between;gap:clamp(14px,2.3vw,42px);flex:1;min-width:0;height:100%}
+body:has(.expertise-screen) .t007-nav-links a{color:#fff;text-decoration:none;display:flex;align-items:center;border-bottom:3px solid transparent;font-size:15px;padding:0 3px;white-space:nowrap}
+body:has(.expertise-screen) .t007-nav-links a.active{color:#14d4b7;border-color:#00c7ae;font-weight:850}
+body:has(.expertise-screen) .t007-contact{background:linear-gradient(95deg,#08d1b4,#00b9a7);border-radius:13px;color:#022550;min-width:137px;height:39px;padding:6px 14px;display:inline-flex;align-items:center;justify-content:center;text-decoration:none;white-space:nowrap;font-size:15px;font-weight:850;margin-inline-start:18px}
+body:has(.expertise-screen) .t007-sr-only{position:absolute!important;width:1px!important;height:1px!important;margin:-1px!important;padding:0!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important}
+body:has(.expertise-screen) .t007-sr-only:focus-visible{position:fixed!important;top:10px!important;inset-inline-start:10px!important;width:auto!important;height:auto!important;padding:9px 13px!important;overflow:visible!important;clip:auto!important;background:#fff;color:#072858;z-index:9999}
+body:has(.expertise-screen) .t007-nav-shell a:focus-visible{outline:3px solid #a6fff2;outline-offset:-2px}
+@media(max-width:1100px){body:has(.expertise-screen) .t007-nav-shell{padding:0 20px;gap:15px}body:has(.expertise-screen) .t007-brand{margin-inline-end:0}body:has(.expertise-screen) .t007-nav-links{gap:14px;overflow-x:auto}body:has(.expertise-screen) .t007-nav-links a{font-size:13px}body:has(.expertise-screen) .t007-contact{margin-inline-start:0}}
+@media(max-width:700px){body:has(.expertise-screen) .t007-nav-shell{flex-wrap:wrap;height:auto;min-height:64px;padding:10px 15px;gap:8px}body:has(.expertise-screen) .t007-nav-links{order:3;flex:0 0 100%;overflow-x:auto;min-height:38px}body:has(.expertise-screen) .t007-brand strong{font-size:18px}body:has(.expertise-screen) .t007-contact{margin-inline-start:auto;min-width:110px;font-size:13px}body:has(.expertise-screen) .t007-nav-links a{padding:0 6px}}
 /* Owner supplied 1648×927 four-state reference, scoped to WEB-03 only. */
 body:has(.expertise-screen){background:#eaf6ff;overflow-x:clip;color:#081f52}
 body:has(.expertise-screen) .site-main{min-height:0}
@@ -246,6 +260,7 @@ body:has(.expertise-screen) .t007-nav-shell{box-shadow:none}
 @media(prefers-reduced-motion:reduce){.expertise-screen *{scroll-behavior:auto;transition:none}}
 </style>
 @endpush
+<a class="t007-sr-only" href="#t007-primary-content">{{ $w3Ar ? 'انتقل إلى الخبرات' : 'Skip to expertise' }}</a>
 <header class="expertise-hero" aria-labelledby="expertise-title" id="t007-primary-content" tabindex="-1">
     <div class="expertise-intro">
         <div class="expertise-hero-top">
