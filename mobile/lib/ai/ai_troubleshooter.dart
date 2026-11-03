@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 
 import '../articles/verified_articles.dart';
 import 'diagnosis_report.dart';
+import 'mobile_ai_paid_intent.dart';
 import '../runbooks/verified_online_runbooks.dart';
 import '../runbooks/offline_runbooks.dart';
 import '../solutions/offline_solution_finder.dart';
@@ -142,6 +143,7 @@ class MobileAiClient {
     String path, {
     Map<String, Object?>? body,
     String? bearer,
+    String? idempotencyKey,
   }) async {
     final origin = configuredOrigin();
     if (origin == null) {
@@ -154,6 +156,7 @@ class MobileAiClient {
       origin.replace(path: path),
       body: body,
       bearer: bearer,
+      idempotencyKey: idempotencyKey,
     );
   }
 
@@ -167,8 +170,12 @@ class MobileAiClient {
     Uri url, {
     Map<String, Object?>? body,
     String? bearer,
+    String? idempotencyKey,
     Duration totalTimeout = const Duration(seconds: 12),
   }) async {
+    if (idempotencyKey != null && !MobileAiIntentKey.isValid(idempotencyKey)) {
+      throw const FormatException('Invalid paid diagnosis intent key');
+    }
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
     try {
       return await withinDeadline(() async {
@@ -178,6 +185,9 @@ class MobileAiClient {
         request.headers.set(HttpHeaders.contentTypeHeader, 'application/json');
         if (bearer != null) {
           request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $bearer');
+        }
+        if (idempotencyKey != null) {
+          request.headers.set('Idempotency-Key', idempotencyKey);
         }
         if (body != null) {
           request.add(utf8.encode(jsonEncode(body)));
@@ -260,6 +270,7 @@ class MobileAiClient {
     required String technology,
     required String codeSnippet,
     required bool consentToProcess,
+    String? idempotencyKey,
   }) async {
     // Never assert consent in the HTTP adapter on a caller's behalf.
     // A direct caller must supply affirmative per-request consent.
@@ -269,10 +280,15 @@ class MobileAiClient {
     if (token.isEmpty || token.length > 8192) {
       throw const FormatException('Invalid bearer token');
     }
+    // The production client never transmits an unkeyed potentially paid POST.
+    if (idempotencyKey == null || !MobileAiIntentKey.isValid(idempotencyKey)) {
+      throw const FormatException('A stable paid diagnosis key is required');
+    }
     final response = await _jsonRequest(
       'POST',
       '/api/v1/mobile/ai/diagnose',
       bearer: token,
+      idempotencyKey: idempotencyKey,
       body: {
         'question': question.trim(),
         'technology': technology.trim(),
@@ -370,6 +386,13 @@ typedef MobileDiagnoseAction = Future<MobileAiJob> Function(
   String technology,
   String codeSnippet,
 );
+typedef MobileKeyedDiagnoseAction = Future<MobileAiJob> Function(
+  String token,
+  String question,
+  String technology,
+  String codeSnippet,
+  String idempotencyKey,
+);
 typedef MobileSaveAction = Future<void> Function(String token, String runbookId);
 typedef MobileLogoutAction = Future<void> Function(String token);
 typedef MobileJobStatusAction = Future<MobileAiJob> Function(
@@ -383,6 +406,8 @@ class AiTroubleshooterScreen extends StatefulWidget {
     this.loginAction,
     this.logoutAction,
     this.diagnoseAction,
+    this.keyedDiagnoseAction,
+    this.intentStore,
     this.jobStatusAction,
     this.saveAction,
     this.reportAction,
@@ -396,6 +421,10 @@ class AiTroubleshooterScreen extends StatefulWidget {
   final MobileLoginAction? loginAction;
   final MobileLogoutAction? logoutAction;
   final MobileDiagnoseAction? diagnoseAction;
+  /// Real keyed-POST fixture; the original four-argument callback stays for
+  /// backwards-compatible widget fixtures without a live paid API.
+  final MobileKeyedDiagnoseAction? keyedDiagnoseAction;
+  final MobileAiIntentStore? intentStore;
   final MobileJobStatusAction? jobStatusAction;
   final MobileSaveAction? saveAction;
   final DiagnosisReportAction? reportAction;
@@ -432,6 +461,18 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
   String? _message;
   MobileAiJob? _job;
   bool _saved = false;
+  String? _accountEmail;
+  String? _attemptKey;
+  MobileAiPaidAttempt? _attemptSnapshot;
+  Future<void>? _pendingClear;
+  final MobileAiIntentStore _fixtureIntentStore = MemoryMobileAiIntentStore();
+
+  MobileAiIntentStore get _intentStore => widget.intentStore ??
+      (widget.loginAction != null ||
+              widget.diagnoseAction != null ||
+              widget.keyedDiagnoseAction != null
+          ? _fixtureIntentStore
+          : const FileMobileAiIntentStore());
 
   @override
   void dispose() {
@@ -456,6 +497,14 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
   /// form and would otherwise reveal a previous user's code after re-login.
   /// Caller owns setState so this also works inside an async error handler.
   void _scrubPrivateSession() {
+    final email = _accountEmail;
+    if (email != null) {
+      // No raw account, prompt, bearer or question survives session loss.
+      _pendingClear = _intentStore.clearKey(email).catchError((Object _) {});
+    }
+    _accountEmail = null;
+    _attemptKey = null;
+    _attemptSnapshot = null;
     _token = null;
     _expiresAt = null;
     _job = null;
@@ -540,15 +589,24 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
       (String email, String password) =>
           const MobileAiClient().login(email, password);
 
-  MobileDiagnoseAction get _diagnose => widget.diagnoseAction ??
-      (String token, String question, String technology, String codeSnippet) =>
-          const MobileAiClient().diagnose(
-            token,
-            question: question,
-            technology: technology,
-            codeSnippet: codeSnippet,
-            consentToProcess: _consent,
-          );
+  MobileKeyedDiagnoseAction get _keyedDiagnose =>
+      widget.keyedDiagnoseAction ??
+      (String token, String question, String technology,
+          String codeSnippet, String key) {
+        final fixture = widget.diagnoseAction;
+        if (fixture != null) {
+          // The legacy test injection never creates a real paid HTTP request.
+          return fixture(token, question, technology, codeSnippet);
+        }
+        return const MobileAiClient().diagnose(
+          token,
+          question: question,
+          technology: technology,
+          codeSnippet: codeSnippet,
+          consentToProcess: _consent,
+          idempotencyKey: key,
+        );
+      };
 
   MobileJobStatusAction get _readStatus => widget.jobStatusAction ??
       (String token, String jobId) =>
@@ -613,13 +671,25 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
         });
         return;
       }
+      // Read only an opaque key from app-private storage. Never restore
+      // prompt/code or a previous login bearer after app restart.
+      if (_pendingClear != null) await _pendingClear;
+      final retainedKey = await _intentStore.readKey(email);
+      if (!mounted) return;
       setState(() {
         _token = session.token;
         _expiresAt = session.expiresAt;
+        _accountEmail = email.toLowerCase();
+        _attemptKey = retainedKey;
+        _attemptSnapshot = null;
         _password.clear();
-        _message = widget.arabic
-            ? 'تم تسجيل الدخول لهذه الجلسة فقط.'
-            : 'Signed in for this session only.';
+        _message = retainedKey == null
+            ? (widget.arabic
+                ? 'تم تسجيل الدخول لهذه الجلسة فقط.'
+                : 'Signed in for this session only.')
+            : (widget.arabic
+                ? 'قد يكون طلب تشخيص سابق قد بدأ. أدخل نفس السؤال والبيانات ثم أعد المحاولة بنفس المفتاح؛ لن ننشئ طلبًا مدفوعًا جديدًا تلقائيًا.'
+                : 'An earlier diagnosis may have been accepted. Re-enter exactly the same request to recover it with the same key; no new paid request will be started automatically.');
       });
     } catch (error) {
       if (!mounted) return;
@@ -661,20 +731,20 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
   }
 
   Future<void> _submit() async {
-    // An in-flight job must be checked with GET, never resubmitted with POST.
+    // A pending job uses GET only. A lost POST acknowledgement is different:
+    // the only permitted manual POST retry reuses its original opaque key.
     if (_busyDiagnosis || _busyPoll || _busySave || _isPending ||
-        !_requireActiveSession()) {
-      return;
-    }
-    final question = _question.text.trim();
-    final technology = _technology.text.trim();
+        !_requireActiveSession()) return;
     if (!_consent) {
       setState(() => _message = widget.arabic
           ? 'يلزم الموافقة قبل إرسال البيانات للمعالجة.'
           : 'Consent is required before sending data for processing.');
       return;
     }
-    if (question.length < 4 || technology.isEmpty) {
+    final question = _question.text.trim();
+    final technology = _technology.text.trim();
+    if (_attemptSnapshot == null &&
+        (question.length < 4 || technology.isEmpty)) {
       setState(() => _message = widget.arabic
           ? 'أدخل التقنية وسؤالًا تقنيًا واضحًا.'
           : 'Enter a technology and a clear technical question.');
@@ -682,6 +752,9 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
     }
 
     final requestToken = _token!;
+    final accountEmail = _accountEmail;
+    if (accountEmail == null) return;
+    var sent = false;
     setState(() {
       _busyDiagnosis = true;
       _message = null;
@@ -689,26 +762,73 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
       _resetPollCooldown();
       _saved = false;
     });
+
     try {
-      final job =
-          await _diagnose(requestToken, question, technology, _code.text);
-      if (!mounted || !_requireActiveSession() || _token != requestToken) {
-        return;
+      final attempt = _attemptSnapshot ?? MobileAiPaidAttempt(
+        key: _attemptKey ?? MobileAiIntentKey.generate(),
+        question: question,
+        technology: technology,
+        codeSnippet: _code.text,
+      );
+      // Fail closed on storage failure: never send a potentially charged POST
+      // without retaining the same key for crash/lost-ACK recovery.
+      if (_attemptKey == null) {
+        await _intentStore.saveKey(accountEmail, attempt.key);
       }
+      if (!mounted || _token != requestToken) return;
+      _attemptKey = attempt.key;
+      _attemptSnapshot = attempt;
+      sent = true;
+      final job = await _keyedDiagnose(
+        requestToken,
+        attempt.question,
+        attempt.technology,
+        attempt.codeSnippet,
+        attempt.key,
+      );
+      if (!mounted || !_requireActiveSession() ||
+          _token != requestToken) return;
+      try {
+        await _intentStore.clearKey(accountEmail);
+      } catch (_) {
+        // A stale recovery key is safer than losing a paid admission.
+        // The job has an authenticated server ID and can be read using GET.
+      }
+      if (!mounted || _token != requestToken) return;
       setState(() {
+        _attemptKey = null;
+        _attemptSnapshot = null;
         _job = job;
         _respectPollDelay(job);
         _message = _jobMessage(job);
       });
     } catch (error) {
-      if (!mounted || !_requireActiveSession() || _token != requestToken) {
-        return;
-      }
+      if (!mounted || !_requireActiveSession() ||
+          _token != requestToken) return;
       if (error is MobileAiHttpException &&
           (error.statusCode == 401 || error.statusCode == 403)) {
-        _scrubPrivateSession();
+        setState(() {
+          _scrubPrivateSession();
+          _message = _httpMessage(error.statusCode);
+        });
+        return;
       }
-      setState(() => _message = _genericError(error));
+      setState(() {
+        if (!sent) {
+          _message = widget.arabic
+              ? 'تعذر حفظ مفتاح الاسترداد بأمان، ولم يتم إرسال طلب التشخيص.'
+              : 'Could not securely save the recovery key. No diagnosis was sent.';
+        } else if (error is MobileAiHttpException &&
+            error.statusCode == 409) {
+          _message = widget.arabic
+              ? 'لا تطابق بيانات الطلب المحاولة السابقة. أعد إدخال نفس البيانات؛ لن يُنشأ تشخيص مدفوع آخر.'
+              : 'This request differs from the previous attempt. Re-enter the original input; no additional paid diagnosis was created.';
+        } else {
+          _message = widget.arabic
+              ? 'حالة الطلب غير مؤكدة. قد يكون الخادم قد قبله. أعد المحاولة بنفس المفتاح فقط؛ لا يتم إرسال تشخيص جديد تلقائيًا.'
+              : 'Diagnosis outcome is unknown; the server may have accepted it. Only a manual retry with the SAME key is allowed. No new paid request is sent automatically.';
+        }
+      });
     } finally {
       if (mounted) setState(() => _busyDiagnosis = false);
     }
@@ -1116,7 +1236,9 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
                       icon: const Icon(Icons.auto_awesome),
                       label: Text(_busyDiagnosis
                           ? (ar ? 'جارٍ التشخيص...' : 'Diagnosing...')
-                          : (ar ? 'ابدأ التشخيص' : 'Diagnose')),
+                          : _attemptKey != null
+                              ? (ar ? 'استرداد التشخيص السابق' : 'Recover previous diagnosis')
+                              : (ar ? 'ابدأ التشخيص' : 'Diagnose')),
                     ),
                   ],
                   if (_message != null) ...[
