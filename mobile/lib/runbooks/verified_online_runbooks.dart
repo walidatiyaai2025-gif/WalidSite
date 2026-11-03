@@ -549,18 +549,19 @@ class _ReviewedRunbookDetailState extends State<ReviewedRunbookDetail> {
     if (_saving || _saved) return;
     final epoch = _detailEpoch;
 
-    var bearer = _bearer;
-    if (bearer == null) {
-      bearer = await _promptForBearer();
-      if (!mounted || epoch != _detailEpoch || bearer == null) return;
-      _bearer = bearer;
-    }
-
+    // Claim the intent before opening the login dialog: two taps in the same
+    // frame must not open two dialogs or submit two save POSTs.
     setState(() {
       _saving = true;
       _actionMessage = null;
     });
     try {
+      var bearer = _bearer;
+      if (bearer == null) {
+        bearer = await _promptForBearer();
+        if (!mounted || epoch != _detailEpoch || bearer == null) return;
+        _bearer = bearer;
+      }
       await _save(bearer, item.id);
       if (!mounted || epoch != _detailEpoch) return;
       setState(() {
@@ -577,8 +578,13 @@ class _ReviewedRunbookDetailState extends State<ReviewedRunbookDetail> {
           (error.statusCode == 401 || error.statusCode == 403)) {
         _bearer = null;
       }
-      setState(() => _actionMessage =
-          _actionFailure(error, login: false));
+      // A timed-out POST might already be committed. Never claim that
+      // an unacknowledged save succeeded or failed.
+      setState(() => _actionMessage = error is TimeoutException
+          ? (widget.arabic
+              ? 'لم يصل تأكيد الحفظ. تحقق من محفوظات حسابك قبل إعادة المحاولة.'
+              : 'Save confirmation was not received. Check your saved resources before retrying.')
+          : _actionFailure(error, login: false));
     } finally {
       if (mounted && epoch == _detailEpoch) {
         setState(() => _saving = false);
