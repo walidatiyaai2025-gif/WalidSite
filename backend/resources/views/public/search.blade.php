@@ -6,7 +6,7 @@
 @endpush
 @push('styles')
 <style>
-.editorial{padding-block:clamp(32px,5vw,72px)}.editorial h1{font-size:clamp(31px,4vw,48px);color:var(--wa-primary);line-height:1.2}
+.editorial{padding-block:clamp(32px,5vw,72px)}.editorial .ed-page-title{font-size:clamp(31px,4vw,48px);color:var(--wa-primary);line-height:1.2}
 .editorial a{color:var(--wa-cta);overflow-wrap:anywhere}.ed-card{background:#fff;border:1px solid var(--wa-soft-border);border-radius:18px;padding:24px;margin-block:16px}
 .ed-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:16px}
 .ed-grid .ed-card{margin:0}.ed-card h2{color:var(--wa-primary)}
@@ -31,12 +31,13 @@
     }
 ?>
 @include('public.t012-reference-stage', ['screen' => 'search'])
-<section class="site-wrap editorial t012-functional" id="t012-functional">
-<h1>{{ $locale === 'ar' ? 'البحث في المعلومات الموثقة' : 'Search verified content' }}</h1>
+<section class="site-wrap editorial t012-functional" id="t012-functional" aria-labelledby="web13-functional-heading">
+{{-- The reference-stage title is this page's single H1; the functional results form is a section. --}}
+<h2 class="ed-page-title" id="web13-functional-heading">{{ $locale === 'ar' ? 'البحث في المعلومات الموثقة' : 'Search verified content' }}</h2>
 <form method="get" action="{{ route('public.search') }}" role="search" class="ed-form ed-card">
 <input type="hidden" name="lang" value="{{ $locale }}">
 <label for="all-q">{{ $locale === 'ar' ? 'كلمات البحث' : 'Search terms' }}</label>
-<input id="all-q" name="q" maxlength="80" type="search" value="{{ $search }}">
+<input id="all-q" name="q" maxlength="80" type="search" value="{{ $search }}" required>
 <label for="search-type">{{ $locale === 'ar' ? 'نوع النتائج' : 'Result type' }}</label>
 <select id="search-type" name="type">
     <option value="all" @selected($type === 'all')>{{ $locale === 'ar' ? 'الكل' : 'All content' }}</option>
@@ -51,7 +52,10 @@
 @if($search === '')
 <div class="ed-card" role="status">{{ $locale === 'ar' ? 'اكتب كلمة للبحث في المقالات والمشاريع العامة الموثقة.' : 'Enter a query to search published, evidence-verified articles and projects.' }}</div>
 @elseif($articles->isEmpty() && $projects->isEmpty())
-<div class="ed-card" role="status">{{ $locale === 'ar' ? 'لا توجد نتائج عامة موثقة.' : 'No verified public matches.' }}</div>
+<div class="ed-card" role="status" aria-live="polite">
+    <p>{{ $locale === 'ar' ? 'لا توجد نتائج عامة موثقة.' : 'No verified public matches.' }}</p>
+    <a class="ed-more" href="#all-q">{{ $locale === 'ar' ? 'تعديل كلمات البحث' : 'Refine search terms' }}</a>
+</div>
 @else
 <p class="ed-card" role="status" aria-live="polite" data-testid="verified-search-summary">
 @if($type === 'all')

@@ -165,4 +165,69 @@ final class Web13SearchStageJourneyTest extends TestCase
             $this->assertSame(0, substr_count($page->getContent(), 'class="t012-search-card"'));
         }
     }
+
+    public function test_search_headings_and_scope_are_accessible_truthful_and_bilingual(): void
+    {
+        foreach (['en' => 'ltr', 'ar' => 'rtl'] as $lang => $direction) {
+            foreach (['', 'screenneedle'] as $term) {
+                // Laravel normalizes a supplied empty q to null, which fails
+                // the existing "sometimes|string" validator. A real blank
+                // search omits q rather than transmitting q=.
+                $params = ['lang' => $lang, 'type' => 'all'];
+                if ($term !== '') {
+                    $params['q'] = $term;
+                }
+                $response = $this->get(route('public.search', $params))->assertOk()
+                    ->assertSee('<html lang="'.$lang.'" dir="'.$direction.'">', false)
+                    ->assertSee('aria-labelledby="web13-functional-heading"', false)
+                    ->assertSee('<h2 class="ed-page-title" id="web13-functional-heading">', false)
+                    ->assertSee('id="t012-top-search"', false)
+                    ->assertSee('type="search"', false)
+                    ->assertDontSee('Search runbooks, projects, code and articles...');
+
+                $html = $response->getContent();
+                preg_match_all('/<h1(?:\\s|>)/i', $html, $headings);
+                $this->assertCount(1, $headings[0], 'Only the reference-stage title is H1 ('.$lang.')');
+
+                // Browsers must not submit q= from the two forms: the GET
+                // endpoint correctly rejects a normalized null q value.
+                // Native required validation works even with JavaScript off.
+                $this->assertMatchesRegularExpression(
+                    '/<input[^>]+id="t012-top-search"[^>]+required>/',
+                    $html
+                );
+                $this->assertMatchesRegularExpression(
+                    '/<input[^>]+id="all-q"[^>]+required>/',
+                    $html
+                );
+                $this->assertStringContainsString(
+                    $lang === 'ar'
+                        ? 'ابحث في المقالات والمشاريع العامة الموثقة...'
+                        : 'Search verified public articles and projects...',
+                    $html
+                );
+            }
+        }
+    }
+
+    public function test_no_results_has_keyboard_accessible_recovery_to_both_search_inputs(): void
+    {
+        $this->publishedArticle('draft-only', false);
+        $this->publicProject('no-public-evidence', false);
+
+        foreach (['en', 'ar'] as $lang) {
+            $response = $this->get(route('public.search', [
+                'lang' => $lang, 'q' => 'screenneedle', 'type' => 'projects',
+            ]))->assertOk()
+                ->assertSee('class="t012-search-no-results" role="status" aria-live="polite"', false)
+                ->assertSee('href="#t012-top-search"', false)
+                ->assertSee('href="#all-q"', false)
+                ->assertSee($lang === 'ar' ? 'تعديل كلمات البحث' : 'Refine search terms')
+                ->assertDontSee('web13-project-no-public-evidence')
+                ->assertDontSee('class="t012-search-card"', false);
+
+            $this->assertSame(1, substr_count($response->getContent(), '<h1'));
+            $this->assertSame(1, substr_count($response->getContent(), 'id="all-q"'));
+        }
+    }
 }

@@ -228,7 +228,7 @@ html[dir="rtl"] .t012-screen-blog .t012-visual-stack{left:55px;right:auto}
                 <input type="hidden" name="lang" value="{{ $locale }}">
                 <input type="hidden" name="type" value="{{ $type }}">
                 <label class="t012-sr-only" for="t012-top-search">{{ $t012Ar ? 'كلمات البحث' : 'Search terms' }}</label>
-                <input id="t012-top-search" name="q" type="search" maxlength="80" value="{{ $search }}" placeholder="{{ $t012Ar ? 'ابحث في الأدلة والمشاريع والكود والمقالات...' : 'Search runbooks, projects, code and articles...' }}">
+                <input id="t012-top-search" name="q" type="search" maxlength="80" value="{{ $search }}" placeholder="{{ $t012Ar ? 'ابحث في المقالات والمشاريع العامة الموثقة...' : 'Search verified public articles and projects...' }}" required>
                 <button class="t012-sr-only" type="submit">{{ $t012Ar ? 'بحث' : 'Search' }}</button>
             </form>
             @php($t012SearchArticleCards = $articles->take($web13ArticlePreviewCount)->map(fn ($item) => ['kind' => 'article', 'item' => $item]))
@@ -277,6 +277,7 @@ html[dir="rtl"] .t012-screen-blog .t012-visual-stack{left:55px;right:auto}
                 <div class="t012-search-no-results" role="status" aria-live="polite">
                     <h2>{{ $t012Ar ? 'لا توجد نتائج عامة موثقة' : 'No verified public matches' }}</h2>
                     <p>{{ $t012Ar ? 'جرّب كلمات أخرى أو استعرض الموارد المنشورة.' : 'Try a different term or browse published resources.' }}</p>
+                    <a href="#t012-top-search">{{ $t012Ar ? 'تعديل كلمات البحث' : 'Refine search terms' }}</a>
                     <a href="{{ route('public.blog', ['lang' => $locale]) }}">{{ $t012Ar ? 'استعرض المقالات' : 'Browse articles' }}</a>
                     <a href="{{ route('public.projects', ['lang' => $locale]) }}">{{ $t012Ar ? 'استعرض المشاريع' : 'Browse projects' }}</a>
                 </div>
