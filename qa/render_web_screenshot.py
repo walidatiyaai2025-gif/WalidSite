@@ -5,15 +5,19 @@ Install optional local tooling: pip install playwright && python -m playwright i
 Run through qa/capture_visual_evidence.py, which supplies environment variables
 and admits the PNG only after exact immutable-reference pixel comparison.
 """
+import io
 import os
 from pathlib import Path
 from urllib.parse import urlsplit
+
+from PIL import Image, UnidentifiedImageError
 
 # Reference PNGs use grayscale text antialiasing. Disable Chromium LCD
 # subpixel text and use the measured slight FreeType hinting mode; T007
 # diagnostics proved this produces fewer WEB-06 reference mismatches than
 # Chromium default, no-hint, or disable-LCD alone on the pinned CI browser.
 CHROMIUM_RENDER_ARGS = ["--disable-lcd-text", "--font-render-hinting=slight"]
+MAX_CAPTURE_BYTES = 64 * 1024 * 1024
 
 
 class RenderConfigError(ValueError):
@@ -63,6 +67,55 @@ def viewport(physical_width: int, physical_height: int, dpr: float):
     return {"width": int(width), "height": int(height)}
 
 
+def _verified_destination(output: Path) -> None:
+    """Do not let a capture escape a trusted existing workspace."""
+    if (not output.is_absolute() or output.exists() or output.is_symlink()
+            or not output.parent.is_dir() or output.parent.is_symlink()
+            or output.parent.resolve() != output.parent):
+        raise RenderConfigError(
+            "Screenshot output must be a fresh absolute file in a trusted workspace"
+        )
+
+
+def _verified_png(pixels: object, width: int, height: int) -> bytes:
+    """Validate the actual returned browser PNG, not just its filename."""
+    if (not isinstance(pixels, bytes) or not pixels
+            or len(pixels) > MAX_CAPTURE_BYTES):
+        raise RenderConfigError("Browser did not return a bounded PNG screenshot")
+    try:
+        with Image.open(io.BytesIO(pixels)) as image:
+            if image.format != "PNG" or image.size != (width, height):
+                raise RenderConfigError("Browser screenshot format or dimensions disagree")
+            image.verify()
+    except (OSError, UnidentifiedImageError, Image.DecompressionBombError) as exc:
+        raise RenderConfigError("Browser returned invalid PNG screenshot") from exc
+    return pixels
+
+
+def _write_png_exclusive(output: Path, pixels: bytes) -> None:
+    """Create once with private permissions; never follow a destination symlink."""
+    _verified_destination(output)
+    try:
+        parent_fd = os.open(
+            output.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+        )
+        try:
+            descriptor = os.open(
+                output.name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                0o600, dir_fd=parent_fd,
+            )
+            try:
+                with os.fdopen(descriptor, "wb") as handle:
+                    handle.write(pixels)
+            except BaseException:
+                os.unlink(output.name, dir_fd=parent_fd)
+                raise
+        finally:
+            os.close(parent_fd)
+    except OSError as exc:
+        raise RenderConfigError("Cannot create a private exclusive PNG candidate") from exc
+
+
 def render(env=None):
     env = os.environ if env is None else env
     locale = env["WALIDSITE_CAPTURE_LOCALE"]
@@ -72,8 +125,7 @@ def render(env=None):
     size = viewport(int(env["WALIDSITE_CAPTURE_WIDTH"]),
                     int(env["WALIDSITE_CAPTURE_HEIGHT"]), dpr)
     output = Path(env["WALIDSITE_CAPTURE_PATH"])
-    if output.exists() or not output.parent.is_dir():
-        raise RenderConfigError("Screenshot output must be a new file in the capture workspace")
+    _verified_destination(output)
 
     # Admin captures use a pre-existing, locally provisioned authenticated
     # storage-state file. Never create or commit a login session here.
@@ -132,23 +184,26 @@ def render(env=None):
                     raise RenderConfigError(
                         "Rendered HTML language/direction disagree with capture locale"
                     )
-                page.screenshot(
-                    path=str(output), full_page=False, animations="disabled",
+                pixels = page.screenshot(
+                    full_page=False, animations="disabled",
                     caret="hide", type="png",
                 )
                 # A deferred navigation or client-side locale change may race
                 # the screenshot itself. Never retain a wrong-page candidate.
                 if page.url.rstrip("/") != url.rstrip("/"):
-                    output.unlink(missing_ok=True)
                     raise RenderConfigError(
                         "Page navigated during screenshot; discarding captured PNG"
                     )
                 if (html.get_attribute("lang") != locale
                         or html.get_attribute("dir") != expected_dir):
-                    output.unlink(missing_ok=True)
                     raise RenderConfigError(
                         "Page language/direction changed during screenshot"
                     )
+                verified = _verified_png(
+                    pixels, int(env["WALIDSITE_CAPTURE_WIDTH"]),
+                    int(env["WALIDSITE_CAPTURE_HEIGHT"]),
+                )
+                _write_png_exclusive(output, verified)
             finally:
                 context.close()
         finally:
