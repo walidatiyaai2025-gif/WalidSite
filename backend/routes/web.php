@@ -1635,9 +1635,7 @@ Route::get('/projects', function (Request $request) {
         && in_array($rawStatus, ['completed', 'in_progress', 'research', 'archived'], true)
             ? $rawStatus : '';
     $query = \App\Models\Project::query()->publiclyVerified();
-    if ($portfolioCategory === 'featured') {
-        $query->where('portfolio_featured', true);
-    } else {
+    if ($portfolioCategory !== 'featured') {
         $query->where('portfolio_category', $portfolioCategory);
     }
     if ($status !== '') {
