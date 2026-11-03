@@ -73,6 +73,10 @@ final class AdminCanonicalProductApiTest extends TestCase
         string $risk = 'low',
         bool $professionalClaims = false
     ): Article {
+        // Give the historical positive fixtures a genuine distinct author,
+        // rather than weakening the new fail-closed legacy reviewer gate.
+        [$author] = $this->account('admin');
+        $this->actingAs($author, 'web');
         $article = Article::create([
             'slug' => $slug,
             'title_en' => 'Reviewed '.$slug,
@@ -95,6 +99,7 @@ final class AdminCanonicalProductApiTest extends TestCase
             ],
             'status' => 'validated',
         ]);
+        Auth::forgetGuards();
 
         return $article;
     }

@@ -35,6 +35,9 @@ final class AdminApprovalRejectionSecurityTest extends TestCase
 
     private function article(): Article
     {
+        // A real, separate authenticated maker is required by the API
+        // reviewer policy; do not fabricate a legacy anonymous approval.
+        $this->actingAs($this->actor(), 'web');
         $article = Article::create([
             'slug' => 'rejected-review-'.Str::lower(Str::random(10)),
             'title_en' => 'Evidence backed draft',
@@ -42,6 +45,7 @@ final class AdminApprovalRejectionSecurityTest extends TestCase
             'canonical_lang' => 'en',
         ]);
         $this->revision($article, 1);
+        Auth::forgetGuards();
 
         return $article;
     }
