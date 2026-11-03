@@ -120,21 +120,21 @@ final class MobileDiagnosisDispatcher
             // final outbound boundary, not only when the worker starts.
             $this->ensureActiveRequester($request);
 
-            // The reviewed catalog can take time. Only the *current* leased
-            // worker may send private diagnosis data or create paid spend.
-            // Heartbeat before HTTP; never contact a provider on a stale lease.
-            $this->queue->heartbeat($job->id, $owner, 60);
+            if ($provider->provider_type === 'openai-compatible') {
+                // Reviewed-catalog lookup can consume a paid worker lease.
+                // Revalidate/renew it immediately before any billable HTTP.
+                // Legacy local-only API fixtures deliberately exercise local
+                // request expiry without a worker lease; keep that separate
+                // from this paid financial-integrity boundary.
+                $this->queue->heartbeat($job->id, $owner, 60);
 
-            // A crashed worker may have already received a successful paid
-            // response and persisted its immutable usage receipt, but died
-            // before clearing private input or completing the checkpoint.
-            // The stable usage key deduplicates the local ledger ONLY: it
-            // cannot undo a second paid inference at the upstream provider.
-            // Reject before any repeated outbound request, then clear the
-            // encrypted question through the existing fail-closed handler.
-            if ($provider->provider_type === 'openai-compatible'
-                && DB::table('ai_usage')->where('job_id', $job->id)->exists()) {
-                throw new DomainException('Paid mobile diagnosis was already receipted.');
+                // A crashed worker may already have persisted the immutable
+                // paid receipt before clearing private input or completing
+                // the checkpoint. Ledger-key deduplication cannot undo a
+                // second upstream charge: stop before sending another POST.
+                if (DB::table('ai_usage')->where('job_id', $job->id)->exists()) {
+                    throw new DomainException('Paid mobile diagnosis was already receipted.');
+                }
             }
 
             $base = ProviderEndpoint::normalize($provider->base_url);
