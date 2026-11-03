@@ -882,13 +882,35 @@ Route::middleware('auth:web')->group(function (): void {
             return back()->withErrors(['publish' => 'Owner manual review and a reason are required.']);
         }
         try {
-            \Illuminate\Support\Facades\DB::transaction(function () use ($article, $request, $revision): void {
+            \Illuminate\Support\Facades\DB::transaction(function () use ($article, $request): void {
                 $article = \App\Models\Article::query()->whereKey($article->id)
                     ->lockForUpdate()->firstOrFail();
+                $reviewer = \App\Models\User::query()->whereKey($request->user()->id)
+                    ->lockForUpdate()->first();
+                abort_unless($reviewer?->canAccessAdmin(), 403);
+                if (! $article->isReadyToPublish()) {
+                    throw new \DomainException('Publication evidence changed.');
+                }
+                // Never trust a pre-transaction revision or its original risk:
+                // this exact latest snapshot must have an independent checker.
+                $latest = $article->revisions()->orderByDesc('revision_no')->firstOrFail();
+                abort_unless($latest->canBeIndependentlyReviewedBy($reviewer), 403,
+                    'Independent editorial reviewer required.');
+                $currentChecks = is_array($latest->validation_json)
+                    ? $latest->validation_json : [];
+                if (($currentChecks['risk_level'] ?? null) !== 'low'
+                    || ($currentChecks['contains_professional_claims'] ?? null) !== false) {
+                    throw new \DomainException('Owner exception review required.');
+                }
+
                 $article->publishVerified();
+                $latest->forceFill([
+                    'reviewed_by_user_id' => $reviewer->id,
+                    'reviewed_at' => now('UTC'),
+                ])->save();
                 app(\App\AI\EditorialScheduleRunner::class)->event(
                     'manual:'.\Illuminate\Support\Str::uuid(),
-                    $article->id, $revision?->revision_no, $request->user()->id,
+                    $article->id, $latest->revision_no, $reviewer->id,
                     'manual_published', 'content_reviewed'
                 );
             }, 3);
@@ -944,7 +966,7 @@ Route::middleware('auth:web')->group(function (): void {
             ->orderByDesc('updated_at')->orderBy('id')
             ->paginate(25)->appends(['lang' => $locale]);
 
-        $approvals->getCollection()->transform(function ($revision) {
+        $approvals->getCollection()->transform(function ($revision) use ($request) {
             $article = $revision->article;
             $checks = is_array($revision->validation_json) ? $revision->validation_json : [];
             $lastDecision = \Illuminate\Support\Facades\DB::table('editorial_events')
@@ -962,6 +984,7 @@ Route::middleware('auth:web')->group(function (): void {
                 'technical_passed' => ($checks['technical_passed'] ?? false) === true,
                 'image_rights_passed' => $article->hero_asset_id === null
                     || $article->heroAsset?->isPubliclyUsable() === true,
+                'independent_review_allowed' => $revision->canBeIndependentlyReviewedBy($request->user()),
                 'requires_owner' => ($checks['risk_level'] ?? null) !== 'low'
                     || ($checks['contains_professional_claims'] ?? null) !== false,
                 'last_decision' => $lastDecision?->action,
@@ -1026,16 +1049,26 @@ Route::middleware('auth:web')->group(function (): void {
                         'approval' => 'Independent citation, technical and media review is incomplete.',
                     ]);
                 }
+                $reviewer = \App\Models\User::query()->whereKey($request->user()->id)
+                    ->lockForUpdate()->first();
+                abort_unless($reviewer?->canAccessAdmin()
+                    && $revision->canBeIndependentlyReviewedBy($reviewer), 403,
+                    'Independent editorial reviewer required.');
+
                 $checks = is_array($revision->validation_json) ? $revision->validation_json : [];
                 if (($checks['risk_level'] ?? null) !== 'low'
                     || ($checks['contains_professional_claims'] ?? null) !== false) {
-                    abort_unless($request->user()->hasRole('owner'), 403);
+                    abort_unless($reviewer->hasRole('owner'), 403);
                 }
 
                 $locked->publishVerified();
+                $revision->forceFill([
+                    'reviewed_by_user_id' => $reviewer->id,
+                    'reviewed_at' => now('UTC'),
+                ])->save();
                 app(\App\AI\EditorialScheduleRunner::class)->event(
                     'web-approve:'.\Illuminate\Support\Str::uuid(),
-                    $locked->id, $revision->revision_no, $request->user()->id,
+                    $locked->id, $revision->revision_no, $reviewer->id,
                     'manual_published', $input['reason']
                 );
                 return 'published';
