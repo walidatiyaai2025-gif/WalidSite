@@ -13,6 +13,8 @@ import re
 import sys
 from pathlib import Path
 
+from PIL import Image, UnidentifiedImageError
+
 try:
     from qa.validate_visual_fidelity import audit as visual_audit, _route_matches
 except ModuleNotFoundError as exc:
@@ -47,6 +49,34 @@ def _load_json(path: Path) -> object:
 def _size(value: object) -> bool:
     return (isinstance(value, list) and len(value) == 2
             and all(type(part) is int and 0 < part <= 100000 for part in value))
+
+
+def _approved_reference_size(root: Path, reference: object) -> list[int]:
+    """Compare a diagnostic claim to actual immutable PNG dimensions.
+
+    A signed source SHA and internally consistent (width, height, pixels)
+    JSON tuple are insufficient if the tuple was never checked against the
+    approved physical reference. The authoritative visual gate separately
+    checks the immutable manifest hash and real pixel-level evidence.
+    """
+    if (not isinstance(reference, str)
+            or re.fullmatch(r"assets/screen-reference/[A-Za-z0-9_-]+\\.png", reference) is None):
+        raise InventoryError("Invalid canonical source PNG path")
+    directory = root / "assets/screen-reference"
+    target = root / reference
+    if ((root / "assets").is_symlink() or directory.is_symlink()
+            or target.is_symlink() or not target.is_file()
+            or target.resolve().parent != directory.resolve()):
+        raise InventoryError("Missing or unsafe canonical source PNG")
+    try:
+        with Image.open(target) as png:
+            if png.format != "PNG" or png.width <= 0 or png.height <= 0:
+                raise InventoryError("Invalid canonical source PNG")
+            size = [png.width, png.height]
+            png.verify()
+            return size
+    except (OSError, UnidentifiedImageError, Image.DecompressionBombError) as exc:
+        raise InventoryError("Unreadable canonical source PNG") from exc
 
 
 def _screen_report(screen_id: str, contract: dict, data: object) -> dict:
@@ -145,6 +175,9 @@ def inventory(root: Path, reports: list[Path] | tuple[Path, ...] = (),
         for sid, data in payload["screens"].items():
             if sid not in expected or sid in observations:
                 raise InventoryError("Unknown or duplicated screen report: " + str(sid))
+            original_size = _approved_reference_size(root, expected[sid].get("reference_image"))
+            if data.get("reference_size") != original_size:
+                raise InventoryError(sid + ": reported reference dimensions differ from source PNG")
             observations[sid] = _screen_report(sid, expected[sid], data)
 
     errors = list(visual_errors)
