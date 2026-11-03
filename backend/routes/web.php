@@ -1665,7 +1665,8 @@ Route::get('/projects', function (Request $request) {
         ->where('visibility', 'public')
         ->whereNotNull('verified_at')->where('verified_at', '<=', now())
         ->orderBy('id')->limit(50)])
-        ->orderByDesc('published_at')->orderBy('id')->lazy(100) as $record) {
+        ->orderByDesc('portfolio_featured')->orderByDesc('published_at')
+        ->orderBy('id')->lazy(100) as $record) {
         $project = $api->publicProjectData($record, $request);
         if (empty($project['evidence_urls'])) {
             continue;
