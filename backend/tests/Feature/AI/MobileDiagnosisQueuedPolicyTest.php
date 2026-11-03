@@ -409,14 +409,16 @@ final class MobileDiagnosisQueuedPolicyTest extends TestCase
     {
         [, , , $diagnosis, $job] = $this->queuedPaidDiagnosis();
         $runbookId = $this->reviewedCatalog();
-        $diagnosis->forceFill(['expires_at' => now()->addSecond()])->save();
+        $diagnosis->forceFill(['expires_at' => now()->addSeconds(30)])->save();
         $this->assertSame($job->id,
             app(DurableAiQueue::class)->claimNext('test-worker')?->id);
 
         Http::fake(function () use ($runbookId) {
-            // The request expires during the actual outbound provider call,
-            // while its worker lease remains valid for the usage receipt.
-            $this->travel(2)->seconds();
+            // Allow setup and dispatch ample time before expiry: a one-second
+            // window flakes on slower CI runners before inference starts.
+            // Expire only during the simulated outbound provider call;
+            // the 60-second worker lease remains valid for the receipt.
+            $this->travel(31)->seconds();
             return Http::response([
                 'choices' => [['message' => ['content' => json_encode([
                     'runbook_id' => $runbookId,
