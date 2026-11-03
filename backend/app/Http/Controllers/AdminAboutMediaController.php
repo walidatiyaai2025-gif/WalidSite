@@ -108,12 +108,14 @@ final class AdminAboutMediaController extends Controller
         $asset = $this->asset($request, $slot);
         abort_unless($asset->draft_path && $asset->draft_mime
             && Storage::disk('local')->exists($asset->draft_path), 404);
-        return response()->file(Storage::disk('local')->path($asset->draft_path), [
+        $response = response()->file(Storage::disk('local')->path($asset->draft_path), [
             'Content-Type' => $asset->draft_mime,
-            'Cache-Control' => 'no-store, private',
             'X-Content-Type-Options' => 'nosniff',
             'Content-Security-Policy' => "default-src 'none'; sandbox",
         ]);
+        $response->setPrivate();
+        $response->headers->set('Cache-Control', 'private, no-store');
+        return $response;
     }
 
     private function event(

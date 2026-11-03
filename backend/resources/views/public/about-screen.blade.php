@@ -15,6 +15,7 @@
 @push('styles')
 <style>
 body:has(.wa-about){background:#eef7fd}
+body:has(.wa-about) .t007-functional{padding-top:0;background:#eef7fd}
 .wa-about{--ink:#174371;--teal:#00a995;--edge:#d9e8f0;--muted:#456684;color:var(--ink);padding-block:0 48px}
 .wa-about *{box-sizing:border-box}
 .wa-about a:focus-visible,.wa-about button:focus-visible{outline:3px solid #00b89b;outline-offset:3px}
@@ -235,7 +236,7 @@ body:has(.wa-about){background:#eef7fd}
         <nav class="about-jump-links" aria-label="{{ $locale === 'ar' ? 'الروابط المهنية' : 'Professional links' }}">
             <a href="#about-career">{{ $locale === 'ar' ? 'المسيرة المهنية' : 'Experience' }}</a>
             <a href="#about-certifications">{{ $locale === 'ar' ? 'المؤهلات' : 'Credentials' }}</a>
-            <a href="{{ route('public.projects',['lang'=>$locale]) }}">{{ $locale === 'ar' ? 'المشاريع الموثقة' : 'Verified case studies' }}</a>
+            <a href="{{ route('public.projects',['lang'=>$locale]) }}">{{ $locale === 'ar' ? 'دراسات حالة موثقة' : 'Verified case studies' }}</a>
             <a href="{{ route('public.contact',['lang'=>$locale]) }}">{{ $locale === 'ar' ? 'التواصل' : 'Contact' }}</a>
             @if($hasPublishedOwnerCv)
                 <a href="{{ route('public.resume.pdf',['lang'=>$locale,'track'=>'all']) }}" type="application/pdf" download>{{ $locale === 'ar' ? 'تحميل السيرة PDF' : 'Download verified CV (PDF)' }}</a>

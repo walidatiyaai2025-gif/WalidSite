@@ -103,7 +103,7 @@ final class AboutPageManagedAssetsTest extends TestCase
         $this->get(route('public.about-media',['slot'=>$slot]))
             ->assertOk()->assertHeader('Content-Type','image/svg+xml');
         $this->get(route('admin.about-media.preview',['slot'=>$slot]))
-            ->assertOk()->assertHeader('Cache-Control','no-store, private');
+            ->assertOk()->assertHeader('Cache-Control','private, no-store');
 
         $this->post(route('admin.about-media.publish',['slot'=>$slot]),[
             'revision'=>1,'source_note'=>'Owner supplied genuine logo',

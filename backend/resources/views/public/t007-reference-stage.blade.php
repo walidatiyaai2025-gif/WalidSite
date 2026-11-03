@@ -291,6 +291,7 @@ body:has(.t007-reference-stage) .site-footer{margin-top:0}
 
 </style>
 @endpush
+@unless($styleOnly ?? false)
 <section class="t007-reference-stage" aria-label="{{ $copy['title'] }}">
     <div class="t007-reference-hero">
         <div class="t007-pill"><span>{{ $copy['pill'] }}</span></div>
@@ -370,3 +371,4 @@ body:has(.t007-reference-stage) .site-footer{margin-top:0}
         @endif
     </div>
 </section>
+@endunless
