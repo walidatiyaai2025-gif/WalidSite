@@ -115,7 +115,7 @@ body:has(.project-case-live) .site-header{display:none}
         <section class="pc-panel">
           <h2>{{ $isArabic?'تواصل ومزيد من المعلومات':'Next steps' }}</h2>
           <div class="pc-links-more">
-            <a href="{{ route('public.projects', ['lang'=>$locale,'status'=>$project['status']]) }}">{{ $isArabic?'مشاريع أخرى بالحالة نفسها':'View projects with this status' }}</a>
+            <a href="{{ route('public.projects', ['lang'=>$locale,'status'=>$project['status']]) }}">{{ $isArabic?'عرض مشاريع أخرى بالحالة نفسها':'View projects with this status' }}</a>
             <a href="{{ route('public.contact', ['lang'=>$locale,'project'=>$project['slug']]) }}">{{ $isArabic?'استفسر عن دراسة الحالة الموثقة':'Ask about this verified case study' }}</a>
             <a href="{{ route('public.resume', ['lang'=>$locale]) }}">{{ $isArabic?'عرض السيرة المهنية الموثقة':'View verified public resume' }}</a>
           </div>
