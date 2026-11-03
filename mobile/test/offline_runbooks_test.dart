@@ -335,50 +335,52 @@ void main() {
 
   testWidgets('durable progress survives restart and isolates guest, accounts, versions',
       (tester) async {
-    // Native file system calls are not serviced by Flutter's default
-    // FakeAsync widget zone. Enter a real-async zone for this isolated
-    // app-support directory integration test.
     await tester.runAsync(() async {
-      final directory = await Directory.systemTemp.createTemp('walidsite-progress-');
+      // Real I/O is isolated from FakeAsync; every await has its own timeout
+      // so a stalled plugin/filesystem cannot strand the entire CI job.
+      Future<T> bounded<T>(Future<T> future, String stage) =>
+          future.timeout(const Duration(seconds: 4),
+              onTimeout: () => throw StateError('Progress I/O stalled at: $stage'));
+      final directory = await bounded(
+        Directory.systemTemp.createTemp('walidsite-progress-'), 'temp directory');
       try {
         AppSupportRunbookProgressStore store() =>
             AppSupportRunbookProgressStore(directory: () async => directory);
-    await store().write(
-      scope: 'account:alice', packVersion: '2.0.0',
-      runbookId: 'safe-progress', completed: {0, 2},
-    );
-    expect(await store().read(
-      scope: 'account:alice', packVersion: '2.0.0',
-      runbookId: 'safe-progress',
-    ), {0, 2});
-    expect(await store().read(
-      scope: 'account:bob', packVersion: '2.0.0',
-      runbookId: 'safe-progress',
-    ), isEmpty);
-    expect(await store().read(
-      scope: 'guest', packVersion: '2.0.0',
-      runbookId: 'safe-progress',
-    ), isEmpty);
-    expect(await store().read(
-      scope: 'account:alice', packVersion: '2.1.0',
-      runbookId: 'safe-progress',
-    ), isEmpty);
-    await store().write(
-      scope: 'account:alice', packVersion: '2.0.0',
-      runbookId: 'safe-progress', completed: {2},
-    );
-    expect(await store().read(
-      scope: 'account:alice', packVersion: '2.0.0',
-      runbookId: 'safe-progress',
-    ), {2});
-    await expectLater(store().write(
-      scope: 'account:alice@example.org', packVersion: '2.0.0',
-      runbookId: 'safe-progress', completed: {1},
-    ), throwsFormatException);
+
+        await bounded(store().write(
+          scope: 'account:alice', packVersion: '2.0.0',
+          runbookId: 'safe-progress', completed: {0, 2},
+        ), 'initial write');
+        expect(await bounded(store().read(
+          scope: 'account:alice', packVersion: '2.0.0',
+          runbookId: 'safe-progress',
+        ), 'restart read'), {0, 2});
+        expect(await bounded(store().read(
+          scope: 'account:bob', packVersion: '2.0.0',
+          runbookId: 'safe-progress',
+        ), 'other account'), isEmpty);
+        expect(await bounded(store().read(
+          scope: 'guest', packVersion: '2.0.0',
+          runbookId: 'safe-progress',
+        ), 'guest scope'), isEmpty);
+        expect(await bounded(store().read(
+          scope: 'account:alice', packVersion: '2.1.0',
+          runbookId: 'safe-progress',
+        ), 'new version'), isEmpty);
+        await bounded(store().write(
+          scope: 'account:alice', packVersion: '2.0.0',
+          runbookId: 'safe-progress', completed: {2},
+        ), 'updated write');
+        expect(await bounded(store().read(
+          scope: 'account:alice', packVersion: '2.0.0',
+          runbookId: 'safe-progress',
+        ), 'updated read'), {2});
+        await expectLater(bounded(store().write(
+          scope: 'account:alice@example.org', packVersion: '2.0.0',
+          runbookId: 'safe-progress', completed: {1},
+        ), 'invalid scope'), throwsFormatException);
       } finally {
-        if (await directory.exists()) {
-          await directory.delete(recursive: true);
-        }
+        await bounded(directory.delete(recursive: true), 'cleanup');
       }
     });
   });
