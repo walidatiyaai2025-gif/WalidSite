@@ -57,3 +57,27 @@ Between one and six unique purpose/channel entries are accepted. Opt-in records 
 ### Verification
 
 Runtime registration and semantics are covered by `backend/tests/Feature/Api/AccountPrivacyLifecycleTest.php`. The baseline OpenAPI file is intentionally unchanged because CI validates it against `MANIFEST.json`. T024 must treat this additive amendment together with the immutable baseline when performing integrated route/schema coverage.
+
+## 2026-11-03 — Issue #699 paid mobile AI diagnosis idempotency
+
+**Authority:** Release freeze #732, backend #711, Flutter #748, open integrated security acceptance #699. This is an amendment to the existing **POST /api/v1/mobile/ai/diagnose**, not a new endpoint. The v6 OpenAPI baseline is checksum-protected and stays unchanged.
+
+### POST /api/v1/mobile/ai/diagnose — idempotent paid admission
+
+Authentication: active Sanctum user with a live bearer carrying `mobile` ability; affirmative `consent_to_process` in the JSON body is mandatory. Query string cannot supply consent or request fields. The accepted JSON body has `question` (4–2000 characters), `technology` (1–120), optional nullable `code_snippet` (up to 8000), and `consent_to_process: true`; unknown fields, files and unsupported query parameters are rejected.
+
+**Header:** `Idempotency-Key: <opaque random UUIDv4>` is generated once per intended diagnosis by the current Flutter client. The backend accepts exactly 16–128 ASCII `[A-Za-z0-9_-]` characters; during legacy-client cutover the header is **optional in the server implementation**, not yet required for all historical clients. The key must be independent of the account email, request contents and bearer token. A cryptographic HMAC digest and canonical request fingerprint, not the plaintext key, gate replay in the database.
+
+**200 success / replay:** The first accepted request can create a diagnosis/job. A deliberate same-key, same-authenticated-account, same-canonical-body and consent retry after an ambiguous timeout returns the **same `data.id` and current job status**, without an additional AI job or provider call. Once a job ID is known, the client polls status by GET rather than reissuing a potentially paid POST. Responses use `Cache-Control: no-store`.
+
+**409 conflict:** Reuse of a key with another account or changed payload is rejected without disclosing the other account's job. **Never silently issue another key or automatically resubmit a paid POST to work around 409.** New diagnostic intent must be an explicit separate user action.
+
+**Other responses:** `401` unauthenticated/revoked bearer, `403` suspended/unauthorized account, `422` invalid key/body/consent, `429` quota on a new paid admission, `503` missing selected provider/reviewed runbook or temporarily incomplete prior admission. Do not interpret a lost HTTP acknowledgement as a failed or uncharged request; offer an explicit same-key retry while the original request snapshot remains available. Never log raw prompts, bearer tokens, code snippets or raw intent keys.
+
+### Outstanding P1 security acceptance — not certified by this amendment
+
+When a request may have been accepted but its response is lost, the existing Flutter session-scrub path clears the private persisted key on explicit logout, token expiry or a `401/403` response. After reauthentication this can allocate a new key for the same intended paid operation. **This is an unresolved #699 duplicate-admission risk**, not a demonstrated provider charge. W3/W1 must deliver a privacy-safe recovery/reconciliation implementation and an actual lost-ACK → session expiry/logout → same-account reauthentication → retry integration test with exactly one diagnosis, one job, one paid provider call and one cost receipt. Retain no bearer or original private prompt persistently. Keep #699 OPEN; this documentation and source-alignment test do not certify provider billing, staging, or production readiness.
+
+### Regression and rollout
+
+The existing PHP `MobileAiIdempotencyTest.php` verifies keyed replay, conflict, revoked identities and quota with fixture-backed Laravel HTTP tests. The Flutter `mobile_paid_ai_http_transport_test.dart` checks genuine loopback lost-ACK header reuse while the same session is retained. `qa/tests/test_visual_mobile_ai_idempotency_contract.py` verifies this normative amendment and source integration under existing CI without modifying the pinned baseline. Post-release removal of optional-header compatibility requires coordinated client/server cutover and independent native acceptance; none is authorized by this release-freeze change.
