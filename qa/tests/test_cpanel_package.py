@@ -135,5 +135,64 @@ class TestCpanelPackage(unittest.TestCase):
             build(self.root, self.output, "c" * 40)
 
 
+    def test_one_extract_from_cpanel_home_keeps_private_code_outside_document_root(self):
+        """Exercise actual ZIP extraction at the documented account-home location."""
+        build(self.root, self.output, "1" * 40)
+        with tempfile.TemporaryDirectory() as temp_home:
+            home = Path(temp_home) / "cpanel-user"
+            home.mkdir()
+            with zipfile.ZipFile(self.output) as archive:
+                self.assertIsNone(archive.testzip())
+                archive.extractall(home)
+
+            public = home / "public_html"
+            app = home / "application"
+            contracts = home / "contracts"
+            self.assertTrue((app / "vendor/autoload.php").is_file())
+            self.assertTrue((app / "bootstrap/app.php").is_file())
+            self.assertTrue((public / "index.php").is_file())
+            self.assertTrue((contracts / "owner-cv-baseline.json").is_file())
+            self.assertEqual((public / "index.php").read_text(),
+                             (zipfile.ZipFile(self.output).read("public_html/index.php")).decode())
+            # The front controller must resolve sibling private application and
+            # never require a second extraction or user-edited relative path.
+            self.assertEqual((public / "..").resolve(), home.resolve())
+            self.assertEqual((public / "../application/vendor/autoload.php").resolve(),
+                             (app / "vendor/autoload.php").resolve())
+            self.assertNotIn("application", [item.name for item in public.iterdir()])
+            self.assertNotIn("contracts", [item.name for item in public.iterdir()])
+            self.assertFalse((app / ".env").exists())
+            self.assertFalse((public / ".env").exists())
+            self.assertFalse((home / ".env").exists())
+            self.assertFalse((public / "vendor").exists())
+            self.assertFalse((public / "storage").exists())
+            self.assertFalse((app / "tests").exists())
+            self.assertFalse((app / "database/dump.sql").exists())
+            self.assertFalse((public / "backend").exists())
+            self.assertTrue((app / "storage/framework/views").is_dir())
+            self.assertTrue((app / "storage/app/private").is_dir())
+            self.assertEqual(
+                verify_archive(self.output, "1" * 40)["source_sha"], "1" * 40
+            )
+
+    def test_extracting_inside_public_html_is_explicitly_not_a_safe_one_step_install(self):
+        """Pin the cPanel HOME extraction prerequisite, not an unsafe shortcut."""
+        build(self.root, self.output, "2" * 40)
+        with tempfile.TemporaryDirectory() as temp_home:
+            home = Path(temp_home) / "account"
+            document_root = home / "public_html"
+            document_root.mkdir(parents=True)
+            with zipfile.ZipFile(self.output) as archive:
+                archive.extractall(document_root)
+            # This places private Laravel code in a web-served subtree,
+            # and the generated public front controller points to the
+            # WRONG sibling application. It must never be claimed supported.
+            self.assertTrue((document_root / "application/vendor/autoload.php").exists())
+            self.assertTrue((document_root / "public_html/index.php").exists())
+            self.assertFalse((document_root / "index.php").exists())
+            self.assertFalse((home / "application/vendor/autoload.php").exists())
+
+
+
 if __name__ == "__main__":
     unittest.main()
