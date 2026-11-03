@@ -82,8 +82,47 @@ final class NotificationConsentTransitionAuditTest extends TestCase
                     ['purpose' => 'unrecognized', 'channel' => 'push', 'enabled' => true],
                 ],
             ])->assertUnprocessable();
+        $foreign = $this->account();
+        $this->withToken($bearer)
+            ->putJson('/api/v1/mobile/notification-preferences?user_id='.$foreign->id, [
+                'preferences' => [[
+                    'purpose' => 'editorial_updates',
+                    'channel' => 'push',
+                    'enabled' => true,
+                ]],
+            ])->assertUnprocessable();
         $this->assertDatabaseCount('notification_preferences', 0);
         $this->assertDatabaseCount('notification_consent_events', 0);
+    }
+
+    public function test_future_dated_grants_are_ineligible_until_new_audited_opt_in(): void
+    {
+        $user = $this->account();
+        $bearer = $user->createToken('future-fixture', ['mobile'], now()->addHour())
+            ->plainTextToken;
+        DB::table('notification_preferences')->insert([
+            'id' => (string) Str::uuid(),
+            'user_id' => $user->id,
+            'purpose' => 'editorial_updates',
+            'channel' => 'push',
+            'enabled' => true,
+            'consented_at' => now('UTC')->addDay(),
+            'revoked_at' => null,
+            'created_at' => now('UTC'),
+            'updated_at' => now('UTC'),
+        ]);
+
+        $gate = app(NotificationConsentGate::class);
+        $this->assertFalse($gate->allows($user, 'editorial_updates', 'push'));
+        $this->change($bearer, true);
+        $this->assertTrue($gate->allows($user, 'editorial_updates', 'push'));
+        $this->assertDatabaseHas('notification_consent_events', [
+            'user_id' => $user->id,
+            'transition' => 'granted',
+            'purpose' => 'editorial_updates',
+            'channel' => 'push',
+        ]);
+        $this->assertDatabaseCount('notification_consent_events', 1);
     }
 
     public function test_account_erasure_removes_only_its_consent_timeline(): void
