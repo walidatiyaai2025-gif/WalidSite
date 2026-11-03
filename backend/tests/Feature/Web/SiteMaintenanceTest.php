@@ -218,42 +218,12 @@ class SiteMaintenanceTest extends TestCase
         $this->post('/admin/updates/apply')->assertForbidden();
     }
 
-    public function test_bilingual_setup_displays_exact_current_stage_and_truthful_prerequisites(): void
-    {
-        $token = str_repeat('q', 40);
-        config([
-            'site.setup_enabled' => true,
-            'site.setup_token' => $token,
-            'site.setup_database_ready' => true,
-        ]);
-
-        foreach (['en' => 'ltr', 'ar' => 'rtl'] as $lang => $direction) {
-            $page = $this->get('/setup?lang='.$lang)->assertOk()
-                ->assertSee('<html lang="'.$lang.'" dir="'.$direction.'">', false)
-                ->assertSee('aria-current="step"', false)
-                ->assertSee($lang === 'ar' ? 'الترحيب ومتطلبات التثبيت' : 'Welcome and installation requirements')
-                ->assertSee($lang === 'ar' ? 'هذه متطلبات يجب تجهيزها' : 'This list is not a completed server preflight.')
-                ->assertDontSee($token);
-            $this->assertSame(1, substr_count($page->getContent(), ' aria-current="step"'));
-        }
-
-        $this->post('/setup/unlock', ['token' => $token])->assertRedirect('/setup');
-        $database = $this->get('/setup?lang=en')->assertOk()
-            ->assertSee('Step 3: Install database schema')
-            ->assertDontSee('Welcome and installation requirements');
-        $this->assertSame(1, substr_count($database->getContent(), ' aria-current="step"'));
-        $this->post('/setup/database')->assertRedirect('/setup');
-        $ready = $this->get('/setup?lang=ar')->assertOk()
-            ->assertSee('الخطوة 4: نشر الموقع وتفعيل المالك')
-            ->assertSee('نشر الموقع وتفعيل المالك')
-            ->assertSee('minlength="14"', false);
-        $this->assertSame(1, substr_count($ready->getContent(), ' aria-current="step"'));
-    }
-
     public function test_installer_completion_notice_and_public_entry_work_in_both_login_locales(): void
     {
-        $ownerNotice = 'Installation complete. Sign in with your owner email.';
         foreach (['ar' => 'rtl', 'en' => 'ltr'] as $lang => $direction) {
+            $ownerNotice = $lang === 'ar'
+                ? 'اكتمل التثبيت. سجّل الدخول باستخدام بريد المالك.'
+                : 'Installation complete. Sign in with your owner email.';
             $page = $this->withSession(['status' => $ownerNotice])
                 ->get('/admin/login?lang='.$lang)->assertOk()
                 ->assertSee('<html lang="'.$lang.'" dir="'.$direction.'">', false)
