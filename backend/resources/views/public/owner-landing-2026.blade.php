@@ -124,7 +124,7 @@
         </figure>
         <a class="w26-brand" href="{{ route('home', ['lang' => $locale]) }}" aria-current="page" aria-label="{{ $w26Ar ? 'الصفحة الرئيسية — وليد عطية' : 'Home — Waleed Atiya' }}">
             <span class="w26-mark" aria-hidden="true">W</span>
-            <span class="w26-brand-copy"><strong>Waleed Atiya</strong><small>Personal Technology Platform</small></span>
+            <span class="w26-brand-copy"><strong>{{ $w26Ar ? 'وليد عطية' : 'Waleed Atiya' }}</strong><small>Personal Technology Platform</small></span>
         </a>
         <div class="w26-headline">
             <h1 id="w26-title"><span lang="en">Waleed <span>Atiya</span></span></h1>
