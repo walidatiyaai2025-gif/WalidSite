@@ -42,6 +42,24 @@ final class TrustedReleaseUpdateJourney
         callable $writesQuiesced,
         callable $healthCheck,
     ): array {
+        return $this->withExclusiveUpdateLock($paths, fn (): array => $this->executeUnlocked(
+            $liveDatabase, $disposableRestoreDatabase, $signedEnvelope,
+            $publisherPublicKeyBase64, $pinnedHttpsOrigin, $installedVersion,
+            $paths, $writesQuiesced, $healthCheck,
+        ));
+    }
+
+    private function executeUnlocked(
+        PDO $liveDatabase,
+        PDO $disposableRestoreDatabase,
+        string $signedEnvelope,
+        string $publisherPublicKeyBase64,
+        string $pinnedHttpsOrigin,
+        string $installedVersion,
+        array $paths,
+        callable $writesQuiesced,
+        callable $healthCheck,
+    ): array {
         if ($writesQuiesced() !== true) {
             throw new DomainException('The site must be in verified read-only maintenance before updating.');
         }
@@ -122,6 +140,26 @@ final class TrustedReleaseUpdateJourney
         callable $healthCheck,
         ?TrustedReleaseDownloader $downloader = null,
     ): array {
+        return $this->withExclusiveUpdateLock($paths, fn (): array => $this->downloadAndExecuteUnlocked(
+            $liveDatabase, $disposableRestoreDatabase, $signedEnvelope,
+            $publisherPublicKeyBase64, $pinnedHttpsOrigin, $installedVersion,
+            $paths, $writesQuiesced, $healthCheck,
+            $downloader,
+        ));
+    }
+
+    private function downloadAndExecuteUnlocked(
+        PDO $liveDatabase,
+        PDO $disposableRestoreDatabase,
+        string $signedEnvelope,
+        string $publisherPublicKeyBase64,
+        string $pinnedHttpsOrigin,
+        string $installedVersion,
+        array $paths,
+        callable $writesQuiesced,
+        callable $healthCheck,
+        ?TrustedReleaseDownloader $downloader = null,
+    ): array {
         if ($writesQuiesced() !== true) {
             throw new DomainException('The site must be read-only before fetching or applying a release.');
         }
@@ -150,11 +188,61 @@ final class TrustedReleaseUpdateJourney
         // execute() rechecks the write gate, Ed25519 publisher, archive SHA,
         // complete candidate seal, isolated file + MariaDB restore, then the
         // health and rollback behavior of the atomic code pointer.
-        return $this->execute(
+        return $this->executeUnlocked(
             $liveDatabase, $disposableRestoreDatabase, $signedEnvelope,
             $publisherPublicKeyBase64, $pinnedHttpsOrigin, $installedVersion,
             $paths, $writesQuiesced, $healthCheck,
         );
+    }
+
+    /**
+     * One lock from first trust check/download through restoration and health.
+     * The two entrypoints MUST NOT reacquire it recursively.
+     *
+     * @param array<string,string> $paths
+     * @param callable():array<string,mixed> $operation
+     * @return array<string,mixed>
+     */
+    private function withExclusiveUpdateLock(array $paths, callable $operation): array
+    {
+        $vault = realpath($paths['backup_vault'] ?? '');
+        $public = realpath($paths['public'] ?? '');
+        if ($vault === false || ! is_dir($vault) || ! is_writable($vault)
+            || is_link($paths['backup_vault'] ?? '')
+            || $vault !== ($paths['backup_vault'] ?? '')
+            || $public === false
+            || $vault === $public
+            || str_starts_with($vault, rtrim($public, '/').'/')
+            || str_starts_with($public, rtrim($vault, '/').'/')) {
+            throw new DomainException('Trusted update lock requires an isolated writable private vault.');
+        }
+
+        $lockPath = $vault.'/.trusted-update.lock';
+        if (is_link($lockPath) || (file_exists($lockPath) && ! is_file($lockPath))) {
+            throw new DomainException('Unsafe trusted update lock path.');
+        }
+        $stream = @fopen($lockPath, 'c+');
+        if ($stream === false) {
+            throw new DomainException('Cannot create private trusted update lock.');
+        }
+
+        try {
+            $stat = fstat($stream);
+            $disk = @lstat($lockPath);
+            if ($stat === false || $disk === false || ($stat['nlink'] ?? 0) !== 1
+                || $stat['ino'] !== $disk['ino'] || $stat['dev'] !== $disk['dev']
+                || ! is_file($lockPath) || is_link($lockPath)) {
+                throw new DomainException('Trusted update lock is not an exclusive regular file.');
+            }
+            if (! flock($stream, LOCK_EX | LOCK_NB)) {
+                throw new DomainException('Another trusted code update is already in progress.');
+            }
+
+            return $operation();
+        } finally {
+            @flock($stream, LOCK_UN);
+            fclose($stream);
+        }
     }
 
     /**
