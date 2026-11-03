@@ -9,6 +9,14 @@
 
 @push('styles')
 <style>
+    .cv-project-preview-cta { margin-block:10px 26px; display:flex; flex-wrap:wrap; gap:16px;
+        align-items:center; justify-content:space-between; border:1px solid #b8e3da; border-radius:16px;
+        background:linear-gradient(120deg,#f0fbf9,#fff); padding:20px 24px; }
+    .cv-project-preview-cta strong {display:block;color:#163b66;font-size:18px}
+    .cv-project-preview-cta p {margin:6px 0 0;max-width:70ch;color:#315471}
+    .cv-project-preview-cta a {display:inline-flex;min-height:44px;align-items:center;border-radius:10px;
+        padding:10px 15px;background:#079b8a;color:#fff;font-weight:800;text-decoration:none}
+    .cv-project-preview-cta a:focus-visible {outline:3px solid #126de1;outline-offset:3px}
     .case-page { padding-block: clamp(32px, 5vw, 72px); }
     .case-page h2 { font-size: clamp(32px, 5vw, 52px); line-height: 1.2; color: var(--wa-primary); }
     .case-lead { max-width: 70ch; color: var(--wa-body); }
@@ -252,6 +260,15 @@
         <a href="{{ route('public.projects', array_merge(['lang' => $locale === 'ar' ? 'en' : 'ar'], $safeProjectFilters, $localePageFilter)) }}"
             lang="{{ $locale === 'ar' ? 'en' : 'ar' }}" hreflang="{{ $locale === 'ar' ? 'en' : 'ar' }}">{{ $locale === 'ar' ? 'English' : 'العربية' }}</a>
     </nav>
+    <aside class="cv-project-preview-cta" aria-label="{{ $locale === 'ar' ? 'معاينة مشاريع السيرة الذاتية' : 'CV-based project designs' }}">
+        <div>
+            <strong>{{ $locale === 'ar' ? 'تصميم المشاريع من واقع السيرة الذاتية' : 'Owner CV + GitHub project designs' }}</strong>
+            <p>{{ $locale === 'ar'
+                ? 'تصفّح الأقسام الستة والبيانات الموثّقة بمصادرها. هذه معاينة مستقلة عن دراسات الحالة المعتمدة للنشر.'
+                : 'Explore the six portfolio screens with source and role details. This review preview is separate from publication-approved case studies.' }}</p>
+        </div>
+        <a href="{{ route('public.projects', ['lang' => $locale, 'preview' => 'cv']) }}">{{ $locale === 'ar' ? 'افتح معاينة التصاميم' : 'Open Projects design preview' }} &rsaquo;</a>
+    </aside>
     <h2 id="project-heading">{{ $locale === 'ar' ? 'مشاريع ودراسات حالة موثقة' : 'Verified projects and case studies' }}</h2>
     <p class="case-lead">{{ $locale === 'ar'
         ? 'تظهر هنا المشاريع التي تمت الموافقة على نشرها ولها أدلة عامة صالحة. لا نعرض مشاريع داخلية غير مصرح بها أو نتائج مختلقة.'
