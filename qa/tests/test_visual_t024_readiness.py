@@ -3,6 +3,7 @@ import hashlib
 import io
 import json
 import shutil
+import subprocess
 import tempfile
 import unittest
 from contextlib import redirect_stdout
@@ -10,7 +11,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from qa.t024_readiness import (
-    ROOT, audit, main, openapi_operations, proof_ok,
+    ROOT, audit, main, openapi_operations, proof_ok, source_proof_ok,
 )
 
 
@@ -115,3 +116,117 @@ class T024ReadinessTest(unittest.TestCase):
                 evidence_path.write_text(json.dumps(bad), encoding="utf-8")
                 report, errors = audit(root)
                 self.assertTrue(any("enumerate all" in x for x in errors))
+
+    @staticmethod
+    def git(root: Path, *args: str) -> str:
+        output = subprocess.run(
+            ["git", "-C", str(root), *args],
+            capture_output=True, text=True, check=True, timeout=10,
+        )
+        return output.stdout.strip()
+
+    def test_real_git_provenance_rejects_unknown_stale_and_dirty_sources(self):
+        # Synthetic commits prove Git ancestry and source integrity only.
+        # They are not evidence of any actual WalidSite visual/QA gate.
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            (root / "backend/routes").mkdir(parents=True)
+            (root / "backend/routes/api.php").write_text("<?php // baseline\n")
+            self.git(root, "init", "-q")
+            self.git(root, "config", "user.name", "QA Fixture")
+            self.git(root, "config", "user.email", "qa@example.test")
+            self.git(root, "add", "backend")
+            self.git(root, "commit", "-qm", "source baseline")
+            baseline = self.git(root, "rev-parse", "HEAD")
+
+            (root / "qa/t024-evidence").mkdir(parents=True)
+            (root / "qa/t024-evidence/proof.json").write_text('{"fixture": true}')
+            (root / "docs").mkdir()
+            (root / "docs/readme.md").write_text("Documentation-only update\n")
+            self.git(root, "add", ".")
+            self.git(root, "commit", "-qm", "evidence and docs only")
+            self.assertTrue(source_proof_ok(root, baseline))
+            self.assertFalse(source_proof_ok(root, "0" * 40))
+            self.assertFalse(source_proof_ok(root / "docs", baseline))
+            self.assertFalse(source_proof_ok(root, "not-a-commit"))
+
+            # A newly staged or uncommitted implementation cannot pass as the
+            # earlier tested commit, even before a new HEAD is created.
+            (root / "backend/routes/api.php").write_text("<?php // unsafe change\n")
+            self.assertFalse(source_proof_ok(root, baseline))
+            self.git(root, "add", "backend/routes/api.php")
+            self.assertFalse(source_proof_ok(root, baseline))
+            self.git(root, "commit", "-qm", "changed product after capture")
+            self.assertFalse(source_proof_ok(root, baseline))
+            new_source = self.git(root, "rev-parse", "HEAD")
+            self.assertTrue(source_proof_ok(root, new_source))
+
+            # QA evidence append alone does not invalidate the current SHA.
+            (root / "qa/t024-evidence/proof.json").write_text('{"fixture": "updated"}')
+            self.assertTrue(source_proof_ok(root, new_source))
+            (root / "mobile").mkdir()
+            (root / "mobile/new_screen.dart").write_text("// untracked implementation\n")
+            self.assertFalse(source_proof_ok(root, new_source))
+
+    def test_t024_audit_accepts_only_real_git_backed_unchanged_proof(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            for source in (
+                "contracts/screens.json", "contracts/acceptance-gates.json",
+                "design/visual-fidelity-evidence.json",
+                "design/t024-gate-evidence.json", "api/openapi-contract.yaml",
+            ):
+                target = root / source
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(ROOT / source, target)
+            self.git(root, "init", "-q")
+            self.git(root, "config", "user.name", "QA Fixture")
+            self.git(root, "config", "user.email", "qa@example.test")
+            self.git(root, "add", ".")
+            self.git(root, "commit", "-qm", "tested source")
+            source_sha = self.git(root, "rev-parse", "HEAD")
+            artifact = root / "qa/t024-evidence/test.json"
+            artifact.parent.mkdir(parents=True)
+            artifact.write_text('{"synthetic": true}', encoding="utf-8")
+            proof = {
+                "path": "qa/t024-evidence/test.json",
+                "sha256": hashlib.sha256(artifact.read_bytes()).hexdigest(),
+                "source_sha": source_sha,
+                "command": "python -m unittest qa.tests.test_visual_t024_readiness",
+            }
+            ledger = root / "design/t024-gate-evidence.json"
+            data = json.loads(ledger.read_text(encoding="utf-8"))
+            data["actions"]["WEB-01/open_projects"] = [proof]
+            data["gates"]["G-01"]["status"] = "verified"
+            data["gates"]["G-01"]["evidence"] = [proof]
+            ledger.write_text(json.dumps(data), encoding="utf-8")
+            self.git(root, "add", ".")
+            self.git(root, "commit", "-qm", "attach synthetic test proof")
+
+            with patch("qa.t024_readiness.visual_audit", return_value=([], 0, 40)):
+                report, errors = audit(root)
+                self.assertEqual(errors, [])
+                self.assertEqual(report["screen_actions"]["with_pinned_proof"], 1)
+                self.assertEqual(report["gates"]["with_pinned_proof"], 1)
+                self.assertFalse(report["engineering_ready"])
+
+                # Hash-correct and well-formed proof is insufficient when the
+                # claimed source revision cannot be corroborated by Git.
+                data["actions"]["WEB-01/open_projects"][0]["source_sha"] = "0" * 40
+                ledger.write_text(json.dumps(data), encoding="utf-8")
+                report, errors = audit(root)
+                self.assertTrue(any("Action WEB-01" in e for e in errors))
+                self.assertEqual(report["screen_actions"]["with_pinned_proof"], 0)
+                data["actions"]["WEB-01/open_projects"][0]["source_sha"] = source_sha
+                ledger.write_text(json.dumps(data), encoding="utf-8")
+
+                # Even an ancestor SHA must not justify the same evidence
+                # after any deployed API source changes.
+                (root / "api/openapi-contract.yaml").write_text(
+                    (root / "api/openapi-contract.yaml").read_text() + "\n# drift\n"
+                )
+                self.git(root, "add", "api/openapi-contract.yaml", "design/t024-gate-evidence.json")
+                self.git(root, "commit", "-qm", "change API after QA proof")
+                report, errors = audit(root)
+                self.assertTrue(any("source-pinned proof" in e for e in errors))
+                self.assertEqual(report["gates"]["with_pinned_proof"], 0)
