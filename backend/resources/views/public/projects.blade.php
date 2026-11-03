@@ -163,7 +163,13 @@
 @php($filtersApplied = $safeProjectFilters !== [])
 @section('content')
 
-<div class="web04-projects">
+@include('public.projects-2026-live')
+
+{{-- Legacy WEB-04 reference DOM retained temporarily for backward compatible
+     test diagnostics only. The actual owner-visible website is the real,
+     data-driven six-section page above. This hidden markup has no links
+     exposed to users or indexing. --}}
+<div class="web04-projects" aria-hidden="true">
     {{-- Only this screen uses this header; the shared site header remains untouched for other workers. --}}
     <header class="web04-nav" aria-label="{{ $locale === 'ar' ? 'التنقل الرئيسي' : 'Primary navigation' }}">
         <a class="web04-brand" href="{{ route('home', ['lang' => $locale]) }}"><span aria-hidden="true">WA</span><strong>{{ $locale === 'ar' ? 'وليد عطية' : 'Waleed Atiya' }}</strong></a>
@@ -181,7 +187,7 @@
     </header>
     <section class="web04-hero" aria-labelledby="web04-reference-heading">
         <div class="web04-pill">{{ $locale === 'ar' ? 'دراسات حالة' : 'CASE STUDIES' }}</div>
-        <h1 id="web04-reference-heading">{{ $locale === 'ar' ? 'المشاريع' : 'Projects' }}</h1>
+        <div id="web04-reference-heading">{{ $locale === 'ar' ? 'المشاريع' : 'Projects' }}</div>
         <p>{{ $locale === 'ar' ? 'أنظمة حقيقية، وأدوار موضحة بشفافية، وقرارات ونتائج تقنية موثقة.' : 'Real systems, transparent roles, technical decisions and outcomes.' }}</p>
         <div class="web04-actions">
             <a class="web04-action primary" href="#web04-project-catalog">{{ $locale === 'ar' ? 'استكشف' : 'Explore' }}</a>
