@@ -272,5 +272,43 @@ class VisualDiagnosticsTest(unittest.TestCase):
         self.assertEqual(self.ledger.read_text(), '{"screens": {}}\n')
 
 
+    def test_real_git_provenance_guard_accepts_external_staging_then_reports(self):
+        # Unlike the mocked unit cases, this exercises the actual git porcelain
+        # whitelist. The original implementation fails on its own untracked PNG.
+        import shutil
+
+        if shutil.which("git") is None:
+            self.skipTest("Git is required for source-attestation integration")
+
+        def git(*argv):
+            return subprocess.run(
+                ["git", *argv], cwd=self.root, check=True,
+                capture_output=True, text=True,
+            ).stdout.strip()
+
+        git("init", "-q")
+        git("add", "--all")
+        git("-c", "user.name=Visual Fixture",
+            "-c", "user.email=visual-fixture@example.test",
+            "commit", "-qm", "fixture")
+        tested_sha = git("rev-parse", "HEAD")
+
+        def renderer(command, *, env, **kwargs):
+            Image.new("RGBA", (2, 2), (13, 27, 49, 255)).save(
+                env["WALIDSITE_CAPTURE_PATH"]
+            )
+            return subprocess.CompletedProcess(command, 0)
+
+        with patch("qa.visual_diagnostics.audit", return_value=([], 0, 40)):
+            report = diagnose(self.root, self.plan, tested_sha, runner=renderer)
+
+        self.assertEqual(report["renderer_commit"], tested_sha)
+        self.assertEqual(report["screens"]["WEB-01"]["status"], "mismatch")
+        self.assertTrue(
+            (self.root / "qa/visual-diagnostics" / tested_sha / "report.json").is_file()
+        )
+        self.assertEqual(self.ledger.read_text(), '{"screens": {}}\n')
+
+
 if __name__ == "__main__":
     unittest.main()
