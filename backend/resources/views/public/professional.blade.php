@@ -26,7 +26,7 @@
 @section('content')
 {{-- WEB-03 owner-approved four-state design replaces the obsolete single reference stage.
      About / Recruiter keep their pre-existing reference headers unchanged. --}}
-@if($page !== 'expertise')
+@if(! in_array($page, ['expertise','about'], true))
     @include('public.t007-reference-stage', ['screen' => $page])
 @endif
 <div class="site-wrap t007-functional" aria-label="Evidence-gated public profile">

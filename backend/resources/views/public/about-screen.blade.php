@@ -1,202 +1,245 @@
-{{-- WEB-02: source-verified public About screen. No private biography, invented
-     credentials, fake experience lengths or unreviewed employer details. --}}
+{{-- Owner-approved About composition, 2026-11-03: English-first; all text is seeded CMS copy.
+     Career rows/certificates/claim sources still come only from publication-gated records. --}}
 @php($aboutCopy = app(\App\Domain\Content\PageContentRepository::class)->publishedMap('about', $locale))
+@php($aboutDefaults = \App\Domain\Content\PageContentDefaults::aboutCopy())
+@php($aboutText = static fn (string $section, string $key): string => $aboutCopy[$section][$key] ?? $aboutDefaults[$section][$key][$locale])
+@php($aboutTech = array_keys($aboutDefaults['technologies']))
+@php($aboutTech = array_values(array_filter($aboutTech, fn($key) => $key !== 'heading')))
+@php($aboutFocus = ['diwanmam','datacenter','biometric','wordpress','aimwweb','walidsite'])
+@php($employerSlots = [
+    'Amiri Diwan' => ['employer_amiri','amiri_summary'],
+    'Crown Prince Diwan' => ['employer_crown','crown_summary'],
+    'PAAET / Diyar United' => ['employer_paaet','paaet_summary'],
+    'Bizware' => ['employer_bizware','bizware_summary'],
+])
 @push('styles')
 <style>
-.about-screen{display:grid;gap:24px}
-.about-hero{display:grid;grid-template-columns:minmax(0,1fr) minmax(190px,285px);align-items:center;gap:clamp(20px,4vw,54px);background:var(--wa-base);border:1px solid var(--wa-soft-border);border-radius:var(--wa-radius);padding:clamp(20px,4vw,44px)}
-.about-kicker{margin:0 0 9px;color:#126453;font-weight:800;letter-spacing:.03em;font-size:13px}
-.about-hero h1{color:var(--wa-primary);font-size:clamp(32px,4.2vw,52px);line-height:1.24;margin:0 0 16px}
-.about-hero p{color:var(--wa-body);margin:0;max-width:66ch}
-.about-portrait{margin:0;max-width:285px;justify-self:center;width:100%}
-.about-portrait img{display:block;width:100%;height:auto;aspect-ratio:4/5;object-fit:cover;object-position:center top;border-radius:22px;border:1px solid var(--wa-soft-border);background:var(--wa-muted-surface)}
-.about-portrait figcaption{margin-top:8px;font-size:12px;color:var(--wa-muted-text);text-align:center}
-.about-actions,.about-jump-links{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-block:20px 0}
-.about-actions a,.about-jump-links a{display:inline-flex;align-items:center;min-height:44px;padding:10px 16px;border:1px solid var(--wa-soft-border);border-radius:11px;color:var(--wa-primary);font-weight:750;text-decoration:none}
-.about-actions a:first-child{background:var(--wa-primary);border-color:var(--wa-primary);color:#fff}
-.about-jump-links{margin-top:22px}
-.about-jump-links a{background:var(--wa-muted-surface)}
-.about-screen a:focus-visible{outline:3px solid var(--wa-cta);outline-offset:3px}
-/* WEB-02: native hero/jump anchors land on the actual approved record sections.
-   Scroll and focus targets remain discoverable to keyboard users in both directions. */
-.about-screen section[id^="about-"]{scroll-margin-block-start:20px}
-.about-screen section[id^="about-"]:target{outline:3px solid var(--wa-cta);outline-offset:3px}
-.about-grid{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(270px,1fr);gap:24px;align-items:start}
-.about-panel{border:1px solid var(--wa-soft-border);border-radius:22px;background:#fff;padding:clamp(20px,3vw,32px);min-width:0}
-.about-panel h2{color:var(--wa-primary);font-size:clamp(22px,2.6vw,27px);margin:0 0 10px}
-.about-panel>p{color:var(--wa-body);margin:0 0 20px}
-.about-timeline,.about-certifications,.about-claims{list-style:none;padding:0;margin:0}
-.about-timeline{border-inline-start:3px solid var(--wa-soft-border);margin-inline-start:8px}
-.about-timeline li{position:relative;padding:0 20px 26px;overflow-wrap:anywhere}
-.about-timeline li:last-child{padding-bottom:0}
-.about-timeline li::before{content:"";position:absolute;inset-inline-start:-9px;top:7px;width:15px;height:15px;background:var(--wa-accent);border:3px solid white;outline:1px solid var(--wa-accent);border-radius:50%}
-.about-timeline h3,.about-certifications h3{color:var(--wa-strong);font-size:19px;line-height:1.4;margin:0 0 5px}
-.about-timeline p,.about-certifications p{color:var(--wa-body);margin:0 0 4px}
-.about-period{display:flex;gap:6px;flex-wrap:wrap;align-items:center;color:var(--wa-muted-text);font-size:14px;font-weight:700;margin-bottom:8px}
-.about-certifications li,.about-claims li{border-top:1px solid var(--wa-soft-border);padding-block:16px;overflow-wrap:anywhere}
-.about-certifications li:first-child,.about-claims li:first-child{border-top:0}
-.about-certified{display:inline-flex;align-items:center;gap:6px;color:#176B4D;font-size:14px;font-weight:700}
-.about-claims a{display:inline-flex;align-items:center;min-height:44px;color:var(--wa-cta);font-weight:800;overflow-wrap:anywhere;text-underline-offset:3px}
-.about-empty{padding:18px;background:var(--wa-subtle);border:1px dashed var(--wa-soft-border);border-radius:12px;color:var(--wa-body)}
-.about-panel--proof{grid-column:1/-1}
-.about-claims{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:16px}
-.about-claims li{border:1px solid var(--wa-soft-border);border-radius:13px;padding:20px}
-.about-claims li:first-child{border:1px solid var(--wa-soft-border)}
-@media(max-width:850px){.about-grid{grid-template-columns:1fr}.about-panel--proof{grid-column:1}}
-@media(max-width:620px){.about-hero{grid-template-columns:1fr}.about-portrait{grid-row:1;max-width:205px}.about-actions a,.about-jump-links a{flex:1 1 auto;justify-content:center}}
-@media print{.site-header,.site-footer,.about-actions,.about-jump-links{display:none!important}.about-hero,.about-panel{break-inside:avoid;box-shadow:none}.about-screen{gap:12px}.about-grid{grid-template-columns:1fr}}
-
-/* WEB-02 owner reference: navy site header, pale hero, framed portrait and
-   full-width chronology. Scoped to About; never repaint other screens. */
-body:has(.about-screen){overflow-x:clip}
-body:has(.about-screen) .site-header{background:#1C4976;border-bottom:0}
-body:has(.about-screen) .brand{color:#fff;font-size:20px}
-body:has(.about-screen) .brand-mark{background:transparent;color:#00A999;width:auto;border-radius:0;font-size:32px}
-body:has(.about-screen) .language-link{background:transparent;border-color:transparent;color:#e6f2fa;border-radius:8px}
-body:has(.about-screen) .language-link[aria-current="page"]{color:#00A999}
-body:has(.about-screen) .header-links a[href*="/contact"]{background:#00A999;color:#123C5F;border-radius:14px}
-.about-screen{gap:42px}
-.about-hero{position:relative;z-index:0;min-height:320px;border:0;border-radius:0;background:#EAF5FB;
-    grid-template-columns:minmax(0,1fr) minmax(230px,340px);padding:35px 0}
-.about-hero::before{content:"";position:absolute;z-index:-1;top:0;bottom:0;left:50%;width:100vw;
-    transform:translateX(-50%);background:#EAF5FB}
-.about-hero h1{margin-bottom:14px}
-.about-kicker{display:inline-flex;align-items:center;min-height:40px;min-width:190px;background:#D8F4EF;
-    padding:8px 16px;border-radius:15px;color:#078E80;font-size:15px}
-.about-actions{margin-top:23px}
-.about-actions a{min-width:175px;justify-content:center;border:1px solid #00A999;border-radius:16px;color:#174870}
-.about-actions a:first-child{background:#079F94;border-color:#079F94;color:#fff}
-.about-actions a:nth-child(3){min-width:auto;border:0;text-decoration:underline}
-.about-jump-links{margin-top:14px}
-.about-jump-links a{background:transparent;border:0;min-height:36px;padding:4px 8px;color:#315471;text-decoration:underline}
-.about-portrait{position:relative;max-width:258px;margin:0}
-.about-portrait::before,.about-portrait::after{content:"";position:absolute;z-index:-1;
-    border-radius:24px;background:#2B668C;border:3px solid #00A999;width:85%;height:78%}
-.about-portrait::before{inset-block-start:13%;inset-inline-start:-50%}
-.about-portrait::after{inset-block-start:23%;inset-inline-start:-25%}
-.about-portrait img{border:4px solid #0B9F95;aspect-ratio:1/1;object-fit:cover;border-radius:20px}
-.about-portrait figcaption{font-size:11px}
-.about-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:24px}
-#about-career{grid-column:1/-1;padding:0;background:transparent;border:0}
-.about-timeline{display:grid;gap:18px;border:0;margin:0}
-.about-timeline li{display:grid;grid-template-columns:176px minmax(0,1fr);align-items:center;
-    column-gap:30px;min-height:95px;padding:19px 25px;background:#fff;border-radius:18px}
-.about-timeline li::before{display:none}
-.about-timeline li:last-child{padding-bottom:19px}
-.about-period{grid-column:1;grid-row:1/span 2;align-self:center;justify-content:center;
-    background:#E4F4F6;border-radius:13px;color:#087C78;min-height:46px;margin:0;padding:8px}
-.about-timeline h3{grid-column:2;align-self:end;margin:0}
-.about-timeline p{grid-column:2;align-self:start;margin:0}
-@media(max-width:850px){
-    .about-grid{grid-template-columns:1fr}
-    #about-career{grid-column:1}
-    .about-hero{grid-template-columns:minmax(0,1fr) 230px}
-}
-@media(max-width:620px){
-    .about-hero{grid-template-columns:1fr;padding-block:22px}
-    .about-portrait{grid-row:1;max-width:195px}
-    .about-timeline li{grid-template-columns:1fr;gap:5px}
-    .about-period,.about-timeline h3,.about-timeline p{grid-column:1;grid-row:auto;justify-self:start}
-    .about-period{min-height:40px}
-    body:has(.about-screen) .header-row{align-items:flex-start}
-}
-@media print{.about-hero::before,.about-portrait::before,.about-portrait::after{display:none!important}
-    #about-career{break-inside:auto}.about-timeline li{break-inside:avoid}}
+body:has(.wa-about){background:#eef7fd}
+.wa-about{--ink:#174371;--teal:#00a995;--edge:#d9e8f0;--muted:#456684;color:var(--ink);padding-block:0 48px}
+.wa-about *{box-sizing:border-box}
+.wa-about a:focus-visible,.wa-about button:focus-visible{outline:3px solid #00b89b;outline-offset:3px}
+.wa-about section[id]{scroll-margin-top:22px}
+.wa-about section[id]:target{outline:2px solid #00a995;outline-offset:3px}
+.about-hero{position:relative;isolation:isolate;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:clamp(20px,5vw,72px);align-items:center;min-height:265px;padding:30px 0 22px}
+.about-hero::before{content:"";position:absolute;z-index:-1;inset:0 50% 0 auto;transform:translateX(50%);width:100vw;background:#eaf5fb}
+.about-kicker{display:inline-block;background:#d8f4ef;color:#008d82;border-radius:13px;padding:6px 13px;margin:0 0 8px;font-size:13px;font-weight:800;letter-spacing:.045em}
+.about-hero h1{color:#174371;font-size:clamp(32px,3.3vw,44px);line-height:1.1;margin:2px 0 3px;font-weight:800}
+.about-headline{font-size:clamp(15px,1.45vw,19px);font-weight:800;color:#174371;line-height:1.4;margin:0 0 9px}
+.about-intro{font-size:14px;line-height:1.54;color:#355879;max-width:740px;margin:0 0 14px}
+.about-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.about-actions a{display:inline-flex;align-items:center;justify-content:center;min-height:42px;padding:9px 18px;border-radius:11px;text-decoration:none;font-size:14px;font-weight:800;border:1px solid var(--teal)}
+.about-actions .primary{background:#00a895;color:#fff;min-width:156px}
+.about-actions .secondary{background:#fff;color:#174371;min-width:145px}
+.about-actions .quiet{color:#237b7b;text-decoration:underline;border:0;padding-inline:9px}
+.about-person{display:flex;align-items:center;gap:24px;min-width:0}
+.about-portrait{margin:0;flex:0 0 auto;width:clamp(128px,11vw,164px)}
+.about-portrait img{width:100%;height:auto;aspect-ratio:1/1;object-fit:cover;object-position:center 17%;border-radius:17px;border:2px solid var(--teal);display:block;background:#fff}
+.about-contact{font-size:13px;line-height:1.35;min-width:210px}
+.about-contact a,.about-contact span{display:flex;gap:10px;align-items:center;min-height:29px;text-decoration:none;color:#213b55;overflow-wrap:anywhere}
+.about-contact img{width:18px;height:18px;object-fit:contain}
+.about-contact .about-icon{display:inline-flex;width:20px;align-items:center;justify-content:center;color:#009f8e;font-size:18px;font-weight:800;flex:0 0 20px}
+.about-facts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:14px 0 17px}
+.about-fact{min-width:0;display:flex;align-items:center;gap:14px;padding:14px 18px;min-height:74px;border:1px solid #e1ebf2;background:#fff;border-radius:13px;box-shadow:0 5px 15px rgba(17,62,105,.025)}
+.about-fact img{width:36px;height:36px;object-fit:contain;background:#e9f8f5;border-radius:11px;padding:7px}
+.about-fact b{display:block;font-size:clamp(13px,1.35vw,20px);color:#173f6a;line-height:1.2}
+.about-fact span{display:block;font-size:12px;color:#254b6d}
+.about-columns{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:12px;margin-bottom:12px;align-items:stretch}
+.about-columns--wide{grid-template-columns:minmax(0,1.1fr) minmax(0,1fr)}
+.about-panel{background:#fff;border:1px solid #d9e5ef;border-radius:14px;box-shadow:0 5px 20px rgba(13,58,94,.035);min-width:0;padding:14px 16px}
+.about-panel h2{font-size:20px;line-height:1.2;margin:0 0 12px;color:#153e6c;font-weight:800;display:flex;align-items:center;gap:9px}
+.about-panel h2::before{content:"";width:4px;height:21px;border-radius:3px;background:#00a995;flex:0 0 4px}
+.about-summary p{font-size:13px;line-height:1.56;color:#284e73;margin:0 0 13px}
+.about-summary p:last-child{margin:0}
+.about-timeline{list-style:none;margin:0;padding:0 0 0 20px;position:relative}
+.about-timeline::before{content:"";position:absolute;top:14px;bottom:14px;inset-inline-start:7px;width:2px;background:#c9d6e0}
+.about-timeline li{position:relative;min-width:0;margin:0 0 7px}
+.about-timeline li:last-child{margin-bottom:0}
+.about-timeline li::before{content:"";position:absolute;inset-inline-start:-19px;top:18px;width:10px;height:10px;background:#00a995;border:2px solid #fff;border-radius:50%;box-shadow:0 0 0 1px #b7d9dd}
+.about-career-row{display:flex;gap:10px;align-items:center;background:#f5f9fc;border-radius:9px;padding:9px 10px;min-width:0}
+.about-career-logo{display:flex;align-items:center;justify-content:center;width:45px;height:42px;flex:0 0 45px;border-radius:10px;background:#fff;border:1px solid #dce9ed}
+.about-career-logo img{width:30px;height:30px;object-fit:contain}
+.about-career-body{min-width:0;flex:1}
+.about-career-top{display:flex;justify-content:space-between;gap:8px;align-items:start}
+.about-career-top h3{margin:0;color:#153e6c;font-size:13px;font-weight:800;line-height:1.27}
+.about-period{white-space:nowrap;color:#087f73;border-radius:99px;background:#dff6ef;font-size:11px;font-weight:800;padding:4px 8px}
+.about-career-body p{margin:2px 0 0;font-size:11px;line-height:1.35;color:#355878}
+.about-empty{padding:13px;background:#eef8f9;color:#345b75;border:1px dashed #b8d7df;border-radius:10px;font-size:13px}
+.about-technologies{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px}
+.about-tech{display:flex;align-items:center;justify-content:flex-start;gap:7px;min-height:51px;border:1px solid #e2ebf1;border-radius:10px;background:#fdfefe;padding:7px;min-width:0}
+.about-tech img{width:28px;height:28px;object-fit:contain;flex:0 0 28px}
+.about-tech span{font-size:12px;line-height:1.2;font-weight:800;color:#163e67;overflow-wrap:anywhere}
+.about-focus{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}
+.about-focus-card{display:flex;gap:8px;align-items:start;min-width:0;border:1px solid #e0eaf1;border-radius:11px;padding:11px 10px;background:#fff}
+.about-focus-card img{width:32px;height:32px;flex:0 0 32px;background:#ecf9f6;border-radius:8px;padding:5px}
+.about-focus-card h3{font-size:12px;color:#164371;line-height:1.25;margin:0 0 5px}
+.about-focus-card p{font-size:11px;line-height:1.35;margin:0;color:#355a77}
+.about-education{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;align-items:center}
+.about-school{display:flex;gap:12px;align-items:center;padding-inline:10px}
+.about-school:not(:first-child){border-inline-start:1px solid #c8d6e2}
+.about-school img{width:30px;height:30px;flex:0 0 30px}
+.about-school b,.about-school span{display:block;font-size:12px;line-height:1.45}
+.about-school b{color:#174371}.about-school span{color:#44617d}
+.about-claims{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,275px),1fr));gap:10px}
+.about-claims li{padding:12px;border-radius:10px;border:1px solid #d8e9ef}
+.about-claims li p{margin:0 0 8px;font-size:13px}
+.about-claims a{color:#007e7c;font-size:13px;font-weight:800;text-underline-offset:3px}
+.about-jump-links{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:10px}
+.about-jump-links a{font-size:12px;color:#24716e;font-weight:700}
+.about-panel--proof{margin-top:12px}
+.about-panel--proof h2{font-size:17px}
+@media(max-width:1170px){.about-contact{min-width:180px}.about-columns{grid-template-columns:1fr}.about-focus{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:880px){.about-hero{grid-template-columns:1fr}.about-person{justify-content:flex-start}.about-facts{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:640px){.wa-about{padding-bottom:25px}.about-hero{padding:22px 0}.about-person{flex-wrap:wrap;gap:12px}.about-portrait{width:128px}.about-intro{font-size:13px}.about-facts{grid-template-columns:1fr 1fr;gap:7px}.about-fact{padding:9px;gap:8px}.about-fact b{font-size:14px}.about-fact img{width:29px;height:29px}.about-technologies{grid-template-columns:repeat(2,minmax(0,1fr))}.about-focus{grid-template-columns:1fr 1fr}.about-education{grid-template-columns:1fr}.about-school{padding:8px}.about-school:not(:first-child){border-inline-start:0;border-top:1px solid #dce8ee}.about-career-top{flex-wrap:wrap}.about-period{order:-1}.about-panel{padding:13px}}
+@media(max-width:410px){.about-focus{grid-template-columns:1fr}.about-contact{min-width:0}}
+:lang(ar) .about-hero,:lang(ar) .wa-about{text-align:right}
+:lang(ar) .about-timeline{padding-left:0;padding-right:20px}
+:lang(ar) .about-timeline::before{inset-inline-start:7px}
+@media print{.about-actions,.about-jump-links{display:none}.about-panel{break-inside:avoid;box-shadow:none}.about-hero::before{display:none}.about-hero{min-height:0}}
 </style>
 @endpush
 
-<div class="about-screen">
+<div class="wa-about about-screen">
     <header class="about-hero">
-        <div>
-            <p class="about-kicker">{{ $locale === 'ar' ? 'المسيرة المهنية المنشورة بعد مراجعة الأدلة' : 'Evidence-gated public profile' }}</p>
-            <h1 id="about-screen-title">{{ $aboutCopy['intro']['heading'] ?? ($locale === 'ar' ? 'نبذة' : 'About') }}</h1>
-            <p>{{ $locale === 'ar'
-                ? 'الخبرات والشهادات المعروضة هنا مستمدة من سجلات المالك المعتمدة للنشر. لا تظهر بيانات أصحاب الحسابات الأخرى أو الادعاءات التي لم تجتز مراجعة المصادر.'
-                : 'The experience and credentials below come from the owner’s publication-reviewed records. Other accounts and unapproved career statements remain private.' }}</p>
-            <nav class="about-actions" aria-label="{{ $locale === 'ar' ? 'الخطوات المهنية التالية' : 'Professional next steps' }}">
-                <a href="{{ route('public.resume', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'افتح السيرة القابلة للطباعة أو حفظ PDF' : 'Open printable CV / save PDF' }}</a>
-                <a href="{{ route('public.projects', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'دراسات حالة موثقة' : 'Verified case studies' }}</a>
-                <a href="{{ route('public.contact', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'التواصل' : 'Contact' }}</a>
-                @if($hasPublishedOwnerCv)
-                    <a href="{{ route('public.resume.pdf', ['lang' => $locale, 'track' => 'all']) }}"
-                       type="application/pdf" download>{{ $locale === 'ar' ? 'تحميل السيرة PDF' : 'Download verified CV (PDF)' }}</a>
-                @endif
-            </nav>
-            <nav class="about-jump-links" aria-label="{{ $locale === 'ar' ? 'أقسام النبذة' : 'About sections' }}">
-                <a href="#about-career">{{ $locale === 'ar' ? 'السجل المهني' : 'Experience' }}</a>
-                <a href="#about-certifications">{{ $locale === 'ar' ? 'الشهادات' : 'Credentials' }}</a>
-                <a href="#about-evidence">{{ $locale === 'ar' ? 'الأدلة' : 'Source links' }}</a>
+        <div class="about-hero-copy">
+            <p class="about-kicker">{{ $aboutText('intro','eyebrow') }}</p>
+            <h1 id="about-screen-title">{{ $aboutText('intro','heading') }}</h1>
+            <p class="about-headline">{{ $aboutText('intro','headline') }}</p>
+            <p class="about-intro">{{ $aboutText('intro','description') }}</p>
+            <nav class="about-actions" aria-label="{{ $locale === 'ar' ? 'روابط النبذة' : 'About actions' }}">
+                <a class="t007-reference-action primary" href="#t007-primary-content">{{ $locale === 'ar' ? 'استكشف مسيرتي' : 'Explore My Work' }}</a>
+                <a class="about-resume secondary" href="{{ route('public.resume',['lang'=>$locale]) }}">{{ $locale === 'ar' ? 'عرض السيرة' : 'View Resume' }}</a>
+                <a class="t007-reference-action secondary quiet" href="#about-evidence">{{ $locale === 'ar' ? 'عرض الأدلة' : 'View evidence' }}</a>
             </nav>
         </div>
-        <figure class="about-portrait">
-            <img src="{{ route('public.owner-portrait') }}"
-                alt="{{ $locale === 'ar' ? 'الصورة الشخصية الأصلية المعتمدة لوليد عطية' : 'Approved original portrait of Waleed Atiya' }}"
-                width="285" height="356" loading="eager" decoding="async">
-            <figcaption>{{ $locale === 'ar' ? 'الصورة الأصلية المقدمة من المالك' : 'Owner-supplied original portrait' }}</figcaption>
-        </figure>
+        <div class="about-person">
+            <figure class="about-portrait">
+                <img src="{{ route('public.about-media',['slot'=>'portrait']) }}"
+                    alt="{{ $locale === 'ar' ? 'الصورة الأصلية المعتمدة لوليد عطية' : 'Owner-supplied original portrait of Waleed Atiya' }}"
+                    width="285" height="356" loading="eager" decoding="async">
+            </figure>
+            <address class="about-contact" style="font-style:normal">
+                <span><b class="about-icon" aria-hidden="true">⌖</b>{{ $aboutText('intro','location') }}</span>
+                <a href="mailto:{{ $aboutText('intro','email') }}"><b class="about-icon" aria-hidden="true">@</b>{{ $aboutText('intro','email') }}</a>
+                <a href="tel:{{ $aboutText('intro','phone_kuwait') }}"><b class="about-icon" aria-hidden="true">☎</b><bdi>{{ $aboutText('intro','phone_kuwait') }}</bdi></a>
+                <a href="tel:{{ $aboutText('intro','phone_egypt') }}"><b class="about-icon" aria-hidden="true">☎</b><bdi>{{ $aboutText('intro','phone_egypt') }}</bdi></a>
+            </address>
+        </div>
     </header>
-    <div class="about-grid">
+
+    <section class="about-facts" aria-label="{{ $locale === 'ar' ? 'الخبرات الرئيسية' : 'Career at a glance' }}">
+        <article class="about-fact"><img src="{{ route('public.about-media',['slot'=>'tech_cicd']) }}" alt="" loading="lazy"><div><b>{{ $aboutText('metrics','experience') }}</b><span>{{ $aboutText('metrics','experience_label') }}</span></div></article>
+        <article class="about-fact"><img src="{{ route('public.about-media',['slot'=>'employer_amiri']) }}" alt="" loading="lazy"><div><b>{{ $aboutText('metrics','government') }}</b></div></article>
+        <article class="about-fact"><img src="{{ route('public.about-media',['slot'=>'tech_sql']) }}" alt="" loading="lazy"><div><b>{{ $aboutText('metrics','database') }}</b></div></article>
+        <article class="about-fact"><img src="{{ route('public.about-media',['slot'=>'tech_ai']) }}" alt="" loading="lazy"><div><b>{{ $aboutText('metrics','ai') }}</b></div></article>
+    </section>
+
+    <div class="about-columns" id="t007-primary-content" tabindex="-1">
+        <section class="about-panel about-summary" aria-labelledby="about-summary-heading">
+            <h2 id="about-summary-heading">{{ $aboutText('summary','heading') }}</h2>
+            <p>{{ $aboutText('summary','paragraph_1') }}</p>
+            <p>{{ $aboutText('summary','paragraph_2') }}</p>
+            <p>{{ $aboutText('summary','paragraph_3') }}</p>
+        </section>
         <section id="about-career" class="about-panel" aria-labelledby="about-career-heading" tabindex="-1">
-            <h2 id="about-career-heading">{{ $locale === 'ar' ? 'المسيرة المهنية الموثقة' : 'Verified career timeline' }}</h2>
-            <p>{{ $locale === 'ar' ? 'تُعرض الفترات المعتمدة للنشر فقط، بترتيب زمني من الأحدث.' : 'Only approved, published periods appear, newest first.' }}</p>
+            <h2 id="about-career-heading">{{ $aboutText('career','heading') }}</h2>
             @if($positions->isEmpty())
                 <p class="about-empty" role="status">{{ $locale === 'ar' ? 'لا توجد فترات مهنية تم التحقق منها وإتاحتها للنشر حاليًا.' : 'No career periods have completed verification and publication review.' }}</p>
             @else
-                <ol class="about-timeline">
-                    @foreach($positions as $position)
-                        <li>
-                            <div class="about-period">
-                                <time datetime="{{ $position->started_on->format('Y-m-d') }}">{{ $position->started_on->format('Y') }}</time>
-                                <span aria-hidden="true">—</span>
-                                @if($position->ended_on)
-                                    <time datetime="{{ $position->ended_on->format('Y-m-d') }}">{{ $position->ended_on->format('Y') }}</time>
+            <ol class="about-timeline">
+                @foreach($positions as $position)
+                    @php($mapping = $employerSlots[$position->org_name] ?? null)
+                    <li>
+                        <article class="about-career-row">
+                            <div class="about-career-logo" aria-hidden="true">
+                                @if($mapping)
+                                    <img src="{{ route('public.about-media',['slot'=>$mapping[0]]) }}" alt="" loading="lazy">
                                 @else
-                                    <span>{{ $locale === 'ar' ? 'الحاضر' : 'Present' }}</span>
+                                    <span>▣</span>
                                 @endif
                             </div>
-                            <h3>{{ $locale === 'ar' ? $position->role_ar : $position->role_en }}</h3>
-                            <p>{{ $position->org_name }}</p>
-                        </li>
-                    @endforeach
-                </ol>
-            @endif
-        </section>
-        <section id="about-certifications" class="about-panel" aria-labelledby="about-certifications-heading" tabindex="-1">
-            <h2 id="about-certifications-heading">{{ $locale === 'ar' ? 'الشهادات المعتمدة' : 'Verified credentials' }}</h2>
-            <p>{{ $locale === 'ar' ? 'لا تُعرض أي شهادة إلا إذا ظلت أدلتها وحقوق نشرها معتمدة.' : 'Certificates appear only while their supporting asset remains approved for public use.' }}</p>
-            @if($certifications->isEmpty())
-                <p class="about-empty" role="status">{{ $locale === 'ar' ? 'لا توجد شهادات اجتازت التحقق من الأدلة وحقوق النشر بعد.' : 'No credentials have cleared evidence and publication checks yet.' }}</p>
-            @else
-                <ul class="about-certifications">
-                    @foreach($certifications as $certification)
-                        <li>
-                            <h3>{{ $certification->title }}</h3>
-                            @if($certification->issuer)<p>{{ $certification->issuer }}</p>@endif
-                            @if($certification->issued_on)
-                                <p><time datetime="{{ $certification->issued_on->format('Y-m-d') }}">{{ $certification->issued_on->format('Y-m-d') }}</time></p>
-                            @endif
-                            <span class="about-certified">{{ $locale === 'ar' ? 'تم التحقق من سجل الشهادة' : 'Credential record reviewed' }}</span>
-                        </li>
-                    @endforeach
-                </ul>
-            @endif
-        </section>
-        <section id="about-evidence" class="about-panel about-panel--proof" aria-labelledby="about-evidence-heading" tabindex="-1">
-            <h2 id="about-evidence-heading">{{ $locale === 'ar' ? 'عبارات مهنية مع روابط أدلتها' : 'Evidence-backed professional statements' }}</h2>
-            <p>{{ $locale === 'ar' ? 'تؤدي الروابط إلى مصادر عامة اجتازت سياسة التحقق؛ لا تعتمد هذه القائمة أي شهادة أو جهة عمل إضافية.' : 'Each source link passed public evidence checks; this list does not invent further credentials or employers.' }}</p>
-            @if(count($approvedClaims) === 0)
-                <p class="about-empty" role="status">{{ $locale === 'ar' ? 'لا توجد عبارات مهنية إضافية معتمدة بأدلة عامة حاليًا.' : 'No additional source-backed professional statements have been approved for display.' }}</p>
-            @else
-                <ul class="about-claims">
-                    @foreach($approvedClaims as $claim)
-                        <li>
-                            <p>{{ $claim['text'] }}</p>
-                            <a href="{{ $claim['evidence_url'] }}" target="_blank" rel="noopener noreferrer"
-                                aria-label="{{ ($locale === 'ar' ? 'عرض المصدر الموثق: ' : 'Open reviewed source: ').$claim['text'] }}">{{ $locale === 'ar' ? 'عرض الدليل' : 'View evidence' }}</a>
-                        </li>
-                    @endforeach
-                </ul>
+                            <div class="about-career-body">
+                                <div class="about-career-top">
+                                    <h3>{{ $locale === 'ar' ? $position->role_ar : $position->role_en }} — {{ $position->org_name }}</h3>
+                                    <span class="about-period"><time datetime="{{ $position->started_on->format('Y-m-d') }}">{{ $position->started_on->format('Y') }}</time> – @if($position->ended_on)<time datetime="{{ $position->ended_on->format('Y-m-d') }}">{{ $position->ended_on->format('Y') }}</time>@else{{ $locale === 'ar' ? 'حتى الآن' : 'Present' }}@endif</span>
+                                </div>
+                                @if($mapping)<p>{{ $aboutText('career',$mapping[1]) }}</p>@endif
+                            </div>
+                        </article>
+                    </li>
+                @endforeach
+            </ol>
             @endif
         </section>
     </div>
+
+    <div class="about-columns about-columns--wide">
+        <section class="about-panel" aria-labelledby="about-technologies-heading">
+            <h2 id="about-technologies-heading">{{ $aboutText('technologies','heading') }}</h2>
+            <div class="about-technologies">
+                @foreach($aboutTech as $key)
+                <div class="about-tech">
+                    <img src="{{ route('public.about-media',['slot'=>'tech_'.$key]) }}" alt="" loading="lazy">
+                    <span>{{ $aboutText('technologies',$key) }}</span>
+                </div>
+                @endforeach
+            </div>
+        </section>
+        <section class="about-panel" aria-labelledby="about-focus-heading">
+            <h2 id="about-focus-heading">{{ $aboutText('focus','heading') }}</h2>
+            <div class="about-focus">
+                @foreach($aboutFocus as $key)
+                    <article class="about-focus-card">
+                        <img src="{{ route('public.about-media',['slot'=>'focus_'.$key]) }}" alt="" loading="lazy">
+                        <div><h3>{{ $aboutText('focus',$key.'_title') }}</h3><p>{{ $aboutText('focus',$key.'_body') }}</p></div>
+                    </article>
+                @endforeach
+            </div>
+        </section>
+    </div>
+
+    <section id="about-certifications" class="about-panel" aria-labelledby="about-certifications-heading" tabindex="-1">
+        <h2 id="about-certifications-heading">{{ $aboutText('education','heading') }}</h2>
+        <div class="about-education">
+            <div class="about-school"><img src="{{ route('public.about-media',['slot'=>'tech_cicd']) }}" alt=""><div><b>{{ $aboutText('education','degree') }}</b><span>{{ $aboutText('education','university') }}</span></div></div>
+            <div class="about-school"><img src="{{ route('public.about-media',['slot'=>'focus_biometric']) }}" alt=""><div><b>{{ $aboutText('education','pmp') }}</b><span>{{ $aboutText('education','certification_label') }}</span></div></div>
+            <div class="about-school"><img src="{{ route('public.about-media',['slot'=>'focus_biometric']) }}" alt=""><div><b>{{ $aboutText('education','itil') }}</b><span>{{ $aboutText('education','certification_label') }}</span></div></div>
+        </div>
+        @if($certifications->isEmpty())
+            <p class="about-empty" role="status">{{ $locale === 'ar' ? 'لا توجد شهادات اجتازت التحقق من الأدلة وحقوق النشر بعد.' : 'No credentials have cleared evidence and publication checks yet.' }}</p>
+        @else
+            <ul class="about-claims">
+                @foreach($certifications as $certification)
+                    <li><strong>{{ $certification->title }}</strong>
+                        @if($certification->issuer)<p>{{ $certification->issuer }}</p>@endif
+                        @if($certification->issued_on)<time datetime="{{ $certification->issued_on->format('Y-m-d') }}">{{ $certification->issued_on->format('Y-m-d') }}</time>@endif
+                    </li>
+                @endforeach
+            </ul>
+        @endif
+    </section>
+
+    <section id="about-evidence" class="about-panel about-panel--proof" aria-labelledby="about-evidence-heading" tabindex="-1">
+        <h2 id="about-evidence-heading">{{ $locale === 'ar' ? 'مصادر مهنية معتمدة' : 'Evidence-backed professional statements' }}</h2>
+        @if(count($approvedClaims) === 0)
+            <p class="about-empty" role="status">{{ $locale === 'ar' ? 'لا توجد عبارات مهنية إضافية معتمدة بأدلة عامة حاليًا.' : 'No additional source-backed professional statements have been approved for display.' }}</p>
+        @else
+            <ul class="about-claims">
+                @foreach($approvedClaims as $claim)
+                    <li>
+                        <p>{{ $claim['text'] }}</p>
+                        <a href="{{ $claim['evidence_url'] }}" target="_blank" rel="noopener noreferrer" aria-label="{{ ($locale === 'ar' ? 'افتح المصدر المراجع: ' : 'Open reviewed source: ').$claim['text'] }}">{{ $locale === 'ar' ? 'عرض الدليل' : 'View evidence' }}</a>
+                    </li>
+                @endforeach
+            </ul>
+        @endif
+        <nav class="about-jump-links" aria-label="{{ $locale === 'ar' ? 'الروابط المهنية' : 'Professional links' }}">
+            <a href="#about-career">{{ $locale === 'ar' ? 'المسيرة المهنية' : 'Experience' }}</a>
+            <a href="#about-certifications">{{ $locale === 'ar' ? 'المؤهلات' : 'Credentials' }}</a>
+            <a href="{{ route('public.projects',['lang'=>$locale]) }}">{{ $locale === 'ar' ? 'المشاريع الموثقة' : 'Verified case studies' }}</a>
+            <a href="{{ route('public.contact',['lang'=>$locale]) }}">{{ $locale === 'ar' ? 'التواصل' : 'Contact' }}</a>
+            @if($hasPublishedOwnerCv)
+                <a href="{{ route('public.resume.pdf',['lang'=>$locale,'track'=>'all']) }}" type="application/pdf" download>{{ $locale === 'ar' ? 'تحميل السيرة PDF' : 'Download verified CV (PDF)' }}</a>
+            @endif
+        </nav>
+    </section>
 </div>

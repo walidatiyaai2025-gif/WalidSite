@@ -113,4 +113,48 @@ select{max-width:100%;padding:7px;border:1px solid #9db9cd;border-radius:9px}
 </div>
 {{ $rows->links() }}
 </section>
+
+@if($selectedPage === 'about')
+<section class="panel" aria-labelledby="media-heading">
+<h2 id="media-heading">{{ $ar ? 'الشعارات والصور والأيقونات' : 'About images, employer logos & technology icons' }}</h2>
+<p>{{ $ar ? 'تظهر الأيقونات الافتراضية إلى أن ترفع صورة أصلية مصرحًا بنشرها وتراجعها ثم تنشرها. الصورة الشخصية الافتراضية هي الصورة الأصلية المعتمدة فقط.' : 'Built-in icons remain until you upload a genuine rights-cleared logo, preview the draft and explicitly publish. The default portrait is the approved owner original.' }}</p>
+<div class="cards">
+@foreach($mediaRows as $asset)
+<article class="card">
+<h3>{{ $asset->label }} <small>({{ $asset->slot }})</small></h3>
+<p class="field-state">{{ ucfirst($asset->kind) }} · {{ $asset->published_path ? ($ar ? 'صورة منشورة' : 'Published image') : ($ar ? 'أيقونة افتراضية' : 'Built-in icon') }} · {{ $ar ? 'مراجعة' : 'Revision' }} {{ $asset->revision }}</p>
+<img src="{{ route('public.about-media',['slot'=>$asset->slot]) }}" alt="{{ $asset->label }}" loading="lazy" width="72" height="72" style="display:block;object-fit:contain;max-width:100%;margin-bottom:8px">
+@if($asset->draft_path)
+<p class="draft">{{ $ar ? 'معاينة المسودة الجديدة:' : 'Unpublished draft preview:' }}</p>
+<img src="{{ route('admin.about-media.preview',['slot'=>$asset->slot,'lang'=>$locale]) }}" alt="{{ $asset->label.' draft' }}" width="72" height="72" style="display:block;object-fit:contain;max-width:100%">
+@endif
+<form action="{{ route('admin.about-media.draft',['slot'=>$asset->slot,'lang'=>$locale]) }}" method="post" enctype="multipart/form-data">
+@csrf
+<input type="hidden" name="revision" value="{{ $asset->revision }}">
+<label for="media-{{ $asset->slot }}">{{ $ar ? 'ملف الصورة (PNG/JPEG/WebP حتى 1.5MB)' : 'Upload image (PNG/JPEG/WebP, max 1.5 MB)' }}</label>
+<input id="media-{{ $asset->slot }}" type="file" name="image" accept="image/png,image/jpeg,image/webp" required>
+<div class="controls"><button type="submit">{{ $ar ? 'حفظ مسودة الصورة' : 'Save image draft' }}</button></div>
+</form>
+@if($asset->draft_path)
+<form action="{{ route('admin.about-media.publish',['slot'=>$asset->slot,'lang'=>$locale]) }}" method="post" class="draft">
+@csrf
+<input type="hidden" name="revision" value="{{ $asset->revision }}">
+<label for="media-note-{{ $asset->slot }}">{{ $ar ? 'مرجع المصدر وصلاحية النشر' : 'Image provenance / source note' }}</label>
+<input type="text" id="media-note-{{ $asset->slot }}" name="source_note" required minlength="12" maxlength="240">
+<label class="checkbox"><input type="checkbox" name="source_reviewed" value="1" required>{{ $ar ? 'راجعت الصورة ومصدرها' : 'I reviewed the image and source' }}</label>
+<label class="checkbox"><input type="checkbox" name="publication_rights_confirmed" value="1" required>{{ $ar ? 'لدي حق نشر هذه الصورة' : 'I have publication rights' }}</label>
+<div class="controls"><button type="submit">{{ $ar ? 'اعتماد ونشر الصورة' : 'Review & publish image' }}</button></div>
+</form>
+@endif
+@if($asset->published_path)
+<form action="{{ route('admin.about-media.retract',['slot'=>$asset->slot,'lang'=>$locale]) }}" method="post">
+@csrf<input type="hidden" name="revision" value="{{ $asset->revision }}">
+<div class="controls"><button type="submit">{{ $ar ? 'سحب الصورة المنشورة' : 'Retract published image' }}</button></div>
+</form>
+@endif
+</article>
+@endforeach
+</div>
+</section>
+@endif
 </main></div></body></html>
