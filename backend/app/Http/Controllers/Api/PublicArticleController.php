@@ -124,7 +124,7 @@ class PublicArticleController extends Controller
             }
             foreach ($category->articles()->publiclyVisible()->lazy(100) as $article) {
                 if (preg_match('/\A[A-Za-z0-9-]+\z/D', (string) $article->slug) !== 1
-                    || ! $article->publicRevision() instanceof ArticleRevision) {
+                    || ! ($article->publicRevision() instanceof ArticleRevision)) {
                     continue;
                 }
                 $options[] = $this->categoryData($category, $locale);
