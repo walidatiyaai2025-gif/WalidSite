@@ -107,6 +107,17 @@ body:has(.t012-reference-stage) .site-footer{margin-top:0}
 .t012-search-card h2{font-size:26px;margin:35px 0 31px;color:#184876;line-height:1.15;font-weight:800;letter-spacing:1.5px;transform:translateY(1px) scaleY(.96);transform-origin:left top}
 .t012-search-card p{font-size:18px;letter-spacing:.43px;color:#254a68;margin:0}
 .t012-search-card a{position:absolute;left:25px;bottom:31px;color:#254a68;text-decoration:none;font-size:18px;letter-spacing:.65px}
+/* WEB-13: true zero-query discovery and zero-result feedback reuse the
+   approved card geometry without inventing a verified result. */
+.t012-screen-search .t012-discovery-card{height:256px;border-radius:18px;background:#fff;padding:18px 25px;position:relative;min-width:0}
+.t012-screen-search .t012-discovery-card h2{font-size:26px;margin:35px 0 20px;color:#184876;line-height:1.15;font-weight:800;overflow-wrap:anywhere}
+.t012-screen-search .t012-discovery-card p{font-size:18px;color:#254a68;margin:0}
+.t012-screen-search .t012-discovery-card a{position:absolute;left:25px;bottom:23px;color:#254a68;text-decoration:none;font-size:18px}
+.t012-screen-search .t012-discovery-card a:focus-visible,.t012-screen-search .t012-search-no-results a:focus-visible{outline:3px solid #0a9a8c;outline-offset:3px;border-radius:4px}
+.t012-screen-search .t012-search-no-results{background:#fff;border-radius:18px;min-height:224px;padding:30px 28px;color:#254a68}
+.t012-screen-search .t012-search-no-results h2{font-size:26px;color:#184876;margin:0 0 12px}
+.t012-screen-search .t012-search-no-results p{font-size:18px}
+.t012-screen-search .t012-search-no-results a{display:inline-flex;min-height:44px;align-items:center;margin-inline-end:22px;color:#126de1}
 .t012-functional{background:#fff;padding-top:48px}
 @media(min-width:901px) and (max-width:1399px){.t012-nav-shell{padding-inline:24px}.t012-brand{margin-right:24px}.t012-nav-links a,.t012-nav-links a:nth-child(n){margin-right:clamp(8px,1.4vw,20px);font-size:14px}.t012-reference-cards{grid-template-columns:repeat(3,minmax(0,1fr));gap:20px}.t012-reference-hero{padding-inline:36px}.t012-visual-stack{left:auto;right:30px;transform:scale(.78);transform-origin:top right}.t012-reference-subtitle{max-width:65%}.t012-nav-links{overflow-x:auto;overscroll-behavior-inline:contain;scrollbar-width:thin}.t012-nav-links a:nth-child(n){width:auto;flex-shrink:0}.t012-reference-body{padding-inline:36px}.t012-article-body{grid-template-columns:minmax(0,1fr) minmax(260px,346px);padding-inline:36px}}
 @media(max-width:900px){.t012-nav-shell{height:auto;min-height:100px;padding:18px 24px;flex-wrap:wrap}.t012-nav-links{order:3;width:100%;overflow:auto}.t012-nav-links a{margin-right:28px}.t012-contact{margin-left:auto}.t012-reference-stage{height:auto}.t012-reference-hero{height:auto;min-height:420px;padding:32px 28px}.t012-visual-stack{position:relative;left:auto;top:auto;margin:35px auto 0;max-width:100%;transform:scale(.78);transform-origin:top left}.t012-reference-body{height:auto;padding:28px}.t012-reference-cards,.t012-search-grid{grid-template-columns:minmax(0,1fr)}.t012-article-body{grid-template-columns:minmax(0,1fr);min-width:0;width:100%}.t012-article-main,.t012-article-aside{min-width:0;max-width:100%}.t012-reference-card,.t012-search-card,.t012-article-main,.t012-article-aside{width:100%}.t012-article-body{padding:28px}.t012-search-body{padding:28px}.t012-reference-actions{flex-wrap:wrap}.t012-reference-action{max-width:100%;width:auto;min-width:0;padding-inline:22px}.t012-reference-subtitle{max-width:100%}
@@ -197,23 +208,55 @@ body:has(.t012-reference-stage) .site-footer{margin-top:0}
                 <input id="t012-top-search" name="q" type="search" maxlength="80" value="{{ $search }}" placeholder="{{ $t012Ar ? 'ابحث في الأدلة والمشاريع والكود والمقالات...' : 'Search runbooks, projects, code and articles...' }}">
                 <button class="t012-sr-only" type="submit">{{ $t012Ar ? 'بحث' : 'Search' }}</button>
             </form>
-            @php($t012PreviewIsProject = $type === 'projects')
-            @php($t012PreviewItems = $t012PreviewIsProject ? $projects : $articles)
-            @if($t012PreviewItems->isNotEmpty())
-            <div class="t012-search-grid">
-                @foreach($t012PreviewItems->take(3) as $entry)
-                    <article class="t012-search-card">
-                        <span class="t012-search-badge">{{ $t012PreviewIsProject ? ($t012Ar ? 'مشروع موثق' : 'Verified project') : ($t012Ar ? 'حل موثق' : 'Verified solution') }}</span>
-                        <h2>{{ $t012PreviewIsProject ? $entry['name'] : ($t012Ar ? $entry->title_ar : $entry->title_en) }}</h2>
-                        <p>{{ $t012Ar ? 'ملخص، أدلة، مراجع' : 'Summary, evidence, references' }}</p>
-                        @if($t012PreviewIsProject)
-                            <a href="{{ route('public.project', ['slug' => $entry['slug'], 'lang' => $locale]) }}">{{ $t012Ar ? 'عرض المشروع' : 'View project' }} &nbsp;&gt;</a>
-                        @else
-                            <a href="{{ route('public.article', ['slug'=>$entry->slug,'lang'=>$locale,'source'=>'search','q'=>$search,'type'=>$type]) }}">{{ $t012Ar ? 'فتح الدليل التفصيلي' : 'Open detailed guide' }} &nbsp;&gt;</a>
-                        @endif
+            @php($t012SearchArticleCards = $articles->take($web13ArticlePreviewCount)->map(fn ($item) => ['kind' => 'article', 'item' => $item]))
+            @php($t012SearchProjectCards = $projects->take($web13ProjectPreviewCount)->map(fn ($item) => ['kind' => 'project', 'item' => $item]))
+            @php($t012SearchCards = $t012SearchArticleCards->concat($t012SearchProjectCards))
+            @if($search === '')
+                {{-- These are real discovery destinations, NOT fabricated search hits. --}}
+                <div class="t012-search-grid t012-discovery-grid" aria-label="{{ $t012Ar ? 'ابدأ الاستكشاف' : 'Start exploring' }}">
+                    <article class="t012-discovery-card">
+                        <span class="t012-search-badge">{{ $t012Ar ? 'المقالات' : 'ARTICLES' }}</span>
+                        <h2>{{ $t012Ar ? 'أدلة تقنية منشورة' : 'Published guides' }}</h2>
+                        <p>{{ $t012Ar ? 'ابحث في المحتوى العام المعتمد' : 'Explore public reviewed material' }}</p>
+                        <a href="{{ route('public.blog', ['lang' => $locale]) }}">{{ $t012Ar ? 'استعرض المقالات' : 'Browse articles' }} &nbsp;&gt;</a>
                     </article>
-                @endforeach
-            </div>
+                    <article class="t012-discovery-card">
+                        <span class="t012-search-badge">{{ $t012Ar ? 'المشاريع' : 'PROJECTS' }}</span>
+                        <h2>{{ $t012Ar ? 'مشاريع مدعومة بأدلة' : 'Evidence-backed work' }}</h2>
+                        <p>{{ $t012Ar ? 'اعرض المشاريع المسموح بنشرها' : 'Browse publicly available projects' }}</p>
+                        <a href="{{ route('public.projects', ['lang' => $locale]) }}">{{ $t012Ar ? 'استعرض المشاريع' : 'Browse projects' }} &nbsp;&gt;</a>
+                    </article>
+                    <article class="t012-discovery-card">
+                        <span class="t012-search-badge">{{ $t012Ar ? 'أدلة التشغيل' : 'RUNBOOKS' }}</span>
+                        <h2>{{ $t012Ar ? 'مكتبة أدلة التشغيل' : 'Runbook library' }}</h2>
+                        <p>{{ $t012Ar ? 'تعلم من الإجراءات المنشورة' : 'Find published operational guides' }}</p>
+                        <a href="{{ route('public.lab.runbooks', ['lang' => $locale]) }}">{{ $t012Ar ? 'استعرض الأدلة' : 'Browse runbooks' }} &nbsp;&gt;</a>
+                    </article>
+                </div>
+            @elseif($t012SearchCards->isNotEmpty())
+                <div class="t012-search-grid" aria-label="{{ $t012Ar ? 'نتائج موثقة' : 'Verified search matches' }}">
+                    @foreach($t012SearchCards as $result)
+                        @php($t012IsProject = $result['kind'] === 'project')
+                        @php($t012Item = $result['item'])
+                        <article class="t012-search-card">
+                            <span class="t012-search-badge">{{ $t012IsProject ? ($t012Ar ? 'مشروع موثق' : 'Verified project') : ($t012Ar ? 'حل موثق' : 'Verified solution') }}</span>
+                            <h2>{{ $t012IsProject ? $t012Item['name'] : ($t012Ar ? $t012Item->title_ar : $t012Item->title_en) }}</h2>
+                            <p>{{ $t012Ar ? 'ملخص، أدلة، مراجع' : 'Summary, evidence, references' }}</p>
+                            @if($t012IsProject)
+                                <a href="{{ route('public.project', ['slug' => $t012Item['slug'], 'lang' => $locale]) }}">{{ $t012Ar ? 'عرض المشروع' : 'View project' }} &nbsp;&gt;</a>
+                            @else
+                                <a href="{{ route('public.article', ['slug' => $t012Item->slug, 'lang' => $locale, 'source' => 'search', 'q' => $search, 'type' => $type]) }}">{{ $t012Ar ? 'فتح الدليل التفصيلي' : 'Open detailed guide' }} &nbsp;&gt;</a>
+                            @endif
+                        </article>
+                    @endforeach
+                </div>
+            @else
+                <div class="t012-search-no-results" role="status" aria-live="polite">
+                    <h2>{{ $t012Ar ? 'لا توجد نتائج عامة موثقة' : 'No verified public matches' }}</h2>
+                    <p>{{ $t012Ar ? 'جرّب كلمات أخرى أو استعرض الموارد المنشورة.' : 'Try a different term or browse published resources.' }}</p>
+                    <a href="{{ route('public.blog', ['lang' => $locale]) }}">{{ $t012Ar ? 'استعرض المقالات' : 'Browse articles' }}</a>
+                    <a href="{{ route('public.projects', ['lang' => $locale]) }}">{{ $t012Ar ? 'استعرض المشاريع' : 'Browse projects' }}</a>
+                </div>
             @endif
         </div>
     @else
