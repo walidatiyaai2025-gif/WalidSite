@@ -79,7 +79,7 @@ final class T009EndToEndAcceptanceTest extends TestCase
 
         foreach (['en', 'ar'] as $locale) {
             $first = $this->get('/projects?lang='.$locale)->assertOk()
-                ->assertSee('Page 1 / 2')
+                ->assertSee($locale === 'ar' ? 'صفحة 1 / 2' : 'Page 1 / 2')
                 ->assertSee('reachable-project-1')
                 ->assertSee('reachable-project-9')
                 ->assertDontSee('reachable-project-10')
