@@ -1,4 +1,7 @@
 """No-browser unit checks for deterministic real-page capture configuration."""
+import io
+import os
+import stat
 import sys
 import tempfile
 import unittest
@@ -6,7 +9,10 @@ from pathlib import Path
 from types import ModuleType, SimpleNamespace
 from unittest.mock import Mock, patch
 
+from PIL import Image
+
 from qa.render_web_screenshot import (
+    _verified_destination, _verified_png, _write_png_exclusive,
     CHROMIUM_RENDER_ARGS,
     RenderConfigError, localized_target, render, target_url, viewport,
 )
@@ -68,7 +74,7 @@ class RealWebCaptureConfigTest(unittest.TestCase):
 
     def _render_fake(self, locale="ar", page_lang="ar", direction="rtl",
                      redirect_after_fonts=False, redirect_during_screenshot=False,
-                     change_locale_during_screenshot=False):
+                     change_locale_during_screenshot=False, screenshot_payload=None):
         # This tests the real render() orchestration without installing a
         # browser. Synthetic responses are NOT WalidSite screenshot evidence.
         with tempfile.TemporaryDirectory() as temp:
@@ -84,7 +90,12 @@ class RealWebCaptureConfigTest(unittest.TestCase):
                 "WALIDSITE_CAPTURE_HEIGHT": "900",
                 "WALIDSITE_CAPTURE_PATH": str(output),
             }
+            valid_png = io.BytesIO()
+            Image.new("RGB", (1440, 900)).save(valid_png, format="PNG")
             page = Mock()
+            page.screenshot.return_value = (
+                valid_png.getvalue() if screenshot_payload is None else screenshot_payload
+            )
             page.goto.return_value = SimpleNamespace(status=200)
             page.url = expected_url
             html = Mock()
@@ -98,16 +109,16 @@ class RealWebCaptureConfigTest(unittest.TestCase):
                 page.evaluate.side_effect = navigate_after_font_load
             if redirect_during_screenshot:
                 def navigate_during_screenshot(**kwargs):
-                    output.write_bytes(b"synthetic-png-placeholder")
                     page.url = "http://127.0.0.1:8000/login"
+                    return valid_png.getvalue()
                 page.screenshot.side_effect = navigate_during_screenshot
             if change_locale_during_screenshot:
                 def relocalize_during_screenshot(**kwargs):
-                    output.write_bytes(b"synthetic-png-placeholder")
                     html.get_attribute.side_effect = lambda name: {
                         "lang": "en" if locale == "ar" else "ar",
                         "dir": "ltr" if locale == "ar" else "rtl",
                     }[name]
+                    return valid_png.getvalue()
                 page.screenshot.side_effect = relocalize_during_screenshot
             browser_context = Mock()
             browser_context.new_page.return_value = page
@@ -134,6 +145,11 @@ class RealWebCaptureConfigTest(unittest.TestCase):
                     with self.assertRaisesRegex(RenderConfigError, "navigated"):
                         render(env)
                     page.screenshot.assert_not_called()
+                elif screenshot_payload is not None:
+                    with self.assertRaises(RenderConfigError):
+                        render(env)
+                    page.screenshot.assert_called_once()
+                    self.assertFalse(output.exists(), "Malformed screenshot must not be written")
                 elif redirect_during_screenshot or change_locale_during_screenshot:
                     expected_error = ("navigated during screenshot"
                                       if redirect_during_screenshot
@@ -149,6 +165,8 @@ class RealWebCaptureConfigTest(unittest.TestCase):
                         timeout=30000,
                     )
                     page.screenshot.assert_called_once()
+                    self.assertEqual(output.read_bytes(), valid_png.getvalue())
+                    self.assertEqual(stat.S_IMODE(output.stat().st_mode), 0o600)
                     self.assertEqual(
                         browser.new_context.call_args.kwargs["locale"],
                         "ar-KW" if locale == "ar" else "en-US",
@@ -191,6 +209,55 @@ class RealWebCaptureConfigTest(unittest.TestCase):
             with self.assertRaisesRegex(RenderConfigError, "anonymous browser"):
                 render(env)
             self.assertFalse(Path(env["WALIDSITE_CAPTURE_PATH"]).exists())
+
+
+    def test_rejects_truncated_junk_and_wrong_size_png_before_writing(self):
+        self._render_fake(screenshot_payload=b"PNG is not a real image")
+        self._render_fake(screenshot_payload=b"")
+        wrong = io.BytesIO()
+        Image.new("RGB", (800, 600)).save(wrong, "PNG")
+        self._render_fake(screenshot_payload=wrong.getvalue())
+        with self.assertRaisesRegex(RenderConfigError, "dimensions disagree"):
+            _verified_png(wrong.getvalue(), 1440, 900)
+
+    def test_exclusive_private_destination_does_not_overwrite_files_or_symlinks(self):
+        with tempfile.TemporaryDirectory() as temp:
+            parent = Path(temp)
+            output = parent / "capture.png"
+            png = io.BytesIO()
+            Image.new("RGB", (1, 1)).save(png, "PNG")
+            _write_png_exclusive(output, png.getvalue())
+            self.assertEqual(output.read_bytes(), png.getvalue())
+            self.assertEqual(stat.S_IMODE(output.stat().st_mode), 0o600)
+            with self.assertRaises(RenderConfigError):
+                _write_png_exclusive(output, b"overwritten")
+            self.assertEqual(output.read_bytes(), png.getvalue())
+
+            output.unlink()
+            target = parent / "private-payload"
+            target.write_bytes(b"keep")
+            output.symlink_to(target)
+            with self.assertRaises(RenderConfigError):
+                _verified_destination(output)
+            with self.assertRaises(RenderConfigError):
+                _write_png_exclusive(output, png.getvalue())
+            self.assertEqual(target.read_bytes(), b"keep")
+
+    def test_capture_does_not_follow_linked_parent_or_accept_relative_output(self):
+        with tempfile.TemporaryDirectory() as temp:
+            parent = Path(temp)
+            actual = parent / "real"
+            actual.mkdir()
+            linked = parent / "linked"
+            linked.symlink_to(actual, target_is_directory=True)
+            with self.assertRaises(RenderConfigError):
+                _verified_destination(linked / "capture.png")
+            with self.assertRaises(RenderConfigError):
+                _write_png_exclusive(linked / "capture.png", b"not png")
+            self.assertFalse((actual / "capture.png").exists())
+            for bad in (Path("capture.png"), parent / "missing" / "image.png"):
+                with self.subTest(path=str(bad)), self.assertRaises(RenderConfigError):
+                    _verified_destination(bad)
 
 
 if __name__ == "__main__":
