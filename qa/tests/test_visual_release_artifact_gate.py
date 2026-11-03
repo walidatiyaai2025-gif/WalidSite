@@ -70,7 +70,8 @@ class ReleaseArtifactGateTest(unittest.TestCase):
                      "..zip", "bad\\path.zip", "evil%2F.zip"):
             self.assertFalse(artifact_name(name), name)
         for item in ([self.entry, self.entry], [{**self.entry, "name": "../outside.zip"}],
-                     [{**self.entry, "kind": "ios-ipa"}]):
+                     [{**self.entry, "kind": "ios-ipa"}],
+                     [{**self.entry, "kind": []}]):
             self.data["artifacts"] = item
             self.save()
             with self.assertRaises(ValueError):
