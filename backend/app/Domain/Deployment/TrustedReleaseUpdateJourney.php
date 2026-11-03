@@ -52,6 +52,9 @@ final class TrustedReleaseUpdateJourney
             $paths['archive'], $paths['releases'], $paths['public'],
         );
 
+        $schema = new ReleaseSchemaCompatibility();
+        $migrationState = $schema->assertCompatible($paths['current'], $candidate['directory']);
+
         // Bind the approved code identity to its complete, exact on-disk file
         // inventory. Do not accept a caller-supplied "true" as signed proof.
         $seal = $this->seal($candidate['directory']);
@@ -60,10 +63,12 @@ final class TrustedReleaseUpdateJourney
             throw new DomainException('Signed release ZIP changed after code promotion.');
         }
 
-        $verified = function () use ($candidate, $paths, $seal): bool {
+        $verified = function () use ($candidate, $paths, $seal, $schema, $migrationState): bool {
             try {
                 $archiveHash = hash_file('sha256', $paths['archive']);
-                return is_string($archiveHash)
+                $current = $schema->assertCompatible($paths['current'], $candidate['directory']);
+                return $current === $migrationState
+                    && is_string($archiveHash)
                     && hash_equals($candidate['artifact_sha256'], $archiveHash)
                     && hash_equals($seal, $this->seal($candidate['directory']));
             } catch (\Throwable) {
