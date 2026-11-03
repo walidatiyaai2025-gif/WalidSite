@@ -177,7 +177,7 @@ html[dir="rtl"] .t012-screen-blog .t012-visual-stack{left:55px;right:auto}
             }
         }
     ?>
-    <a class="t012-sr-only t012-locale-switch" @if($t012Screen === 'blog') data-web07-locale-switch @endif lang="{{ $t012Ar ? 'en' : 'ar' }}" hreflang="{{ $t012Ar ? 'en' : 'ar' }}" href="{{ route($t012Current ?? 'home', $t012SwitchArgs) }}">{{ $t012Ar ? 'English' : 'العربية' }}</a>
+    <a class="t012-sr-only t012-locale-switch" lang="{{ $t012Ar ? 'en' : 'ar' }}" hreflang="{{ $t012Ar ? 'en' : 'ar' }}" @if($t012Screen === 'blog') data-web07-locale-switch @endif href="{{ route($t012Current ?? 'home', $t012SwitchArgs) }}">{{ $t012Ar ? 'English' : 'العربية' }}</a>
 </header>
 <section class="t012-reference-stage t012-screen-{{ $t012Screen }}" aria-label="{{ $t012Copy['title'] }}">
     <div class="t012-reference-hero">
