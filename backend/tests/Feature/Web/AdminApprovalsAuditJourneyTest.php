@@ -375,4 +375,64 @@ final class AdminApprovalsAuditJourneyTest extends TestCase
             ->assertDontSee('internal_diagnostic');
     }
 
+
+    public function test_web_approval_requires_independent_documented_reviewer_and_persists_signoff(): void
+    {
+        $actor = $this->user('admin');
+        $this->actingAs($actor, 'web');
+
+        $ownWork = $this->article();
+        DB::table('article_revisions')->where('article_id', $ownWork->id)->update([
+            'author_user_id' => $actor->id,
+            'last_editor_user_id' => $actor->id,
+        ]);
+        foreach (['en', 'ar'] as $lang) {
+            $page = $this->get('/admin/approvals?lang='.$lang)->assertOk()
+                ->assertSee('value="approve"', false)
+                ->assertSee('value="approve" disabled', false);
+            $page->assertSee($lang === 'ar'
+                ? 'الاعتماد محجوب: يلزم مراجع مستقل'
+                : 'Approval blocked: independent reviewer required.');
+        }
+        $this->post('/admin/approvals/'.$ownWork->id.'/decision', [
+            'decision' => 'approve', 'reason' => 'source_reviewed',
+        ])->assertForbidden();
+        $this->assertSame('draft', $ownWork->fresh()->status);
+
+        $lastEdited = $this->article();
+        DB::table('article_revisions')->where('article_id', $lastEdited->id)->update([
+            'last_editor_user_id' => $actor->id,
+        ]);
+        $this->post('/admin/approvals/'.$lastEdited->id.'/decision', [
+            'decision' => 'approve', 'reason' => 'source_reviewed',
+        ])->assertForbidden();
+
+        $legacy = $this->article();
+        DB::table('article_revisions')->where('article_id', $legacy->id)->update([
+            'author_user_id' => null,
+            'last_editor_user_id' => null,
+        ]);
+        $this->post('/admin/approvals/'.$legacy->id.'/decision', [
+            'decision' => 'approve', 'reason' => 'technical_reviewed',
+        ])->assertForbidden();
+        $this->assertDatabaseMissing('editorial_events', [
+            'article_id' => $legacy->id, 'action' => 'manual_published',
+        ]);
+
+        $independent = $this->article();
+        $revision = $independent->revisions()->firstOrFail();
+        $this->post('/admin/approvals/'.$independent->id.'/decision?lang=en', [
+            'decision' => 'approve', 'reason' => 'technical_reviewed',
+        ])->assertRedirect();
+        $this->assertSame('published', $independent->fresh()->status);
+        $this->assertDatabaseHas('article_revisions', [
+            'id' => $revision->id, 'reviewed_by_user_id' => $actor->id,
+        ]);
+        $this->assertNotNull($revision->fresh()->reviewed_at);
+        $this->assertDatabaseHas('editorial_events', [
+            'article_id' => $independent->id,
+            'actor_id' => $actor->id,
+            'action' => 'manual_published',
+        ]);
+    }
 }
