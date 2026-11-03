@@ -2287,8 +2287,12 @@ Route::middleware('auth:web')->prefix('admin')->group(function (): void {
             'lang' => ['sometimes', 'in:ar,en'],
             'status' => ['sometimes', 'in:completed,in_progress,research,archived'],
             'visibility' => ['sometimes', 'in:public,private'],
+            'q' => ['sometimes', 'nullable', 'string', 'max:100'],
+            'sort' => ['sometimes', 'in:recent,title'],
             'page' => ['sometimes', 'integer', 'between:1,10000'],
         ]);
+        $search = trim((string) ($input['q'] ?? ''));
+        $sort = $input['sort'] ?? 'recent';
         $query = \App\Models\Project::query()->withCount([
             'evidence',
             'evidence as verified_public_evidence_count' => static fn ($q) => $q
@@ -2296,8 +2300,19 @@ Route::middleware('auth:web')->prefix('admin')->group(function (): void {
                 ->where('verified_at', '<=', now()),
         ])->when(isset($input['status']), static fn ($q) => $q->where('status', $input['status']))
             ->when(isset($input['visibility']), static fn ($q) => $q->where('visibility', $input['visibility']));
-        $projects = $query->orderByDesc('updated_at')->orderBy('id')->paginate(20)
-            ->appends($request->only(['lang', 'status', 'visibility']));
+        if ($search !== '') {
+            // Search human-visible project titles and route-safe slugs only.
+            // Treat % and _ literally, never as caller-controlled SQL wildcards.
+            $escaped = str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $search);
+            $pattern = '%'.$escaped.'%';
+            $query->where(static fn ($q) => $q
+                ->whereRaw("title LIKE ? ESCAPE '!'", [$pattern])
+                ->orWhereRaw("slug LIKE ? ESCAPE '!'", [$pattern]));
+        }
+        $projects = ($sort === 'title'
+            ? $query->orderBy('title')->orderBy('id')
+            : $query->orderByDesc('updated_at')->orderBy('id'))
+            ->paginate(20)->appends($request->only(['lang', 'status', 'visibility', 'q', 'sort']));
         // Private URLs are visible only to the owner, never to other admins.
         // Laravel's eager-limit confines the review queue to ten per project.
         if ($request->user()->hasRole('owner')) {
@@ -2309,6 +2324,7 @@ Route::middleware('auth:web')->prefix('admin')->group(function (): void {
             'section' => 'projects', 'projects' => $projects,
             'statusFilter' => $input['status'] ?? '',
             'visibilityFilter' => $input['visibility'] ?? '',
+            'projectSearch' => $search, 'projectSort' => $sort,
         ])->header('Cache-Control', 'no-store, private');
     })->name('admin.operations.projects')->middleware('throttle:30,1');
 

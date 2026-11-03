@@ -10,13 +10,13 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class WebVisualPlanTest(unittest.TestCase):
-    def test_static_11_routable_web_pages_do_not_invent_unmerged_route(self):
+    def test_static_12_routable_web_pages_include_implemented_ai_engineering(self):
         plan = build_web_plan(ROOT)
         entries = validate_plan(ROOT, plan)
-        self.assertEqual(len(entries), 11)
+        self.assertEqual(len(entries), 12)
         self.assertEqual(
             [row["screen_id"] for row in entries],
-            [sid for sid in WEB_IDS if sid not in ("WEB-05", "WEB-06", "WEB-08")],
+            [sid for sid in WEB_IDS if sid not in ("WEB-05", "WEB-08")],
         )
         self.assertNotIn("{slug}", json.dumps(plan))
         for row in entries:
@@ -31,7 +31,7 @@ class WebVisualPlanTest(unittest.TestCase):
         plan = build_web_plan(
             ROOT, project_slug="real-published-project",
             article_slug="real-reviewed-article",
-            include_ai_engineering=True, require_all=True,
+            require_all=True,
         )
         self.assertEqual(len(validate_plan(ROOT, plan)), 14)
         routes = {row["screen_id"]: row["route"] for row in plan["captures"]}
@@ -58,7 +58,7 @@ class WebVisualPlanTest(unittest.TestCase):
         plan = build_web_plan(ROOT, article_slug="approved-article",
                               locale="ar", dpr=2, timeout=240)
         entries = validate_plan(ROOT, plan)
-        self.assertEqual(len(entries), 12)
+        self.assertEqual(len(entries), 13)
         self.assertEqual(entries[0]["locale"], "ar")
         self.assertEqual(entries[0]["dpr"], 2)
         self.assertEqual(entries[0]["timeout"], 240)
@@ -74,7 +74,43 @@ class WebVisualPlanTest(unittest.TestCase):
                     row["route"] = "/blog/{id}"
             (root / "contracts/screens.json").write_text(json.dumps(source))
             with self.assertRaisesRegex(WebPlanError, "dynamic route"):
-                build_web_plan(root, article_slug="safe")
+                build_web_plan(root, article_slug="safe", include_ai_engineering=False)
+
+
+    def test_web06_route_must_be_registered_get_not_comment_or_post(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "contracts").mkdir()
+            (root / "backend/routes").mkdir(parents=True)
+            (root / "contracts/screens.json").write_text(
+                (ROOT / "contracts/screens.json").read_text(encoding="utf-8"),
+                encoding="utf-8",
+            )
+            routes = root / "backend/routes/web.php"
+            for source in (
+                "",
+                "Route::post('/ai-engineering', fn () => null);",
+                "// Route::get('/ai-engineering', fn () => null);",
+            ):
+                routes.write_text(source, encoding="utf-8")
+                with self.assertRaisesRegex(WebPlanError, "WEB-06 registered GET"):
+                    build_web_plan(root)
+            routes.write_text(
+                "Route::get('/ai-engineering', fn () => null)->name('public.ai-engineering');",
+                encoding="utf-8",
+            )
+            full_static = build_web_plan(root)
+            self.assertEqual(len(full_static["captures"]), 12)
+            self.assertIn("WEB-06", {row["screen_id"] for row in full_static["captures"]})
+            partial = build_web_plan(root, include_ai_engineering=False)
+            self.assertEqual(len(partial["captures"]), 11)
+            self.assertNotIn("WEB-06", {row["screen_id"] for row in partial["captures"]})
+            with self.assertRaises(WebPlanError):
+                build_web_plan(
+                    root, project_slug="published-project", article_slug="published-article",
+                    include_ai_engineering=False, require_all=True,
+                )
 
 
 if __name__ == "__main__":

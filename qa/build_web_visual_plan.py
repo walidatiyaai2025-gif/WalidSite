@@ -2,8 +2,8 @@
 """Build a safe, source-contract Web visual plan without inventing public content.
 
 Static pages are capturable even with an empty canonical owner CV. Dynamic
-WEB-05 and WEB-08 require real, verified PUBLIC slugs. WEB-06 remains
-explicitly excluded until its missing Laravel route is merged via T007 #8.
+WEB-05 and WEB-08 require real, verified PUBLIC slugs. WEB-06 is now
+routable; verify its Laravel GET route before including it by default.
 """
 import argparse
 import json
@@ -31,7 +31,7 @@ class WebPlanError(ValueError):
 
 def build_web_plan(root: Path, *, project_slug: str | None = None,
                    article_slug: str | None = None,
-                   include_ai_engineering: bool = False, locale: str = "en",
+                   include_ai_engineering: bool = True, locale: str = "en",
                    dpr: float = 1.0, timeout: int = 120,
                    require_all: bool = False) -> dict:
     root = root.resolve()
@@ -48,8 +48,8 @@ def build_web_plan(root: Path, *, project_slug: str | None = None,
             not isinstance(slug, str) or not SAFE_SLUG.fullmatch(slug)
         ):
             raise WebPlanError("Invalid public %s slug" % label)
-    if require_all and (not project_slug or not article_slug or not include_ai_engineering):
-        raise WebPlanError("All 14 screens require verified published slugs and WEB-06 availability")
+    if require_all and (not project_slug or not article_slug):
+        raise WebPlanError("All 14 screens require verified published slugs")
 
     try:
         screens = json.loads(
@@ -62,11 +62,21 @@ def build_web_plan(root: Path, *, project_slug: str | None = None,
     if any(screen_id not in by_id for screen_id in WEB_IDS):
         raise WebPlanError("Canonical contract does not contain 14 Web screens")
 
+    if include_ai_engineering:
+        # This route landed after the original 11-screen diagnostics runner.
+        # Reject stale checkouts rather than capturing a 404 as WEB-06.
+        try:
+            routes = (root / "backend/routes/web.php").read_text(encoding="utf-8")
+        except OSError as exc:
+            raise WebPlanError("WEB-06 Laravel route source is unreadable") from exc
+        if not re.search(r"""(?m)^[ \t]*Route::get\(\s*['"]/ai-engineering['"]\s*,""", routes):
+            raise WebPlanError("WEB-06 registered GET /ai-engineering route is missing")
+
     supplied = {"WEB-05": project_slug, "WEB-08": article_slug}
     captures = []
     for screen_id in WEB_IDS:
-        # WEB-06 is not yet on main; it is owned by T007 draft PR #499.
-        # Never fabricate a 200 response or silently call an absent route captured.
+        # Explicit opt-out is for focused partial diagnosis only. Full
+        # canonical coverage includes WEB-06 with runtime HTTP verification.
         if screen_id == "WEB-06" and not include_ai_engineering:
             continue
         screen = by_id[screen_id]
@@ -102,7 +112,10 @@ def build_web_plan(root: Path, *, project_slug: str | None = None,
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--project-slug")
-    parser.add_argument("--include-ai-engineering", action="store_true")
+    parser.add_argument("--include-ai-engineering", action="store_true",
+                        help="Legacy alias: WEB-06 is included by default")
+    parser.add_argument("--exclude-ai-engineering", action="store_true",
+                        help="Omit WEB-06 for a partial diagnostic run")
     parser.add_argument("--article-slug")
     parser.add_argument("--locale", choices=("ar", "en"), default="en")
     parser.add_argument("--dpr", type=float, default=1.0)
@@ -110,12 +123,14 @@ def main(argv=None) -> int:
     parser.add_argument("--require-all", action="store_true")
     parser.add_argument("--output", type=Path)
     args = parser.parse_args(argv)
+    if args.include_ai_engineering and args.exclude_ai_engineering:
+        parser.error("Conflicting WEB-06 inclusion flags")
     try:
         plan = build_web_plan(
             Path(__file__).resolve().parents[1],
             project_slug=args.project_slug,
             article_slug=args.article_slug,
-            include_ai_engineering=args.include_ai_engineering,
+            include_ai_engineering=not args.exclude_ai_engineering,
             locale=args.locale, dpr=args.dpr,
             timeout=args.timeout, require_all=args.require_all,
         )

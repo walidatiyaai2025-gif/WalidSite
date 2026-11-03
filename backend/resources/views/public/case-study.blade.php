@@ -21,9 +21,25 @@
 @php($statusLabels = $locale === 'ar'
     ? ['completed' => 'مكتمل', 'in_progress' => 'قيد التنفيذ', 'research' => 'بحث', 'archived' => 'مؤرشف']
     : ['completed' => 'Completed', 'in_progress' => 'In progress', 'research' => 'Research', 'archived' => 'Archived'])
+{{-- Round-trip only explicitly allowed listing filters: never accept a caller's URL
+     or echo arbitrary query parameters into a back-navigation destination. --}}
+@php($returnQRaw = request()->query()['q'] ?? null)
+@php($returnQ = is_string($returnQRaw) ? mb_substr(trim($returnQRaw), 0, 80) : '')
+@php($returnStatusRaw = request()->query()['status'] ?? null)
+@php($returnStatus = is_string($returnStatusRaw) && in_array($returnStatusRaw, ['completed', 'in_progress', 'research', 'archived'], true) ? $returnStatusRaw : '')
+@php($returnPageRaw = request()->query()['page'] ?? null)
+@php($returnPage = is_scalar($returnPageRaw) ? filter_var($returnPageRaw, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1, 'max_range' => 10000]]) : false)
+@php($returnToListing = route('public.projects', array_merge(
+    ['lang' => $locale],
+    $returnQ !== '' ? ['q' => $returnQ] : [],
+    $returnStatus !== '' ? ['status' => $returnStatus] : [],
+    $returnPage !== false && $returnPage > 1 ? ['page' => $returnPage] : []
+)))
 @section('content')
 <article class="site-wrap study">
-<a href="{{ route('public.projects', ['lang'=>$locale]) }}">{{ $locale === 'ar' ? 'كل المشاريع' : 'All projects' }}</a>
+<a href="{{ $returnToListing }}">{{ $locale === 'ar'
+    ? ($returnQ !== '' || $returnStatus !== '' || $returnPage > 1 ? 'العودة إلى نتائج المشاريع' : 'كل المشاريع')
+    : ($returnQ !== '' || $returnStatus !== '' || $returnPage > 1 ? 'Back to project results' : 'All projects') }}</a>
 <h1>{{ $project['name'] }}</h1>
 <p>{{ $project['summary'] }}</p>
 <section aria-labelledby="case-facts">
@@ -42,7 +58,7 @@
 <h2 id="case-evidence">{{ $locale === 'ar' ? 'أدلة منشورة' : 'Published evidence' }}</h2>
 <ul>
 @foreach($project['evidence_urls'] as $url)
-<li><a href="{{ $url }}" target="_blank" rel="noopener noreferrer">{{ $url }}</a></li>
+<li><a href="{{ $url }}" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">{{ $url }}</a></li>
 @endforeach
 </ul>
 </section>

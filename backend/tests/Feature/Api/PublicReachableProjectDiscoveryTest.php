@@ -101,7 +101,16 @@ final class PublicReachableProjectDiscoveryTest extends TestCase
                 if ($i <= 9) {
                     $web1->assertSee('href="'.e($caseUrl).'"', false);
                 } else {
-                    $web2->assertSee('href="'.e($caseUrl).'"', false);
+                    // A page-two card keeps its current results page so the
+                    // case-study back link returns to that exact position.
+                    $pageTwoCaseUrl = route('public.project', [
+                        'slug' => $slug, 'lang' => $locale, 'page' => 2,
+                    ]);
+                    $web2->assertSee('href="'.e($pageTwoCaseUrl).'"', false);
+                    $this->get($pageTwoCaseUrl)->assertOk()
+                        ->assertSee('href="'.e(route('public.projects', [
+                            'lang' => $locale, 'page' => 2,
+                        ])).'"', false);
                 }
                 $this->get($caseUrl)->assertOk()
                     ->assertSee('Reviewed '.$slug)
