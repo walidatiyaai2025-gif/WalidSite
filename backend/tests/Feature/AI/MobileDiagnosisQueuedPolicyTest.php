@@ -3,6 +3,8 @@
 namespace Tests\Feature\AI;
 
 use App\AI\DurableAiQueue;
+use App\AI\BoundedAiWorker;
+use App\AI\AiStepHandlerRegistry;
 use App\AI\MobileDiagnosisDispatcher;
 use App\Models\AiDiagnosisRequest;
 use App\Models\AiModel;
@@ -251,8 +253,8 @@ final class MobileDiagnosisQueuedPolicyTest extends TestCase
 
         $this->travel(31)->seconds();
         try {
-            $result = app(\\App\\AI\\BoundedAiWorker::class)->tick(
-                'recovery-worker', app(\\App\\AI\\AiStepHandlerRegistry::class)->handlers()
+            $result = app(BoundedAiWorker::class)->tick(
+                'recovery-worker', app(AiStepHandlerRegistry::class)->handlers()
             );
             $this->assertSame(['state' => 'retry', 'job_id' => $job->id], $result);
         } finally {
