@@ -141,4 +141,87 @@ final class Web03ReferenceJourneyTest extends TestCase
         }
         $this->get('/projects?lang=en')->assertOk();
     }
+    public function test_selected_specialty_reports_the_true_verified_count_and_has_keyboard_recovery(): void
+    {
+        $owner = $this->publishedOwner();
+        $this->skill($owner, 'public-database', 'Database & Reliability');
+        $this->skill($owner, 'unverified-security', 'Infrastructure & Security', false);
+
+        $reader = User::create(['email' => 'web03-unrelated@example.test', 'status' => 'active']);
+        $foreignProfile = Profile::create([
+            'user_id' => $reader->id,
+            'public_name' => 'Unrelated account',
+            'publish_status' => 'published',
+        ]);
+        $this->skill($foreignProfile, 'foreign-security', 'Infrastructure & Security');
+
+        foreach (['en', 'ar'] as $locale) {
+            $security = $this->get(route('public.expertise', [
+                'lang' => $locale, 'category' => 'security',
+            ]))->assertOk()
+                ->assertSee('id="expertise-filter-status"', false)
+                ->assertSee('aria-live="polite"', false)
+                ->assertSee('aria-describedby="expertise-filter-hint"', false)
+                ->assertSee('value="security" selected', false)
+                ->assertDontSee('unverified-security')
+                ->assertDontSee('foreign-security');
+
+            $security->assertSee($locale === 'ar'
+                ? 'لا توجد مهارات منشورة وموثقة في هذا التخصص.'
+                : 'No evidence-verified published skills match this specialty.')
+                ->assertSee($locale === 'ar'
+                    ? 'المهارات الموثقة المطابقة: 0'
+                    : 'Matching verified skills: 0')
+                ->assertSee(
+                    'href="'.e(route('public.expertise', ['lang' => $locale])).'"',
+                    false
+                )
+                ->assertDontSee($locale === 'ar'
+                    ? 'لم تُعتمد مهارات للنشر بعد.'
+                    : 'No skills have been approved with verified evidence yet.');
+
+            $database = $this->get(route('public.expertise', [
+                'lang' => $locale, 'category' => 'database',
+            ]))->assertOk()
+                ->assertSee($locale === 'ar'
+                    ? 'المهارات الموثقة المطابقة: 1'
+                    : 'Matching verified skills: 1')
+                ->assertSee($locale === 'ar' ? 'موثق public-database' : 'Reviewed public-database')
+                ->assertSee('class="expertise-card-filter" href="', false)
+                ->assertSee('aria-current="page" aria-describedby="expertise-filter-status"', false)
+                ->assertDontSee('foreign-security');
+
+            $this->assertStringContainsString(
+                'href="'.e(route('public.hire', ['lang' => $locale, 'track' => 'database'])).'"',
+                $database->getContent(),
+                'The separate recruiter action from #660 must remain reachable.'
+            );
+        }
+    }
+
+    public function test_unfiltered_and_invalid_specialties_are_never_misreported_as_a_selected_filter(): void
+    {
+        foreach (['en', 'ar'] as $locale) {
+            foreach (['', '&category%5B%5D=security', '&category=UNTRUSTED_TOKEN'] as $extra) {
+                $html = $this->get('/expertise?lang='.$locale.$extra)
+                    ->assertOk()
+                    ->assertSee($locale === 'ar'
+                        ? 'لم تُعتمد مهارات للنشر بعد.'
+                        : 'No skills have been approved with verified evidence yet.')
+                    ->assertDontSee('id="expertise-filter-status"', false)
+                    ->assertDontSee('UNTRUSTED_TOKEN')
+                    ->getContent();
+                $this->assertStringNotContainsString('href="http://UNTRUSTED_TOKEN', $html);
+            }
+            // A syntactically valid, source-empty filter has a different
+            // truthful recovery path instead of claiming the whole site lacks skills.
+            $this->get('/expertise?lang='.$locale.'&category=delivery')
+                ->assertOk()
+                ->assertSee('id="expertise-filter-status"', false)
+                ->assertSee($locale === 'ar'
+                    ? 'عرض جميع التخصصات'
+                    : 'View all specialties');
+        }
+    }
+
 }
