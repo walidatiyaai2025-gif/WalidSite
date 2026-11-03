@@ -148,6 +148,7 @@ final class AdminMakerCheckerSecurityTest extends TestCase
         $revision->update([
             'validation_json' => array_merge($revision->validation_json, [
                 'technical_passed' => true,
+                'editor_review_note' => 'independently updated metadata',
             ]),
         ]);
         $this->assertSame($editor->id, $revision->fresh()->last_editor_user_id);
