@@ -333,13 +333,16 @@ void main() {
     expect(find.textContaining('سجّل الحالة الحالية'), findsOneWidget);
   });
 
-  test('durable progress survives restart and isolates guest, accounts, versions', () async {
-    final directory = await Directory.systemTemp.createTemp('walidsite-progress-');
-    addTearDown(() async {
-      if (await directory.exists()) await directory.delete(recursive: true);
-    });
-    AppSupportRunbookProgressStore store() =>
-        AppSupportRunbookProgressStore(directory: () async => directory);
+  testWidgets('durable progress survives restart and isolates guest, accounts, versions',
+      (tester) async {
+    // Native file system calls are not serviced by Flutter's default
+    // FakeAsync widget zone. Enter a real-async zone for this isolated
+    // app-support directory integration test.
+    await tester.runAsync(() async {
+      final directory = await Directory.systemTemp.createTemp('walidsite-progress-');
+      try {
+        AppSupportRunbookProgressStore store() =>
+            AppSupportRunbookProgressStore(directory: () async => directory);
     await store().write(
       scope: 'account:alice', packVersion: '2.0.0',
       runbookId: 'safe-progress', completed: {0, 2},
@@ -372,6 +375,12 @@ void main() {
       scope: 'account:alice@example.org', packVersion: '2.0.0',
       runbookId: 'safe-progress', completed: {1},
     ), throwsFormatException);
+      } finally {
+        if (await directory.exists()) {
+          await directory.delete(recursive: true);
+        }
+      }
+    });
   });
 
   testWidgets('marked step survives widget recreation with isolated scope', (tester) async {
