@@ -14,7 +14,7 @@ class ContactFormPrivacyBoundaryTest extends TestCase
         foreach (['ar', 'en'] as $locale) {
             $response = $this->get('/contact?lang='.$locale.'&topic=privacy&request=export')
                 ->assertOk()
-                ->assertHeader('Cache-Control', 'private, no-store')
+                ->assertHeader('Cache-Control', 'no-store, private')
                 ->assertHeader('X-Content-Type-Options', 'nosniff')
                 ->assertSee('name="name"', false)
                 ->assertSee('maxlength="100"', false)
