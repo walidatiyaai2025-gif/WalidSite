@@ -194,13 +194,47 @@ class VerifiedArticlePage {
 }
 
 class VerifiedArticleReader {
-  const VerifiedArticleReader();
+  const VerifiedArticleReader()
+      : _clientFactory = null,
+        _testingOrigin = null,
+        _wholeDeadline = const Duration(seconds: 12);
+
+  // Test injection retains the same public HTTPS origin validation as the
+  // production source; it cannot bypass origin restrictions to send traffic
+  // to localhost or private addresses. No test settings enter the real app.
+  @visibleForTesting
+  const VerifiedArticleReader.fixture({
+    required HttpClient Function() httpClientFactory,
+    required String publicOrigin,
+    Duration wholeDeadline = const Duration(milliseconds: 90),
+  })  : _clientFactory = httpClientFactory,
+        _testingOrigin = publicOrigin,
+        _wholeDeadline = wholeDeadline;
+
+  final HttpClient Function()? _clientFactory;
+  final String? _testingOrigin;
+  final Duration _wholeDeadline;
+
+  Uri? _origin() => _testingOrigin == null
+      ? configuredOrigin()
+      : validatedOrigin(_testingOrigin);
+
+  HttpClient _newClient() => (_clientFactory?.call() ?? HttpClient())
+    ..connectionTimeout = const Duration(seconds: 8);
 
   // Explicit build-time deployment configuration, never an invented endpoint.
   static const apiOrigin = String.fromEnvironment('WALIDSITE_API_ORIGIN');
   static const _limit = 2 * 1024 * 1024;
 
   static Uri? configuredOrigin() => validatedOrigin(apiOrigin);
+
+  // Shared by the production reader and deterministic slow-stream tests.
+  // A timeout on individual chunks is insufficient when bytes keep arriving.
+  @visibleForTesting
+  static Future<T> withinWholeExchange<T>(
+    Future<T> Function() exchange, {
+    Duration deadline = const Duration(seconds: 12),
+  }) => exchange().timeout(deadline);
 
   /// Validate the supplied build configuration before ever creating a
   /// network client. Public reading must not silently contact a loopback,
@@ -249,7 +283,7 @@ class VerifiedArticleReader {
     if (!RegExp(r'^[A-Za-z0-9-]{1,180}$').hasMatch(slug)) {
       throw const FormatException('Invalid article slug');
     }
-    final origin = configuredOrigin();
+    final origin = _origin();
     if (origin == null) {
       throw const FormatException('Article API not configured');
     }
@@ -257,7 +291,7 @@ class VerifiedArticleReader {
       path: '/api/v1/public/articles/$slug',
       queryParameters: {'lang': arabic ? 'ar' : 'en'},
     );
-    final client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
+    final client = _newClient();
     try {
       return await (() async {
         final request = await client.getUrl(url);
@@ -278,7 +312,7 @@ class VerifiedArticleReader {
           utf8.decode(bytes.takeBytes(), allowMalformed: false),
           slug,
         );
-      })().timeout(const Duration(seconds: 12));
+      })().timeout(_wholeDeadline);
     } finally {
       client.close(force: true);
     }
@@ -288,7 +322,7 @@ class VerifiedArticleReader {
     if (page < 1 || page > 10000) {
       throw const FormatException('Invalid article page');
     }
-    final origin = configuredOrigin();
+    final origin = _origin();
     if (origin == null) {
       throw const FormatException('Article API not configured');
     }
@@ -297,24 +331,31 @@ class VerifiedArticleReader {
       queryParameters: {'lang': arabic ? 'ar' : 'en', 'page': '$page'},
     );
 
-    final client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
+    final client = _newClient();
     try {
-      final request = await client.getUrl(url).timeout(const Duration(seconds: 8));
-      request.followRedirects = false;
-      request.headers.set(HttpHeaders.acceptHeader, 'application/json');
-      final response = await request.close().timeout(const Duration(seconds: 8));
-      if (response.statusCode != HttpStatus.ok) {
-        throw const HttpException('Article service unavailable');
-      }
-
-      final buffer = BytesBuilder(copy: false);
-      await for (final chunk in response.timeout(const Duration(seconds: 8))) {
-        if (buffer.length + chunk.length > _limit) {
-          throw const FormatException('Article response exceeds size limit');
+      // One wall-clock deadline covers connect, headers, every streamed byte,
+      // UTF-8 decoding and parsing. Idle-per-chunk deadlines permit a slow
+      // sender to keep a public article screen stalled indefinitely.
+      return await withinWholeExchange(() async {
+        final request = await client.getUrl(url);
+        request.followRedirects = false;
+        request.headers.set(HttpHeaders.acceptHeader, 'application/json');
+        final response = await request.close();
+        if (response.statusCode != HttpStatus.ok) {
+          throw const HttpException('Article service unavailable');
         }
-        buffer.add(chunk);
-      }
-      return VerifiedArticlePage.parse(utf8.decode(buffer.takeBytes()), page);
+
+        final buffer = BytesBuilder(copy: false);
+        await for (final chunk in response) {
+          if (buffer.length + chunk.length > _limit) {
+            throw const FormatException('Article response exceeds size limit');
+          }
+          buffer.add(chunk);
+        }
+        return VerifiedArticlePage.parse(
+          utf8.decode(buffer.takeBytes(), allowMalformed: false), page,
+        );
+      }, deadline: _wholeDeadline);
     } finally {
       client.close(force: true);
     }
@@ -326,6 +367,7 @@ class VerifiedArticleLibrary extends StatefulWidget {
     required this.arabic,
     this.loader,
     this.pageLoader,
+    this.detailLoader,
     super.key,
   });
 
@@ -336,6 +378,10 @@ class VerifiedArticleLibrary extends StatefulWidget {
 
   // Injectable verified page source for deterministic pagination tests.
   final Future<VerifiedArticlePage> Function(int page)? pageLoader;
+
+  // Injected only by widget tests. Production always refetches the current
+  // publication through the verified server detail endpoint.
+  final Future<VerifiedArticle> Function(String slug)? detailLoader;
 
   @override
   State<VerifiedArticleLibrary> createState() => _VerifiedArticleLibraryState();
@@ -610,9 +656,10 @@ class _VerifiedArticleLibraryState extends State<VerifiedArticleLibrary> {
                                         : Icons.chevron_right),
                                     onTap: () => Navigator.of(context).push(
                                       MaterialPageRoute<void>(
-                                        builder: (_) => VerifiedArticleDetail(
-                                          article: article,
+                                        builder: (_) => VerifiedArticleFreshDetail(
+                                          slug: article.slug,
                                           arabic: ar,
+                                          loader: widget.detailLoader,
                                         ),
                                       ),
                                     ),
@@ -664,6 +711,134 @@ class VerifiedArticleDetail extends StatelessWidget {
                 child: SelectableText(citation),
               ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// MOBILE-07 detail must check the current publication on every open, not
+/// trust a list row that may have been withdrawn since it was fetched.
+class VerifiedArticleFreshDetail extends StatefulWidget {
+  const VerifiedArticleFreshDetail({
+    required this.slug,
+    required this.arabic,
+    this.loader,
+    super.key,
+  });
+
+  final String slug;
+  final bool arabic;
+  final Future<VerifiedArticle> Function(String slug)? loader;
+
+  @override
+  State<VerifiedArticleFreshDetail> createState() =>
+      _VerifiedArticleFreshDetailState();
+}
+
+class _VerifiedArticleFreshDetailState extends State<VerifiedArticleFreshDetail> {
+  late Future<VerifiedArticle> _detail;
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+  }
+
+  @override
+  void didUpdateWidget(covariant VerifiedArticleFreshDetail oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.slug != oldWidget.slug ||
+        widget.arabic != oldWidget.arabic ||
+        widget.loader != oldWidget.loader) {
+      _refresh();
+    }
+  }
+
+  void _refresh() {
+    // Schedule the request after FutureBuilder has subscribed to the new
+    // future. A fast 404/rejection must be rendered as the safe unavailable
+    // state, not surface as an unhandled error during a Retry tap.
+    final request = Future<VerifiedArticle>(() async {
+      final article = await (widget.loader != null
+          ? widget.loader!(widget.slug)
+          : const VerifiedArticleReader().loadDetail(
+              widget.arabic, widget.slug));
+      if (article.slug != widget.slug) {
+        throw const FormatException('Mismatched article detail');
+      }
+      return article;
+    });
+    // A very fast denied/revoked reply may beat the next widget frame during
+    // a Retry tap. Attach an immediate error observer so that no transient
+    // unhandled error escapes while FutureBuilder subscribes; the UI still
+    // observes this original request and displays its safe failure state.
+    unawaited(request.then<void>((_) {}, onError: (Object _, StackTrace __) {}));
+    _detail = request;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final arabic = widget.arabic;
+    return Directionality(
+      textDirection: arabic ? TextDirection.rtl : TextDirection.ltr,
+      child: Scaffold(
+        appBar: AppBar(title: Text(
+          arabic ? 'المقال الموثق' : 'Verified article',
+        )),
+        body: FutureBuilder<VerifiedArticle>(
+          future: _detail,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState != ConnectionState.done) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            if (snapshot.hasError || !snapshot.hasData) {
+              return Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        arabic
+                            ? 'المقال غير متاح حاليًا أو سُحب نشره. تحقق من الاتصال.'
+                            : 'This article is unavailable or may have been withdrawn.',
+                        key: const Key('verified-article-unavailable'),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 12),
+                      OutlinedButton(
+                        key: const Key('verified-article-retry'),
+                        onPressed: () => setState(_refresh),
+                        child: Text(arabic ? 'إعادة التحقق' : 'Retry verification'),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }
+            final article = snapshot.data!;
+            return ListView(
+              padding: const EdgeInsets.all(20),
+              children: [
+                Text(article.title, style: Theme.of(context).textTheme.titleLarge),
+                const SizedBox(height: 16),
+                Text(arabic
+                    ? 'محتوى منشور موثق بمراجع؛ ليس تقرير اختبار عملي.'
+                    : 'Published source-verified reading, not a tested execution report.'),
+                const SizedBox(height: 16),
+                SelectableText(article.body, key: const Key('verified-article-body')),
+                const SizedBox(height: 24),
+                Text(arabic ? 'المراجع' : 'Citations',
+                    style: Theme.of(context).textTheme.titleLarge),
+                for (final citation in article.citations)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: SelectableText(citation),
+                  ),
+              ],
+            );
+          },
         ),
       ),
     );
