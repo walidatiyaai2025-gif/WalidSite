@@ -1619,6 +1619,17 @@ foreach (['about', 'expertise', 'hire'] as $professionalPage) {
  * serializer so public web cannot bypass the backend evidence URL policy.
  */
 Route::get('/projects', function (Request $request) {
+    // Owner-requested visual preview of CV / public repository projects.
+    // This is NOT the published, evidence-verified case-study API and must
+    // never be indexed or substituted for the publication-gated catalog.
+    // Exact scalar opt-in prevents array/query input from controlling view selection.
+    if ($request->query('preview') === 'cv') {
+        return response()->file(public_path('portfolio-projects-preview.html'), [
+            'X-Robots-Tag' => 'noindex, nofollow',
+            'Cache-Control' => 'no-store, private',
+        ]);
+    }
+
     $rawSearch = $request->query('q', '');
     $search = is_string($rawSearch) ? mb_substr(trim($rawSearch), 0, 80) : '';
     // Never interpolate untrusted filter values into the query or reveal
