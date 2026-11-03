@@ -32,12 +32,19 @@
     .case-pagination { display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-top:30px; }
     .case-pagination a, .case-pagination span { padding:9px 16px; border:1px solid var(--wa-soft-border); border-radius:10px; background:#fff; }
     .case-pagination a { color:var(--wa-cta); font-weight:800; }
+    .case-reset { display:inline-flex;align-items:center;justify-content:center;min-height:44px;
+        padding:10px 16px;border:1px solid var(--wa-soft-border);border-radius:10px;
+        background:#fff;color:var(--wa-cta);font-weight:800;text-decoration:none; }
+    .case-reset:focus-visible { outline:3px solid var(--wa-cta);outline-offset:3px; }
 </style>
 @endpush
 
 @php($statusLabels = $locale === 'ar'
     ? ['completed' => 'مكتمل', 'in_progress' => 'قيد التنفيذ', 'research' => 'بحث', 'archived' => 'مؤرشف']
     : ['completed' => 'Completed', 'in_progress' => 'In progress', 'research' => 'Research', 'archived' => 'Archived'])
+{{-- Never copy raw request()->query() into navigation: only the validated,
+     bounded search and allowlisted status supplied by the public route survive. --}}
+@php($safeProjectFilters = array_filter(['q' => $search, 'status' => $status], static fn ($value) => is_string($value) && $value !== ''))
 @section('content')
 <section class="site-wrap case-page" aria-labelledby="project-heading">
     <h1 id="project-heading">{{ $locale === 'ar' ? 'مشاريع ودراسات حالة موثقة' : 'Verified projects and case studies' }}</h1>
@@ -62,6 +69,9 @@
             </select>
         </div>
         <button class="case-button" type="submit">{{ $locale === 'ar' ? 'بحث' : 'Search' }}</button>
+        @if($safeProjectFilters !== [])
+            <a class="case-reset" href="{{ route('public.projects', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'مسح المرشحات' : 'Clear filters' }}</a>
+        @endif
     </form>
 
     @if ($projects->isEmpty())
@@ -89,13 +99,13 @@
     @if ($paginated->hasPages())
         <nav class="case-pagination" aria-label="{{ $locale === 'ar' ? 'صفحات المشاريع' : 'Project pages' }}">
             @if ($paginated->previousPageUrl())
-                <a href="{{ $paginated->previousPageUrl() }}">{{ $locale === 'ar' ? 'السابق' : 'Previous' }}</a>
+                <a href="{{ route('public.projects', array_merge(['lang' => $locale], $safeProjectFilters, ['page' => $paginated->currentPage() - 1])) }}">{{ $locale === 'ar' ? 'السابق' : 'Previous' }}</a>
             @else
                 <span aria-disabled="true">{{ $locale === 'ar' ? 'السابق' : 'Previous' }}</span>
             @endif
             <span>{{ $locale === 'ar' ? 'الصفحة' : 'Page' }} {{ $paginated->currentPage() }} / {{ $paginated->lastPage() }}</span>
             @if ($paginated->nextPageUrl())
-                <a href="{{ $paginated->nextPageUrl() }}">{{ $locale === 'ar' ? 'التالي' : 'Next' }}</a>
+                <a href="{{ route('public.projects', array_merge(['lang' => $locale], $safeProjectFilters, ['page' => $paginated->currentPage() + 1])) }}">{{ $locale === 'ar' ? 'التالي' : 'Next' }}</a>
             @else
                 <span aria-disabled="true">{{ $locale === 'ar' ? 'التالي' : 'Next' }}</span>
             @endif
