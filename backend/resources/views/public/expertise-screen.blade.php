@@ -6,6 +6,12 @@
     'Infrastructure & Security' => 'البنية التحتية والأمن',
     'Project Delivery' => 'إدارة وتسليم المشاريع',
 ])
+@php($categoryTracks = [
+    'Database & Reliability' => 'database',
+    'Software & Integration' => 'software',
+    'Infrastructure & Security' => 'software',
+    'Project Delivery' => 'delivery',
+])
 @php($categoryFilters = [
     'Database & Reliability' => 'database',
     'Software & Integration' => 'integration',
@@ -111,11 +117,13 @@ body:has(.expertise-screen) .header-links a[href*="/contact"]{background:#00A999
                             @endforeach
                         </ul>
                         <div class="expertise-card-footer">
+                            @if(isset($categoryTracks[$category]))
+                                {{-- Retain the established recruiter journey as a separate action. --}}
+                                <a class="professional-track-link" href="{{ route('public.hire', ['lang' => $locale, 'track' => $categoryTracks[$category]]) }}">{{ $locale === 'ar' ? 'تصفية الخبرات حسب ' : 'Filter expertise by ' }}{{ $locale === 'ar' ? ($categoryLabelsAr[$category] ?? $category) : $category }}</a>
+                            @endif
                             @if(isset($categoryFilters[$category]))
-                                {{-- A skill-category filter stays on WEB-03. Recruiter tracks are a
-                                     different vocabulary and previously sent visitors to the
-                                     wrong workflow, especially for Security -> Software. --}}
-                                <a class="professional-track-link" href="{{ route('public.expertise', ['lang' => $locale, 'category' => $categoryFilters[$category]]) }}">{{ $locale === 'ar' ? 'تصفية المهارات حسب ' : 'Filter skills by ' }}{{ $locale === 'ar' ? ($categoryLabelsAr[$category] ?? $category) : $category }}</a>
+                                {{-- Unlike recruiter tracks, this action filters exactly the clicked skill category. --}}
+                                <a class="expertise-card-filter" href="{{ route('public.expertise', ['lang' => $locale, 'category' => $categoryFilters[$category]]) }}">{{ $locale === 'ar' ? 'تصفية المهارات حسب ' : 'Filter skills by ' }}{{ $locale === 'ar' ? ($categoryLabelsAr[$category] ?? $category) : $category }}</a>
                             @else
                                 <span>{{ $locale === 'ar' ? 'المهارات المنشورة في هذا المجال' : 'Published verified skills' }}</span>
                             @endif
