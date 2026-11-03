@@ -78,6 +78,23 @@ void main() {
     }
   });
 
+  test('article feed enforces a total deadline even when bytes keep arriving', () async {
+    var delivered = 0;
+    final slowStream = Stream<int>.periodic(
+      const Duration(milliseconds: 40), (index) => index,
+    ).take(6);
+    final request = VerifiedArticleReader.withinWholeExchange(() async {
+      await for (final _ in slowStream) {
+        delivered++;
+      }
+      return delivered;
+    }, deadline: const Duration(milliseconds: 105));
+
+    await expectLater(request, throwsA(isA<TimeoutException>()));
+    expect(delivered, lessThan(6),
+        reason: 'A stream that yields before every idle timeout must still end');
+  });
+
   test('published article parser rejects unsupported or unsafe evidence', () {
     final items = VerifiedArticle.parseList(safeJson);
     expect(items, hasLength(1));
