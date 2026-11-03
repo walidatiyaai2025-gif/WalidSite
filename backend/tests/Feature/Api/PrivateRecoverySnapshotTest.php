@@ -126,6 +126,26 @@ final class PrivateRecoverySnapshotTest extends TestCase
         ));
     }
 
+    public function test_public_html_backup_folder_must_never_receive_environment_secrets(): void
+    {
+        $unsafe = dirname($this->uploads).'/backups';
+        self::assertTrue(mkdir($unsafe, 0700));
+        $this->assertRejected(fn () => (new PrivateRecoverySnapshot())->create(
+            $this->environment, $this->privateData, $this->uploads, $unsafe,
+        ));
+        self::assertSame([], glob($unsafe.'/*') ?: []);
+    }
+
+    public function test_hardlinked_user_data_is_rejected_and_partial_backup_is_removed(): void
+    {
+        $outside = $this->home.'/outside.txt';
+        file_put_contents($outside, 'external secret');
+        self::assertTrue(link($outside, $this->privateData.'/user/linked-secret.txt'));
+        $this->assertRejected(fn () => $this->snapshot());
+        self::assertSame([], glob($this->backupRoot.'/recovery-*') ?: []);
+        self::assertSame([], glob($this->backupRoot.'/.recovery-*.partial') ?: []);
+    }
+
     public function test_missing_environment_secret_is_not_silently_ignored(): void
     {
         unlink($this->environment);
