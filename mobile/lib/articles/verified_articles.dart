@@ -202,6 +202,14 @@ class VerifiedArticleReader {
 
   static Uri? configuredOrigin() => validatedOrigin(apiOrigin);
 
+  // Shared by the production reader and deterministic slow-stream tests.
+  // A timeout on individual chunks is insufficient when bytes keep arriving.
+  @visibleForTesting
+  static Future<T> withinWholeExchange<T>(
+    Future<T> Function() exchange, {
+    Duration deadline = const Duration(seconds: 12),
+  }) => exchange().timeout(deadline);
+
   /// Validate the supplied build configuration before ever creating a
   /// network client. Public reading must not silently contact a loopback,
   /// literal-IP or private intranet destination on a user's device.
@@ -302,7 +310,7 @@ class VerifiedArticleReader {
       // One wall-clock deadline covers connect, headers, every streamed byte,
       // UTF-8 decoding and parsing. Idle-per-chunk deadlines permit a slow
       // sender to keep a public article screen stalled indefinitely.
-      return await (() async {
+      return await withinWholeExchange(() async {
         final request = await client.getUrl(url);
         request.followRedirects = false;
         request.headers.set(HttpHeaders.acceptHeader, 'application/json');
@@ -321,7 +329,7 @@ class VerifiedArticleReader {
         return VerifiedArticlePage.parse(
           utf8.decode(buffer.takeBytes(), allowMalformed: false), page,
         );
-      })().timeout(const Duration(seconds: 12));
+      });
     } finally {
       client.close(force: true);
     }
