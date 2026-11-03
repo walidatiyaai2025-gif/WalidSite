@@ -424,10 +424,16 @@ final class DurableAiQueue
                 ->where('cost_currency', '!=', $provider->currency)->exists()) {
                 throw new DomainException('Mixed-currency provider receipts cannot be budgeted.');
             }
-            $spent = (int) $todayReceipts->sum('cost_minor');
-            if ($spent + $costMinor > (int) $provider->daily_budget_minor) {
-                throw new DomainException('Daily provider spending cap reached.');
-            }
+            // The daily spending ceiling is a PRE-INFERENCE admission
+            // gate: claimNext() holds this provider row lock and accounts
+            // for recorded spend plus all running reservations before it
+            // grants an outbound paid lease. Once a provider call has been
+            // made, lowering the admin ceiling cannot undo the incurred
+            // cost. Rejecting its receipt here would erase accounting
+            // evidence and let a later retry miss the paid-replay guard.
+            // Keep validating active lease, currency, usage key and the
+            // original per-job aggregate reservation below. New jobs still
+            // cannot be claimed above the current daily spending ceiling.
             // An admission reservation is the maximum aggregate charge for
             // this job, not an allowance per receipt or per retry. Without
             // this check, multiple smaller receipts can overshoot the job
