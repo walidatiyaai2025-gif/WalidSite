@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -119,25 +120,36 @@ class ReviewedRunbookReader {
       VerifiedArticleReader.validatedOrigin(input);
   static Uri? configuredOrigin() => validatedOrigin(apiOrigin);
 
+  /// A per-chunk timeout resets whenever bytes arrive. Enforce one total
+  /// network deadline so a slow-drip server cannot pin runbook detail views.
+  @visibleForTesting
+  static Future<T> withinDeadline<T>(
+    Future<T> Function() operation, {
+    Duration timeout = const Duration(seconds: 12),
+  }) => Future<T>.sync(operation).timeout(timeout);
+
   Future<String> _fetch(Uri url) async {
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
     try {
-      final request = await client.getUrl(url).timeout(const Duration(seconds: 8));
-      request.followRedirects = false;
-      request.headers.set(HttpHeaders.acceptHeader, 'application/json');
-      final response = await request.close().timeout(const Duration(seconds: 8));
-      if (response.statusCode != HttpStatus.ok) {
-        throw const HttpException('Reviewed runbook unavailable');
-      }
-      final bytes = BytesBuilder(copy: false);
-      await for (final chunk in response.timeout(const Duration(seconds: 8))) {
-        if (bytes.length + chunk.length > 1024 * 1024) {
-          throw const FormatException('Runbook payload is too large');
+      return await withinDeadline(() async {
+        final request = await client.getUrl(url);
+        request.followRedirects = false;
+        request.headers.set(HttpHeaders.acceptHeader, 'application/json');
+        final response = await request.close();
+        if (response.statusCode != HttpStatus.ok) {
+          throw const HttpException('Reviewed runbook unavailable');
         }
-        bytes.add(chunk);
-      }
-      return utf8.decode(bytes.takeBytes(), allowMalformed: false);
+        final bytes = BytesBuilder(copy: false);
+        await for (final chunk in response) {
+          if (bytes.length + chunk.length > 1024 * 1024) {
+            throw const FormatException('Runbook payload is too large');
+          }
+          bytes.add(chunk);
+        }
+        return utf8.decode(bytes.takeBytes(), allowMalformed: false);
+      });
     } finally {
+      // Stop any ongoing response stream after a whole-request timeout.
       client.close(force: true);
     }
   }
