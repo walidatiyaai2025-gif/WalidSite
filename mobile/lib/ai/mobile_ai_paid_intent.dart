@@ -35,6 +35,36 @@ abstract interface class MobileAiIntentStore {
   Future<void> clearKey(String authenticatedEmail);
 }
 
+/// Explicit dependency-injection fixture: never selected for real HTTP by
+/// the production screen. The production default is private disk storage.
+final class MemoryMobileAiIntentStore implements MobileAiIntentStore {
+  final Map<String, String> _keys = <String, String>{};
+
+  String _scope(String email) => email.trim().toLowerCase();
+
+  @override
+  Future<String?> readKey(String authenticatedEmail) async =>
+      _keys[_scope(authenticatedEmail)];
+
+  @override
+  Future<void> saveKey(String authenticatedEmail, String key) async {
+    if (!MobileAiIntentKey.isValid(key)) {
+      throw const FormatException('Invalid opaque diagnosis key');
+    }
+    final scope = _scope(authenticatedEmail);
+    final prior = _keys[scope];
+    if (prior != null && prior != key) {
+      throw StateError('The previous paid diagnosis intent is unresolved');
+    }
+    _keys[scope] = key;
+  }
+
+  @override
+  Future<void> clearKey(String authenticatedEmail) async {
+    _keys.remove(_scope(authenticatedEmail));
+  }
+}
+
 /// Persist the key before a potentially chargeable POST. A crash or missing
 /// acknowledgement cannot silently generate a new paid intent after restart.
 /// Stores use an app-private support directory and a one-way account locator,
