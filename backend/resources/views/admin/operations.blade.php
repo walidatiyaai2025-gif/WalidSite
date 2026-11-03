@@ -96,7 +96,7 @@ summary{cursor:pointer;min-height:44px;padding:8px}
 <span class="health-unverified" role="status">{{ $ar ? 'حالة النظام غير متحقّق منها' : 'SYSTEM STATUS UNVERIFIED' }}</span>
 </header>
 <main id="content" tabindex="-1">
-<div class="top"><div class="page-heading"><h1>{{ $title }}</h1><p>{{ $subtitles[$section][$ar ? 1 : 0] }}</p></div><a class="locale-switch" href="{{ route('admin.operations.'.$section, array_merge(['lang'=>$ar ? 'en' : 'ar'], $section==='projects' ? array_filter(['status'=>$statusFilter ?? null, 'visibility'=>$visibilityFilter ?? null]) : ($section==='audience' ? ['purpose'=>$purpose,'channel'=>$channel] : ($section==='analytics' ? ['day'=>$day,'window'=>$window] : ($section==='github' ? array_filter(['repo'=>$selectedRepo['full_name'] ?? null]) : []))))) }}" lang="{{ $ar ? 'en' : 'ar' }}" hreflang="{{ $ar ? 'en' : 'ar' }}">{{ $ar ? 'English' : 'العربية' }}</a></div>
+<div class="top"><div class="page-heading"><h1>{{ $title }}</h1><p>{{ $subtitles[$section][$ar ? 1 : 0] }}</p></div><a class="locale-switch" href="{{ route('admin.operations.'.$section, array_merge(['lang'=>$ar ? 'en' : 'ar'], $section==='projects' ? array_filter(['status'=>$statusFilter ?? null, 'visibility'=>$visibilityFilter ?? null, 'q'=>$projectSearch ?? null, 'sort'=>($projectSort ?? 'recent')==='recent' ? null : $projectSort]) : ($section==='audience' ? ['purpose'=>$purpose,'channel'=>$channel] : ($section==='analytics' ? ['day'=>$day,'window'=>$window] : ($section==='github' ? array_filter(['repo'=>$selectedRepo['full_name'] ?? null]) : []))))) }}" lang="{{ $ar ? 'en' : 'ar' }}" hreflang="{{ $ar ? 'en' : 'ar' }}">{{ $ar ? 'English' : 'العربية' }}</a></div>
 @if(session('status'))<div role="status" class="panel safe">{{ session('status') }}</div>@endif
 @if(session('warning'))<div role="alert" class="panel alert">{{ $ar ? 'تعذر التحقق من بيانات GitHub العامة.' : session('warning') }}</div>@endif
 @if($errors->any())<div role="alert" class="panel warn"><strong>{{ $ar ? 'تعذر حفظ العملية' : 'The operation was not saved' }}</strong><ul>@foreach($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></div>@endif
@@ -188,11 +188,13 @@ summary{cursor:pointer;min-height:44px;padding:8px}
 </section>
 <form method="get" action="{{ route('admin.operations.projects') }}" class="filters" role="search">
 <input type="hidden" name="lang" value="{{ $locale }}">
+<div><label for="project-search">{{ $ar ? 'ابحث عن مشروع' : 'Search projects' }}</label><input id="project-search" type="search" name="q" maxlength="100" value="{{ $projectSearch }}" placeholder="{{ $ar ? 'العنوان أو الرابط المختصر' : 'Title or slug' }}" autocomplete="off"></div>
 <div><label for="visibility">{{ $ar ? 'الظهور' : 'Visibility' }}</label><select name="visibility" id="visibility"><option value="">{{ $ar ? 'الكل' : 'All' }}</option>@foreach(['public','private'] as $option)<option value="{{ $option }}" @selected($visibilityFilter===$option)>{{ $visibilityLabels[$option][$ar ? 1 : 0] }}</option>@endforeach</select></div>
 <div><label for="status">{{ $ar ? 'الحالة' : 'Status' }}</label><select name="status" id="status"><option value="">{{ $ar ? 'الكل' : 'All' }}</option>@foreach(['completed','in_progress','research','archived'] as $option)<option value="{{ $option }}" @selected($statusFilter===$option)>{{ $statusLabels[$option][$ar ? 1 : 0] }}</option>@endforeach</select></div>
-<div><button type="submit">{{ $ar ? 'تطبيق المرشحات' : 'Apply filters' }}</button></div>
+<div><label for="project-sort">{{ $ar ? 'الترتيب' : 'Sort by' }}</label><select name="sort" id="project-sort"><option value="recent" @selected($projectSort==='recent')>{{ $ar ? 'الأحدث تحديثًا' : 'Recently updated' }}</option><option value="title" @selected($projectSort==='title')>{{ $ar ? 'اسم المشروع' : 'Project title' }}</option></select></div>
+<div class="inline-actions"><button type="submit">{{ $ar ? 'بحث وتصفية' : 'Search and filter' }}</button><a href="{{ route('admin.operations.projects', ['lang'=>$locale]) }}">{{ $ar ? 'إزالة المرشحات' : 'Clear filters' }}</a></div>
 </form>
-@if($projects->isEmpty())<p role="status">{{ $ar ? 'لا توجد مشاريع تطابق النتائج.' : 'No projects match these filters.' }}</p>@else
+@if($projects->isEmpty())<p role="status">{{ $ar ? 'لا توجد مشاريع تطابق النتائج.' : 'No projects match these filters.' }} <a href="{{ route('admin.operations.projects', ['lang'=>$locale]) }}">{{ $ar ? 'عرض جميع المشاريع' : 'Show all projects' }}</a></p>@else
 <div class="scroll"><table><thead><tr>
 <th scope="col">{{ $ar ? 'المشروع' : 'Project' }}</th><th scope="col">{{ $ar ? 'الحالة' : 'Status' }}</th><th scope="col">{{ $ar ? 'الظهور' : 'Visibility' }}</th><th scope="col">{{ $ar ? 'دليل عام متحقق' : 'Verified public evidence' }}</th><th scope="col">{{ $ar ? 'المراجعة' : 'Review' }}</th>
 </tr></thead><tbody>
