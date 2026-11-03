@@ -364,8 +364,12 @@ Route::middleware('auth:web')->group(function (): void {
                 'event.reason', 'event.created_at', 'article.title_en', 'article.title_ar',
             ])
             ->when(in_array($domain, ['provider', 'project'], true) || isset($input['provider']), fn ($query) => $query->whereRaw('1 = 0'))
-            ->when($domain === 'media', fn ($query) => $query->whereIn('event.action', $mediaActions))
-            ->when($domain === 'editorial', fn ($query) => $query->whereIn('event.action', $editorialActions))
+            // The shared editorial log also contains internal/system events.
+            // Only audited editorial/media decisions may cross this Admin
+            // presentation/export boundary, including domain=all.
+            ->whereIn('event.action', $domain === 'media' ? $mediaActions
+                : ($domain === 'editorial' ? $editorialActions
+                    : array_merge($editorialActions, $mediaActions)))
             ->when(isset($input['action']), fn ($query) => $query->where('event.action', $input['action']))
             ->when(isset($input['day']), function ($query) use ($input) {
                 $start = \Carbon\CarbonImmutable::parse($input['day'], 'UTC')->startOfDay();
