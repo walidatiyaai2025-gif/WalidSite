@@ -308,6 +308,8 @@ def main() -> int:
             try:
                 outcome = reconcile_orphan_480(candidate, api, repo, tested_main_sha)
                 print(f"Orphan {candidate.branch}: {outcome}")
+                if outcome == "preserved":
+                    failures += 1
             except Exception as error:
                 print(f"Orphan {candidate.branch}: preserved (API error: {type(error).__name__})")
                 failures += 1
