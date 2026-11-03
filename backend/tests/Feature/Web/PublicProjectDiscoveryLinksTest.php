@@ -59,6 +59,13 @@ final class PublicProjectDiscoveryLinksTest extends TestCase
                 ->assertOk()
                 ->assertSee('href="'.e($previous).'"', false)
                 ->assertSee('Reviewed project 11')
+                ->assertSee('href="'.e(route('public.project', [
+                    'slug' => 'reviewed-case-11',
+                    'lang' => $locale,
+                    'q' => 'Reviewed',
+                    'status' => 'completed',
+                    'page' => 2,
+                ])).'"', false)
                 ->assertDontSee('PRIVATE_CAMPAIGN');
         }
     }
