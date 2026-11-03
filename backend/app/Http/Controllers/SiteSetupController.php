@@ -62,7 +62,12 @@ final class SiteSetupController extends Controller
     public function unlock(Request $request, SiteInstaller $installer): RedirectResponse
     {
         $this->guard($installer);
-        $data = $request->validate(['token' => ['required', 'string', 'max:256']]);
+        $data = $request->validate(['token' => ['required', 'string', 'max:256']],
+            $request->query('lang') === 'ar' ? [
+                'token.required' => 'رمز الإعداد مطلوب.',
+                'token.string' => 'رمز الإعداد غير صالح.',
+                'token.max' => 'رمز الإعداد أطول من الحد المسموح.',
+            ] : []);
         if (! hash_equals((string) config('site.setup_token'), $data['token'])) {
             return back()->withErrors(['token' => $this->localeMessage($request,
                 'Invalid setup token.', 'رمز الإعداد غير صحيح.')]);
@@ -110,7 +115,13 @@ final class SiteSetupController extends Controller
         abort_unless($request->session()->get('site_setup_migrated') === true, 403);
         $data = $request->validate([
             'password' => ['required', 'string', 'min:14', 'max:128', 'confirmed'],
-        ]);
+        ], $request->query('lang') === 'ar' ? [
+            'password.required' => 'كلمة مرور المالك مطلوبة.',
+            'password.string' => 'كلمة مرور المالك غير صالحة.',
+            'password.min' => 'كلمة مرور المالك يجب أن تتكون من 14 حرفًا على الأقل.',
+            'password.max' => 'كلمة مرور المالك أطول من الحد المسموح.',
+            'password.confirmed' => 'تأكيد كلمة مرور المالك غير مطابق.',
+        ] : []);
 
         try {
             if (! $installer->complete($data['password'], $updater)) {
