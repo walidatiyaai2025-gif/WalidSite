@@ -37,7 +37,7 @@
 <form method="get" action="{{ route('public.search') }}" role="search" class="ed-form ed-card">
 <input type="hidden" name="lang" value="{{ $locale }}">
 <label for="all-q">{{ $locale === 'ar' ? 'كلمات البحث' : 'Search terms' }}</label>
-<input id="all-q" name="q" maxlength="80" type="search" value="{{ $search }}">
+<input id="all-q" name="q" maxlength="80" type="search" value="{{ $search }}" required>
 <label for="search-type">{{ $locale === 'ar' ? 'نوع النتائج' : 'Result type' }}</label>
 <select id="search-type" name="type">
     <option value="all" @selected($type === 'all')>{{ $locale === 'ar' ? 'الكل' : 'All content' }}</option>
