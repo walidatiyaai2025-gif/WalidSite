@@ -166,6 +166,8 @@ final class AdminTrustedUpdateApiTest extends TestCase
 
     public function test_query_cannot_override_publisher_key_origin_or_installed_version(): void
     {
+        // Isolate input validation: the production route still enforces throttle:3,1.
+        $this->withoutMiddleware(\Illuminate\Routing\Middleware\ThrottleRequests::class);
         $calls = 0;
         $this->app->instance(TrustedReleaseCatalog::class, new TrustedReleaseCatalog(
             static function () use (&$calls): int {
