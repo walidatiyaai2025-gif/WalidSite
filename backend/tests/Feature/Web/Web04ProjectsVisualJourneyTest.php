@@ -272,4 +272,47 @@ final class Web04ProjectsVisualJourneyTest extends TestCase
         }
     }
 
+
+    public function test_mobile_cards_can_grow_and_unsafe_long_verified_project_copy_remains_text(): void
+    {
+        // Real approved content can exceed the short labels in the immutable
+        // visual reference. Narrow cards must not let fixed CTAs cover text,
+        // and translated/untrusted fields must never become executable HTML.
+        $project = $this->reviewedProject('long-public-project', 1);
+        $project->update([
+            'title' => 'PUBLIC <img src=x onerror=alert(1)> '.str_repeat('verified ', 8),
+            'summary_en' => 'UNSAFE <script>alert(1)</script> '.str_repeat('documented ', 8),
+            'summary_ar' => 'UNSAFE <svg onload=alert(1)> '.str_repeat('دليل ', 12),
+        ]);
+
+        foreach (['en', 'ar'] as $locale) {
+            $url = route('public.project', [
+                'slug' => 'long-public-project', 'lang' => $locale,
+            ]);
+            $html = $this->get('/projects?lang='.$locale)
+                ->assertOk()
+                ->assertSee('PUBLIC &lt;img src=x onerror=alert(1)&gt;', false)
+                ->assertDontSee('<img src=x onerror=alert(1)>', false)
+                ->assertDontSee('<script>alert(1)</script>', false)
+                ->assertDontSee('<svg onload=alert(1)>', false)
+                ->getContent();
+
+            $preview = explode('</section>', explode('<section class="web04-preview"', $html, 2)[1], 2)[0];
+            $this->assertStringContainsString('href="'.e($url).'"', $preview);
+            $this->assertStringContainsString('class="web04-preview-card"', $preview);
+            $this->get($url)->assertOk();
+        }
+
+        // These are static CSS regression guards, NOT a claim of runtime pixel
+        // matching. Browser/DPR screenshots remain required under Issue #481.
+        $html = $this->get('/projects?lang=en')->assertOk()->getContent();
+        $mobileCss = explode('@media (max-width:900px)', $html, 2)[1];
+        $this->assertStringContainsString('width:min(100%,372px)', $mobileCss);
+        $this->assertStringContainsString('aspect-ratio:372 / 226', $mobileCss);
+        $this->assertStringContainsString('transform:none', $mobileCss);
+        $this->assertStringContainsString('min-height:315px; display:flex; flex-direction:column', $mobileCss);
+        $this->assertStringContainsString('position:static; margin-top:10px', $mobileCss);
+    }
+
+
 }
