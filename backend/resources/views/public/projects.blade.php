@@ -173,6 +173,7 @@
         </div>
     </section>
     @php($web04Preview = $projects->take(3)->values())
+    @php($emptyPageHasResultsElsewhere = $projects->isEmpty() && $paginated->total() > 0)
     <section class="web04-preview" aria-label="{{ $web04Preview->isEmpty() ? ($locale === 'ar' ? 'حالة المشاريع والروابط المفيدة' : 'Project availability and resources') : ($locale === 'ar' ? 'دراسات الحالة المنشورة' : 'Published case studies') }}">
         <div class="web04-preview-grid">
             @forelse($web04Preview as $project)
@@ -187,12 +188,18 @@
                 {{-- The reference contains three cards. No fictional case studies may fill an empty production dataset. --}}
                 <article class="web04-preview-card web04-preview-card--empty">
                     <div class="web04-card-icon" aria-hidden="true">&lt;&gt;</div>
-                    <h2>{{ $filtersApplied ? ($locale === 'ar' ? 'لا توجد نتائج مطابقة' : 'No matching projects') : ($locale === 'ar' ? 'التحقق قيد الانتظار' : 'Verification pending') }}</h2>
-                    <p role="status">{{ $filtersApplied
-                        ? ($locale === 'ar' ? 'لا توجد دراسات حالة عامة موثقة تطابق البحث أو المرشحات.' : 'No evidence-verified public case studies match your search or filters.')
-                        : ($locale === 'ar' ? 'لا توجد حاليًا مشاريع منشورة تستوفي أدلة النشر العامة.' : 'No published projects currently meet the public evidence checks.') }}</p>
+                    <h2>{{ $emptyPageHasResultsElsewhere
+                        ? ($locale === 'ar' ? 'لا توجد نتائج بهذه الصفحة' : 'No projects on this page')
+                        : ($filtersApplied ? ($locale === 'ar' ? 'لا توجد نتائج مطابقة' : 'No matching projects') : ($locale === 'ar' ? 'التحقق قيد الانتظار' : 'Verification pending')) }}</h2>
+                    <p role="status">{{ $emptyPageHasResultsElsewhere
+                        ? ($locale === 'ar' ? 'لا تظهر دراسات حالة عامة موثقة في هذه الصفحة. عد إلى الصفحة الأولى.' : 'No evidence-verified public case studies on this page. Return to the first page.')
+                        : ($filtersApplied
+                            ? ($locale === 'ar' ? 'لا توجد دراسات حالة عامة موثقة تطابق البحث أو المرشحات.' : 'No evidence-verified public case studies match your search or filters.')
+                            : ($locale === 'ar' ? 'لا توجد حاليًا مشاريع منشورة تستوفي أدلة النشر العامة.' : 'No published projects currently meet the public evidence checks.')) }}</p>
                     <div class="web04-card-rule" aria-hidden="true"></div>
-                    <a class="web04-card-link" href="{{ $filtersApplied ? route('public.projects', ['lang' => $locale]) : '#web04-project-catalog' }}">{{ $filtersApplied ? ($locale === 'ar' ? 'مسح المرشحات' : 'Clear filters') : ($locale === 'ar' ? 'استعراض القائمة' : 'Browse catalog') }} &gt;</a>
+                    <a class="web04-card-link" href="{{ $filtersApplied || $emptyPageHasResultsElsewhere ? route('public.projects', ['lang' => $locale]) : '#web04-project-catalog' }}">{{ $emptyPageHasResultsElsewhere
+                        ? ($locale === 'ar' ? 'الصفحة الأولى' : 'First page')
+                        : ($filtersApplied ? ($locale === 'ar' ? 'مسح المرشحات' : 'Clear filters') : ($locale === 'ar' ? 'استعراض القائمة' : 'Browse catalog')) }} &gt;</a>
                 </article>
                 <article class="web04-preview-card web04-preview-card--resource">
                     <div class="web04-card-icon" aria-hidden="true">GH</div>
@@ -249,8 +256,12 @@
     @if ($projects->isEmpty())
         <div class="case-empty" role="status">
             <p>{{ $locale === 'ar'
-                ? ($filtersApplied ? 'لا توجد دراسات حالة عامة موثقة تطابق البحث.' : 'لا توجد حاليًا مشاريع منشورة تستوفي أدلة النشر العامة.')
-                : ($filtersApplied ? 'No evidence-verified public case studies match your search.' : 'No published projects currently meet the public evidence checks.') }}</p>
+                ? ($emptyPageHasResultsElsewhere
+                    ? 'لا تظهر دراسات حالة عامة موثقة في هذه الصفحة. عد إلى الصفحة الأولى.'
+                    : ($filtersApplied ? 'لا توجد دراسات حالة عامة موثقة تطابق البحث.' : 'لا توجد حاليًا دراسات حالة عامة موثقة منشورة.'))
+                : ($emptyPageHasResultsElsewhere
+                    ? 'No evidence-verified public case studies on this page. Return to the first page.'
+                    : ($filtersApplied ? 'No evidence-verified public case studies match your search.' : 'No evidence-verified public case studies are available yet.')) }}</p>
             <a href="{{ route('public.github', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'تصفح مستودعات GitHub العامة الموثقة' : 'Browse verified public GitHub repositories' }}</a>
         </div>
     @else
