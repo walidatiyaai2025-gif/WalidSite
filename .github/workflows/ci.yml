@@ -290,6 +290,9 @@ jobs:
           # Real Web diagnostics reuse this already-verified local Laravel
           # server. The two dynamic pages require actual published source data;
           # static pages never substitute invented project/article records.
+          # Admin diagnostics use an authenticated Playwright session. Public
+          # diagnostics must be anonymous and must not inherit that identity.
+          unset WALIDSITE_CAPTURE_STORAGE_STATE
           web_plan_path="$plan_dir/web-plan.json"
           python3 -B qa/build_web_visual_plan.py --locale en --dpr 1 --timeout 120 --output "$web_plan_path"
           set +e
