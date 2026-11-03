@@ -72,7 +72,7 @@ final class PublicProjectDiscoveryLinksTest extends TestCase
         $pageTwo = route('public.projects', ['lang' => 'en', 'page' => 2]);
         $this->get('/projects?lang=en&q%5Btoken%5D=HIDDEN&status%5B0%5D=completed&debug=PRIVATE_DEBUG')
             ->assertOk()
-            ->assertSee('href="'.$pageTwo.'"', false)
+            ->assertSee('href="'.e($pageTwo).'"', false)
             ->assertDontSee('HIDDEN')
             ->assertDontSee('PRIVATE_DEBUG')
             ->assertDontSee('Clear filters');
