@@ -730,7 +730,10 @@ class _VerifiedArticleFreshDetailState extends State<VerifiedArticleFreshDetail>
   }
 
   void _refresh() {
-    _detail = (() async {
+    // Schedule the request after FutureBuilder has subscribed to the new
+    // future. A fast 404/rejection must be rendered as the safe unavailable
+    // state, not surface as an unhandled error during a Retry tap.
+    _detail = Future<VerifiedArticle>(() async {
       final article = await (widget.loader != null
           ? widget.loader!(widget.slug)
           : const VerifiedArticleReader().loadDetail(
@@ -739,7 +742,7 @@ class _VerifiedArticleFreshDetailState extends State<VerifiedArticleFreshDetail>
         throw const FormatException('Mismatched article detail');
       }
       return article;
-    })();
+    });
   }
 
   @override
