@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'signed_runbook_sync.dart';
+import 'offline_runbook_progress.dart';
 import 'offline_guide_text_search.dart';
 
 /// The bundled pack is an offline-first *safe fallback*, not a successful sync.
@@ -145,13 +146,24 @@ class OfflineRunbook {
 }
 
 class OfflineRunbookLibrary extends StatefulWidget {
-  const OfflineRunbookLibrary({required this.arabic, this.bundledPack, this.repository, super.key});
+  const OfflineRunbookLibrary({
+    required this.arabic,
+    this.bundledPack,
+    this.repository,
+    this.progressStore,
+    this.progressScope = 'guest',
+    super.key,
+  });
   final bool arabic;
 
   // Tests can supply deterministic offline content without depending on an
   // AssetBundle read during a Flutter FakeAsync widget frame.
   final Future<OfflineRunbookPack>? bundledPack;
   final OfflineRunbookRepository? repository;
+  final RunbookProgressStore? progressStore;
+  /// Guest guidance is public; account-specific progress must use a distinct
+  /// opaque account scope supplied by the signed-in caller.
+  final String progressScope;
 
   @override
   State<OfflineRunbookLibrary> createState() => _OfflineRunbookLibraryState();
@@ -264,7 +276,13 @@ class _OfflineRunbookLibraryState extends State<OfflineRunbookLibrary> {
                       : (arabic ? 'حزمة تعليمية مرفقة — متاحة دون إنترنت'
                           : 'Bundled educational copy — available offline')),
                   onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
-                    builder: (_) => OfflineRunbookDetail(arabic: arabic, item: item, pack: pack),
+                    builder: (_) => OfflineRunbookDetail(
+                      arabic: arabic,
+                      item: item,
+                      pack: pack,
+                      progressStore: widget.progressStore,
+                      progressScope: widget.progressScope,
+                    ),
                   )),
                 ),
               )),
@@ -285,6 +303,9 @@ class _PackStatus extends StatelessWidget {
   Widget build(BuildContext context) {
     final sync = pack.lastSynced?.toIso8601String() ??
         (arabic ? 'لم تحدث مزامنة' : 'Never synced');
+    final sourceDate = pack.signedVerified && pack.verifiedAt != null
+        ? pack.verifiedAt!.toIso8601String()
+        : (arabic ? 'غير موثّق بتوقيع' : 'Not signature-verified');
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -296,6 +317,11 @@ class _PackStatus extends StatelessWidget {
             const SizedBox(height: 6),
             Text(arabic ? 'المصدر: ${pack.source}' : 'Source: ${pack.source}'),
             Text(arabic ? 'آخر مزامنة: $sync' : 'Last sync: $sync'),
+            Text(
+              arabic ? 'تاريخ تحقق المصدر الموقّع: $sourceDate'
+                  : 'Signed source verification date: $sourceDate',
+              key: const Key('runbook-source-date'),
+            ),
             if (pack.isStale)
               Text(
                 arabic ? 'تنبيه: المحتوى غير موثق حديثًا، لا تستخدمه كإجراء تشغيلي معتمد.'
@@ -311,10 +337,19 @@ class _PackStatus extends StatelessWidget {
 }
 
 class OfflineRunbookDetail extends StatefulWidget {
-  const OfflineRunbookDetail({required this.item, required this.pack, required this.arabic, super.key});
+  const OfflineRunbookDetail({
+    required this.item,
+    required this.pack,
+    required this.arabic,
+    this.progressStore,
+    this.progressScope = 'guest',
+    super.key,
+  });
   final OfflineRunbook item;
   final OfflineRunbookPack pack;
   final bool arabic;
+  final RunbookProgressStore? progressStore;
+  final String progressScope;
 
   @override
   State<OfflineRunbookDetail> createState() => _OfflineRunbookDetailState();
@@ -322,6 +357,66 @@ class OfflineRunbookDetail extends StatefulWidget {
 
 class _OfflineRunbookDetailState extends State<OfflineRunbookDetail> {
   final Set<int> _completed = <int>{};
+  late final RunbookProgressStore _progressStore;
+  Future<void> _writes = Future<void>.value();
+  bool _touched = false;
+  String? _progressWarning;
+
+  @override
+  void initState() {
+    super.initState();
+    _progressStore = widget.progressStore ?? AppSupportRunbookProgressStore();
+    _restore();
+  }
+
+  Future<void> _restore() async {
+    try {
+      final stored = await _progressStore.read(
+        scope: widget.progressScope,
+        packVersion: widget.pack.version,
+        runbookId: widget.item.id,
+      );
+      if (!mounted || _touched) return;
+      setState(() => _completed.addAll(
+          stored.where((index) => index < widget.item.stepsEn.length)));
+    } catch (_) {
+      if (mounted) {
+        setState(() => _progressWarning = widget.arabic
+            ? 'تعذر استعادة التقدم المحلي؛ التغييرات الحالية مؤقتة.'
+            : 'Could not restore local progress; current changes are temporary.');
+      }
+    }
+  }
+
+  void _markStep(int index, bool selected) {
+    _touched = true;
+    setState(() {
+      if (selected) {
+        _completed.add(index);
+      } else {
+        _completed.remove(index);
+      }
+    });
+    final snapshot = Set<int>.of(_completed);
+    // Each toggle serializes its own snapshot; a slower old disk write must
+    // never overwrite a later user action, even if the route is disposed.
+    _writes = _writes.then((_) async {
+      try {
+        await _progressStore.write(
+          scope: widget.progressScope,
+          packVersion: widget.pack.version,
+          runbookId: widget.item.id,
+          completed: snapshot,
+        );
+      } catch (_) {
+        if (mounted) {
+          setState(() => _progressWarning = widget.arabic
+              ? 'لم يُحفظ التقدم على الجهاز؛ العلامات الحالية مؤقتة.'
+              : 'Progress was not saved on this device; marks are temporary.');
+        }
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -339,6 +434,8 @@ class _OfflineRunbookDetailState extends State<OfflineRunbookDetail> {
         children: [
           _PackStatus(pack: pack, arabic: arabic),
           const SizedBox(height: 20),
+          if (_progressWarning != null)
+            Text(_progressWarning!, key: const Key('runbook-progress-warning')),
           Text(arabic ? 'خطوات توضيحية عامة' : 'General guidance steps',
               style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 12),
@@ -378,13 +475,7 @@ class _OfflineRunbookDetailState extends State<OfflineRunbookDetail> {
                 controlAffinity: ListTileControlAffinity.leading,
                 title: SelectableText(steps[i]),
                 subtitle: Text(arabic ? 'خطوة ${i + 1}' : 'Step ${i + 1}'),
-                onChanged: (value) => setState(() {
-                  if (value == true) {
-                    _completed.add(i);
-                  } else {
-                    _completed.remove(i);
-                  }
-                }),
+                onChanged: (value) => _markStep(i, value == true),
               ),
             ),
         ],

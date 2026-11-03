@@ -16,6 +16,8 @@ class SignedRunbookSource {
     required this.url,
     required this.publicKeyBase64,
     this.transport,
+    this.httpClientFactory,
+    this.totalTimeout = const Duration(seconds: 12),
   });
 
   static const configuredUrl = String.fromEnvironment('WALIDSITE_RUNBOOK_PACK_URL');
@@ -25,6 +27,11 @@ class SignedRunbookSource {
   final String url;
   final String publicKeyBase64;
   final Future<String> Function(Uri uri)? transport;
+
+  /// Only a test fixture should replace the production HTTPS HttpClient.
+  /// The same whole-request deadline and force-close path handles both.
+  final HttpClient Function()? httpClientFactory;
+  final Duration totalTimeout;
 
   Uri? get endpoint {
     final uri = Uri.tryParse(url);
@@ -75,33 +82,51 @@ class SignedRunbookSource {
     if (uri == null || trustedKey == null) {
       throw const FormatException('Signed runbook updates not configured');
     }
+    if (totalTimeout <= Duration.zero) {
+      throw const FormatException('Invalid signed runbook deadline');
+    }
     if (transport != null) {
-      final value = await transport!(uri).timeout(const Duration(seconds: 12));
+      final value = await transport!(uri).timeout(totalTimeout);
       if (utf8.encode(value).length > 800 * 1024) {
         throw const FormatException('Signed runbook update too large');
       }
       return value;
     }
-    final client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
+
+    final client = (httpClientFactory?.call() ?? HttpClient())
+      ..connectionTimeout = const Duration(seconds: 8);
     try {
-      final request = await client.getUrl(uri).timeout(const Duration(seconds: 8));
-      request.followRedirects = false;
-      request.headers.set(HttpHeaders.acceptHeader, 'application/json');
-      final response = await request.close().timeout(const Duration(seconds: 8));
-      if (response.statusCode != HttpStatus.ok) {
-        throw const HttpException('Signed runbook service unavailable');
-      }
-      final buffer = BytesBuilder(copy: false);
-      await for (final chunk in response.timeout(const Duration(seconds: 8))) {
-        if (buffer.length + chunk.length > 800 * 1024) {
-          throw const FormatException('Signed runbook update too large');
-        }
-        buffer.add(chunk);
-      }
-      return utf8.decode(buffer.takeBytes(), allowMalformed: false);
+      // A per-chunk timeout can be reset indefinitely by a slow peer.
+      // Apply one deadline to connection, headers, every byte and UTF-8
+      // decoding; force-closing the underlying client aborts the live socket.
+      return await _fetchFromClient(client, uri).timeout(
+        totalTimeout,
+        onTimeout: () {
+          client.close(force: true);
+          throw TimeoutException('Signed runbook total download deadline exceeded');
+        },
+      );
     } finally {
       client.close(force: true);
     }
+  }
+
+  Future<String> _fetchFromClient(HttpClient client, Uri uri) async {
+    final request = await client.getUrl(uri);
+    request.followRedirects = false;
+    request.headers.set(HttpHeaders.acceptHeader, 'application/json');
+    final response = await request.close();
+    if (response.statusCode != HttpStatus.ok) {
+      throw const HttpException('Signed runbook service unavailable');
+    }
+    final buffer = BytesBuilder(copy: false);
+    await for (final chunk in response) {
+      if (buffer.length + chunk.length > 800 * 1024) {
+        throw const FormatException('Signed runbook update too large');
+      }
+      buffer.add(chunk);
+    }
+    return utf8.decode(buffer.takeBytes(), allowMalformed: false);
   }
 
   Future<OfflineRunbookPack> verify(String envelope) async {
