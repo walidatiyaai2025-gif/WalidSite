@@ -188,6 +188,10 @@ class DurableAiQueueTest extends TestCase
         $provider = $this->provider('openai-compatible', 25);
         $recovered = $queue->enqueue($provider, 'draft', 'receipt:fully-paid', ['write'], 25, 3);
         $newPaidJob = $queue->enqueue($provider, 'draft', 'receipt:new-unfunded', ['write'], 25, 3);
+        // Tie-breaking in the shared-host scan is not guaranteed when two
+        // timestamps share a database second; make test order explicit.
+        DB::table('ai_jobs')->where('id', $newPaidJob)
+            ->update(['created_at' => now()->addMinute()]);
 
         $this->assertSame($recovered, $queue->claimNext('crashed-worker')?->id);
         $this->assertTrue($queue->recordUsage(
@@ -222,6 +226,8 @@ class DurableAiQueueTest extends TestCase
         $provider = $this->provider('openai-compatible', 40);
         $recovered = $queue->enqueue($provider, 'draft', 'receipt:partial', ['write'], 30, 3);
         $other = $queue->enqueue($provider, 'draft', 'receipt:other', ['write'], 15, 3);
+        DB::table('ai_jobs')->where('id', $other)
+            ->update(['created_at' => now()->addMinute()]);
         $this->assertSame($recovered, $queue->claimNext('crashed-worker')?->id);
         $this->assertTrue($queue->recordUsage(
             $recovered, 'crashed-worker', 'receipt:partial-spend', 20, 'USD'
