@@ -29,7 +29,9 @@ class AppSupportRunbookProgressStore implements RunbookProgressStore {
       : _directory = directory ?? getApplicationSupportDirectory;
 
   final Future<Directory> Function() _directory;
-  static Future<void> _writeBarrier = Future<void>.value();
+  // Null means there is no outstanding write. Avoid a lazily constructed
+  // Future.value() originating in a previous Flutter FakeAsync zone.
+  static Future<void>? _writeBarrier;
   static const _fileName = 'offline-runbook-progress-v1.json';
   static const _maxFileBytes = 96 * 1024;
   static final _scopePattern =
@@ -101,7 +103,8 @@ class AppSupportRunbookProgressStore implements RunbookProgressStore {
     final key = await _key(scope, packVersion, runbookId);
     // A route reopened immediately after a toggle must observe the queued
     // write from the previous route, not the earlier on-disk snapshot.
-    await _writeBarrier;
+    final pending = _writeBarrier;
+    if (pending != null) await pending;
     return Set<int>.of((await _readData())[key] ?? const <int>[]);
   }
 
@@ -118,7 +121,7 @@ class AppSupportRunbookProgressStore implements RunbookProgressStore {
     final done = Completer<void>();
     _writeBarrier = done.future;
     try {
-      await prior;
+      if (prior != null) await prior;
       final key = await _key(scope, packVersion, runbookId);
       if (completed.length > 50 ||
           completed.any((index) => index < 0 || index >= 50)) {
@@ -150,6 +153,9 @@ class AppSupportRunbookProgressStore implements RunbookProgressStore {
       }
     } finally {
       done.complete();
+      if (identical(_writeBarrier, done.future)) {
+        _writeBarrier = null;
+      }
     }
   }
 }
