@@ -2396,6 +2396,61 @@ Route::middleware('auth:web')->prefix('admin')->group(function (): void {
         ])->header('Cache-Control', 'no-store, private');
     })->name('admin.operations.projects')->middleware('throttle:30,1');
 
+    // Owner-created projects are always private drafts until the existing
+    // separate evidence-review and publication actions are completed.
+    Route::post('/projects', function (Request $request) {
+        abort_unless($request->user()?->canAccessAdmin() && $request->user()->hasRole('owner'), 403);
+        $input = $request->validate([
+            'slug' => ['required', 'string', 'max:140', 'regex:/\\A[a-z0-9]+(?:-[a-z0-9]+)*\\z/D',
+                'unique:projects,slug'],
+            'title' => ['required', 'string', 'min:2', 'max:220'],
+            'summary_en' => ['required', 'string', 'min:5', 'max:5000'],
+            'summary_ar' => ['required', 'string', 'min:5', 'max:5000'],
+            'role_en' => ['required', 'string', 'min:2', 'max:200'],
+            'role_ar' => ['required', 'string', 'min:2', 'max:200'],
+            'status' => ['required', 'in:completed,in_progress,research,archived'],
+            'portfolio_category' => ['required', 'in:government,education,workflows,ai,enterprise'],
+            'portfolio_featured' => ['sometimes', 'boolean'],
+        ]);
+        if (array_diff(array_keys($request->request->all()), [
+            '_token', 'slug', 'title', 'summary_en', 'summary_ar', 'role_en', 'role_ar',
+            'status', 'portfolio_category', 'portfolio_featured',
+        ]) !== []) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'project' => 'Unsupported project creation fields.',
+            ]);
+        }
+        \Illuminate\Support\Facades\DB::transaction(function () use ($input, $request): void {
+            $draft = \App\Models\Project::query()->create([
+                'slug' => $input['slug'],
+                'title' => $input['title'],
+                'summary_en' => $input['summary_en'],
+                'summary_ar' => $input['summary_ar'],
+                'role_en' => $input['role_en'],
+                'role_ar' => $input['role_ar'],
+                'status' => $input['status'],
+                'portfolio_category' => $input['portfolio_category'],
+                'portfolio_featured' => (bool) ($input['portfolio_featured'] ?? false),
+                'portfolio_source' => 'Owner dashboard',
+                'visibility' => 'private',
+                'published_at' => null,
+            ]);
+            \Illuminate\Support\Facades\DB::table('project_audit_events')->insert([
+                'id' => (string) \Illuminate\Support\Str::uuid(),
+                'project_id' => $draft->id,
+                'evidence_id' => null,
+                'actor_id' => $request->user()->id,
+                'action' => 'draft_created',
+                'created_at' => now('UTC'),
+            ]);
+        }, 3);
+        return redirect()->route('admin.operations.projects', [
+            'lang' => $request->query('lang') === 'ar' ? 'ar' : 'en',
+        ])->with('status', $request->query('lang') === 'ar'
+            ? 'أُنشئت مسودة المشروع الخاصة؛ يلزم اعتماد الدليل قبل النشر.'
+            : 'Private project draft created. Approve evidence before publishing.');
+    })->name('admin.operations.projects.store')->middleware('throttle:10,1');
+
     // ADMIN-09: owner-only, paginated review of ALL pending private draft
     // evidence. Previously only ten newest candidates were reachable.
     Route::get('/projects/{project}/evidence', function (Request $request, string $project) {
@@ -2617,9 +2672,13 @@ Route::middleware('auth:web')->prefix('admin')->group(function (): void {
             'summary_ar' => ['required', 'string', 'min:5', 'max:5000'],
             'role_en' => ['nullable', 'string', 'max:200'],
             'role_ar' => ['nullable', 'string', 'max:200'],
+            'status' => ['sometimes', 'in:completed,in_progress,research,archived'],
+            'portfolio_category' => ['sometimes', 'in:government,education,workflows,ai,enterprise'],
+            'portfolio_featured' => ['sometimes', 'boolean'],
         ]);
         if (array_diff(array_keys($request->request->all()), [
             '_token', '_method', 'title', 'summary_en', 'summary_ar', 'role_en', 'role_ar',
+            'status', 'portfolio_category', 'portfolio_featured',
         ]) !== []) {
             throw \Illuminate\Validation\ValidationException::withMessages([
                 'project' => 'Unsupported project edit fields.',
@@ -2633,6 +2692,7 @@ Route::middleware('auth:web')->prefix('admin')->group(function (): void {
             abort_unless($row->visibility === 'private' && $row->published_at === null, 409);
             $row->fill(collect($input)->only([
                 'title', 'summary_en', 'summary_ar', 'role_en', 'role_ar',
+                'status', 'portfolio_category', 'portfolio_featured',
             ])->all())->save();
             \Illuminate\Support\Facades\DB::table('project_audit_events')->insert([
                 'id' => (string) \Illuminate\Support\Str::uuid(),
