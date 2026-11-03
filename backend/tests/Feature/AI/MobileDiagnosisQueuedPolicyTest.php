@@ -3,6 +3,8 @@
 namespace Tests\Feature\AI;
 
 use App\AI\DurableAiQueue;
+use App\AI\BoundedAiWorker;
+use App\AI\AiStepHandlerRegistry;
 use App\AI\MobileDiagnosisDispatcher;
 use App\Models\AiDiagnosisRequest;
 use App\Models\AiModel;
@@ -22,7 +24,7 @@ final class MobileDiagnosisQueuedPolicyTest extends TestCase
     use RefreshDatabase;
 
     /** @return array{AiProvider,AiModel,AiRoute,AiDiagnosisRequest,object} */
-    private function queuedPaidDiagnosis(): array
+    private function queuedPaidDiagnosis(int $maxAttempts = 1): array
     {
         $provider = AiProvider::create([
             'display_name' => 'Pending paid diagnosis',
@@ -67,7 +69,7 @@ final class MobileDiagnosisQueuedPolicyTest extends TestCase
         ]);
         $jobId = app(DurableAiQueue::class)->enqueue(
             $provider, 'mobile-diagnosis', 'mobile-diagnosis:'.$diagnosis->id,
-            ['classify'], 25, 1
+            ['classify'], 25, $maxAttempts
         );
         $diagnosis->forceFill(['job_id' => $jobId])->save();
 
@@ -185,6 +187,124 @@ final class MobileDiagnosisQueuedPolicyTest extends TestCase
         $this->assertNull($diagnosis->fresh()->request_blob);
         $this->assertNull($diagnosis->fresh()->selected_runbook_id);
         $this->assertDatabaseMissing('ai_usage', ['job_id' => $job->id]);
+    }
+
+    public function test_receipted_paid_mobile_diagnosis_never_reissues_upstream_call_under_same_lease(): void
+    {
+        [, , , $diagnosis, $job] = $this->queuedPaidDiagnosis();
+        $this->reviewedCatalog();
+        $queue = app(DurableAiQueue::class);
+        $this->assertSame($job->id, $queue->claimNext('test-worker')?->id);
+
+        // Emulate the paid provider having already returned and its receipt
+        // committed, followed by a crash before the result/checkpoint write.
+        // The private blob still exists, so a replay used to re-send it.
+        $this->assertTrue($queue->recordUsage(
+            $job->id, 'test-worker', 'mobile-diagnosis:'.$diagnosis->id,
+            25, 'USD', 'reviewed-selector', ['input_tokens' => 18, 'output_tokens' => 4]
+        ));
+        Http::fake(['*' => Http::response([
+            'choices' => [['message' => ['content' => '{"runbook_id":null}']]],
+            'usage' => ['prompt_tokens' => 18, 'completion_tokens' => 4],
+        ], 200)]);
+
+        $rejected = false;
+        try {
+            app(MobileDiagnosisDispatcher::class)->execute($job, 'classify', 'test-worker');
+        } catch (RuntimeException $exception) {
+            $rejected = true;
+            $this->assertSame('Mobile diagnosis failed safely.', $exception->getMessage());
+        }
+        $this->assertTrue($rejected, 'A receipted paid job must reject the replay.');
+
+        Http::assertNothingSent();
+        $this->assertNull($diagnosis->fresh()->request_blob);
+        $this->assertNull($diagnosis->fresh()->selected_runbook_id);
+        $this->assertSame(1, DB::table('ai_usage')->where('job_id', $job->id)->count());
+        $this->assertSame(25, (int) DB::table('ai_usage')->where('job_id', $job->id)
+            ->sum('cost_minor'));
+        $this->assertDatabaseHas('ai_job_steps', [
+            'job_id' => $job->id, 'step_key' => 'classify', 'status' => 'pending',
+        ]);
+    }
+
+    public function test_recovered_expired_paid_lease_preserves_one_receipt_and_never_calls_provider_twice(): void
+    {
+        [, , , $diagnosis, $job] = $this->queuedPaidDiagnosis(3);
+        $this->reviewedCatalog();
+        $queue = app(DurableAiQueue::class);
+        $this->assertSame($job->id, $queue->claimNext('crashed-worker')?->id);
+        $this->assertTrue($queue->recordUsage(
+            $job->id, 'crashed-worker', 'mobile-diagnosis:'.$diagnosis->id,
+            25, 'USD', 'reviewed-selector', []
+        ));
+
+        // A worker died after recording actual paid inference but BEFORE
+        // clearing the private input or completing the classify checkpoint.
+        DB::table('job_leases')->where('job_id', $job->id)
+            ->update(['expires_at' => now()->subSecond()]);
+        $this->assertSame(1, $queue->recoverExpired());
+        $this->assertDatabaseHas('ai_jobs', [
+            'id' => $job->id, 'status' => 'retry',
+            'last_error_code' => 'lease_expired',
+        ]);
+
+        Http::fake(['*' => Http::response([
+            'choices' => [['message' => ['content' => '{"runbook_id":null}']]],
+        ], 200)]);
+
+        $this->travel(31)->seconds();
+        try {
+            $result = app(BoundedAiWorker::class)->tick(
+                'recovery-worker', app(AiStepHandlerRegistry::class)->handlers()
+            );
+            $this->assertSame(['state' => 'retry', 'job_id' => $job->id], $result);
+        } finally {
+            $this->travelBack();
+        }
+
+        Http::assertNothingSent();
+        $this->assertNull($diagnosis->fresh()->request_blob);
+        $this->assertNull($diagnosis->fresh()->selected_runbook_id);
+        $this->assertDatabaseHas('ai_job_steps', [
+            'job_id' => $job->id, 'step_key' => 'classify', 'status' => 'pending',
+        ]);
+        $this->assertSame(1, DB::table('ai_usage')->where('job_id', $job->id)->count());
+        $this->assertSame(25, (int) DB::table('ai_usage')->where('job_id', $job->id)
+            ->sum('cost_minor'));
+    }
+
+    public function test_stale_worker_lease_rejects_paid_provider_request_before_network(): void
+    {
+        [, , , $diagnosis, $job] = $this->queuedPaidDiagnosis();
+        $this->reviewedCatalog();
+        $queue = app(DurableAiQueue::class);
+        $this->assertSame($job->id, $queue->claimNext('test-worker')?->id);
+
+        // A slow reviewed-catalog read may consume the original 60-second
+        // lease before the outbound provider boundary. Never send private
+        // input on a lost lease and then discover it cannot be receipted.
+        DB::table('job_leases')->where('job_id', $job->id)
+            ->update(['expires_at' => now()->subSecond()]);
+        Http::fake(['*' => Http::response([
+            'choices' => [['message' => ['content' => '{"runbook_id":null}']]],
+        ], 200)]);
+
+        $rejected = false;
+        try {
+            app(MobileDiagnosisDispatcher::class)->execute($job, 'classify', 'test-worker');
+        } catch (RuntimeException $exception) {
+            $rejected = true;
+            $this->assertSame('Mobile diagnosis failed safely.', $exception->getMessage());
+        }
+        $this->assertTrue($rejected);
+        Http::assertNothingSent();
+        $this->assertNull($diagnosis->fresh()->request_blob);
+        $this->assertNull($diagnosis->fresh()->selected_runbook_id);
+        $this->assertDatabaseMissing('ai_usage', ['job_id' => $job->id]);
+        $this->assertDatabaseHas('ai_job_steps', [
+            'job_id' => $job->id, 'step_key' => 'classify', 'status' => 'pending',
+        ]);
     }
 
     public function test_account_disabled_during_paid_provider_reply_cannot_publish_selection_but_cost_is_recorded(): void

@@ -11,6 +11,7 @@ use App\Models\User;
 use DomainException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Crypt;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 use stdClass;
@@ -118,6 +119,24 @@ final class MobileDiagnosisDispatcher
             // A reviewer/catalog query may be slow. Recheck the account at the
             // final outbound boundary, not only when the worker starts.
             $this->ensureActiveRequester($request);
+
+            if ($provider->provider_type === 'openai-compatible') {
+                // Reviewed-catalog lookup can consume a paid worker lease.
+                // Revalidate/renew it immediately before any billable HTTP.
+                // Legacy local-only API fixtures deliberately exercise local
+                // request expiry without a worker lease; keep that separate
+                // from this paid financial-integrity boundary.
+                $this->queue->heartbeat($job->id, $owner, 60);
+
+                // A crashed worker may already have persisted the immutable
+                // paid receipt before clearing private input or completing
+                // the checkpoint. Ledger-key deduplication cannot undo a
+                // second upstream charge: stop before sending another POST.
+                if (DB::table('ai_usage')->where('job_id', $job->id)->exists()) {
+                    throw new DomainException('Paid mobile diagnosis was already receipted.');
+                }
+            }
+
             $base = ProviderEndpoint::normalize($provider->base_url);
             if ($provider->provider_type === 'openai-compatible') {
                 $response = Http::acceptJson()
