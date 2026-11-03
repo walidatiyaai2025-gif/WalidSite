@@ -34,6 +34,7 @@ final class OwnerProjectsPortfolioSeeder extends Seeder
                 $hasPublicReadme = is_string($repo) && in_array($repo, $publicRepositories, true);
                 $project = Project::query()->firstOrCreate(['slug' => $row['slug']], [
                     'title' => $row['title'],
+                    'title_ar' => $row['title_ar'],
                     'summary_en' => $row['summary_en'],
                     'summary_ar' => $row['summary_ar'],
                     'role_en' => $row['role_en'],
