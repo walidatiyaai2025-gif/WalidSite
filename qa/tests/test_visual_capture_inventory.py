@@ -7,6 +7,8 @@ from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
+from PIL import Image
+
 from qa.visual_capture_inventory import InventoryError, inventory, main
 
 
@@ -20,13 +22,21 @@ class VisualCaptureInventoryTest(unittest.TestCase):
         self.root = Path(self.temp.name)
         (self.root / "contracts").mkdir()
         (self.root / "design").mkdir()
+        (self.root / "assets/screen-reference").mkdir(parents=True)
         self.screens = []
         self.ledger = {}
         for prefix, count in (("WEB", 14), ("ADMIN", 13), ("MOBILE", 13)):
             for i in range(1, count + 1):
                 sid = f"{prefix}-{i:02d}"
-                self.screens.append({"id": sid, "route": "/" + sid.lower()})
-                self.ledger[sid] = {"status": "pending", "reference_image": "assets/screen-reference/" + sid + ".png"}
+                reference = "assets/screen-reference/" + sid + ".png"
+                self.screens.append({
+                    "id": sid, "route": "/" + sid.lower(),
+                    "reference_image": reference,
+                })
+                self.ledger[sid] = {"status": "pending", "reference_image": reference}
+                # These are deliberately synthetic contract fixtures only.
+                # They never qualify as captured application evidence.
+                Image.new("RGB", (200, 100), "white").save(self.root / reference)
         (self.root / "contracts/screens.json").write_text(
             json.dumps({"screens": self.screens}), encoding="utf-8"
         )
@@ -142,6 +152,22 @@ class VisualCaptureInventoryTest(unittest.TestCase):
                 path = self._report(sample)
                 with self.assertRaises(InventoryError):
                     inventory(self.root, [path], COMMIT)
+
+    def test_reference_dimension_claim_must_match_actual_canonical_png(self):
+        # A false 250x80 reference keeps the same pixel area as true 200x100
+        # and used to pass a self-consistency check without source attestation.
+        forged = self._observation()
+        forged["reference_size"] = [250, 80]
+        forged["runtime_size"] = [250, 80]
+        report = self._report(forged)
+        with self.assertRaisesRegex(InventoryError, "differ from source PNG"):
+            inventory(self.root, [report], COMMIT)
+
+        reference = self.root / self.ledger["WEB-01"]["reference_image"]
+        reference.unlink()
+        reference.symlink_to(self.root / "contracts/screens.json")
+        with self.assertRaisesRegex(InventoryError, "source PNG"):
+            inventory(self.root, [self._report()], COMMIT)
 
     def test_reports_cannot_override_matched_ledger_or_hide_conflicts(self):
         self.ledger["WEB-01"]["status"] = "matched"
