@@ -36,6 +36,8 @@ REQUIRED = (
     "backend/vendor/autoload.php", "backend/composer.lock",
     "backend/public/.htaccess", "contracts/owner-cv-baseline.json",
     "assets/portraits/portrait-light-derived.jpg",
+    "assets/icons/briefcase.svg",
+    "assets/technology-logos/laravel.svg",
 )
 EXCLUDE_PARTS = {".git", ".github", "tests", "node_modules", ".idea", ".vscode"}
 EXCLUDE_NAMES = {".env", ".env.backup", ".env.production", "auth.json", "phpunit.xml"}
@@ -99,6 +101,8 @@ def verify_archive(output, expected_sha=None):
             "application/.env.example", "public_html/index.php",
             "public_html/.htaccess",
             "public_html/assets/portraits/portrait-light-derived.jpg",
+            "public_html/assets/icons/briefcase.svg",
+            "public_html/assets/technology-logos/laravel.svg",
             "contracts/owner-cv-baseline.json", "INSTALL-CPANEL-AR.md",
             *PRIVATE_GUARD_PATHS,
             "PACKAGE-MANIFEST.json",
@@ -162,6 +166,12 @@ def build(source, output, sha):
     entries["public_html/assets/portraits/portrait-light-derived.jpg"] = (
         source / "assets/portraits/portrait-light-derived.jpg"
     ).read_bytes()
+    # First-install About media fallbacks: copy local SVG icons and licensed
+    # technology marks into the HTTP document root. Private image drafts stay
+    # exclusively in application/storage and are NEVER packaged here.
+    for folder in ("icons", "technology-logos"):
+        add_folder(entries, source / "assets" / folder,
+                   "public_html/assets/" + folder, source)
     entries["contracts/owner-cv-baseline.json"] = (
         source / "contracts/owner-cv-baseline.json"
     ).read_bytes()
