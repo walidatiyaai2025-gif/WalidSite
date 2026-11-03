@@ -8,6 +8,9 @@ specific later PR already merged into main. GitHub remains the only state source
 from __future__ import annotations
 
 from dataclasses import dataclass
+import base64
+import binascii
+import hashlib
 import json
 import os
 import re
@@ -213,6 +216,55 @@ ORPHANED_480 = (
 )
 
 
+
+# If unrelated routes change, a full web.php blob witness is too broad.
+# Pin the *whole audited route closure* as a Git blob, not just selected
+# keywords. These SHAs were computed from the code reviewed on main for #718
+# and rechecked against the subsequent audit-logging-only route change.
+ORPHAN_480_ROUTE_SCOPES = {
+    "fix/480-admin-audience-consent-time-parity": (
+        "    Route::get('/audience', function (Request $request) {",
+        "    Route::get('/analytics', function (Request $request) {",
+        "482bcb3e4f4fc332ac08879a47d3b7f50427f053",
+    ),
+    "feat/480-privacy-rights-requests": (
+        "Route::get('/contact', function (Request $request) {",
+        "Route::post('/contact', function (Request $request) {",
+        "9a9125482bf5c162a7b0f939196ad54807505fe5",
+    ),
+    "feat/480-privacy-data-request-journey": (
+        "Route::get('/contact', function (Request $request) {",
+        "Route::post('/contact', function (Request $request) {",
+        "9a9125482bf5c162a7b0f939196ad54807505fe5",
+    ),
+}
+
+
+def _unchanged_scoped_route(document: dict, branch: str) -> bool:
+    """Require immutable full route logic when unrelated web.php bytes move."""
+    scope = ORPHAN_480_ROUTE_SCOPES.get(branch)
+    if (
+        scope is None
+        or document.get("encoding") != "base64"
+        or not isinstance(document.get("content"), str)
+    ):
+        return False
+    start, end, reviewed_blob = scope
+    try:
+        # GitHub's contents endpoint wraps base64 across lines.
+        raw = base64.b64decode("".join(document["content"].split()), validate=True)
+        source = raw.decode("utf-8")
+    except (ValueError, UnicodeError, binascii.Error):
+        return False
+    if source.count(start) != 1 or source.count(end) != 1:
+        return False
+    if source.index(end) <= source.index(start):
+        return False
+    scoped = source.split(start, 1)[1].split(end, 1)[0].encode("utf-8")
+    git_blob = hashlib.sha1(b"blob " + str(len(scoped)).encode("ascii") + b"\0" + scoped).hexdigest()
+    return git_blob == reviewed_blob
+
+
 def reconcile_orphan_480(candidate: Orphaned480Branch, api, repo: str, tested_main_sha: str) -> str:
     """Fail-closed one-time reconciliation, callable only after green main CI."""
     if (
@@ -270,7 +322,15 @@ def reconcile_orphan_480(candidate: Orphaned480Branch, api, repo: str, tested_ma
         return "preserved"
     for path, witness_sha in candidate.main_witnesses:
         current_file = api.get(prefix + "contents/" + path + "?ref=" + tested_main_sha)
-        if not isinstance(current_file, dict) or current_file.get("sha") != witness_sha:
+        if not isinstance(current_file, dict):
+            return "preserved"
+        if current_file.get("sha") == witness_sha:
+            continue
+        # No exception for any other file. A related change to public contact,
+        # Admin consent, privacy pages or the tested expectations fails closed.
+        if path != "backend/routes/web.php" or not _unchanged_scoped_route(
+            current_file, candidate.branch
+        ):
             return "preserved"
 
     owner = repo.split("/")[0]
