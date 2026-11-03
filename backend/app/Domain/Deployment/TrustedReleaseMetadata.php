@@ -101,6 +101,35 @@ final class TrustedReleaseMetadata
         ];
     }
 
+    /**
+     * Verify downloaded archive bytes in a private, flat staging directory.
+     * The caller must keep the verified file immutable until deployment; this
+     * method deliberately does not extract or execute it.
+     *
+     * @param array{artifact_url:string,artifact_size:int,artifact_sha256:string} $verifiedRelease
+     */
+    public function verifyStagedArchive(array $verifiedRelease, string $privateStagingDirectory, string $archiveFile): void
+    {
+        $directory = realpath($privateStagingDirectory);
+        $file = realpath($archiveFile);
+        $name = basename((string) parse_url($verifiedRelease['artifact_url'], PHP_URL_PATH));
+        if ($directory === false || ! is_dir($directory) || $file === false
+            || ! is_file($file) || is_link($archiveFile) || dirname($file) !== $directory
+            || basename($file) !== $name || ! preg_match('/^WalidSite-update-v[0-9]+\.[0-9]+\.[0-9]+\.zip$/D', $name)) {
+            throw new DomainException('Untrusted staged release archive location.');
+        }
+
+        $size = filesize($file);
+        if ($size === false || $size !== $verifiedRelease['artifact_size']) {
+            throw new DomainException('Release archive length mismatch.');
+        }
+
+        $digest = hash_file('sha256', $file);
+        if ($digest === false || ! hash_equals($verifiedRelease['artifact_sha256'], $digest)) {
+            throw new DomainException('Release archive SHA256 mismatch.');
+        }
+    }
+
     /** @return array<string,mixed> */
     private function decodeObject(string $json): array
     {
