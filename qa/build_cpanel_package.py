@@ -21,6 +21,16 @@ $app = require_once $root.'/bootstrap/app.php';
 $app->usePublicPath(__DIR__);
 $app->handleRequest(Request::capture());
 """
+PRIVATE_TREE_DENY = (b"# WalidSite private deployment tree: never serve over HTTP.\n"
+    b"Options -Indexes\n"
+    b"<IfModule mod_authz_core.c>\n"
+    b"    Require all denied\n"
+    b"</IfModule>\n"
+    b"<IfModule !mod_authz_core.c>\n"
+    b"    Deny from all\n"
+    b"</IfModule>\n")
+PRIVATE_GUARD_PATHS = ("application/.htaccess", "contracts/.htaccess")
+
 DIRECTORIES = ("app", "bootstrap", "config", "database", "resources", "routes", "vendor")
 REQUIRED = (
     "backend/vendor/autoload.php", "backend/composer.lock",
@@ -90,10 +100,15 @@ def verify_archive(output, expected_sha=None):
             "public_html/.htaccess",
             "public_html/assets/portraits/portrait-light-derived.jpg",
             "contracts/owner-cv-baseline.json", "INSTALL-CPANEL-AR.md",
+            *PRIVATE_GUARD_PATHS,
             "PACKAGE-MANIFEST.json",
         }
         if not mandatory.issubset(names):
             raise ValueError("Required deployment payload missing")
+        # A rehashed manifest alone must not authorize a package that exposes
+        # the private application/contract tree on a default Apache host.
+        if any(archive.read(path) != PRIVATE_TREE_DENY for path in PRIVATE_GUARD_PATHS):
+            raise ValueError("Private-directory HTTP denial missing or altered")
         if any(
             "/.env" in ("/" + n).replace("/.env.example", "")
             or n.endswith((".sql", ".sqlite", ".pem", ".key", ".p12", ".p8"))
@@ -150,6 +165,11 @@ def build(source, output, sha):
     entries["contracts/owner-cv-baseline.json"] = (
         source / "contracts/owner-cv-baseline.json"
     ).read_bytes()
+    # Defense in depth if the operator mistakenly extracts within public_html.
+    # Private content MUST still reside outside DocumentRoot; .htaccess is
+    # only interpreted when the hosting Apache/LiteSpeed honors overrides.
+    for path in PRIVATE_GUARD_PATHS:
+        entries[path] = PRIVATE_TREE_DENY
     for folder in STORAGE:
         entries["application/" + folder + "/.gitignore"] = b"*\n!.gitignore\n"
     doc = source / "docs/CPANEL_PACKAGE_AR.md"
