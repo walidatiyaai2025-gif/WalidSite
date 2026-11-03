@@ -82,6 +82,7 @@ final class AdminUpdateRevokedOwnerTest extends TestCase
     public function test_guest_and_non_owner_staff_cannot_use_update_endpoints(): void
     {
         config(['site.updates_enabled' => true]);
+        $this->withoutMiddleware(ThrottleRequests::class);
         $this->get('/admin/updates')->assertRedirect('/admin/login');
         $this->post('/admin/updates/apply')->assertRedirect('/admin/login');
 
