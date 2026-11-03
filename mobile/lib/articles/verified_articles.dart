@@ -299,22 +299,29 @@ class VerifiedArticleReader {
 
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
     try {
-      final request = await client.getUrl(url).timeout(const Duration(seconds: 8));
-      request.followRedirects = false;
-      request.headers.set(HttpHeaders.acceptHeader, 'application/json');
-      final response = await request.close().timeout(const Duration(seconds: 8));
-      if (response.statusCode != HttpStatus.ok) {
-        throw const HttpException('Article service unavailable');
-      }
-
-      final buffer = BytesBuilder(copy: false);
-      await for (final chunk in response.timeout(const Duration(seconds: 8))) {
-        if (buffer.length + chunk.length > _limit) {
-          throw const FormatException('Article response exceeds size limit');
+      // One wall-clock deadline covers connect, headers, every streamed byte,
+      // UTF-8 decoding and parsing. Idle-per-chunk deadlines permit a slow
+      // sender to keep a public article screen stalled indefinitely.
+      return await (() async {
+        final request = await client.getUrl(url);
+        request.followRedirects = false;
+        request.headers.set(HttpHeaders.acceptHeader, 'application/json');
+        final response = await request.close();
+        if (response.statusCode != HttpStatus.ok) {
+          throw const HttpException('Article service unavailable');
         }
-        buffer.add(chunk);
-      }
-      return VerifiedArticlePage.parse(utf8.decode(buffer.takeBytes()), page);
+
+        final buffer = BytesBuilder(copy: false);
+        await for (final chunk in response) {
+          if (buffer.length + chunk.length > _limit) {
+            throw const FormatException('Article response exceeds size limit');
+          }
+          buffer.add(chunk);
+        }
+        return VerifiedArticlePage.parse(
+          utf8.decode(buffer.takeBytes(), allowMalformed: false), page,
+        );
+      })().timeout(const Duration(seconds: 12));
     } finally {
       client.close(force: true);
     }
@@ -326,6 +333,7 @@ class VerifiedArticleLibrary extends StatefulWidget {
     required this.arabic,
     this.loader,
     this.pageLoader,
+    this.detailLoader,
     super.key,
   });
 
@@ -336,6 +344,10 @@ class VerifiedArticleLibrary extends StatefulWidget {
 
   // Injectable verified page source for deterministic pagination tests.
   final Future<VerifiedArticlePage> Function(int page)? pageLoader;
+
+  // Injected only by widget tests. Production always refetches the current
+  // publication through the verified server detail endpoint.
+  final Future<VerifiedArticle> Function(String slug)? detailLoader;
 
   @override
   State<VerifiedArticleLibrary> createState() => _VerifiedArticleLibraryState();
@@ -610,9 +622,10 @@ class _VerifiedArticleLibraryState extends State<VerifiedArticleLibrary> {
                                         : Icons.chevron_right),
                                     onTap: () => Navigator.of(context).push(
                                       MaterialPageRoute<void>(
-                                        builder: (_) => VerifiedArticleDetail(
-                                          article: article,
+                                        builder: (_) => VerifiedArticleFreshDetail(
+                                          slug: article.slug,
                                           arabic: ar,
+                                          loader: widget.detailLoader,
                                         ),
                                       ),
                                     ),
@@ -664,6 +677,105 @@ class VerifiedArticleDetail extends StatelessWidget {
                 child: SelectableText(citation),
               ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// MOBILE-07 detail must check the current publication on every open, not
+/// trust a list row that may have been withdrawn since it was fetched.
+class VerifiedArticleFreshDetail extends StatefulWidget {
+  const VerifiedArticleFreshDetail({
+    required this.slug,
+    required this.arabic,
+    this.loader,
+    super.key,
+  });
+
+  final String slug;
+  final bool arabic;
+  final Future<VerifiedArticle> Function(String slug)? loader;
+
+  @override
+  State<VerifiedArticleFreshDetail> createState() =>
+      _VerifiedArticleFreshDetailState();
+}
+
+class _VerifiedArticleFreshDetailState extends State<VerifiedArticleFreshDetail> {
+  late Future<VerifiedArticle> _detail;
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+  }
+
+  @override
+  void didUpdateWidget(covariant VerifiedArticleFreshDetail oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.slug != oldWidget.slug ||
+        widget.arabic != oldWidget.arabic ||
+        widget.loader != oldWidget.loader) {
+      _refresh();
+    }
+  }
+
+  void _refresh() {
+    _detail = (() async {
+      final article = await (widget.loader != null
+          ? widget.loader!(widget.slug)
+          : const VerifiedArticleReader().loadDetail(
+              widget.arabic, widget.slug));
+      if (article.slug != widget.slug) {
+        throw const FormatException('Mismatched article detail');
+      }
+      return article;
+    })();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final arabic = widget.arabic;
+    return Directionality(
+      textDirection: arabic ? TextDirection.rtl : TextDirection.ltr,
+      child: Scaffold(
+        appBar: AppBar(title: Text(
+          arabic ? 'المقال الموثق' : 'Verified article',
+        )),
+        body: FutureBuilder<VerifiedArticle>(
+          future: _detail,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState != ConnectionState.done) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            if (snapshot.hasError || !snapshot.hasData) {
+              return Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      arabic
+                          ? 'المقال غير متاح حاليًا أو سُحب نشره. تحقق من الاتصال.'
+                          : 'This article is unavailable or may have been withdrawn.',
+                      key: const Key('verified-article-unavailable'),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 12),
+                    OutlinedButton(
+                      key: const Key('verified-article-retry'),
+                      onPressed: () => setState(_refresh),
+                      child: Text(arabic ? 'إعادة التحقق' : 'Retry verification'),
+                    ),
+                  ],
+                ),
+              );
+            }
+            return VerifiedArticleDetail(
+              article: snapshot.data!,
+              arabic: arabic,
+            );
+          },
         ),
       ),
     );
