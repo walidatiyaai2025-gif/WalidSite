@@ -6,7 +6,7 @@
         'government' => ['en' => 'Government', 'ar' => 'الحكومية'],
         'education' => ['en' => 'Education', 'ar' => 'التعليمية'],
         'workflows' => ['en' => 'Workflows', 'ar' => 'الإجراءات'],
-        'ai' => ['en' => 'AI & Products', 'ar' => 'الذكاء والمنتجات'],
+        'ai' => ['en' => 'AI & Products', 'ar' => 'منتجات وذكاء اصطناعي'],
         'enterprise' => ['en' => 'Enterprise', 'ar' => 'الأعمال'],
     ];
     $isArabic = $locale === 'ar';
