@@ -256,7 +256,11 @@ final class AdminOperationsJourneyTest extends TestCase
             ->assertSee('Edit private draft')
             ->assertSee('name="_method" value="PATCH"', false);
         $this->patch('/admin/projects/'.$private->id.'?lang=ar', $payload)
-            ->assertRedirect(route('admin.operations.projects', ['lang' => 'ar']));
+            ->assertRedirect(route('admin.operations.projects', ['lang' => 'ar']))
+            ->assertSessionHas('status', 'تم حفظ مسودة المشروع الخاصة دون نشرها.');
+        $this->get('/admin/projects?lang=ar')->assertOk()
+            ->assertSee('تم حفظ مسودة المشروع الخاصة دون نشرها.')
+            ->assertSee('dir="rtl"', false);
         $this->assertSame('Reviewed title', $private->fresh()->title);
         $this->assertSame('private', $private->fresh()->visibility);
         $this->assertNull($private->fresh()->published_at);
