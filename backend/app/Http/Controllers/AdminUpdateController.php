@@ -12,7 +12,12 @@ final class AdminUpdateController extends Controller
 {
     private function authorizeOwner(Request $request): void
     {
-        abort_unless($request->user()?->hasRole('owner'), 403);
+        // An authenticated session may outlive an owner suspension, account
+        // deletion or role revocation. Always re-read persisted eligibility
+        // immediately before inspecting or applying privileged migrations.
+        $owner = $request->user()?->fresh();
+        abort_unless($owner !== null && $owner->canAccessAdmin()
+            && $owner->hasRole('owner'), 403);
     }
 
     public function index(Request $request, SiteUpdater $updater): View
