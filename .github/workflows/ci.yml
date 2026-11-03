@@ -533,3 +533,29 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python3 qa/cleanup_abandoned_duplicate_branches.py
+
+  cleanup-480-orphans:
+    # Prune only after green main tests and the main cPanel package.
+    # PR-close cleanup must never invoke the orphan candidate path.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [required-ci-gate, build-cpanel-package]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      pull-requests: read
+    steps:
+      - name: Check out exactly the CI-tested trusted main commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Reconcile only three SHA-pinned #480 orphan branches
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RECONCILE_480_ORPHANS: '1'
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          python3 qa/cleanup_abandoned_duplicate_branches.py
