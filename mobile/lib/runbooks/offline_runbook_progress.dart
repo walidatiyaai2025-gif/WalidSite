@@ -99,6 +99,9 @@ class AppSupportRunbookProgressStore implements RunbookProgressStore {
     required String runbookId,
   }) async {
     final key = await _key(scope, packVersion, runbookId);
+    // A route reopened immediately after a toggle must observe the queued
+    // write from the previous route, not the earlier on-disk snapshot.
+    await _writeBarrier;
     return Set<int>.of((await _readData())[key] ?? const <int>[]);
   }
 
@@ -109,18 +112,17 @@ class AppSupportRunbookProgressStore implements RunbookProgressStore {
     required String runbookId,
     required Set<int> completed,
   }) async {
-    final key = await _key(scope, packVersion, runbookId);
-    if (completed.length > 50 ||
-        completed.any((index) => index < 0 || index >= 50)) {
-      throw const FormatException('Invalid runbook step index');
-    }
-
-    // Reserve the write slot before awaiting disk: widget recreation must not
-    // let an older write replace a newer checkbox change.
+    // Reserve the slot before the first await, including key hashing. This
+    // also makes a rapid leave/reopen read wait for the user's last toggle.
     final prior = _writeBarrier;
     final done = Completer<void>();
     _writeBarrier = done.future;
     try {
+      final key = await _key(scope, packVersion, runbookId);
+      if (completed.length > 50 ||
+          completed.any((index) => index < 0 || index >= 50)) {
+        throw const FormatException('Invalid runbook step index');
+      }
       await prior;
       final data = await _readData();
       if (completed.isEmpty) {
