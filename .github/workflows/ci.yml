@@ -477,7 +477,14 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - uses: android-actions/setup-android@v3
+      - name: Validate runner Android SDK without obsolete 'tools' package
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          test -n "$sdk_root"
+          test -d "$sdk_root/build-tools"
+          test -d "$sdk_root/platforms"
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
