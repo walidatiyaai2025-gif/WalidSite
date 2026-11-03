@@ -3,6 +3,11 @@
 namespace Tests\Feature\Integration;
 
 use App\Http\Middleware\RequireSecureApiTransport;
+use App\Models\Role;
+use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Routing\Route as LaravelRoute;
 use Illuminate\Support\Facades\Route;
 use Tests\TestCase;
@@ -11,10 +16,12 @@ use Tests\TestCase;
  * T024: exercise the registered API routes in the actual Laravel HTTP kernel.
  *
  * This is not a claim that every published operation is functionally accepted.
- * The single known W1 contract gap is reported, never disguised as coverage.
+ * Route completeness and unauthorized-access failures must be fully enforced.
  */
 final class ApiContractAccessMatrixTest extends TestCase
 {
+    use RefreshDatabase;
+
     /**
      * Read the immutable OpenAPI method/role declarations, not a manually
      * curated allowlist that silently drops unimplemented operations.
@@ -77,7 +84,7 @@ final class ApiContractAccessMatrixTest extends TestCase
         return null;
     }
 
-    public function test_all_canonical_operations_are_inventory_checked_with_explicit_w1_gap(): void
+    public function test_all_canonical_operations_are_registered_and_protected(): void
     {
         $operations = $this->contractedOperations();
         $this->assertCount(46, $operations, 'The current v6 OpenAPI contract contains 46 operations.');
@@ -107,14 +114,7 @@ final class ApiContractAccessMatrixTest extends TestCase
             }
         }
 
-        // W1 ownership: POST /admin/articles is specified but not registered.
-        // Allow only this *known* defect so the rest of the independent QA
-        // regression can be merged. A newly missing operation fails this test.
-        // If W1 fixes the endpoint, this test automatically accepts 46/46.
-        $allowedKnownGap = ['POST /admin/articles'];
-        $newGaps = array_values(array_diff($missing, $allowedKnownGap));
-        $this->assertSame([], $newGaps, 'Unexpected new unregistered OpenAPI operations.');
-        $this->assertLessThanOrEqual(1, count($missing), 'API registration regression.');
+        $this->assertSame([], $missing, 'Every canonical OpenAPI operation must be registered; no legacy allowlist.');
     }
 
     public function test_guests_are_denied_by_all_registered_private_openapi_operations(): void
@@ -126,9 +126,10 @@ final class ApiContractAccessMatrixTest extends TestCase
                 continue;
             }
             $protected++;
-            if ($this->registeredRoute($operation['method'], $operation['path']) === null) {
-                continue; // The known missing endpoint is NOT counted as tested.
-            }
+            $this->assertNotNull(
+                $this->registeredRoute($operation['method'], $operation['path']),
+                'Unregistered private operation: '.$operation['method'].' '.$operation['path']
+            );
 
             // A valid-shaped but non-existent UUID must never bypass the
             // auth middleware; no secrets or private fixtures are required.
@@ -147,7 +148,60 @@ final class ApiContractAccessMatrixTest extends TestCase
         }
 
         $this->assertSame(26, $protected, 'All 26 private contract operations must be examined.');
-        $this->assertGreaterThanOrEqual(25, $tested, 'A new missing route cannot reduce the covered floor.');
-        $this->assertLessThanOrEqual(26, $tested);
+        $this->assertSame(26, $tested, 'All 26 protected operations must deny unauthenticated guests.');
     }
+    /**
+     * Exercise every non-parameterized admin route against a real bearer.
+     * A reader with an admin scope, and an owner with a mobile-only scope,
+     * must both fail before request validation, SQL writes or HTTP calls.
+     * Dynamic resource route authorizations are covered by controller tests.
+     */
+    public function test_all_static_admin_operations_deny_reader_roles_and_mobile_only_tokens(): void
+    {
+        // These matrix calls are about authorization, not throttle policy;
+        // dedicated throttle tests continue to exercise the real limiter.
+        $this->withoutMiddleware(\Illuminate\Routing\Middleware\ThrottleRequests::class);
+        Http::preventStrayRequests();
+
+        $reader = User::create([
+            'email' => 'reader-matrix@example.test',
+            'status' => 'active',
+            'password_hash' => null,
+        ]);
+        $reader->roles()->attach(Role::firstOrCreate(['name' => 'reader'])->id);
+        $owner = User::create([
+            'email' => 'owner-matrix@example.test',
+            'status' => 'active',
+            'password_hash' => null,
+        ]);
+        $owner->roles()->attach(Role::firstOrCreate(['name' => 'owner'])->id);
+
+        $bearers = [
+            $reader->createToken('reader-admin-scope', ['admin'], now()->addHour())->plainTextToken,
+            $owner->createToken('owner-mobile-scope', ['mobile'], now()->addHour())->plainTextToken,
+        ];
+        $tested = 0;
+        foreach ($this->contractedOperations() as $operation) {
+            if ($operation['role'] !== 'admin' || str_contains($operation['path'], '{')) {
+                continue;
+            }
+            $label = $operation['method'].' '.$operation['path'];
+            $this->assertNotNull($this->registeredRoute($operation['method'], $operation['path']), $label);
+            foreach ($bearers as $token) {
+                Auth::forgetGuards();
+                $response = $this->withToken($token)->json(
+                    $operation['method'], '/api/v1'.$operation['path'], []
+                );
+                $this->assertSame(
+                    403, $response->status(),
+                    $label.' must reject a non-admin role or unscoped bearer.'
+                );
+            }
+            $tested++;
+        }
+
+        $this->assertSame(16, $tested, 'Exercise all 16 static admin contract operations.');
+        Http::assertNothingSent();
+    }
+
 }
