@@ -119,16 +119,21 @@ final class FileMobileAiIntentStore implements MobileAiIntentStore {
       if (prior == key) return;
       throw StateError('The previous paid diagnosis intent is unresolved');
     }
-    final partial = File('${file.path}.part');
+    // O_EXCL is the cross-screen/process admission mutex. Two screens that
+    // observe no record must NEVER replace each other's newly reserved key.
+    // A crash during write leaves an invalid marker and fails CLOSED on next
+    // login; no chargeable POST is issued until a complete flushed key exists.
     try {
-      await partial.writeAsString(
-        jsonEncode({'version': 1, 'key': key}),
-        flush: true,
-      );
-      await partial.rename(file.path);
-    } finally {
-      if (await partial.exists()) await partial.delete();
+      await file.create(exclusive: true);
+    } on FileSystemException {
+      final winner = await readKey(authenticatedEmail);
+      if (winner == key) return;
+      throw StateError('The previous paid diagnosis intent is unresolved');
     }
+    await file.writeAsString(
+      jsonEncode({'version': 1, 'key': key}),
+      flush: true,
+    );
   }
 
   @override
