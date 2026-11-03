@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -115,14 +116,19 @@ class MobileBootstrapCapabilities {
     Uri? privacyUri;
     if (privacy is String) {
       final relative = Uri.tryParse(privacy);
+      // Reject aliases, duplicate locale keys and encoded query spellings.
+      // The server advertises only /privacy?lang=en|ar; ambiguous URLs
+      // must never cross the application-to-browser trust boundary.
       if (relative == null ||
+          relative.query != 'lang=$locale' ||
           relative.hasScheme ||
           relative.hasAuthority ||
           relative.userInfo.isNotEmpty ||
           relative.hasFragment ||
           relative.path != '/privacy' ||
-          relative.queryParameters.length != 1 ||
-          relative.queryParameters['lang'] != locale) {
+          relative.queryParametersAll.length != 1 ||
+          relative.queryParametersAll['lang']?.length != 1 ||
+          relative.queryParametersAll['lang']?.single != locale) {
         throw const FormatException('Unsafe privacy route');
       }
       privacyUri = origin.resolveUri(relative);
@@ -148,6 +154,16 @@ class MobileBootstrapReader {
   const MobileBootstrapReader();
 
   static const _limit = 128 * 1024;
+  static const _totalDeadline = Duration(seconds: 10);
+
+  /// A single wall-clock limit covers DNS, connection, headers, streaming and
+  /// parsing. Per-chunk timeouts alone let a slow-drip peer pin Welcome.
+  @visibleForTesting
+  static Future<T> withinDeadline<T>(
+    Future<T> Function() operation, {
+    Duration timeout = _totalDeadline,
+  }) =>
+      Future<T>.sync(operation).timeout(timeout);
 
   static Uri? configuredOrigin() => VerifiedArticleReader.configuredOrigin();
 
@@ -162,26 +178,30 @@ class MobileBootstrapReader {
     );
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
     try {
-      final request = await client.getUrl(url).timeout(const Duration(seconds: 8));
-      request.followRedirects = false;
-      request.headers.set(HttpHeaders.acceptHeader, 'application/json');
-      final response = await request.close().timeout(const Duration(seconds: 8));
-      if (response.statusCode != HttpStatus.ok) {
-        throw const HttpException('Bootstrap unavailable');
-      }
-      final bytes = BytesBuilder(copy: false);
-      await for (final chunk in response.timeout(const Duration(seconds: 8))) {
-        if (bytes.length + chunk.length > _limit) {
-          throw const FormatException('Bootstrap response too large');
+      return await withinDeadline(() async {
+        final request = await client.getUrl(url);
+        request.followRedirects = false;
+        request.headers.set(HttpHeaders.acceptHeader, 'application/json');
+        final response = await request.close();
+        if (response.statusCode != HttpStatus.ok) {
+          throw const HttpException('Bootstrap unavailable');
         }
-        bytes.add(chunk);
-      }
-      return MobileBootstrapCapabilities.parse(
-        utf8.decode(bytes.takeBytes(), allowMalformed: false),
-        arabic,
-        origin,
-      );
+        final bytes = BytesBuilder(copy: false);
+        await for (final chunk in response) {
+          if (bytes.length + chunk.length > _limit) {
+            throw const FormatException('Bootstrap response too large');
+          }
+          bytes.add(chunk);
+        }
+        return MobileBootstrapCapabilities.parse(
+          utf8.decode(bytes.takeBytes(), allowMalformed: false),
+          arabic,
+          origin,
+        );
+      });
     } finally {
+      // Aborts an outstanding DNS/HTTP stream when the whole-operation
+      // deadline expires; the UI exposes retry and offline guest entry.
       client.close(force: true);
     }
   }
