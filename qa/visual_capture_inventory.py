@@ -60,7 +60,7 @@ def _approved_reference_size(root: Path, reference: object) -> list[int]:
     checks the immutable manifest hash and real pixel-level evidence.
     """
     if (not isinstance(reference, str)
-            or re.fullmatch(r"assets/screen-reference/[A-Za-z0-9_-]+\\.png", reference) is None):
+            or re.fullmatch(r"assets/screen-reference/[A-Za-z0-9_-]+\.png", reference) is None):
         raise InventoryError("Invalid canonical source PNG path")
     directory = root / "assets/screen-reference"
     target = root / reference
