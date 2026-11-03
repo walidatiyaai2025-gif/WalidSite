@@ -54,7 +54,7 @@ final class AboutPageManagedAssetsTest extends TestCase
     {
         (new WebsitePageContentSeeder())->run();
         $this->get('/about?lang=en')->assertOk()
-            ->assertSee('Career Story', false) // The English UI remains English-first.
+            ->assertSee('CAREER STORY') // The English UI remains English-first.
             ->assertSee('lido825@gmail.com')
             ->assertSee('+96566010746')
             ->assertSee('+201099459704')
