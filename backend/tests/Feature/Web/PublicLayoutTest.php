@@ -18,8 +18,8 @@ class PublicLayoutTest extends TestCase
             ->assertSee('dir="ltr"', false)
             ->assertSee('href="#main-content"', false)
             ->assertSee('Waleed Atiya')
-            ->assertSee('Software, Database &amp; AI Engineering', false)
-            ->assertSee('Engineering projects &amp; case studies', false)
+            ->assertSee('Enterprise Technology &amp; AI Solutions Architecture', false)
+            ->assertSee('Verified engineering projects and case studies', false)
             ->assertSee('href="'.route('public.projects', ['lang' => 'en']).'"', false)
             ->assertSee('href="'.route('home', ['lang' => 'ar']).'"', false);
     }
@@ -30,7 +30,7 @@ class PublicLayoutTest extends TestCase
             ->assertOk()
             ->assertSee('lang="ar"', false)
             ->assertSee('dir="rtl"', false)
-            ->assertSee('هندسة البرمجيات وقواعد البيانات وحلول الذكاء الاصطناعي')
+            ->assertSee('قيادة تقنية المؤسسات وهندسة حلول الذكاء الاصطناعي')
             ->assertSee('استكشف المشاريع')
             ->assertSee('href="'.route('home', ['lang' => 'en']).'"', false);
     }
