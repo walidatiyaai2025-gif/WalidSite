@@ -133,7 +133,7 @@ final class TrustedReleaseUpdateJourneyTest extends TestCase
         return chr(96).$name.chr(96);
     }
 
-    private function signedZip(bool $wrongSignature = false): string
+    private function signedZip(bool $wrongSignature = false, bool $schemaChange = false): string
     {
         $zip = new ZipArchive();
         self::assertTrue($zip->open($this->paths['archive'], ZipArchive::CREATE | ZipArchive::OVERWRITE) === true);
@@ -145,6 +145,12 @@ final class TrustedReleaseUpdateJourneyTest extends TestCase
             'contracts/product.json' => '{"product":"walidsite"}',
         ] as $path => $bytes) {
             self::assertTrue($zip->addFromString($path, $bytes));
+        }
+        if ($schemaChange) {
+            self::assertTrue($zip->addFromString(
+                'application/database/migrations/2026_11_03_000001_update_billing.php',
+                '<?php return "schema update";',
+            ));
         }
         self::assertTrue($zip->close());
         $payload = json_encode([
@@ -264,6 +270,22 @@ final class TrustedReleaseUpdateJourneyTest extends TestCase
         } catch (DomainException) {
             self::assertFalse($requested);
             self::assertSame('LIVE-vA', file_get_contents($this->paths['public'].'/index.php'));
+        }
+    }
+
+    public function test_new_schema_migration_in_signed_release_cannot_cutover_without_rollback_proof(): void
+    {
+        $signed = $this->signedZip(false, true);
+        try {
+            $this->update($signed);
+            self::fail('A correctly signed release with new schema migrations cannot bypass the migration gate.');
+        } catch (DomainException $failure) {
+            self::assertStringContainsString('migration change', $failure->getMessage());
+            self::assertSame('LIVE-vA', file_get_contents($this->paths['public'].'/index.php'));
+            self::assertSame($this->paths['releases'].'/v1', realpath($this->paths['current']));
+            self::assertSame('APP_KEY=keep-existing-secret', file_get_contents($this->paths['environment']));
+            self::assertSame(1, (int) $this->liveDb->query('SELECT COUNT(*) FROM billing')->fetchColumn());
+            self::assertSame([], glob($this->paths['backup_vault'].'/mariadb-*') ?: []);
         }
     }
 
