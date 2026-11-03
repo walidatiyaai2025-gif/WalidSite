@@ -75,7 +75,7 @@ final class Web03OwnerFourTabsTest extends TestCase
             }
             $activeUrl = e(route('public.expertise', ['lang' => 'en', 'section' => $section]));
             $this->assertMatchesRegularExpression(
-                '/<a href="'.preg_quote($activeUrl, '/').'" aria-current="page">/',
+                '/<a href="'.preg_quote($activeUrl, '/').'"\s+aria-current="step"\s*>/',
                 $html
             );
             if ($section === 'ai') {
