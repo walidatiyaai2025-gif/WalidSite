@@ -194,7 +194,33 @@ class VerifiedArticlePage {
 }
 
 class VerifiedArticleReader {
-  const VerifiedArticleReader();
+  const VerifiedArticleReader()
+      : _clientFactory = null,
+        _testingOrigin = null,
+        _wholeDeadline = const Duration(seconds: 12);
+
+  // Test injection retains the same public HTTPS origin validation as the
+  // production source; it cannot bypass origin restrictions to send traffic
+  // to localhost or private addresses. No test settings enter the real app.
+  @visibleForTesting
+  const VerifiedArticleReader.fixture({
+    required HttpClient Function() httpClientFactory,
+    required String publicOrigin,
+    Duration wholeDeadline = const Duration(milliseconds: 90),
+  })  : _clientFactory = httpClientFactory,
+        _testingOrigin = publicOrigin,
+        _wholeDeadline = wholeDeadline;
+
+  final HttpClient Function()? _clientFactory;
+  final String? _testingOrigin;
+  final Duration _wholeDeadline;
+
+  Uri? _origin() => _testingOrigin == null
+      ? configuredOrigin()
+      : validatedOrigin(_testingOrigin!);
+
+  HttpClient _newClient() => (_clientFactory?.call() ?? HttpClient())
+    ..connectionTimeout = const Duration(seconds: 8);
 
   // Explicit build-time deployment configuration, never an invented endpoint.
   static const apiOrigin = String.fromEnvironment('WALIDSITE_API_ORIGIN');
@@ -257,7 +283,7 @@ class VerifiedArticleReader {
     if (!RegExp(r'^[A-Za-z0-9-]{1,180}$').hasMatch(slug)) {
       throw const FormatException('Invalid article slug');
     }
-    final origin = configuredOrigin();
+    final origin = _origin();
     if (origin == null) {
       throw const FormatException('Article API not configured');
     }
@@ -265,7 +291,7 @@ class VerifiedArticleReader {
       path: '/api/v1/public/articles/$slug',
       queryParameters: {'lang': arabic ? 'ar' : 'en'},
     );
-    final client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
+    final client = _newClient();
     try {
       return await (() async {
         final request = await client.getUrl(url);
@@ -286,7 +312,7 @@ class VerifiedArticleReader {
           utf8.decode(bytes.takeBytes(), allowMalformed: false),
           slug,
         );
-      })().timeout(const Duration(seconds: 12));
+      })().timeout(_wholeDeadline);
     } finally {
       client.close(force: true);
     }
@@ -296,7 +322,7 @@ class VerifiedArticleReader {
     if (page < 1 || page > 10000) {
       throw const FormatException('Invalid article page');
     }
-    final origin = configuredOrigin();
+    final origin = _origin();
     if (origin == null) {
       throw const FormatException('Article API not configured');
     }
@@ -305,7 +331,7 @@ class VerifiedArticleReader {
       queryParameters: {'lang': arabic ? 'ar' : 'en', 'page': '$page'},
     );
 
-    final client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
+    final client = _newClient();
     try {
       // One wall-clock deadline covers connect, headers, every streamed byte,
       // UTF-8 decoding and parsing. Idle-per-chunk deadlines permit a slow
@@ -329,7 +355,7 @@ class VerifiedArticleReader {
         return VerifiedArticlePage.parse(
           utf8.decode(buffer.takeBytes(), allowMalformed: false), page,
         );
-      });
+      }, deadline: _wholeDeadline);
     } finally {
       client.close(force: true);
     }
