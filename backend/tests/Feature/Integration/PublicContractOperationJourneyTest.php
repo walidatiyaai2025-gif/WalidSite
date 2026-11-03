@@ -71,6 +71,13 @@ final class PublicContractOperationJourneyTest extends TestCase
         config(['portfolio.github_public_repos' => []]);
         Http::fake();
         Mail::fake();
+        // Enable only the simulated delivery policy, never a network mail send.
+        // Otherwise the controller correctly fails closed with HTTP 503 before
+        // request validation, so the empty-contact contract is not exercised.
+        config([
+            'mail.contact_recipient' => 'contract-recipient@example.test',
+            'mail.default' => 'smtp',
+        ]);
 
         $operations = $this->operations();
         $this->assertCount(20, $operations, 'Every public operation must be exercised');
@@ -89,7 +96,8 @@ final class PublicContractOperationJourneyTest extends TestCase
 
                 if ($operation['method'] === 'POST') {
                     $this->assertSame('/public/contact', $operation['path'], $label);
-                    $this->postJson($url, [])->assertUnprocessable();
+                    $this->postJson($url, [])->assertUnprocessable()
+                        ->assertJsonValidationErrors(['name', 'email', 'message', 'privacy_consent']);
                     $invalidContact++;
                     continue;
                 }
