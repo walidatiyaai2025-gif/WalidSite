@@ -22,7 +22,10 @@
 .blog-card h2{margin:0;font-size:23px;line-height:1.4;color:var(--wa-primary)}
 .blog-card p{margin:0;color:var(--wa-body);overflow-wrap:anywhere}
 .blog-stamp{font-size:13px;color:var(--wa-muted-text)}.blog-card a{display:inline-flex;min-height:44px;align-items:center;margin-top:auto;font-weight:800;color:var(--wa-cta)}
-.blog-empty{padding:25px;border:1px solid var(--wa-soft-border);border-radius:16px;background:#fff}
+.blog-empty{padding:25px;border:1px solid var(--wa-soft-border);border-radius:16px;background:#fff;display:flex;flex-direction:column;align-items:flex-start;gap:14px}
+.blog-empty p{margin:0;color:var(--wa-body)}
+.blog-empty a{display:inline-flex;min-height:44px;align-items:center;color:var(--wa-cta);font-weight:800;text-underline-offset:3px}
+.blog-empty a:focus-visible{outline:3px solid var(--wa-cta);outline-offset:3px}
 .blog-pages{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:28px}
 .blog-pages :is(a,span){min-height:44px;display:inline-flex;align-items:center;padding:8px 15px;border:1px solid var(--wa-soft-border);border-radius:10px;background:#fff}
 .blog-pages a{color:var(--wa-cta);font-weight:700}
@@ -65,10 +68,32 @@
     @if($search !== '' || $category !== '')
         <p class="blog-result-summary" role="status" data-testid="blog-filter-summary">{{ $locale === 'ar' ? 'إجمالي المقالات الموثقة المطابقة: ' : 'Total verified matching articles: ' }}{{ $paginated->total() }}</p>
     @endif
+    @php($blogPageOutOfRange = $entries->isEmpty() && $paginated->total() > 0 && $paginated->currentPage() > $paginated->lastPage())
     @if($entries->isEmpty())
-        <div class="blog-empty" role="status">{{ $locale === 'ar'
-            ? 'لا توجد مقالات منشورة وموثقة تطابق البحث حاليًا.'
-            : 'No source-verified published articles match the current filters.' }}</div>
+        <div class="blog-empty" role="status" aria-live="polite">
+            @if($blogPageOutOfRange)
+                <p>{{ $locale === 'ar'
+                    ? 'رقم الصفحة المطلوبة يتجاوز صفحات المقالات الموثقة المتاحة.'
+                    : 'The requested page is beyond the available verified article results.' }}</p>
+                <a href="{{ route('public.blog', array_filter(['lang' => $locale, 'q' => $search, 'category' => $category], fn ($value) => $value !== '')) }}">
+                    {{ $locale === 'ar' ? 'العودة إلى أول صفحة من النتائج' : 'Return to the first results page' }}
+                </a>
+            @elseif($search !== '' || $category !== '')
+                <p>{{ $locale === 'ar'
+                    ? 'لا توجد مقالات منشورة وموثقة تطابق البحث حاليًا.'
+                    : 'No source-verified published articles match the current filters.' }}</p>
+                <a href="{{ route('public.blog', ['lang' => $locale]) }}">
+                    {{ $locale === 'ar' ? 'إزالة التصفيات وعرض كل المقالات' : 'Clear filters and view all articles' }}
+                </a>
+            @else
+                <p>{{ $locale === 'ar'
+                    ? 'لا توجد مقالات منشورة وموثقة حتى الآن.'
+                    : 'No source-reviewed articles have been published yet.' }}</p>
+                <a href="{{ route('public.lab', ['lang' => $locale]) }}">
+                    {{ $locale === 'ar' ? 'تصفح المختبر التقني' : 'Browse the technical lab' }}
+                </a>
+            @endif
+        </div>
     @else
         <div class="blog-grid">
             @foreach($entries as $entry)
@@ -87,7 +112,7 @@
             @endforeach
         </div>
     @endif
-    @if($paginated->hasPages())
+    @if($paginated->hasPages() && ! $blogPageOutOfRange)
         <nav class="blog-pages" aria-label="{{ $locale === 'ar' ? 'تصفح صفحات المدونة' : 'Blog pagination' }}">
             @if($paginated->previousPageUrl())
                 <a href="{{ $paginated->previousPageUrl() }}">{{ $locale === 'ar' ? 'السابق' : 'Previous' }}</a>
