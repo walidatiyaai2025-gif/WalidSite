@@ -147,13 +147,14 @@ class EditorialPipelineTest extends TestCase
         );
     }
 
-    public function test_failed_post_response_budget_receipt_cannot_leave_an_unreceipted_draft(): void
+    public function test_lowering_budget_during_paid_inference_preserves_receipt_and_review_gates(): void
     {
         $provider = $this->provider();
         $article = $this->article();
         $jobId = $this->claimedJob($provider, 'editorial-draft', 80);
         Http::fake(function () use ($provider) {
-            // Budget was reduced by an administrator while AI inference ran.
+            // HTTP already reached the paid provider. Lowering the cap now
+            // may block future admissions, not discard the incurred cost.
             DB::table('ai_providers')->where('id', $provider->id)->update([
                 'daily_budget_minor' => 0,
             ]);
@@ -163,20 +164,20 @@ class EditorialPipelineTest extends TestCase
             ], 200);
         });
 
-        try {
-            app(EditorialAiGenerator::class)->draft(
-                $article, $provider, 'chosen-model',
-                ['https://docs.example.org/backup'], 'Generate research notes',
-                $jobId, 'review-worker', 80
-            );
-            $this->fail('A declined spend receipt cannot save an unreceipted AI draft.');
-        } catch (DomainException $exception) {
-            $this->assertSame('Daily provider spending cap reached.',
-                $exception->getMessage());
-        }
+        $draft = app(EditorialAiGenerator::class)->draft(
+            $article, $provider, 'chosen-model',
+            ['https://docs.example.org/backup'], 'Generate research notes',
+            $jobId, 'review-worker', 80
+        );
         Http::assertSentCount(1);
-        $this->assertSame(0, $article->revisions()->count());
-        $this->assertDatabaseMissing('ai_usage', ['job_id' => $jobId]);
+        $this->assertDatabaseHas('ai_usage', [
+            'job_id' => $jobId, 'cost_minor' => 80, 'cost_currency' => 'USD',
+        ]);
+        $this->assertSame(1, DB::table('ai_usage')->where('job_id', $jobId)->count());
+        $this->assertSame('draft', $draft->status);
+        $this->assertFalse($draft->hasVerifiedEvidence());
+        $this->assertFalse($article->fresh()->isReadyToPublish());
+        $this->assertSame(1, $article->revisions()->count());
     }
 
     public function test_private_dns_research_candidates_never_reach_a_leased_paid_model(): void
