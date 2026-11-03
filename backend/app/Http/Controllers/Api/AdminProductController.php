@@ -12,6 +12,7 @@ use App\Models\Article;
 use App\Models\ArticleRevision;
 use App\Models\Asset;
 use App\Models\Project;
+use App\Models\User;
 use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Http\JsonResponse;
@@ -52,6 +53,33 @@ final class AdminProductController extends Controller
         );
     }
 
+    /**
+     * The initial route check can become stale during a long request.
+     * Recheck current role and real Sanctum bearer inside the locked
+     * publication transaction before any durable reviewer attribution.
+     */
+    private function independentReviewer(Request $request, ArticleRevision $revision): User
+    {
+        $initial = $request->user();
+        $token = $initial?->currentAccessToken();
+        $actor = $initial === null ? null : User::query()
+            ->whereKey($initial->id)->lockForUpdate()->first();
+
+        abort_unless($actor?->canAccessAdmin()
+            && $token instanceof PersonalAccessToken
+            && $token->can('admin')
+            && $actor->tokens()->whereKey($token->getKey())
+                ->where(function ($q): void {
+                    $q->whereNull('expires_at')
+                        ->orWhere('expires_at', '>', now());
+                })->exists(), 403);
+
+        abort_unless($revision->canBeIndependentlyReviewedBy($actor), 403,
+            'Independent editorial reviewer required.');
+
+        return $actor;
+    }
+
     private function onlyFields(Request $request, array $allowed): void
     {
         if (array_diff(array_keys($request->all()), $allowed) !== []) {
@@ -85,6 +113,7 @@ final class AdminProductController extends Controller
                 }
 
                 $revision = $locked->revisions()->orderByDesc('revision_no')->firstOrFail();
+                $reviewer = $this->independentReviewer($request, $revision);
                 $checks = is_array($revision->validation_json)
                     ? $revision->validation_json : [];
 
@@ -98,6 +127,10 @@ final class AdminProductController extends Controller
                 }
 
                 $locked->publishVerified();
+                $revision->forceFill([
+                    'reviewed_by_user_id' => $reviewer->id,
+                    'reviewed_at' => now('UTC'),
+                ])->save();
                 $runner->event(
                     'api-publish:'.Str::uuid(),
                     $locked->id,
@@ -646,6 +679,7 @@ final class AdminProductController extends Controller
                 ]);
             }
 
+            $reviewer = $this->independentReviewer($request, $revision);
             $checks = is_array($revision->validation_json)
                 ? $revision->validation_json : [];
             if (($checks['risk_level'] ?? null) !== 'low'
@@ -660,6 +694,11 @@ final class AdminProductController extends Controller
                     'approval' => 'Publication gates changed during approval.',
                 ]);
             }
+
+            $revision->forceFill([
+                'reviewed_by_user_id' => $reviewer->id,
+                'reviewed_at' => now('UTC'),
+            ])->save();
 
             $runner->event(
                 'api-approve:'.Str::uuid(),
