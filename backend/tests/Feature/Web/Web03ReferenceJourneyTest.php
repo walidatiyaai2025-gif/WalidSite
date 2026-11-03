@@ -96,7 +96,7 @@ final class Web03ReferenceJourneyTest extends TestCase
                 $target = route('public.expertise', [
                     'lang' => $locale, 'category' => $filter,
                 ]);
-                $page->assertSee('class="professional-track-link" href="'.e($target).'"', false)
+                $page->assertSee('class="expertise-card-filter" href="'.e($target).'"', false)
                     ->assertSee($locale === 'ar' ? 'تصفية المهارات حسب ' : 'Filter skills by ')
                     ->assertDontSee($filter.'-private');
 
