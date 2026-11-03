@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use Illuminate\Mail\Mailable;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Throwable;
@@ -33,9 +34,14 @@ final class PublicContactController extends Controller
             'Contact delivery is not configured.'
         );
 
-        // ContactInput is closed to unknown fields; neither the browser's
+        // URL query parameters (including ?lang=ar|en) are not ContactInput.
+        // Do not merge them into the strict body allowlist or required fields:
+        // query-only privacy_consent must never authorize mail delivery.
+        $payload = $request->isJson() ? $request->json()->all() : $request->request->all();
+
+        // ContactInput is closed to unknown body fields; neither the browser's
         // hidden honeypot nor an uploaded attachment belongs in this API.
-        if (array_diff(array_keys($request->all()), [
+        if (array_diff(array_keys($payload), [
             'name', 'email', 'message', 'privacy_consent',
         ]) !== []) {
             throw ValidationException::withMessages([
@@ -43,7 +49,7 @@ final class PublicContactController extends Controller
             ]);
         }
 
-        $data = $request->validate([
+        $data = Validator::make($payload, [
             'name' => ['required', 'string', 'min:2', 'max:100',
                 'not_regex:/[\x00-\x1F\x7F]/u'],
             'email' => ['required', 'email:rfc', 'max:254'],
