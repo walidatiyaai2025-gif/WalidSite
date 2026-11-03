@@ -94,8 +94,13 @@ final class Web07BlogScreenParityTest extends TestCase
             ];
             $page = $this->get(route('public.blog', $args))->assertOk()
                 ->assertSee('href="'.e(route('public.blog', [
+                    'lang' => $other, 'category' => 'database-guides', 'page' => 2,
+                ])).'"', false)
+                ->assertDontSee('href="'.e(route('public.blog', [
                     ...$args, 'lang' => $other,
                 ])).'"', false)
+                ->assertSee('data-web07-locale-switch', false)
+                ->assertSee("url.searchParams.set('q', term)", false)
                 ->assertSee('value="SQL &amp; AI"', false)
                 ->assertSee('name="category"', false)
                 ->assertSee('aria-current="page"', false)
