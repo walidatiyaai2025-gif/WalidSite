@@ -200,6 +200,13 @@ class PublicPortfolioController extends Controller
             'summary' => $ar ? $project->summary_ar : $project->summary_en,
             'role' => $ar && $project->role_ar ? $project->role_ar : $project->role_en,
             'status' => $project->status,
+            // Portfolio categorization is editable metadata, never a
+            // substitute for the publication/evidence checks above.
+            'category' => in_array($project->portfolio_category, [
+                'government', 'education', 'workflows', 'ai', 'enterprise',
+            ], true) ? $project->portfolio_category : 'enterprise',
+            'source_label' => $project->portfolio_source,
+            'featured' => (bool) $project->portfolio_featured,
             'evidence_urls' => $urls,
             // GitHub links must pass T017's public allowlist verification before
             // display. A UUID alone is not proof of public visibility.
