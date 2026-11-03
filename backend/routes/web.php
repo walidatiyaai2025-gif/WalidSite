@@ -2313,6 +2313,25 @@ Route::middleware('auth:web')->prefix('admin')->group(function (): void {
             ? $query->orderBy('title')->orderBy('id')
             : $query->orderByDesc('updated_at')->orderBy('id'))
             ->paginate(20)->appends($request->only(['lang', 'status', 'visibility', 'q', 'sort']));
+
+        // ADMIN-09 publication readiness must match the public case-study
+        // serializer, not merely a database flag. Eager-load only reviewed
+        // public evidence, limited per project, before replacing the owner
+        // relation with their private review queue below.
+        $rows = $projects->getCollection();
+        $rows->load(['evidence' => static fn ($q) => $q
+            ->where('visibility', 'public')->whereNotNull('verified_at')
+            ->where('verified_at', '<=', now('UTC'))->orderBy('id')->limit(50)]);
+        $portfolio = app(\App\Http\Controllers\Api\PublicPortfolioController::class);
+        foreach ($rows as $project) {
+            $projection = $portfolio->publicProjectData($project, $request);
+            $project->setAttribute('usable_public_evidence_count', count($projection['evidence_urls']));
+            $project->setAttribute('publication_content_ready', collect([
+                $project->title, $project->summary_en, $project->summary_ar,
+                $project->role_en, $project->role_ar,
+            ])->every(static fn ($value): bool => is_string($value) && trim($value) !== ''));
+        }
+
         // Private URLs are visible only to the owner, never to other admins.
         // Laravel's eager-limit confines the review queue to ten per project.
         if ($request->user()->hasRole('owner')) {
