@@ -146,12 +146,6 @@ final class MobileDiagnosisDispatcher
                 throw new DomainException('Unsupported diagnosis provider.');
             }
 
-            // A slow provider can return after the private-input retention window.
-            // Never publish a selection from an expired diagnosis request.
-            if ($request->expires_at->isPast()) {
-                throw new DomainException('Mobile diagnosis request is unavailable.');
-            }
-
             if (! $response->successful() || ! is_string($body)
                 || trim($body) === '' || mb_strlen($body) > 1000) {
                 throw new RuntimeException('Diagnosis provider returned no bounded selection.');
@@ -168,6 +162,13 @@ final class MobileDiagnosisDispatcher
                 $model->provider_model_id,
                 $tokens
             );
+
+            // The external inference already happened. Even when the private
+            // request expires during the HTTP round trip, keep its bounded
+            // spend/token receipt while refusing to expose the late result.
+            if ($request->expires_at->isPast()) {
+                throw new DomainException('Mobile diagnosis request is unavailable.');
+            }
 
             $selection = json_decode(trim($body), true, 8, JSON_THROW_ON_ERROR);
             if (! is_array($selection)
