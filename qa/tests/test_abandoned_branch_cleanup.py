@@ -6,6 +6,9 @@ from qa.cleanup_abandoned_duplicate_branches import (
     AbandonedDuplicate,
     DUPLICATES,
     reconcile_one,
+    ORPHANED_480,
+    Orphaned480Branch,
+    reconcile_orphan_480,
 )
 
 
@@ -200,6 +203,165 @@ class AbandonedBranchCleanupTest(unittest.TestCase):
         )
         self.assertEqual(self.api.requested, [])
 
+
+
+
+MAIN_SHA = "d" * 40
+
+
+class FakeOrphanGitHubApi:
+    def __init__(self, candidate):
+        self.candidate = candidate
+        self.main_refs = [MAIN_SHA, MAIN_SHA]
+        self.orphan_refs = [candidate.sha, candidate.sha]
+        self.successor = {
+            "merged": True, "base": {"ref": "main"},
+            "merge_commit_sha": MERGE_SHA,
+        }
+        self.merged_compare = {
+            "merge_base_commit": {"sha": MERGE_SHA}, "status": "ahead",
+        }
+        self.history = {
+            "merge_base_commit": {"sha": candidate.merge_base},
+            "ahead_by": candidate.ahead, "status": "diverged",
+        }
+        self.witnesses = dict(candidate.main_witnesses)
+        self.prs = []
+        self.deleted = []
+        self.reads = []
+
+    def get(self, path):
+        self.reads.append(path)
+        if path.endswith("/git/ref/heads/main"):
+            sha = self.main_refs.pop(0)
+            return {"object": {"sha": sha}}
+        if path.endswith("/pulls/" + str(self.candidate.superseded_by)):
+            return self.successor
+        if "/compare/" in path and "..." + MAIN_SHA in path:
+            return self.merged_compare
+        if "/compare/" in path and "..." + self.candidate.sha in path:
+            return self.history
+        if "/contents/" in path:
+            filename = path.split("/contents/", 1)[1].split("?ref=", 1)[0]
+            return {"sha": self.witnesses[filename]}
+        if "/git/ref/heads/" in path:
+            sha = self.orphan_refs.pop(0)
+            if sha == "missing":
+                raise HTTPError("https://api.github.com/", 404, "not found", {}, None)
+            return {"object": {"sha": sha}}
+        if "/pulls?" in path:
+            return self.prs
+        raise AssertionError("Unexpected GET: " + path)
+
+    def delete(self, path):
+        self.deleted.append(path)
+
+
+class Orphan480BranchCleanupTest(unittest.TestCase):
+    def setUp(self):
+        self.candidate = ORPHANED_480[0]
+        self.api = FakeOrphanGitHubApi(self.candidate)
+
+    def run_candidate(self, candidate=None, api=None, main_sha=MAIN_SHA, repo=REPO):
+        candidate = candidate or self.candidate
+        api = api or self.api
+        return reconcile_orphan_480(candidate, api, repo, main_sha)
+
+    def test_every_sha_pinned_orphan_is_deleted_only_after_exact_checks(self):
+        self.assertEqual(len(ORPHANED_480), 3)
+        expected = {
+            "fix/480-admin-audience-consent-time-parity": (2, 506),
+            "feat/480-privacy-rights-requests": (5, 506),
+            "feat/480-privacy-data-request-journey": (6, 506),
+        }
+        for candidate in ORPHANED_480:
+            with self.subTest(branch=candidate.branch):
+                self.assertEqual((candidate.ahead, candidate.superseded_by), expected[candidate.branch])
+                api = FakeOrphanGitHubApi(candidate)
+                self.assertEqual(self.run_candidate(candidate, api), "deleted")
+                self.assertEqual(api.deleted, [
+                    "repos/" + REPO + "/git/refs/heads/" + candidate.branch,
+                ])
+                self.assertEqual(sum("git/ref/heads/main" in x for x in api.reads), 2)
+                self.assertEqual(sum("git/ref/heads/" + candidate.branch in x for x in api.reads), 2)
+                self.assertEqual(sum("/contents/" in x for x in api.reads), len(candidate.main_witnesses))
+                self.assertIn("state=all", next(x for x in api.reads if "/pulls?" in x))
+
+    def test_unknown_or_malformed_candidates_do_not_touch_api(self):
+        unknown = Orphaned480Branch(
+            "feat/480-other", "f" * 40, self.candidate.merge_base, 3, 506,
+            self.candidate.main_witnesses,
+        )
+        self.assertEqual(self.run_candidate(unknown), "preserved")
+        self.assertEqual(self.run_candidate(main_sha="bad"), "preserved")
+        self.assertEqual(self.run_candidate(repo="other/WalidSite"), "preserved")
+        self.assertEqual(self.api.reads, [])
+        self.assertEqual(self.api.deleted, [])
+
+    def test_main_movement_fails_closed_before_or_immediately_before_deletion(self):
+        for refs in ([("e" * 40), MAIN_SHA], [MAIN_SHA, "e" * 40]):
+            with self.subTest(refs=refs):
+                api = FakeOrphanGitHubApi(self.candidate)
+                api.main_refs = list(refs)
+                self.assertEqual(self.run_candidate(api=api), "preserved")
+                self.assertEqual(api.deleted, [])
+
+    def test_orphan_ref_advanced_or_missing(self):
+        for refs, result in (
+            (["e" * 40, self.candidate.sha], "preserved"),
+            ([self.candidate.sha, "e" * 40], "preserved"),
+            (["missing"], "already_absent"),
+            ([self.candidate.sha, "missing"], "already_absent"),
+        ):
+            with self.subTest(refs=refs):
+                api = FakeOrphanGitHubApi(self.candidate)
+                api.orphan_refs = list(refs)
+                self.assertEqual(self.run_candidate(api=api), result)
+                self.assertEqual(api.deleted, [])
+
+    def test_open_draft_or_historical_pr_blocks_orphan_deletion(self):
+        for state, draft in (("open", False), ("open", True), ("closed", False)):
+            with self.subTest(state=state, draft=draft):
+                api = FakeOrphanGitHubApi(self.candidate)
+                api.prs = [{"number": 999, "state": state, "draft": draft}]
+                self.assertEqual(self.run_candidate(api=api), "preserved")
+                self.assertEqual(api.deleted, [])
+
+    def test_missing_or_not_reachable_successor_fails_closed(self):
+        for case in ("unmerged", "wrong_base", "unreachable", "diverged"):
+            with self.subTest(case=case):
+                api = FakeOrphanGitHubApi(self.candidate)
+                if case == "unmerged":
+                    api.successor["merged"] = False
+                elif case == "wrong_base":
+                    api.successor["base"]["ref"] = "feature"
+                elif case == "unreachable":
+                    api.merged_compare["merge_base_commit"]["sha"] = "b" * 40
+                else:
+                    api.merged_compare["status"] = "diverged"
+                self.assertEqual(self.run_candidate(api=api), "preserved")
+                self.assertEqual(api.deleted, [])
+
+    def test_branch_provenance_mutations_fail_closed(self):
+        for case in ("wrong_base", "wrong_ahead", "wrong_status"):
+            with self.subTest(case=case):
+                api = FakeOrphanGitHubApi(self.candidate)
+                if case == "wrong_base":
+                    api.history["merge_base_commit"]["sha"] = "b" * 40
+                elif case == "wrong_ahead":
+                    api.history["ahead_by"] += 1
+                else:
+                    api.history["status"] = "ahead"
+                self.assertEqual(self.run_candidate(api=api), "preserved")
+                self.assertEqual(api.deleted, [])
+
+    def test_any_main_code_or_test_witness_change_preserves_branch(self):
+        for path, _ in self.candidate.main_witnesses:
+            with self.subTest(path=path):
+                api = FakeOrphanGitHubApi(self.candidate)
+                api.witnesses[path] = "f" * 40
+                self.assertEqual(self.run_candidate(api=api), "preserved")
+                self.assertEqual(api.deleted, [])
 
 if __name__ == "__main__":
     unittest.main()
