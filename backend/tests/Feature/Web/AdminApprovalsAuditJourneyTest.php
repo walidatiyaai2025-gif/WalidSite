@@ -39,7 +39,7 @@ final class AdminApprovalsAuditJourneyTest extends TestCase
             'title_ar' => 'محتوى موثق للمراجعة',
             'canonical_lang' => 'en',
         ]);
-        $article->revisions()->create([
+        $revision = $article->revisions()->create([
             'revision_no' => 1,
             'status' => $verified ? 'validated' : 'draft',
             'body_md' => 'PRIVATE-DRAFT-BODY-NEVER-RENDER DO-NOT-LEAK',
@@ -53,6 +53,18 @@ final class AdminApprovalsAuditJourneyTest extends TestCase
                 'risk_level' => $risk,
                 'contains_professional_claims' => $claims,
             ],
+        ]);
+
+        // Fixture has a real distinct writer identity. Browser-side checker
+        // restrictions must not be bypassed by actorless legacy snapshots.
+        $author = User::create([
+            'email' => Str::lower(Str::random(16)).'@example.test',
+            'status' => 'active',
+            'password_hash' => null,
+        ]);
+        DB::table('article_revisions')->where('id', $revision->id)->update([
+            'author_user_id' => $author->id,
+            'last_editor_user_id' => $author->id,
         ]);
 
         return $article;
