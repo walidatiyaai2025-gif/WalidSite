@@ -12,6 +12,10 @@ final class PageContentDefaults
     /** @return array<string, array<string, array<string, array{en:string,ar:string}>>> */
     public static function all(): array
     {
+        static $cached = null;
+        if ($cached !== null) {
+            return $cached;
+        }
         $items = [
             'home' => [
                 'hero' => [
@@ -79,7 +83,7 @@ final class PageContentDefaults
             $items['expertise'][$section]['highlight_heading'] = $panel['highlightTitle'];
         }
 
-        return $items;
+        return $cached = $items;
     }
 
     /** Exact approved screenshot text definitions; source is open owner-preview PR #800. */
