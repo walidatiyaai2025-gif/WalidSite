@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use DomainException;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -65,6 +66,18 @@ class ArticleRevision extends Model
             || ! is_array($validation)
             || ($validation['citations_passed'] ?? false) !== true
             || ($validation['technical_passed'] ?? false) !== true) {
+            return false;
+        }
+
+        // Rejection applies to this immutable article/revision identity,
+        // not merely to the last event on the article. A later status or
+        // validation edit cannot resurrect a rejected, unchanged snapshot.
+        // The runner records the durable event within the article-row
+        // transaction used by BOTH HTML and JSON approval actions.
+        if (DB::table('editorial_events')
+            ->where('article_id', $this->article_id)
+            ->where('revision_no', $this->revision_no)
+            ->where('action', 'manual_rejected')->exists()) {
             return false;
         }
 
