@@ -2562,7 +2562,9 @@ Route::middleware('auth:web')->prefix('admin')->group(function (): void {
         }, 3);
         return redirect()->route('admin.operations.projects', [
             'lang' => $request->query('lang') === 'ar' ? 'ar' : 'en',
-        ])->with('status', 'Private project draft updated; not published.');
+        ])->with('status', $request->query('lang') === 'ar'
+            ? 'تم حفظ مسودة المشروع الخاصة دون نشرها.'
+            : 'Private project draft updated; not published.');
     })->whereUuid('project')->name('admin.operations.projects.update')
         ->middleware('throttle:10,1');
 
