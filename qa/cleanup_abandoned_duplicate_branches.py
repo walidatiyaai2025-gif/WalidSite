@@ -49,6 +49,11 @@ DUPLICATES = (
     # Closed-unmerged privacy PR #502 was superseded by accepted bilingual
     # account-controls and contact-rights journey in merged PR #506.
     AbandonedDuplicate(502, "feat/480-account-privacy-journey-completion", "4eb0bf6d1f8399931d4e4f93efc15db5bb0fc836", 506),
+    # #690 was closed WITHOUT merge in favor of exact tested/merged #688.
+    # Its W1 controller omitted Validator::validate() and a strict query
+    # allowlist. The sole useful AR form-body regression is in main via #688.
+    # Preserve the old ref if it moved, is reused, or #688 provenance fails.
+    AbandonedDuplicate(690, "fix/685-contact-body-query-isolation", "fa6345759424911e6f6d5ddfc7f3cf77544c7307", 688),
 )
 
 
