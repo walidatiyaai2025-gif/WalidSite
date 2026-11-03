@@ -80,6 +80,18 @@ class AbandonedBranchCleanupTest(unittest.TestCase):
         self.assertEqual(reconcile_one(CANDIDATE, self.api, REPO), "preserved")
         self.assertEqual(self.api.deleted, [])
 
+    def test_pr690_replacement_keeps_form_body_regression_and_validation(self):
+        """Do not prune unmerged #690 until its useful test exists on main."""
+        root = Path(__file__).resolve().parents[2]
+        controller = (root / "backend/app/Http/Controllers/Api/PublicContactController.php").read_text()
+        test_code = (root / "backend/tests/Feature/Api/PublicContactTest.php").read_text()
+        self.assertIn(
+            "test_form_encoded_contact_body_still_submits_with_ar_locale",
+            test_code,
+        )
+        self.assertIn("array_diff(array_keys($query), ['lang'])", controller)
+        self.assertIn("])->validate();", controller)
+
     def test_exact_duplicate_with_verified_merged_successor_is_removed(self):
         self.assertEqual(reconcile_one(CANDIDATE, self.api, REPO), "deleted")
         self.assertEqual(
@@ -101,6 +113,8 @@ class AbandonedBranchCleanupTest(unittest.TestCase):
             525: ("fix/521-serialize-mobile-bookmark-quota", 523),
             # Accepted merged feature PR #506 supersedes closed PR #502.
             502: ("feat/480-account-privacy-journey-completion", 506),
+            # Replacement #688 retains AR form bodies and strict JSON/consent validation.
+            690: ("fix/685-contact-body-query-isolation", 688),
         }
         for pr, (branch, successor) in expected.items():
             with self.subTest(pr=pr):
