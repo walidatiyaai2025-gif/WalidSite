@@ -326,6 +326,47 @@ void main() {
     expect(find.text('https://docs.example.org/recovery'), findsOneWidget);
   });
 
+  testWidgets('in-flight old article cannot overwrite a different RTL detail', (tester) async {
+    final previous = Completer<VerifiedArticle>();
+    const next = VerifiedArticle(
+      slug: 'next-verified',
+      title: 'دليل منشور',
+      body: 'محتوى موثق جديد',
+      citations: ['https://docs.example.org/new'],
+    );
+    await tester.pumpWidget(MaterialApp(
+      home: VerifiedArticleFreshDetail(
+        slug: 'previous-verified',
+        arabic: false,
+        loader: (_) => previous.future,
+      ),
+    ));
+    await tester.pump(const Duration(milliseconds: 1));
+    expect(find.byKey(const Key('verified-article-body')), findsNothing);
+
+    await tester.pumpWidget(MaterialApp(
+      home: VerifiedArticleFreshDetail(
+        slug: 'next-verified',
+        arabic: true,
+        loader: (_) => SynchronousFuture<VerifiedArticle>(next),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    previous.complete(const VerifiedArticle(
+      slug: 'previous-verified',
+      title: 'Earlier revoked',
+      body: 'Old private revision',
+      citations: ['https://docs.example.org/old'],
+    ));
+    await tester.pumpAndSettle();
+    expect(find.text('محتوى موثق جديد'), findsOneWidget);
+    expect(find.text('Old private revision'), findsNothing);
+    expect(find.text('https://docs.example.org/old'), findsNothing);
+    expect(Directionality.of(tester.element(
+      find.byKey(const Key('verified-article-body')),
+    )), TextDirection.rtl);
+  });
+
   testWidgets('Arabic withdrawn article gives safe RTL recovery', (tester) async {
     final cached = VerifiedArticle.parseList(safeJson);
     await tester.pumpWidget(MaterialApp(
