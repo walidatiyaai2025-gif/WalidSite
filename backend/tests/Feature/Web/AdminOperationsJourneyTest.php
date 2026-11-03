@@ -645,4 +645,87 @@ final class AdminOperationsJourneyTest extends TestCase
     }
 
 
+
+    public function test_admin_project_discovery_combines_limited_search_sort_and_visibility_without_leaking_private_evidence(): void
+    {
+        $this->withoutMiddleware(\Illuminate\Routing\Middleware\ThrottleRequests::class);
+        Http::fake();
+
+        $alpha = $this->project();
+        $alpha->forceFill(['title' => 'Alpha planning', 'slug' => 'alpha-plan', 'status' => 'research'])->save();
+        $beta = $this->project();
+        $beta->forceFill(['title' => 'Beta release', 'slug' => 'beta-release', 'status' => 'completed'])->save();
+        $special = $this->project();
+        $special->forceFill(['title' => 'Project 100% _secure', 'slug' => 'safe-search'])->save();
+        DB::table('project_evidence')->insert([
+            'id' => (string) Str::uuid(), 'project_id' => $alpha->id,
+            'evidence_type' => 'document', 'url' => 'https://example.org/PRIVATE-OWNER-EVIDENCE',
+            'visibility' => 'private', 'verified_at' => null,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $this->actingAs($this->account('admin'), 'web');
+        foreach (['en', 'ar'] as $locale) {
+            $res = $this->get('/admin/projects?lang='.$locale.'&q=alpha&sort=title&visibility=private&status=research')
+                ->assertOk()->assertSee('Alpha planning')
+                ->assertDontSee('Beta release')->assertDontSee('Project 100% _secure')
+                ->assertDontSee('PRIVATE-OWNER-EVIDENCE')
+                ->assertSee('name="q"', false)
+                ->assertSee('value="alpha"', false)
+                ->assertSee('value="title" selected', false)
+                ->assertHeader('Cache-Control', 'no-store, private');
+            $this->assertStringContainsString('q=alpha', $res->getContent());
+            $res->assertSee('dir="'.($locale === 'ar' ? 'rtl' : 'ltr').'"', false)
+                ->assertSee('lang="'.$locale.'"', false);
+            $switch = route('admin.operations.projects', [
+                'lang' => $locale === 'ar' ? 'en' : 'ar',
+                'status' => 'research', 'visibility' => 'private',
+                'q' => 'alpha', 'sort' => 'title',
+            ]);
+            $res->assertSee('href="'.str_replace('&', '&amp;', $switch).'"', false);
+        }
+        $this->get('/admin/projects?q=%25')->assertOk()
+            ->assertSee('Project 100% _secure')->assertDontSee('Alpha planning');
+        $this->get('/admin/projects?q=_secure')->assertOk()
+            ->assertSee('Project 100% _secure')->assertDontSee('Beta release');
+        $this->get('/admin/projects?q=does-not-exist&lang=ar')->assertOk()
+            ->assertSee('لا توجد مشاريع تطابق النتائج.')
+            ->assertSee('عرض جميع المشاريع');
+        $this->get('/admin/projects?q=%3Cscript%3Ealert(1)%3C%2Fscript%3E')->assertOk()
+            ->assertDontSee('<script>alert(1)</script>', false)
+            ->assertSee('&lt;script&gt;', false);
+        Http::assertNothingSent();
+    }
+
+    public function test_project_discovery_rejects_invalid_input_and_retains_filters_across_pages(): void
+    {
+        $this->withoutMiddleware(\Illuminate\Routing\Middleware\ThrottleRequests::class);
+        Http::fake();
+        $owner = $this->account('owner');
+        for ($i = 0; $i < 23; $i++) {
+            $project = $this->project();
+            $project->forceFill([
+                'title' => sprintf('Reviewable item %02d', $i),
+                'slug' => sprintf('reviewable-item-%02d', $i),
+            ])->save();
+        }
+
+        $this->get('/admin/projects?q=Reviewable')->assertRedirect('/admin/login');
+        $this->actingAs($this->account('reader'), 'web')
+            ->get('/admin/projects?q=Reviewable')->assertForbidden();
+        $this->actingAs($owner, 'web');
+        $page = $this->get('/admin/projects?lang=ar&q=Reviewable&sort=title&visibility=private&page=2')
+            ->assertOk()->assertSee('Reviewable item 20')
+            ->assertDontSee('Reviewable item 00')
+            ->assertSee('dir="rtl"', false)
+            ->assertSee('q=Reviewable', false)
+            ->assertSee('sort=title', false)
+            ->assertSee('visibility=private', false);
+        $page->assertDontSee('type="search" name="q" maxlength="100" value="Reviewable" onfocus=', false);
+        foreach (['sort=unknown', 'sort[]=title', 'q[]=abc', 'q='.str_repeat('x', 101), 'visibility=unknown'] as $query) {
+            $this->get('/admin/projects?'.$query)->assertRedirect()
+                ->assertSessionHasErrors();
+        }
+        Http::assertNothingSent();
+    }
 }

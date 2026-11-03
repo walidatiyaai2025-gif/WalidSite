@@ -12,6 +12,7 @@ import argparse
 import hashlib
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -33,6 +34,15 @@ EXPECTED_IDS = {
     *(f"MOBILE-{i:02d}" for i in range(1, 14)),
 }
 EXPECTED_GATES = {f"G-{i:02d}" for i in range(1, 21)}
+# Source-sensitive files that invalidate integrated QA proof after they change.
+# The evidence itself may be appended in a later commit without invalidating
+# the runtime SHA. Do not silently exempt application, API or visual QA code.
+SOURCE_PATHS = (
+    "backend", "mobile", "api", "contracts", "database", "assets",
+    "locales", "qa", ".github/workflows", "design/tokens.json",
+    ":(exclude)qa/t024-evidence", ":(exclude)qa/visual-captures",
+    ":(exclude)qa/visual-diagnostics",
+)
 
 
 def _json(root: Path, path: str):
@@ -112,6 +122,50 @@ def proof_ok(root: Path, proof: object) -> bool:
     return hashlib.sha256(target.read_bytes()).hexdigest() == proof["sha256"]
 
 
+def source_proof_ok(root: Path, source_sha: str) -> bool:
+    """Confirm an evidence SHA is an ancestor with unchanged source at HEAD.
+
+    A hash of an evidence file alone is not proof that the named source commit
+    exists or that the tested product matches this checkout. Source commits
+    may predate evidence-only commits; product/API/QA changes invalidate them.
+    No external network calls, shell commands or credentials are used.
+    """
+    if not isinstance(source_sha, str) or not SHA40.fullmatch(source_sha):
+        return False
+
+    root = root.resolve()
+
+    def git(*args: str) -> subprocess.CompletedProcess[str] | None:
+        try:
+            return subprocess.run(
+                ["git", "-C", str(root), *args], capture_output=True,
+                text=True, timeout=10, check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+
+    identity = git("rev-parse", "--show-toplevel", "HEAD")
+    if identity is None or identity.returncode != 0:
+        return False
+    lines = identity.stdout.splitlines()
+    if (len(lines) != 2 or Path(lines[0]).resolve() != root
+            or not SHA40.fullmatch(lines[1])):
+        return False
+
+    ancestor = git("merge-base", "--is-ancestor", source_sha, lines[1])
+    if ancestor is None or ancestor.returncode != 0:
+        return False
+
+    # Evidence can be committed after the tested SHA. Only non-source changes
+    # can happen between that revision and the release candidate.
+    drift = git("diff", "--quiet", source_sha, lines[1], "--", *SOURCE_PATHS)
+    if drift is None or drift.returncode != 0:
+        return False
+    # A checkout with uncommitted/new source code is not the tested revision.
+    dirty = git("status", "--porcelain", "--untracked-files=all", "--", *SOURCE_PATHS)
+    return dirty is not None and dirty.returncode == 0 and not dirty.stdout.strip()
+
+
 def audit(root: Path = ROOT) -> tuple[dict, list[str]]:
     root = root.resolve()
     errors: list[str] = []
@@ -176,13 +230,25 @@ def audit(root: Path = ROOT) -> tuple[dict, list[str]]:
     if set(gate_evidence) != EXPECTED_GATES:
         errors.append("Evidence must enumerate all G-01..G-20 gates")
 
+    # One checked-out revision per audit. Cache Git ancestry/source-drift
+    # checks by SHA across the 97 actions, 46 API operations and 20 gates.
+    checked_sources: dict[str, bool] = {}
+
+    def checked_proof(proof: object) -> bool:
+        if not proof_ok(root, proof):
+            return False
+        sha = proof["source_sha"]
+        if sha not in checked_sources:
+            checked_sources[sha] = source_proof_ok(root, sha)
+        return checked_sources[sha]
+
     def count_proven(mapping: dict, allowed: set[str], label: str) -> int:
         count = 0
         for key, proofs in mapping.items():
             if key not in allowed:
                 continue
             if (not isinstance(proofs, list) or not proofs
-                    or any(not proof_ok(root, p) for p in proofs)):
+                    or any(not checked_proof(p) for p in proofs)):
                 errors.append(f"{label} {key}: unverifiable source-pinned proof")
             else:
                 count += 1
@@ -208,7 +274,7 @@ def audit(root: Path = ROOT) -> tuple[dict, list[str]]:
         elif status == "pending" and proofs == []:
             pass
         elif (status == "verified" and isinstance(proofs, list) and proofs
-              and all(proof_ok(root, p) for p in proofs)):
+              and all(checked_proof(p) for p in proofs)):
             gate_verified += 1
         else:
             errors.append(gid + ": status/evidence mismatch or unverified proof")

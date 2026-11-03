@@ -131,7 +131,7 @@ jobs:
           echo "PASS: MariaDB migration and repeated owner CV seed are idempotent and fail-closed\n";
           '
       - name: Issue 481 real authenticated Admin runtime diagnostics
-        if: ${{ github.event_name == 'pull_request' && startsWith(github.head_ref, 'feat/481-') }}
+        if: ${{ github.event_name == 'pull_request' && (startsWith(github.head_ref, 'feat/481-') || startsWith(github.head_ref, 'fix/481-') || startsWith(github.head_ref, 'chore/481-')) }}
         shell: bash
         env:
           APP_ENV: testing
@@ -305,9 +305,9 @@ jobs:
 
           report = json.loads(Path(os.environ["REPORT_PATH"]).read_text(encoding="utf-8"))
           screens = report.get("screens", {})
-          expected = {f"WEB-{i:02d}" for i in range(1, 15)} - {"WEB-05", "WEB-06", "WEB-08"}
+          expected = {f"WEB-{i:02d}" for i in range(1, 15)} - {"WEB-05", "WEB-08"}
           if set(screens) != expected:
-              raise SystemExit("Web diagnostics must cover exactly 11 routable public Web pages")
+              raise SystemExit("Web diagnostics must cover exactly 12 routable public Web pages")
           allowed = {"mismatch", "exact_pixels_unattested"}
           invalid = {sid: row.get("status") for sid, row in screens.items()
                      if row.get("status") not in allowed}
@@ -315,21 +315,21 @@ jobs:
               raise SystemExit("Web renderer/runtime failure: " + json.dumps(invalid, sort_keys=True))
           if any(row.get("runtime_size") != row.get("reference_size") for row in screens.values()):
               raise SystemExit("Web runtime PNG dimensions disagree with immutable references")
-          print("REAL WEB RUNTIME CAPTURES VERIFIED: 11/11 currently routable static pages")
+          print("REAL WEB RUNTIME CAPTURES VERIFIED: 12/12 currently routable static pages")
           print("WEB ZERO-RGBA MATCHES: " + str(sum(
               row.get("mismatching_rgba_pixels", 0) == 0 for row in screens.values()
-          )) + "/11")
-          print("WEB-06 missing on main: blocked by T007 #8 draft; not fabricated")
+          )) + "/12")
+          print("WEB-06 AI Engineering: captured on the real Laravel GET route")
           print("DYNAMIC WEB-05/08: pending approved published slugs; not fabricated")
           PY
 
       - name: Upload Issue 481 Admin runtime visual diagnostics
-        if: ${{ always() && github.event_name == 'pull_request' && startsWith(github.head_ref, 'feat/481-') }}
+        if: ${{ always() && github.event_name == 'pull_request' && (startsWith(github.head_ref, 'feat/481-') || startsWith(github.head_ref, 'fix/481-') || startsWith(github.head_ref, 'chore/481-')) }}
         uses: actions/upload-artifact@v4
         with:
           name: issue-481-admin-and-web-runtime-visual-diagnostics
           path: qa/visual-diagnostics/
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 7
       - name: T007 real Laravel visual diagnostics
         id: t007_visual_diagnostics

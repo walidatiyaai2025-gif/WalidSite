@@ -2287,8 +2287,12 @@ Route::middleware('auth:web')->prefix('admin')->group(function (): void {
             'lang' => ['sometimes', 'in:ar,en'],
             'status' => ['sometimes', 'in:completed,in_progress,research,archived'],
             'visibility' => ['sometimes', 'in:public,private'],
+            'q' => ['sometimes', 'nullable', 'string', 'max:100'],
+            'sort' => ['sometimes', 'in:recent,title'],
             'page' => ['sometimes', 'integer', 'between:1,10000'],
         ]);
+        $search = trim((string) ($input['q'] ?? ''));
+        $sort = $input['sort'] ?? 'recent';
         $query = \App\Models\Project::query()->withCount([
             'evidence',
             'evidence as verified_public_evidence_count' => static fn ($q) => $q
@@ -2296,8 +2300,38 @@ Route::middleware('auth:web')->prefix('admin')->group(function (): void {
                 ->where('verified_at', '<=', now()),
         ])->when(isset($input['status']), static fn ($q) => $q->where('status', $input['status']))
             ->when(isset($input['visibility']), static fn ($q) => $q->where('visibility', $input['visibility']));
-        $projects = $query->orderByDesc('updated_at')->orderBy('id')->paginate(20)
-            ->appends($request->only(['lang', 'status', 'visibility']));
+        if ($search !== '') {
+            // Search human-visible project titles and route-safe slugs only.
+            // Treat % and _ literally, never as caller-controlled SQL wildcards.
+            $escaped = str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $search);
+            $pattern = '%'.$escaped.'%';
+            $query->where(static fn ($q) => $q
+                ->whereRaw("title LIKE ? ESCAPE '!'", [$pattern])
+                ->orWhereRaw("slug LIKE ? ESCAPE '!'", [$pattern]));
+        }
+        $projects = ($sort === 'title'
+            ? $query->orderBy('title')->orderBy('id')
+            : $query->orderByDesc('updated_at')->orderBy('id'))
+            ->paginate(20)->appends($request->only(['lang', 'status', 'visibility', 'q', 'sort']));
+
+        // ADMIN-09 publication readiness must match the public case-study
+        // serializer, not merely a database flag. Eager-load only reviewed
+        // public evidence, limited per project, before replacing the owner
+        // relation with their private review queue below.
+        $rows = $projects->getCollection();
+        $rows->load(['evidence' => static fn ($q) => $q
+            ->where('visibility', 'public')->whereNotNull('verified_at')
+            ->where('verified_at', '<=', now('UTC'))->orderBy('id')->limit(50)]);
+        $portfolio = app(\App\Http\Controllers\Api\PublicPortfolioController::class);
+        foreach ($rows as $project) {
+            $projection = $portfolio->publicProjectData($project, $request);
+            $project->setAttribute('usable_public_evidence_count', count($projection['evidence_urls']));
+            $project->setAttribute('publication_content_ready', collect([
+                $project->title, $project->summary_en, $project->summary_ar,
+                $project->role_en, $project->role_ar,
+            ])->every(static fn ($value): bool => is_string($value) && trim($value) !== ''));
+        }
+
         // Private URLs are visible only to the owner, never to other admins.
         // Laravel's eager-limit confines the review queue to ten per project.
         if ($request->user()->hasRole('owner')) {
@@ -2309,6 +2343,7 @@ Route::middleware('auth:web')->prefix('admin')->group(function (): void {
             'section' => 'projects', 'projects' => $projects,
             'statusFilter' => $input['status'] ?? '',
             'visibilityFilter' => $input['visibility'] ?? '',
+            'projectSearch' => $search, 'projectSort' => $sort,
         ])->header('Cache-Control', 'no-store, private');
     })->name('admin.operations.projects')->middleware('throttle:30,1');
 
@@ -2789,12 +2824,43 @@ Route::middleware('auth:web')->prefix('admin')->group(function (): void {
                 'X-Content-Type-Options' => 'nosniff',
             ]);
         }
+        // ADMIN-11 discovery KPIs must describe URLs visitors can actually
+        // open, not only rows whose SQL publication flag is set. The public
+        // Projects API and Web listing reject non-route slugs and unsafe,
+        // revoked or future-dated evidence after SQL filtering.
+        $portfolio = app(\App\Http\Controllers\Api\PublicPortfolioController::class);
+        $publicProjects = 0;
+        foreach (\App\Models\Project::query()->publiclyVerified()
+            ->with(['evidence' => static fn ($evidence) => $evidence
+                ->where('visibility', 'public')
+                ->whereNotNull('verified_at')->where('verified_at', '<=', now())
+                ->orderBy('id')->limit(50)])
+            ->orderBy('id')->lazy(100) as $project) {
+            if ($portfolio->publicProjectData($project, $request)['evidence_urls'] !== []) {
+                $publicProjects++;
+            }
+        }
+
+        // SQL publication alone is also insufficient for articles: the
+        // exact pinned revision must still satisfy current citations,
+        // editorial validation and hero-asset rights, and have a route-safe
+        // slug. Mirror the public blog's discovery gate without fetching URLs.
+        $publicArticles = 0;
+        foreach (\App\Models\Article::query()->publiclyVisible()
+            ->orderBy('id')->lazy(100) as $article) {
+            if (is_string($article->slug)
+                && preg_match('/\A[A-Za-z0-9-]+\z/D', $article->slug) === 1
+                && $article->publicRevision() !== null) {
+                $publicArticles++;
+            }
+        }
+
         return response()->view('admin.operations', [
             'section' => 'analytics', 'day' => $day, 'startDay' => $startDay,
             'window' => $window, 'usage' => $usage,
             'jobs' => $jobs,
-            'publicProjects' => \App\Models\Project::query()->publiclyVerified()->count(),
-            'publicArticles' => \App\Models\Article::query()->publiclyVisible()->count(),
+            'publicProjects' => $publicProjects,
+            'publicArticles' => $publicArticles,
         ])->header('Cache-Control', 'no-store, private');
     })->name('admin.operations.analytics')->middleware('throttle:30,1');
 });

@@ -41,7 +41,9 @@
 @php($statusLabels = $locale === 'ar'
     ? ['completed' => 'مكتمل', 'in_progress' => 'قيد التنفيذ', 'research' => 'بحث', 'archived' => 'مؤرشف']
     : ['completed' => 'Completed', 'in_progress' => 'In progress', 'research' => 'Research', 'archived' => 'Archived'])
-@php($filtersApplied = $search !== '' || $status !== '')
+{{-- Follow only server-normalized filters; never relay arbitrary query keys into paging. --}}
+@php($safeProjectFilters = array_filter(['q' => $search, 'status' => $status], static fn ($value) => is_string($value) && $value !== ''))
+@php($filtersApplied = $safeProjectFilters !== [])
 @section('content')
 <section class="site-wrap case-page" aria-labelledby="project-heading">
     <h1 id="project-heading">{{ $locale === 'ar' ? 'مشاريع ودراسات حالة موثقة' : 'Verified projects and case studies' }}</h1>
@@ -109,13 +111,13 @@
     @if ($paginated->hasPages())
         <nav class="case-pagination" aria-label="{{ $locale === 'ar' ? 'صفحات المشاريع' : 'Project pages' }}">
             @if ($paginated->previousPageUrl())
-                <a href="{{ $paginated->previousPageUrl() }}">{{ $locale === 'ar' ? 'السابق' : 'Previous' }}</a>
+                <a href="{{ route('public.projects', array_merge(['lang' => $locale], $safeProjectFilters, ['page' => $paginated->currentPage() - 1])) }}">{{ $locale === 'ar' ? 'السابق' : 'Previous' }}</a>
             @else
                 <span aria-disabled="true">{{ $locale === 'ar' ? 'السابق' : 'Previous' }}</span>
             @endif
             <span aria-current="page">{{ $locale === 'ar' ? 'الصفحة' : 'Page' }} {{ $paginated->currentPage() }} / {{ $paginated->lastPage() }}</span>
             @if ($paginated->nextPageUrl())
-                <a href="{{ $paginated->nextPageUrl() }}">{{ $locale === 'ar' ? 'التالي' : 'Next' }}</a>
+                <a href="{{ route('public.projects', array_merge(['lang' => $locale], $safeProjectFilters, ['page' => $paginated->currentPage() + 1])) }}">{{ $locale === 'ar' ? 'التالي' : 'Next' }}</a>
             @else
                 <span aria-disabled="true">{{ $locale === 'ar' ? 'التالي' : 'Next' }}</span>
             @endif
