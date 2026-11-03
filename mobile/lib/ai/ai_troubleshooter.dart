@@ -147,7 +147,28 @@ class MobileAiClient {
     if (origin == null) {
       throw const FormatException('API origin is not configured');
     }
-    final url = origin.replace(path: path);
+    // This path always uses the build-time, HTTPS-validated origin. Neither
+    // user text nor a server response may redirect an authenticated request.
+    return boundedExchange(
+      method,
+      origin.replace(path: path),
+      body: body,
+      bearer: bearer,
+    );
+  }
+
+  /// The actual production HTTP transport, exposed for loopback fixture
+  /// verification of streaming and hanging-header deadlines. Only _jsonRequest
+  /// selects the production URL, after the canonical HTTPS origin validator.
+  /// No runtime UI or saved preference can change [url] or [totalTimeout].
+  @visibleForTesting
+  static Future<MapEntry<int, String>> boundedExchange(
+    String method,
+    Uri url, {
+    Map<String, Object?>? body,
+    String? bearer,
+    Duration totalTimeout = const Duration(seconds: 12),
+  }) async {
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
     try {
       return await withinDeadline(() async {
@@ -171,7 +192,7 @@ class MobileAiClient {
         }
         final raw = utf8.decode(bytes.takeBytes(), allowMalformed: false);
         return MapEntry(response.statusCode, raw);
-      });
+      }, timeout: totalTimeout);
     } finally {
       // Also abort a slow-drip HTTP stream when the total deadline expires.
       // Never allow an expired private request to keep its socket alive.
