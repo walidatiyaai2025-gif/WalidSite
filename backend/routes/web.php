@@ -1887,9 +1887,10 @@ Route::get('/contact', function (Request $request) {
     $available = is_string($recipient) && filter_var($recipient, FILTER_VALIDATE_EMAIL)
         && in_array(config('mail.default'), ['smtp', 'sendmail', 'ses', 'ses-v2', 'postmark', 'resend'], true);
 
-    return view('public.contact', compact(
+    return response()->view('public.contact', compact(
         'available', 'reportArticle', 'reportProject', 'suggestedSubject', 'privacyRight'
-    ));
+    ))->header('Cache-Control', 'private, no-store')
+        ->header('X-Content-Type-Options', 'nosniff');
 })->name('public.contact');
 
 Route::post('/contact', function (Request $request) {
