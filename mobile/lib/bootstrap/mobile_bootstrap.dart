@@ -119,7 +119,10 @@ class MobileBootstrapCapabilities {
       // Reject aliases, duplicate locale keys and encoded query spellings.
       // The server advertises only /privacy?lang=en|ar; ambiguous URLs
       // must never cross the application-to-browser trust boundary.
-      if (relative == null ||
+      // Dart Uri can normalize percent-encoded unreserved query letters.
+      // Compare the unparsed server field as well as the parsed URI.
+      if (privacy != '/privacy?lang=$locale' ||
+          relative == null ||
           relative.query != 'lang=$locale' ||
           relative.hasScheme ||
           relative.hasAuthority ||
