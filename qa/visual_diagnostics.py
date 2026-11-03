@@ -11,6 +11,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import shutil
 from pathlib import Path
 
 from PIL import Image, UnidentifiedImageError
@@ -71,103 +72,121 @@ def diagnose(root: Path, plan: object, commit: str, *, runner=subprocess.run,
     target = parent / (commit + ("-" + group if group else ""))
     if qa_dir.is_symlink() or parent.is_symlink() or target.exists() or target.is_symlink():
         raise CapturePlanError("Refusing unsafe or existing diagnostics destination")
-    parent.mkdir(parents=True, exist_ok=True)
-    if not parent.resolve().is_relative_to(qa_dir.resolve()):
-        raise CapturePlanError("Diagnostics directory escapes QA root")
-    target.mkdir()
-
-    screens = {
-        screen["id"]: screen
-        for screen in json.loads((root / "contracts/screens.json").read_text(encoding="utf-8"))["screens"]
-    }
-    for item in entries:
-        screen_id = item["screen_id"]
-        ref_path = root / screens[screen_id]["reference_image"]
-        info = {
-            "route": item["route"],
-            "locale": item["locale"],
-            "device_pixel_ratio": item["dpr"],
-            "status": "renderer_failed",
+    # Stage ALL temporary renderer PNGs and previous-screen diagnostics
+    # outside Git: even generated PNGs inside qa/ would invalidate the strict
+    # verified_source_checkout() call made after each renderer exits.
+    with tempfile.TemporaryDirectory(prefix="walidsite-visual-diagnostics-") as scratch:
+        staging = Path(scratch)
+        if staging.resolve().is_relative_to(root):
+            raise CapturePlanError("Diagnostics staging must be outside Git checkout")
+        screens = {
+            screen["id"]: screen
+            for screen in json.loads((root / "contracts/screens.json").read_text(encoding="utf-8"))["screens"]
         }
-        report["screens"][screen_id] = info
-        with Image.open(ref_path) as im:
-            reference = im.convert("RGBA")
-        width, height = reference.size
-        info["reference_size"] = [width, height]
+        for item in entries:
+            screen_id = item["screen_id"]
+            ref_path = root / screens[screen_id]["reference_image"]
+            info = {
+                "route": item["route"],
+                "locale": item["locale"],
+                "device_pixel_ratio": item["dpr"],
+                "status": "renderer_failed",
+            }
+            report["screens"][screen_id] = info
+            with Image.open(ref_path) as im:
+                reference = im.convert("RGBA")
+            width, height = reference.size
+            info["reference_size"] = [width, height]
 
-        with tempfile.TemporaryDirectory(prefix="runtime-", dir=target) as work:
-            output = Path(work) / "runtime.png"
-            env = dict(os.environ)
-            env.update({
-                "WALIDSITE_CAPTURE_PATH": str(output),
-                "WALIDSITE_CAPTURE_WIDTH": str(width),
-                "WALIDSITE_CAPTURE_HEIGHT": str(height),
-                "WALIDSITE_CAPTURE_LOCALE": item["locale"],
-                "WALIDSITE_CAPTURE_DPR": str(item["dpr"]),
-                "WALIDSITE_CAPTURE_ROUTE": item["route"],
-            })
-            # A diagnostic comparison is meaningful only if the REAL source
-            # checkout remains pinned across the entire renderer invocation.
-            # Check even when the renderer fails or times out: a partial
-            # process must not alter source for subsequent screen captures.
-            try:
+            with tempfile.TemporaryDirectory(prefix="runtime-", dir=staging) as work:
+                output = Path(work) / "runtime.png"
+                env = dict(os.environ)
+                env.update({
+                    "WALIDSITE_CAPTURE_PATH": str(output),
+                    "WALIDSITE_CAPTURE_WIDTH": str(width),
+                    "WALIDSITE_CAPTURE_HEIGHT": str(height),
+                    "WALIDSITE_CAPTURE_LOCALE": item["locale"],
+                    "WALIDSITE_CAPTURE_DPR": str(item["dpr"]),
+                    "WALIDSITE_CAPTURE_ROUTE": item["route"],
+                })
+                # A diagnostic comparison is meaningful only if the REAL source
+                # checkout remains pinned across the entire renderer invocation.
+                # Check even when the renderer fails or times out: a partial
+                # process must not alter source for subsequent screen captures.
                 try:
-                    result = runner(
-                        item["renderer_command"], cwd=root, env=env,
-                        timeout=item["timeout"], check=False,
-                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                    )
-                except (OSError, subprocess.TimeoutExpired):
+                    try:
+                        result = runner(
+                            item["renderer_command"], cwd=root, env=env,
+                            timeout=item["timeout"], check=False,
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                        )
+                    except (OSError, subprocess.TimeoutExpired):
+                        info["status"] = "renderer_failed"
+                        continue
+                finally:
+                    if not verified_head(root, commit):
+                        raise CapturePlanError(
+                            "Renderer modified checked-out Git source during diagnostics"
+                        )
+                if result.returncode != 0 or output.is_symlink() or not output.is_file():
                     info["status"] = "renderer_failed"
                     continue
-            finally:
-                if not verified_head(root, commit):
-                    raise CapturePlanError(
-                        "Renderer modified checked-out Git source during diagnostics"
-                    )
-            if result.returncode != 0 or output.is_symlink() or not output.is_file():
-                info["status"] = "renderer_failed"
-                continue
-            if output.stat().st_size > MAX_RENDERED_PNG_BYTES:
-                info["status"] = "oversized_png"
-                continue
-            try:
-                with Image.open(output) as im:
-                    if im.format != "PNG":
-                        info["status"] = "invalid_png"
-                        continue
-                    actual = im.convert("RGBA")
-            except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError):
-                info["status"] = "invalid_png"
-                continue
+                if output.stat().st_size > MAX_RENDERED_PNG_BYTES:
+                    info["status"] = "oversized_png"
+                    continue
+                try:
+                    with Image.open(output) as im:
+                        if im.format != "PNG":
+                            info["status"] = "invalid_png"
+                            continue
+                        actual = im.convert("RGBA")
+                except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError):
+                    info["status"] = "invalid_png"
+                    continue
 
-            info["runtime_size"] = list(actual.size)
-            if actual.size != reference.size:
-                info["status"] = "wrong_dimensions"
-                continue
-            if output.read_bytes() == ref_path.read_bytes():
-                info["status"] = "source_copy_rejected"
-                continue
+                info["runtime_size"] = list(actual.size)
+                if actual.size != reference.size:
+                    info["status"] = "wrong_dimensions"
+                    continue
+                if output.read_bytes() == ref_path.read_bytes():
+                    info["status"] = "source_copy_rejected"
+                    continue
 
-            # A successful image is an independently produced renderer OUTPUT;
-            # its provenance must still be established by actual runtime audit.
-            output_copy = target / f"{screen_id}.runtime.png"
-            output_copy.write_bytes(output.read_bytes())
-            difference = target / f"{screen_id}.difference-preview.png"
-            mismatches, total = _compare_rgba(reference, actual, difference)
-            info["mismatching_rgba_pixels"] = mismatches
-            info["total_pixels"] = total
-            info["runtime_capture"] = output_copy.name
-            if mismatches:
-                info["status"] = "mismatch"
-                info["difference_preview"] = difference.name
-            else:
-                info["status"] = "exact_pixels_unattested"
+                # A successful image is an independently produced renderer OUTPUT;
+                # its provenance must still be established by actual runtime audit.
+                output_copy = staging / f"{screen_id}.runtime.png"
+                output_copy.write_bytes(output.read_bytes())
+                difference = staging / f"{screen_id}.difference-preview.png"
+                mismatches, total = _compare_rgba(reference, actual, difference)
+                info["mismatching_rgba_pixels"] = mismatches
+                info["total_pixels"] = total
+                info["runtime_capture"] = output_copy.name
+                if mismatches:
+                    info["status"] = "mismatch"
+                    info["difference_preview"] = difference.name
+                else:
+                    info["status"] = "exact_pixels_unattested"
 
-    # Diagnostic report is intentionally separate from the evidence ledger.
-    (target / "report.json").write_text(
-        json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
-    )
+        # Keep source attestation strict until ALL renderers are done.
+        # Publish only the resulting diagnostics after the final clean check.
+        if not verified_head(root, commit):
+            raise CapturePlanError("Renderer modified checked-out Git source during diagnostics")
+        parent.mkdir(parents=True, exist_ok=True)
+        if not parent.resolve().is_relative_to(qa_dir.resolve()):
+            raise CapturePlanError("Diagnostics directory escapes QA root")
+        target.mkdir()
+        try:
+            for artifact in staging.iterdir():
+                if artifact.is_symlink() or not artifact.is_file():
+                    raise CapturePlanError("Unsafe diagnostic staging artifact")
+                shutil.copyfile(artifact, target / artifact.name)
+            # Diagnostic report is never accepted visual evidence.
+            (target / "report.json").write_text(
+                json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+            )
+        except BaseException:
+            shutil.rmtree(target)
+            raise
     return report
 
 
