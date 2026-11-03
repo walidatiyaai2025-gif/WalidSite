@@ -219,13 +219,13 @@ class TestCpanelPackage(unittest.TestCase):
         with zipfile.ZipFile(self.output) as archive:
             files = {name: archive.read(name) for name in archive.namelist()}
         path = "application/.htaccess"
-        files[path] = b"Require all granted\\n"
+        files[path] = b"Require all granted\n"
         manifest = json.loads(files["PACKAGE-MANIFEST.json"])
         manifest["files"][path] = {
             "sha256": hashlib.sha256(files[path]).hexdigest(),
             "bytes": len(files[path]),
         }
-        files["PACKAGE-MANIFEST.json"] = (json.dumps(manifest, sort_keys=True) + "\\n").encode()
+        files["PACKAGE-MANIFEST.json"] = (json.dumps(manifest, sort_keys=True) + "\n").encode()
         with zipfile.ZipFile(self.output, "w") as archive:
             for name, data in files.items():
                 archive.writestr(name, data)
@@ -239,7 +239,7 @@ class TestCpanelPackage(unittest.TestCase):
         del files["contracts/.htaccess"]
         manifest = json.loads(files["PACKAGE-MANIFEST.json"])
         del manifest["files"]["contracts/.htaccess"]
-        files["PACKAGE-MANIFEST.json"] = (json.dumps(manifest, sort_keys=True) + "\\n").encode()
+        files["PACKAGE-MANIFEST.json"] = (json.dumps(manifest, sort_keys=True) + "\n").encode()
         with zipfile.ZipFile(self.output, "w") as archive:
             for name, data in files.items():
                 archive.writestr(name, data)
