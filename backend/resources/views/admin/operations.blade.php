@@ -201,7 +201,18 @@ summary{cursor:pointer;min-height:44px;padding:8px}
 @foreach($projects as $project)
 <tr><td>{{ $project->title }}<p class="muted">{{ $project->slug }}</p></td>
 <td>{{ $statusLabels[$project->status][$ar ? 1 : 0] ?? $project->status }}</td><td>{{ $visibilityLabels[$project->visibility][$ar ? 1 : 0] ?? $project->visibility }}</td>
-<td>{{ $project->verified_public_evidence_count }} / {{ $project->evidence_count }}</td>
+<td>{{ $project->verified_public_evidence_count }} / {{ $project->evidence_count }}
+<p class="muted">{{ $ar ? 'روابط أدلة صالحة للعرض العام' : 'Usable public evidence links' }}: <strong>{{ $project->usable_public_evidence_count }}</strong></p>
+@if(auth()->user()?->hasRole('owner') && $project->visibility==='private' && $project->published_at===null)
+@if($project->usable_public_evidence_count === 0)
+<p class="warn">{{ $ar ? 'لا يمكن النشر حتى اعتماد رابط دليل عام صالح ومسار مشروع صحيح.' : 'Publication blocked: review a safe public evidence link and route-safe project slug.' }}</p>
+@elseif(!$project->publication_content_ready)
+<p class="warn">{{ $ar ? 'يلزم إكمال العنوان والملخص والدور باللغتين قبل النشر.' : 'Complete title, summary and role in both languages before publication.' }}</p>
+@else
+<p class="safe">{{ $ar ? 'المشروع مؤهل لطلب النشر المنفصل بعد تأكيد المالك.' : 'Ready for a separate owner-confirmed publication request.' }}</p>
+@endif
+@endif
+</td>
 <td>
 @if(auth()->user()?->hasRole('owner') && $project->visibility==='private' && $project->published_at===null)
 <p><a href="{{ route('admin.operations.projects.evidence.review', ['project'=>$project->id,'lang'=>$locale]) }}">{{ $ar ? 'مراجعة جميع الأدلة الخاصة (صفحات)' : 'Review all private evidence (paginated)' }}</a></p>

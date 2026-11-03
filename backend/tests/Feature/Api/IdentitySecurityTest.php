@@ -169,4 +169,47 @@ class IdentitySecurityTest extends TestCase
         $this->assertFalse($reader->canAccessAdmin());
         $this->assertTrue($this->userWithRole('admin')->canAccessAdmin());
     }
+    public function test_admin_identity_check_requires_persisted_admin_bearer_not_web_session(): void
+    {
+        // Sanctum's first-party session TransientToken answers true to can()
+        // for every scope. A normal owner/admin web session must not acquire
+        // personal-access-token privileges at the JSON API boundary.
+        foreach (['owner', 'admin'] as $role) {
+            Auth::forgetGuards();
+            $user = $this->userWithRole($role);
+            $this->actingAs($user, 'web')
+                ->getJson('/api/v1/admin/identity-check')
+                ->assertForbidden();
+        }
+    }
+
+    public function test_admin_identity_check_rejects_wrong_scope_role_and_account_status(): void
+    {
+        $endpoint = '/api/v1/admin/identity-check';
+        $this->getJson($endpoint)->assertUnauthorized();
+
+        foreach ([
+            ['owner', 'mobile', 'active'],
+            ['reader', 'admin', 'active'],
+            ['owner', 'admin', 'inactive'],
+        ] as [$role, $scope, $status]) {
+            Auth::forgetGuards();
+            $user = $this->userWithRole($role, $status);
+            $token = $user->createToken('admin-boundary-test', [$scope], now()->addHour());
+            $this->withToken($token->plainTextToken)
+                ->getJson($endpoint)->assertForbidden();
+        }
+
+        foreach (['owner', 'admin'] as $role) {
+            Auth::forgetGuards();
+            $user = $this->userWithRole($role);
+            $token = $user->createToken('authorized-admin', ['admin'], now()->addHour());
+            $this->withToken($token->plainTextToken)
+                ->getJson($endpoint)
+                ->assertOk()
+                ->assertJsonPath('data.authorized', true)
+                ->assertHeader('Cache-Control', 'no-store, private');
+        }
+    }
+
 }

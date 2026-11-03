@@ -803,4 +803,41 @@ class EditorialPipelineTest extends TestCase
         }
     }
 
+
+    public function test_paid_image_usage_survives_asset_metadata_failure_without_retaining_artwork(): void
+    {
+        Storage::fake('local');
+        $png = 'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFklEQVR4nGMUSdnCwMDAxMDAwMDAAAANmgEwmATK1AAAAABJRU5ErkJggg==';
+        Http::fake(['https://models.example.org/v1/images/generations' =>
+            Http::response(['data' => [['b64_json' => $png]]], 200)]);
+        $provider = $this->provider();
+        $jobId = $this->claimedJob($provider, 'illustration', 100);
+
+        // Simulate DB metadata failure only AFTER a valid paid provider reply
+        // and the private image write. Neither an asset nor a free inference
+        // may be left behind.
+        \App\Models\Asset::creating(static function (): void {
+            throw new RuntimeException('fixture asset metadata write failure');
+        });
+
+        try {
+            app(EditorialAiGenerator::class)->illustration(
+                $provider, 'image-model', 'Abstract server backup network diagram',
+                $jobId, 'review-worker', 100
+            );
+            $this->fail('Private metadata failure must reject retained artwork.');
+        } catch (RuntimeException $exception) {
+            $this->assertSame('Artwork was not safely retained.', $exception->getMessage());
+        }
+
+        Http::assertSentCount(1);
+        $this->assertDatabaseCount('assets', 0);
+        $this->assertDatabaseCount('asset_variants', 0);
+        $this->assertSame([], Storage::disk('local')->allFiles('ai-artwork'));
+        $this->assertDatabaseHas('ai_usage', [
+            'job_id' => $jobId, 'cost_minor' => 100, 'cost_currency' => 'USD',
+        ]);
+        $this->assertSame(1, DB::table('ai_usage')->where('job_id', $jobId)->count());
+    }
+
 }

@@ -12,6 +12,12 @@
     'Infrastructure & Security' => 'software',
     'Project Delivery' => 'delivery',
 ])
+@php($categoryFilters = [
+    'Database & Reliability' => 'database',
+    'Software & Integration' => 'integration',
+    'Infrastructure & Security' => 'security',
+    'Project Delivery' => 'delivery',
+])
 @push('styles')
 <style>
 body:has(.expertise-screen){overflow-x:clip}
@@ -26,7 +32,7 @@ body:has(.expertise-screen) .header-links a[href*="/contact"]{background:#00A999
     min-height:326px;padding:34px 0;background:#EAF5FB}
 .expertise-hero::before{content:"";position:absolute;z-index:-1;inset:0 auto 0 50%;width:100vw;transform:translateX(-50%);background:#EAF5FB}
 .expertise-kicker{display:inline-block;min-width:190px;padding:7px 15px;margin:0 0 20px;border-radius:15px;background:#D8F4EF;color:#078E80;font-size:16px;font-weight:800}
-.expertise-hero h1{font-size:clamp(34px,4vw,48px);color:#1C4976;line-height:1.2;margin:0 0 18px}
+.expertise-hero h2{font-size:clamp(34px,4vw,48px);color:#1C4976;line-height:1.2;margin:0 0 18px}
 .expertise-hero p{color:#315471;font-size:19px;margin:0;max-width:750px}
 .expertise-hero-actions{display:flex;flex-wrap:wrap;gap:18px;margin-top:25px}
 .expertise-hero-actions a{display:inline-flex;min-height:54px;align-items:center;justify-content:center;min-width:190px;
@@ -64,10 +70,10 @@ body:has(.expertise-screen) .header-links a[href*="/contact"]{background:#00A999
 </style>
 @endpush
 <div class="expertise-screen">
-    <header class="expertise-hero">
+    <header class="expertise-hero" aria-labelledby="expertise-title">
         <div>
             <span class="expertise-kicker">{{ $locale === 'ar' ? 'القدرات الموثقة' : 'CAPABILITIES' }}</span>
-            <h1 id="expertise-title">{{ $locale === 'ar' ? 'الخبرات التقنية' : 'Expertise' }}</h1>
+            <h2 id="expertise-title">{{ $locale === 'ar' ? 'الخبرات التقنية' : 'Expertise' }}</h2>
             <p>{{ $locale === 'ar'
                 ? 'استكشف مجالات المهارات التقنية التي تمت الموافقة على نشر أدلتها، دون ادعاءات خبرة أو شهادات غير موثقة.'
                 : 'Explore engineering capabilities backed by reviewed public evidence, without unverified qualifications or claims.' }}</p>
@@ -78,7 +84,7 @@ body:has(.expertise-screen) .header-links a[href*="/contact"]{background:#00A999
         </div>
         <div class="expertise-art" aria-hidden="true"><span>{ }</span><span>&lt;/&gt;</span><span>DB</span></div>
     </header>
-    <section id="expertise-catalog" class="expertise-body" aria-labelledby="professional-section">
+    <section id="expertise-catalog" class="expertise-body" aria-labelledby="professional-section" tabindex="-1">
         <h2 class="expertise-section-heading" id="professional-section">{{ $locale === 'ar' ? 'المهارات المعتمدة' : 'Evidence-verified skills' }}</h2>
         <form class="expertise-filter" action="{{ route('public.expertise') }}" method="get" role="search"
               aria-label="{{ $locale === 'ar' ? 'تصفية المهارات الموثقة' : 'Filter verified skills' }}">
@@ -112,7 +118,12 @@ body:has(.expertise-screen) .header-links a[href*="/contact"]{background:#00A999
                         </ul>
                         <div class="expertise-card-footer">
                             @if(isset($categoryTracks[$category]))
+                                {{-- Retain the established recruiter journey as a separate action. --}}
                                 <a class="professional-track-link" href="{{ route('public.hire', ['lang' => $locale, 'track' => $categoryTracks[$category]]) }}">{{ $locale === 'ar' ? 'تصفية الخبرات حسب ' : 'Filter expertise by ' }}{{ $locale === 'ar' ? ($categoryLabelsAr[$category] ?? $category) : $category }}</a>
+                            @endif
+                            @if(isset($categoryFilters[$category]))
+                                {{-- Unlike recruiter tracks, this action filters exactly the clicked skill category. --}}
+                                <a class="expertise-card-filter" href="{{ route('public.expertise', ['lang' => $locale, 'category' => $categoryFilters[$category]]) }}">{{ $locale === 'ar' ? 'تصفية المهارات حسب ' : 'Filter skills by ' }}{{ $locale === 'ar' ? ($categoryLabelsAr[$category] ?? $category) : $category }}</a>
                             @else
                                 <span>{{ $locale === 'ar' ? 'المهارات المنشورة في هذا المجال' : 'Published verified skills' }}</span>
                             @endif

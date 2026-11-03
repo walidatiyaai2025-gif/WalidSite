@@ -80,6 +80,10 @@ def render(env=None):
     storage = env.get("WALIDSITE_CAPTURE_STORAGE_STATE")
     if urlsplit(url).path.startswith("/admin") and not storage:
         raise RenderConfigError("Admin screenshots require authenticated storage state")
+    if storage and not urlsplit(url).path.startswith("/admin"):
+        # A public-screen capture must prove the visitor journey, not an
+        # authenticated owner's preview of unpublished/private content.
+        raise RenderConfigError("Public screenshots require an anonymous browser context")
     if storage and not Path(storage).is_file():
         raise RenderConfigError("Authenticated storage state file does not exist")
 
@@ -132,6 +136,19 @@ def render(env=None):
                     path=str(output), full_page=False, animations="disabled",
                     caret="hide", type="png",
                 )
+                # A deferred navigation or client-side locale change may race
+                # the screenshot itself. Never retain a wrong-page candidate.
+                if page.url.rstrip("/") != url.rstrip("/"):
+                    output.unlink(missing_ok=True)
+                    raise RenderConfigError(
+                        "Page navigated during screenshot; discarding captured PNG"
+                    )
+                if (html.get_attribute("lang") != locale
+                        or html.get_attribute("dir") != expected_dir):
+                    output.unlink(missing_ok=True)
+                    raise RenderConfigError(
+                        "Page language/direction changed during screenshot"
+                    )
             finally:
                 context.close()
         finally:

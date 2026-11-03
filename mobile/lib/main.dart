@@ -18,11 +18,18 @@ void main() => runApp(const WaleedTechApp());
 
 /// Real bilingual navigation shell; no fabricated projects, AI output or metrics.
 class WaleedTechApp extends StatefulWidget {
-  const WaleedTechApp({this.initiallyStarted = false, super.key});
+  const WaleedTechApp({
+    this.initiallyStarted = false,
+    this.bootstrapFetch,
+    super.key,
+  });
 
   /// Explicit test/integration fixture hook. Production main() always uses
   /// the default false value so MOBILE-01 is the real application entry.
   final bool initiallyStarted;
+
+  /// Injected only by UI tests; production always uses the real API reader.
+  final MobileBootstrapFetch? bootstrapFetch;
 
   @override
   State<WaleedTechApp> createState() => _WaleedTechAppState();
@@ -65,6 +72,7 @@ class _WaleedTechAppState extends State<WaleedTechApp> {
               arabic: _arabic,
               onToggleLanguage: () => setState(() => _arabic = !_arabic),
               onStart: () => setState(() => _started = true),
+              bootstrapFetch: widget.bootstrapFetch,
             ),
     );
   }
@@ -75,12 +83,14 @@ class CompanionWelcome extends StatelessWidget {
     required this.arabic,
     required this.onToggleLanguage,
     required this.onStart,
+    this.bootstrapFetch,
     super.key,
   });
 
   final bool arabic;
   final VoidCallback onToggleLanguage;
   final VoidCallback onStart;
+  final MobileBootstrapFetch? bootstrapFetch;
 
   @override
   Widget build(BuildContext context) {
@@ -135,7 +145,10 @@ class CompanionWelcome extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 24),
-                  MobileBootstrapPanel(arabic: arabic),
+                  MobileBootstrapPanel(
+                    arabic: arabic,
+                    fetch: bootstrapFetch,
+                  ),
                   const SizedBox(height: 24),
                   FilledButton.icon(
                     key: const Key('welcome-start'),

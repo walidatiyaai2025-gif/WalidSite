@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -77,6 +78,11 @@ void main() {
       bootstrap(privacy: '/terms?lang=en'),
       bootstrap(privacy: '/privacy?lang=ar'),
       bootstrap(privacy: '/privacy?lang=en#secret'),
+      bootstrap(privacy: '/privacy?lang=en&lang=en'),
+      bootstrap(privacy: '/privacy?lang=en&lang=ar'),
+      bootstrap(privacy: '/privacy?l%61ng=en'),
+      bootstrap(privacy: '/privacy?lang=en&tracking=1'),
+      bootstrap(privacy: '//untrusted.example/privacy?lang=en'),
       bootstrap(routes: {
         'home': '/api/v1/mobile/home',
         'articles': '/api/v1/mobile/articles',
@@ -114,6 +120,24 @@ void main() {
         throwsFormatException,
       );
     }
+  });
+
+  test('a single total bootstrap deadline rejects stalled work and sync failures',
+      () async {
+    final stalled = Completer<String>();
+    await expectLater(
+      MobileBootstrapReader.withinDeadline(
+        () => stalled.future,
+        timeout: const Duration(milliseconds: 1),
+      ),
+      throwsA(isA<TimeoutException>()),
+    );
+    await expectLater(
+      MobileBootstrapReader.withinDeadline<String>(
+        () => throw StateError('Fixture failure'),
+      ),
+      throwsA(isA<StateError>()),
+    );
   });
 
   testWidgets('unconfigured production Welcome remains truthful and startable offline',

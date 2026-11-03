@@ -52,7 +52,9 @@ jobs:
           python qa/validate_visual_fidelity.py
           python -m unittest discover -s qa/tests -p 'test_visual_*.py'
       - name: Verify cPanel ZIP safety rules
-        run: python3 -m unittest discover -s qa/tests -p test_cpanel_package.py
+        run: |
+          python3 -m unittest discover -s qa/tests -p test_cpanel_package.py
+          python3 -m unittest qa.tests.test_staging_smoke -v
       - name: Validate active CI workflow policy
         run: python3 qa/validate_ci_policy.py
       - name: Enforce exclusive Issue, branch and PR ownership
@@ -131,7 +133,7 @@ jobs:
           echo "PASS: MariaDB migration and repeated owner CV seed are idempotent and fail-closed\n";
           '
       - name: Issue 481 real authenticated Admin runtime diagnostics
-        if: ${{ github.event_name == 'pull_request' && startsWith(github.head_ref, 'feat/481-') }}
+        if: ${{ github.event_name == 'pull_request' && (startsWith(github.head_ref, 'feat/481-') || startsWith(github.head_ref, 'fix/481-') || startsWith(github.head_ref, 'chore/481-')) }}
         shell: bash
         env:
           APP_ENV: testing
@@ -288,6 +290,9 @@ jobs:
           # Real Web diagnostics reuse this already-verified local Laravel
           # server. The two dynamic pages require actual published source data;
           # static pages never substitute invented project/article records.
+          # Admin diagnostics use an authenticated Playwright session. Public
+          # diagnostics must be anonymous and must not inherit that identity.
+          unset WALIDSITE_CAPTURE_STORAGE_STATE
           web_plan_path="$plan_dir/web-plan.json"
           python3 -B qa/build_web_visual_plan.py --locale en --dpr 1 --timeout 120 --output "$web_plan_path"
           set +e
@@ -324,16 +329,16 @@ jobs:
           PY
 
       - name: Upload Issue 481 Admin runtime visual diagnostics
-        if: ${{ always() && github.event_name == 'pull_request' && startsWith(github.head_ref, 'feat/481-') }}
+        if: ${{ always() && github.event_name == 'pull_request' && (startsWith(github.head_ref, 'feat/481-') || startsWith(github.head_ref, 'fix/481-') || startsWith(github.head_ref, 'chore/481-')) }}
         uses: actions/upload-artifact@v4
         with:
           name: issue-481-admin-and-web-runtime-visual-diagnostics
           path: qa/visual-diagnostics/
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 7
       - name: T007 real Laravel visual diagnostics
         id: t007_visual_diagnostics
-        if: ${{ github.event_name == 'pull_request' && github.head_ref == 'feat/T007-runtime-parity-final' }}
+        if: ${{ github.event_name == 'pull_request' && (github.head_ref == 'feat/T007-runtime-parity-final' || (startsWith(github.head_ref, 'feat/') && (contains(github.head_ref, '-web-') || contains(github.head_ref, '-WEB-')))) }}
         shell: bash
         env:
           APP_ENV: testing
@@ -375,7 +380,7 @@ jobs:
           python qa/capture_t007_diagnostics.py --commit "$(git rev-parse HEAD)" --locale en --dpr 1
 
       - name: Upload T007 runtime visual diagnostics
-        if: ${{ always() && steps.t007_visual_diagnostics.outcome != 'skipped' && github.event_name == 'pull_request' && github.head_ref == 'feat/T007-runtime-parity-final' }}
+        if: ${{ always() && steps.t007_visual_diagnostics.outcome != 'skipped' && github.event_name == 'pull_request' && (github.head_ref == 'feat/T007-runtime-parity-final' || (startsWith(github.head_ref, 'feat/') && (contains(github.head_ref, '-web-') || contains(github.head_ref, '-WEB-')))) }}
         uses: actions/upload-artifact@v4
         with:
           name: T007-runtime-visual-diagnostics

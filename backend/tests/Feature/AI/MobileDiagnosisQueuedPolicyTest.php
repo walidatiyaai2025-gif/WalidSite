@@ -335,4 +335,49 @@ final class MobileDiagnosisQueuedPolicyTest extends TestCase
         $this->assertNull($diagnosis->fresh()->request_blob);
         $this->assertDatabaseMissing('ai_usage', ['job_id' => $job->id]);
     }
+
+    public function test_expiry_during_paid_inference_preserves_receipt_but_discards_private_result(): void
+    {
+        [, , , $diagnosis, $job] = $this->queuedPaidDiagnosis();
+        $runbookId = $this->reviewedCatalog();
+        $diagnosis->forceFill(['expires_at' => now()->addSecond()])->save();
+        $this->assertSame($job->id,
+            app(DurableAiQueue::class)->claimNext('test-worker')?->id);
+
+        Http::fake(function () use ($runbookId) {
+            // The request expires during the actual outbound provider call,
+            // while its worker lease remains valid for the usage receipt.
+            $this->travel(2)->seconds();
+            return Http::response([
+                'choices' => [['message' => ['content' => json_encode([
+                    'runbook_id' => $runbookId,
+                ], JSON_THROW_ON_ERROR)]]],
+                'usage' => ['prompt_tokens' => 19, 'completion_tokens' => 5],
+            ], 200);
+        });
+
+        try {
+            try {
+                app(MobileDiagnosisDispatcher::class)->execute($job, 'classify', 'test-worker');
+                $this->fail('Expired private diagnosis must never publish a late selection.');
+            } catch (RuntimeException $exception) {
+                $this->assertSame('Mobile diagnosis failed safely.', $exception->getMessage());
+            }
+        } finally {
+            $this->travelBack();
+        }
+
+        Http::assertSentCount(1);
+        $this->assertNull($diagnosis->fresh()->request_blob);
+        $this->assertNull($diagnosis->fresh()->selected_runbook_id);
+        $this->assertDatabaseHas('ai_usage', [
+            'job_id' => $job->id, 'cost_minor' => 25, 'cost_currency' => 'USD',
+        ]);
+        $this->assertSame(
+            ['input_tokens' => 19, 'output_tokens' => 5],
+            json_decode((string) DB::table('ai_usage')->where('job_id', $job->id)
+                ->value('usage_json'), true)
+        );
+    }
+
 }

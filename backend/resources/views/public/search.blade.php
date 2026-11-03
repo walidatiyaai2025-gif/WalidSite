@@ -19,6 +19,17 @@
 </style>
 @endpush
 @section('content')
+<?php
+    // At most three source-verified cards appear in the reference-size stage.
+    // An 'all' search must not hide a real project behind an empty article slot.
+    $web13ArticlePreviewCount = $type === 'projects' ? 0
+        : min($articles->count(), $type === 'all' && $projects->isNotEmpty() ? 2 : 3);
+    $web13ProjectPreviewCount = $type === 'articles' ? 0
+        : min($projects->count(), 3 - $web13ArticlePreviewCount);
+    if ($type === 'all' && $web13ArticlePreviewCount + $web13ProjectPreviewCount < 3) {
+        $web13ArticlePreviewCount = min($articles->count(), 3 - $web13ProjectPreviewCount);
+    }
+?>
 @include('public.t012-reference-stage', ['screen' => 'search'])
 <section class="site-wrap editorial t012-functional" id="t012-functional">
 <h1>{{ $locale === 'ar' ? 'البحث في المعلومات الموثقة' : 'Search verified content' }}</h1>
@@ -56,14 +67,14 @@
 </p>
 @if($articles->isNotEmpty())
 <section class="ed-card" aria-labelledby="articles-h" data-testid="search-article-results"><h2 id="articles-h">{{ $locale === 'ar' ? 'المقالات' : 'Articles' }}</h2><ul>
-@foreach($articles->skip(3) as $a)<li data-testid="search-article-result"><a href="{{ route('public.article', ['slug' => $a->slug, 'lang' => $locale, 'source' => 'search', 'q' => $search, 'type' => $type]) }}">{{ $locale === 'ar' ? $a->title_ar : $a->title_en }}</a></li>@endforeach
+@foreach($articles->skip($web13ArticlePreviewCount) as $a)<li data-testid="search-article-result"><a href="{{ route('public.article', ['slug' => $a->slug, 'lang' => $locale, 'source' => 'search', 'q' => $search, 'type' => $type]) }}">{{ $locale === 'ar' ? $a->title_ar : $a->title_en }}</a></li>@endforeach
 </ul>
 <a class="ed-more" href="{{ route('public.blog', ['lang' => $locale, 'q' => $search]) }}">{{ $locale === 'ar' ? 'استعراض جميع المقالات المطابقة' : 'Browse all matching articles' }}</a>
 </section>
 @endif
 @if($projects->isNotEmpty())
 <section class="ed-card" aria-labelledby="projects-h" data-testid="search-project-results"><h2 id="projects-h">{{ $locale === 'ar' ? 'المشاريع' : 'Projects' }}</h2><ul>
-@foreach(($type === 'projects' ? $projects->skip(3) : $projects) as $p)<li data-testid="search-project-result"><a href="{{ route('public.project', ['slug'=>$p['slug'],'lang'=>$locale]) }}">{{ $p['name'] }}</a></li>@endforeach
+@foreach($projects->skip($web13ProjectPreviewCount) as $p)<li data-testid="search-project-result"><a href="{{ route('public.project', ['slug'=>$p['slug'],'lang'=>$locale]) }}">{{ $p['name'] }}</a></li>@endforeach
 </ul>
 <a class="ed-more" href="{{ route('public.projects', ['lang' => $locale, 'q' => $search]) }}">{{ $locale === 'ar' ? 'استعراض جميع المشاريع المطابقة' : 'Browse all matching projects' }}</a>
 </section>

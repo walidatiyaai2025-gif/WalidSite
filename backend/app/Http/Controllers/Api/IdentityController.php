@@ -168,10 +168,17 @@ class IdentityController extends Controller
         $user = $request->user();
 
         // Even an owner role cannot elevate a mobile-only bearer token.
-        if (! $user || ! $user->canAccessAdmin() || ! $user->tokenCan('admin')) {
-            abort(403);
-        }
+        $token = $user?->currentAccessToken();
+        // Sanctum session TransientToken::can() is always true, regardless
+        // of abilities. Keep this API token-only like every other admin API.
+        abort_unless(
+            $user?->canAccessAdmin()
+                && $token instanceof PersonalAccessToken
+                && $token->can('admin'),
+            403
+        );
 
-        return response()->json(['data' => ['authorized' => true]]);
+        return response()->json(['data' => ['authorized' => true]])
+            ->header('Cache-Control', 'no-store');
     }
 }
