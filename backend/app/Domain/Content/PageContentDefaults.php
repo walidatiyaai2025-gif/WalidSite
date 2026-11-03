@@ -47,7 +47,7 @@ final class PageContentDefaults
                 ],
             ],
             'about' => [
-                'intro' => ['heading'=>['en'=>'About and experience','ar'=>'نبذة وخبرات']],
+                'intro' => ['heading'=>['en'=>'About','ar'=>'نبذة']],
             ],
             'projects' => [
                 'intro' => [
