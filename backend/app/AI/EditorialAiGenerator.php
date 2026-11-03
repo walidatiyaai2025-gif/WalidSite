@@ -157,6 +157,14 @@ final class EditorialAiGenerator
             throw new RuntimeException('AI artwork generation failed safely.');
         }
 
+        // The paid provider already returned valid image bytes. Persist its
+        // configured spend estimate BEFORE any fallible private storage or
+        // metadata operation; a storage failure must not free spent budget.
+        // The receipt is per inference call (not per Asset, which may never
+        // exist), and is not presented as provider-invoiced actual cost.
+        $this->recordEstimatedUsage($provider, $jobId, $owner,
+            'ai-image-inference:'.Str::uuid(), $estimatedCostMinor, $model);
+
         $sha = hash('sha256', $bytes);
         $extension = ['image/png' => 'png', 'image/jpeg' => 'jpg', 'image/webp' => 'webp'][$details['mime']];
         $key = 'ai-artwork/'.Str::uuid().'.'.$extension;
@@ -201,8 +209,6 @@ final class EditorialAiGenerator
                 json_encode($manifest, JSON_THROW_ON_ERROR))) {
                 throw new RuntimeException('Private provenance storage unavailable.');
             }
-            $this->recordEstimatedUsage($provider, $jobId, $owner,
-                'ai-image:'.$asset->id, $estimatedCostMinor, $model);
             return $asset;
         } catch (Throwable) {
             Storage::disk('local')->delete([$key, $key.'.provenance.json']);
