@@ -7,12 +7,21 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Routing\Middleware\ThrottleRequests;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
 final class NotificationConsentTransitionAuditTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        // Rate limits are independently exercised by the security suite.
+        // This class verifies state transitions, not a shared IP throttle.
+        $this->withoutMiddleware(ThrottleRequests::class);
+    }
 
     private function account(): User
     {
