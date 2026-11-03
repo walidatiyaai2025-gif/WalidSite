@@ -519,4 +519,40 @@ final class MobileDiagnosisQueuedPolicyTest extends TestCase
         Http::assertSentCount(1);
     }
 
+
+    public function test_malformed_paid_provider_usage_keeps_estimate_but_never_publishes_diagnosis(): void
+    {
+        [, , , $diagnosis, $job] = $this->queuedPaidDiagnosis();
+        $runbookId = $this->reviewedCatalog();
+        $this->assertSame($job->id,
+            app(DurableAiQueue::class)->claimNext('test-worker')?->id);
+
+        Http::fake(['https://provider.example.test/v1/chat/completions' => Http::response([
+            'choices' => [['message' => ['content' => json_encode([
+                'runbook_id' => $runbookId,
+            ], JSON_THROW_ON_ERROR)]]],
+            // Provider billed the request but sent untrusted usage telemetry.
+            'usage' => ['prompt_tokens' => '19', 'completion_tokens' => 5],
+        ], 200)]);
+
+        try {
+            app(MobileDiagnosisDispatcher::class)->execute($job, 'classify', 'test-worker');
+            $this->fail('Malformed usage must never finalize a provider selection.');
+        } catch (RuntimeException $exception) {
+            $this->assertSame('Mobile diagnosis failed safely.', $exception->getMessage());
+        }
+
+        Http::assertSentCount(1);
+        $this->assertNull($diagnosis->fresh()->request_blob);
+        $this->assertNull($diagnosis->fresh()->selected_runbook_id);
+        $this->assertDatabaseHas('ai_usage', [
+            'job_id' => $job->id,
+            'cost_minor' => 25,
+            'cost_currency' => 'USD',
+        ]);
+        $this->assertSame([], json_decode((string) DB::table('ai_usage')
+            ->where('job_id', $job->id)->value('usage_json'), true));
+    }
+
+
 }
