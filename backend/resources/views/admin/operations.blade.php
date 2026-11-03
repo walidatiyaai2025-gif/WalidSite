@@ -166,6 +166,7 @@ summary{cursor:pointer;min-height:44px;padding:8px}
 <div class="field-grid">
 <div><label for="new-project-slug">Slug (a-z, 0-9, -)</label><input id="new-project-slug" name="slug" required maxlength="140" pattern="[a-z0-9]+(-[a-z0-9]+)*" placeholder="my-real-project" value="{{ old('slug') }}"></div>
 <div><label for="new-project-title">{{ $ar ? 'اسم المشروع' : 'Project title' }}</label><input id="new-project-title" name="title" maxlength="220" required value="{{ old('title') }}"></div>
+<div><label for="new-project-title-ar">اسم المشروع بالعربية</label><input id="new-project-title-ar" name="title_ar" maxlength="220" value="{{ old('title_ar') }}"></div>
 <div><label for="new-project-role-en">My role (EN)</label><input id="new-project-role-en" name="role_en" maxlength="200" required value="{{ old('role_en') }}"></div>
 <div><label for="new-project-role-ar">دوري (AR)</label><input id="new-project-role-ar" name="role_ar" maxlength="200" required value="{{ old('role_ar') }}"></div>
 <div><label for="new-project-category">{{ $ar ? 'التصنيف' : 'Category' }}</label><select id="new-project-category" name="portfolio_category" required>
@@ -256,6 +257,7 @@ summary{cursor:pointer;min-height:44px;padding:8px}
 @csrf @method('PATCH')
 <div class="field-grid">
 <div><label for="title-{{ $project->id }}">Title</label><input id="title-{{ $project->id }}" name="title" maxlength="220" required value="{{ $project->title }}"></div>
+<div><label for="title-ar-{{ $project->id }}">اسم المشروع بالعربية</label><input id="title-ar-{{ $project->id }}" name="title_ar" maxlength="220" value="{{ $project->title_ar }}"></div>
 <div><label for="role-en-{{ $project->id }}">Role (EN)</label><input id="role-en-{{ $project->id }}" name="role_en" maxlength="200" value="{{ $project->role_en }}"></div>
 <div><label for="role-ar-{{ $project->id }}">الدور (AR)</label><input id="role-ar-{{ $project->id }}" name="role_ar" maxlength="200" value="{{ $project->role_ar }}"></div>
 <div><label for="category-{{ $project->id }}">{{ $ar ? 'التصنيف' : 'Category' }}</label>
