@@ -29,6 +29,9 @@
     .case-meta { font-size:14px; color:var(--wa-muted-text); }
     .case-card a { margin-top:auto; color:var(--wa-cta); font-weight:800; min-height:44px; display:inline-flex; align-items:center; }
     .case-empty { border:1px solid var(--wa-soft-border); border-radius:16px; background:#fff; padding:24px; }
+    .case-feedback {display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;margin:0 0 20px}
+    .case-feedback a,.case-empty a {display:inline-flex;align-items:center;min-height:44px;color:var(--wa-cta);font-weight:800}
+    .case-feedback a:focus-visible,.case-empty a:focus-visible {outline:3px solid var(--wa-cta);outline-offset:3px}
     .case-pagination { display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-top:30px; }
     .case-pagination a, .case-pagination span { padding:9px 16px; border:1px solid var(--wa-soft-border); border-radius:10px; background:#fff; }
     .case-pagination a { color:var(--wa-cta); font-weight:800; }
@@ -38,6 +41,7 @@
 @php($statusLabels = $locale === 'ar'
     ? ['completed' => 'مكتمل', 'in_progress' => 'قيد التنفيذ', 'research' => 'بحث', 'archived' => 'مؤرشف']
     : ['completed' => 'Completed', 'in_progress' => 'In progress', 'research' => 'Research', 'archived' => 'Archived'])
+@php($filtersApplied = $search !== '' || $status !== '')
 @section('content')
 <section class="site-wrap case-page" aria-labelledby="project-heading">
     <h1 id="project-heading">{{ $locale === 'ar' ? 'مشاريع ودراسات حالة موثقة' : 'Verified projects and case studies' }}</h1>
@@ -64,21 +68,37 @@
         <button class="case-button" type="submit">{{ $locale === 'ar' ? 'بحث' : 'Search' }}</button>
     </form>
 
+    <div class="case-feedback">
+        <p role="status" aria-live="polite">{{ $locale === 'ar'
+            ? 'عدد دراسات الحالة العامة الموثقة المطابقة: '.$paginated->total()
+            : 'Matching verified public case studies: '.$paginated->total() }}</p>
+        @if($filtersApplied)
+            <a href="{{ route('public.projects', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'مسح البحث والمرشحات' : 'Clear search and filters' }}</a>
+        @endif
+    </div>
     @if ($projects->isEmpty())
-        <div class="case-empty" role="status">{{ $locale === 'ar'
-            ? 'لا توجد دراسات حالة عامة موثقة تطابق البحث. راجع معرض GitHub للمستودعات التي تم التحقق منها.'
-            : 'No evidence-verified public case studies match your search. You can explore separately verified public GitHub repositories.' }}</div>
+        <div class="case-empty" role="status">
+            <p>{{ $locale === 'ar'
+                ? 'لا توجد دراسات حالة عامة موثقة تطابق البحث.'
+                : 'No evidence-verified public case studies match your search.' }}</p>
+            <a href="{{ route('public.github', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'تصفح مستودعات GitHub العامة الموثقة' : 'Browse verified public GitHub repositories' }}</a>
+        </div>
     @else
         <div class="case-grid">
             @foreach($projects as $project)
                 <article class="case-card">
-                    <p class="case-meta">{{ $statusLabels[$project['status']] ?? $project['status'] }}</p>
+                    <p class="case-meta">{{ $statusLabels[$project['status']] ?? ($locale === 'ar' ? 'غير محددة' : 'Unavailable') }}</p>
                     <h2>{{ $project['name'] }}</h2>
                     <p>{{ $project['summary'] }}</p>
                     @if (!empty($project['role']))
                         <p class="case-meta">{{ $locale === 'ar' ? 'الدور المعتمد' : 'Verified role' }}: {{ $project['role'] }}</p>
                     @endif
-                    <a href="{{ route('public.project', ['slug' => $project['slug'], 'lang' => $locale]) }}">
+                    <a href="{{ route('public.project', array_merge(
+                        ['slug' => $project['slug'], 'lang' => $locale],
+                        $search !== '' ? ['q' => $search] : [],
+                        $status !== '' ? ['status' => $status] : [],
+                        $paginated->currentPage() > 1 ? ['page' => $paginated->currentPage()] : []
+                    )) }}">
                         {{ $locale === 'ar' ? 'عرض دراسة الحالة والأدلة' : 'View case study and evidence' }}
                     </a>
                 </article>
@@ -93,7 +113,7 @@
             @else
                 <span aria-disabled="true">{{ $locale === 'ar' ? 'السابق' : 'Previous' }}</span>
             @endif
-            <span>{{ $locale === 'ar' ? 'الصفحة' : 'Page' }} {{ $paginated->currentPage() }} / {{ $paginated->lastPage() }}</span>
+            <span aria-current="page">{{ $locale === 'ar' ? 'الصفحة' : 'Page' }} {{ $paginated->currentPage() }} / {{ $paginated->lastPage() }}</span>
             @if ($paginated->nextPageUrl())
                 <a href="{{ $paginated->nextPageUrl() }}">{{ $locale === 'ar' ? 'التالي' : 'Next' }}</a>
             @else
