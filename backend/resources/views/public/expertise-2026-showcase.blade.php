@@ -268,7 +268,7 @@ body:has(.expertise-screen) .t007-nav-shell{box-shadow:none}
             <nav class="expertise-tab-nav" aria-label="{{ $w3Ar ? 'أقسام الخبرات' : 'Expertise sections' }}">
                 <span class="expertise-tab-counter" aria-label="{{ $w3Ar ? 'القسم '.$w3View['count'] : 'Section '.$w3View['count'] }}">{{ $w3View['count'] }}</span>
                 @foreach($w3Panels as $key => $panel)
-                    <a href="{{ $w3Dest('public.expertise', ['section'=>$key]) }}" @if($w3Focus === $key) aria-current="page" @endif>{{ $w3Text($panel['name']) }}</a>
+                    <a href="{{ $w3Dest('public.expertise', ['section'=>$key]) }}" @if($w3Focus === $key) aria-current="step" @endif>{{ $w3Text($panel['name']) }}</a>
                 @endforeach
             </nav>
         </div>
