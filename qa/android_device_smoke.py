@@ -112,7 +112,8 @@ def smoke(apk: Path, *, package_id: str, version_name: str,
         launch_output = _checked_adb(adb, serial, "shell", "am", "start", "-W",
                                      "-n", package_id + "/.MainActivity", timeout=45)
         if ("Status: ok" not in launch_output.splitlines()
-                or not any(line.startswith("Activity: ") and package_id in line
+                or not any(line in {"Activity: " + package_id + "/.MainActivity",
+                                    "Activity: " + package_id + "/" + package_id + ".MainActivity"}
                            for line in launch_output.splitlines())):
             raise DeviceSmokeError("Android launcher did not report expected activity")
         pid = _checked_adb(adb, serial, "shell", "pidof", package_id)
