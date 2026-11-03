@@ -86,7 +86,7 @@ final class TrustedReleaseMetadata
             || ! isset($parts['host']) || ! preg_match('/^[a-z0-9.-]+$/iD', $parts['host'])
             || isset($parts['user']) || isset($parts['pass']) || isset($parts['query'])
             || isset($parts['fragment']) || isset($parts['path'])
-            || isset($parts['port']) || str_contains($approvedOrigin, '\')) {
+            || isset($parts['port']) || str_contains($approvedOrigin, '\\')) {
             throw new DomainException('Release origin must be a pinned HTTPS host.');
         }
 
