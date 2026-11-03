@@ -147,6 +147,11 @@ body:has(.expertise-screen) .site-main{min-height:0}
 body:has(.expertise-screen) .site-wrap.t007-functional{width:min(calc(100% - 64px),1560px);max-width:none}
 body:has(.expertise-screen) .site-footer{display:none}
 body:has(.expertise-screen) .t007-nav-shell{box-shadow:none}
+/* English defaults to left-to-right. Arabic direction is applied below only
+   for elements under the Arabic document language; selector lists must not
+   accidentally apply direction:rtl to English grid/card containers. */
+.expertise-screen{direction:ltr;text-align:left}
+:lang(ar) .expertise-screen{direction:rtl;text-align:right}
 .expertise-screen{--w3-ink:#071e50;--w3-dark:#153c67;--w3-green:#008e77;--w3-teal:#00bea9;--w3-line:#d3e4f3;font-family:Inter,Arial,sans-serif;padding:0 0 14px}
 .expertise-screen a:focus-visible,.expertise-screen button:focus-visible,.expertise-screen select:focus-visible,.expertise-screen summary:focus-visible{outline:3px solid #007ff0;outline-offset:3px}
 .expertise-showcase{max-width:1560px;margin:auto}
@@ -212,7 +217,7 @@ body:has(.expertise-screen) .t007-nav-shell{box-shadow:none}
 .expertise-proof-links a{color:#007866;text-decoration:underline}
 .expertise-visually-hidden{position:absolute!important;width:1px!important;height:1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important}
 :lang(ar) .expertise-screen{font-family:Tajawal,Arial,sans-serif}
-:lang(ar) .expertise-hero,.expertise-feature-grid,.expertise-highlight-bar,.expertise-tags{direction:rtl}
+:lang(ar) .expertise-hero,:lang(ar) .expertise-feature-grid,:lang(ar) .expertise-highlight-bar,:lang(ar) .expertise-tags{direction:rtl}
 :lang(ar) .expertise-tab-nav{margin-inline-start:auto}
 :lang(ar) .expertise-feature h3{font-size:17px}
 @media(max-width:1450px){
