@@ -124,6 +124,13 @@
         .landing-section-heading { align-items: start; flex-direction: column; }
     }
     @media (prefers-reduced-motion: reduce) { .landing-button { transition: none; } }
+    /* WEB-01 only. A real Chromium 1440x860 capture (T007 diagnostic artifact
+       #13120517354) showed the same approved photograph approximately 21 CSS
+       pixels too low inside the 259x264 reference frame. The source remains
+       the first-party approved portrait; never rasterize the design PNG. */
+    .t007-reference-stage .t007-visual-stack.portrait .three img {
+        object-position: center 80%;
+    }
 </style>
 @endpush
 
