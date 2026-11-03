@@ -81,10 +81,21 @@ final class EditorialAiGenerator
                 || trim($body) === '' || mb_strlen($body) > 40000) {
                 throw new RuntimeException('Provider returned no bounded text.');
             }
-            $tokens = ProviderUsage::tokens($provider->provider_type, $response);
         } catch (Throwable) {
             // Provider messages frequently include private payloads and tokens.
             throw new RuntimeException('AI draft generation failed safely.');
+        }
+
+        // Token telemetry is not proof that a successful inference was free.
+        // A malformed counter makes the response unusable, but the external
+        // paid call has already occurred. Keep the configured estimate with
+        // unknown token counts before refusing to persist the draft.
+        $untrustedUsage = false;
+        try {
+            $tokens = ProviderUsage::tokens($provider->provider_type, $response);
+        } catch (RuntimeException) {
+            $tokens = [];
+            $untrustedUsage = true;
         }
 
         // A paid provider has now returned a validated bounded response.
@@ -95,6 +106,9 @@ final class EditorialAiGenerator
         // If the usage budget/lease rejects the receipt, do not save a draft.
         $this->recordEstimatedUsage($provider, $jobId, $owner,
             'ai-draft-inference:'.Str::uuid(), $estimatedCostMinor, $model, $tokens);
+        if ($untrustedUsage) {
+            throw new RuntimeException('AI draft generation failed safely.');
+        }
 
         return $this->composer->saveDraft(
             $article, $body, array_column($candidates, 'source_url')
