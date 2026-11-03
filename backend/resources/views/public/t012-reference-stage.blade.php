@@ -228,7 +228,7 @@ html[dir="rtl"] .t012-screen-blog .t012-visual-stack{left:55px;right:auto}
                 <input type="hidden" name="lang" value="{{ $locale }}">
                 <input type="hidden" name="type" value="{{ $type }}">
                 <label class="t012-sr-only" for="t012-top-search">{{ $t012Ar ? 'كلمات البحث' : 'Search terms' }}</label>
-                <input id="t012-top-search" name="q" type="search" maxlength="80" value="{{ $search }}" placeholder="{{ $t012Ar ? 'ابحث في المقالات والمشاريع العامة الموثقة...' : 'Search verified public articles and projects...' }}">
+                <input id="t012-top-search" name="q" type="search" maxlength="80" value="{{ $search }}" placeholder="{{ $t012Ar ? 'ابحث في المقالات والمشاريع العامة الموثقة...' : 'Search verified public articles and projects...' }}" required>
                 <button class="t012-sr-only" type="submit">{{ $t012Ar ? 'بحث' : 'Search' }}</button>
             </form>
             @php($t012SearchArticleCards = $articles->take($web13ArticlePreviewCount)->map(fn ($item) => ['kind' => 'article', 'item' => $item]))
