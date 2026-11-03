@@ -26,6 +26,10 @@ Route::get('/media/owner-portrait.jpg', static function () {
         'X-Content-Type-Options' => 'nosniff',
     ]);
 })->name('public.owner-portrait');
+Route::get('/media/about/{slot}', static function (string $slot) {
+    return app(\App\Domain\Content\AboutMediaResponder::class)->show($slot);
+})->where('slot', '[a-z0-9_]+')->name('public.about-media');
+
 
 /*
  * WEB-01 public landing: do not turn mockup counts or CV draft rows into
@@ -195,6 +199,15 @@ Route::post('/admin/login', [WebLoginController::class, 'login'])
 
 Route::middleware('auth:web')->group(function (): void {
     Route::post('/admin/logout', [WebLoginController::class, 'logout'])->name('admin.logout');
+
+    Route::post('/admin/page-content/media/{slot}/draft', [\App\Http\Controllers\AdminAboutMediaController::class, 'save'])
+        ->where('slot','[a-z0-9_]+')->name('admin.about-media.draft')->middleware('throttle:8,1');
+    Route::post('/admin/page-content/media/{slot}/publish', [\App\Http\Controllers\AdminAboutMediaController::class, 'publish'])
+        ->where('slot','[a-z0-9_]+')->name('admin.about-media.publish')->middleware('throttle:8,1');
+    Route::post('/admin/page-content/media/{slot}/retract', [\App\Http\Controllers\AdminAboutMediaController::class, 'retract'])
+        ->where('slot','[a-z0-9_]+')->name('admin.about-media.retract')->middleware('throttle:8,1');
+    Route::get('/admin/page-content/media/{slot}/preview', [\App\Http\Controllers\AdminAboutMediaController::class, 'draft'])
+        ->where('slot','[a-z0-9_]+')->name('admin.about-media.preview')->middleware('throttle:30,1');
 
     // P0 first-install CMS: authenticated owner alone may create a missing
     // owner-design slot, save drafts, or publish after source/rights attestation.

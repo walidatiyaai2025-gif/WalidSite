@@ -47,6 +47,13 @@ final class WebsitePageContentSeeder extends Seeder
             foreach (array_chunk($rows, 150) as $batch) {
                 DB::table('site_page_texts')->insertOrIgnore($batch);
             }
+            foreach (PageContentDefaults::aboutMedia() as $item) {
+                DB::table('about_media_assets')->insertOrIgnore([
+                    'slot'=>$item['slot'], 'label'=>$item['label'], 'kind'=>$item['kind'],
+                    'fallback_icon'=>$item['icon'], 'revision'=>0,
+                    'created_at'=>now('UTC'), 'updated_at'=>now('UTC'),
+                ]);
+            }
         });
     }
 }
