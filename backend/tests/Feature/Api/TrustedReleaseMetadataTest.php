@@ -106,6 +106,56 @@ final class TrustedReleaseMetadataTest extends TestCase
         (new TrustedReleaseMetadata())->verify($this->signed(), 'invalid-base64', 'https://updates.example.test', '1.1.9');
     }
 
+    public function test_staged_archive_hash_length_and_private_location_are_verified(): void
+    {
+        $directory = sys_get_temp_dir().'/walidsite-release-'.bin2hex(random_bytes(8));
+        self::assertTrue(mkdir($directory, 0700));
+        $file = $directory.'/WalidSite-update-v1.2.0.zip';
+        $bytes = 'immutable signed test payload';
+        file_put_contents($file, $bytes);
+
+        try {
+            $metadata = array_replace($this->metadata, [
+                'artifact_size' => strlen($bytes),
+                'artifact_sha256' => hash('sha256', $bytes),
+            ]);
+            $verified = $this->verify($this->signed($metadata));
+            (new TrustedReleaseMetadata())->verifyStagedArchive($verified, $directory, $file);
+            file_put_contents($file, str_repeat('X', strlen($bytes)));
+            $this->assertRejectedArchive($verified, $directory, $file);
+            file_put_contents($file, 'short');
+            $this->assertRejectedArchive($verified, $directory, $file);
+            $this->assertRejectedArchive($verified, $directory, dirname($directory).'/missing.zip');
+
+            $outside = tempnam(sys_get_temp_dir(), 'walidsite-external-');
+            self::assertNotFalse($outside);
+            file_put_contents($outside, $bytes);
+            try {
+                $this->assertRejectedArchive($verified, $directory, $outside);
+                unlink($file);
+                if (symlink($outside, $file)) {
+                    $this->assertRejectedArchive($verified, $directory, $file);
+                    unlink($file);
+                }
+            } finally {
+                @unlink($outside);
+            }
+        } finally {
+            @unlink($file);
+            rmdir($directory);
+        }
+    }
+
+    private function assertRejectedArchive(array $release, string $directory, string $file): void
+    {
+        try {
+            (new TrustedReleaseMetadata())->verifyStagedArchive($release, $directory, $file);
+            self::fail('Untrusted staged archive was accepted.');
+        } catch (DomainException) {
+            self::assertTrue(true);
+        }
+    }
+
     private function assertRejected(string $signed, ?string $origin = null, ?string $installed = null): void
     {
         try {
