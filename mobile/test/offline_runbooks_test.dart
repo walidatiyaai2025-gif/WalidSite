@@ -1,9 +1,35 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:waleed_tech_companion/main.dart';
 import 'package:waleed_tech_companion/runbooks/offline_runbooks.dart';
+import 'package:waleed_tech_companion/runbooks/offline_runbook_progress.dart';
+
+
+class MemoryProgressStore implements RunbookProgressStore {
+  final entries = <String, Set<int>>{};
+  String key(String scope, String version, String id) =>
+      [scope, version, id].join(':');
+
+  @override
+  Future<Set<int>> read({
+    required String scope,
+    required String packVersion,
+    required String runbookId,
+  }) async => Set<int>.of(entries[key(scope, packVersion, runbookId)] ?? {});
+
+  @override
+  Future<void> write({
+    required String scope,
+    required String packVersion,
+    required String runbookId,
+    required Set<int> completed,
+  }) async {
+    entries[key(scope, packVersion, runbookId)] = Set<int>.of(completed);
+  }
+}
 
 void main() {
   test('offline bundle parser rejects malformed or falsely verified data', () {
@@ -300,4 +326,113 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('سجّل الحالة الحالية'), findsOneWidget);
   });
+
+  test('durable progress survives restart and isolates guest, accounts, versions', () async {
+    final directory = await Directory.systemTemp.createTemp('walidsite-progress-');
+    addTearDown(() async {
+      if (await directory.exists()) await directory.delete(recursive: true);
+    });
+    AppSupportRunbookProgressStore store() =>
+        AppSupportRunbookProgressStore(directory: () async => directory);
+    await store().write(
+      scope: 'account:alice', packVersion: '2.0.0',
+      runbookId: 'safe-progress', completed: {0, 2},
+    );
+    expect(await store().read(
+      scope: 'account:alice', packVersion: '2.0.0',
+      runbookId: 'safe-progress',
+    ), {0, 2});
+    expect(await store().read(
+      scope: 'account:bob', packVersion: '2.0.0',
+      runbookId: 'safe-progress',
+    ), isEmpty);
+    expect(await store().read(
+      scope: 'guest', packVersion: '2.0.0',
+      runbookId: 'safe-progress',
+    ), isEmpty);
+    expect(await store().read(
+      scope: 'account:alice', packVersion: '2.1.0',
+      runbookId: 'safe-progress',
+    ), isEmpty);
+    await store().write(
+      scope: 'account:alice', packVersion: '2.0.0',
+      runbookId: 'safe-progress', completed: {2},
+    );
+    expect(await store().read(
+      scope: 'account:alice', packVersion: '2.0.0',
+      runbookId: 'safe-progress',
+    ), {2});
+    await expectLater(store().write(
+      scope: 'account:alice@example.org', packVersion: '2.0.0',
+      runbookId: 'safe-progress', completed: {1},
+    ), throwsFormatException);
+  });
+
+  testWidgets('marked step survives widget recreation with isolated scope', (tester) async {
+    const item = OfflineRunbook(
+      id: 'safe-progress', titleEn: 'Safe checklist', titleAr: 'قائمة آمنة',
+      stepsEn: ['Backup', 'Rollback'], stepsAr: ['نسخة', 'استعادة'],
+    );
+    const pack = OfflineRunbookPack(
+      version: '2.0.0', source: 'Signed fixture',
+      lastSynced: null, verifiedAt: null, items: [item],
+    );
+    final store = MemoryProgressStore();
+    Widget screen(String scope) => MaterialApp(
+      home: OfflineRunbookDetail(
+        item: item, pack: pack, arabic: false,
+        progressStore: store, progressScope: scope,
+      ),
+    );
+    final first = find.byKey(const Key('runbook-step-1-complete'));
+    await tester.pumpWidget(screen('account:alice'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.descendant(of: first, matching: find.byType(Checkbox)));
+    await tester.pumpAndSettle();
+    expect(tester.widget<CheckboxListTile>(first).value, true);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpWidget(screen('account:alice'));
+    await tester.pumpAndSettle();
+    expect(tester.widget<CheckboxListTile>(first).value, true);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpWidget(screen('account:bob'));
+    await tester.pumpAndSettle();
+    expect(tester.widget<CheckboxListTile>(first).value, false);
+  });
+
+  testWidgets('signed publisher source date is distinct from sync in EN and AR',
+      (tester) async {
+    final pack = OfflineRunbookPack(
+      version: '2.0.0', source: 'Publisher',
+      lastSynced: DateTime.utc(2026, 2, 2),
+      verifiedAt: DateTime.utc(2026, 1, 1),
+      signedVerified: true,
+      items: const [OfflineRunbook(
+        id: 'dated', titleEn: 'Dated', titleAr: 'مؤرخ',
+        stepsEn: ['Safe'], stepsAr: ['آمن'],
+      )],
+    );
+    await tester.pumpWidget(MaterialApp(
+      home: OfflineRunbookDetail(
+        item: pack.items.single, pack: pack, arabic: false,
+        progressStore: MemoryProgressStore(),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Last sync: 2026-02-02'), findsOneWidget);
+    expect(find.textContaining('Signed source verification date: 2026-01-01'),
+        findsOneWidget);
+    await tester.pumpWidget(MaterialApp(
+      home: OfflineRunbookDetail(
+        item: pack.items.single, pack: pack, arabic: true,
+        progressStore: MemoryProgressStore(),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('آخر مزامنة: 2026-02-02'), findsOneWidget);
+    expect(find.textContaining('تاريخ تحقق المصدر الموقّع: 2026-01-01'),
+        findsOneWidget);
+  });
+
+
 }
