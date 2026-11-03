@@ -7,6 +7,7 @@ use App\Models\Article;
 use App\Models\ArticleRevision;
 use App\Models\Asset;
 use App\Models\AssetVariant;
+use App\Models\User;
 use DomainException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -122,7 +123,8 @@ final class EditorialAiGenerator
      */
     public function illustration(
         AiProvider $provider, string $model, string $prompt,
-        string $jobId, string $owner, int $estimatedCostMinor = 0
+        string $jobId, string $owner, int $estimatedCostMinor = 0,
+        ?string $requesterId = null
     ): Asset {
         // Only the supplied genuine owner photograph may depict the owner.
         // Normalize Arabic diacritics/tatweel before checking the prompt:
@@ -178,6 +180,14 @@ final class EditorialAiGenerator
         // exist), and is not presented as provider-invoiced actual cost.
         $this->recordEstimatedUsage($provider, $jobId, $owner,
             'ai-image-inference:'.Str::uuid(), $estimatedCostMinor, $model);
+
+        // A privileged requester can be revoked DURING the paid HTTP call.
+        // Record the already-incurred configured estimate but never retain
+        // artwork for a now-unauthorized admin, even in private quarantine.
+        if ($requesterId !== null
+            && ! User::query()->find($requesterId)?->canAccessAdmin()) {
+            throw new DomainException('Image requester lost admin access during inference.');
+        }
 
         $sha = hash('sha256', $bytes);
         $extension = ['image/png' => 'png', 'image/jpeg' => 'jpg', 'image/webp' => 'webp'][$details['mime']];
@@ -256,6 +266,16 @@ final class EditorialAiGenerator
         }
         // Checks actual lease owner and expiry before contacting any provider.
         $this->queue->heartbeat($jobId, $owner, 60);
+
+        // A successful paid inference can be receipted before private image
+        // storage, draft persistence or checkpoint finalization fails. A
+        // retried worker MUST NOT make another paid call against the same
+        // reservation: the next receipt could be rejected only after another
+        // real charge. Preserve the original immutable usage estimate.
+        if ($provider->provider_type === 'openai-compatible'
+            && DB::table('ai_usage')->where('job_id', $jobId)->exists()) {
+            throw new DomainException('Paid inference already recorded for this job.');
+        }
     }
 
     private function recordEstimatedUsage(

@@ -3,6 +3,8 @@
 namespace App\AI;
 
 use App\Models\AiProvider;
+use App\Models\AiModel;
+use App\Models\User;
 use App\Models\ArticleRevision;
 use DomainException;
 use Illuminate\Support\Str;
@@ -90,10 +92,45 @@ final class EditorialJobDispatcher
         $provider = AiProvider::query()->findOrFail($job->provider_id);
         $estimate = (int) $job->reserved_budget_minor;
         if ($image) {
+            // The Admin image editor checks the model at admission, but an
+            // administrator can disable or reclassify it while work is queued.
+            // Revalidate the *exact* provider/model before any outbound call.
+            $model = AiModel::query()->where('provider_id', $provider->id)
+                ->where('provider_model_id', $parts[3])->first();
+            $policy = $model?->cost_policy_json;
+            $configuredEstimate = is_array($policy)
+                ? ($policy['image_reservation_minor'] ?? null) : null;
+            if ($model === null || ! $model->enabled
+                || ! is_array($model->capabilities_json)
+                || ! in_array('image-generation', $model->capabilities_json, true)
+                || ! is_array($policy)
+                || (array_key_exists('currency', $policy)
+                    && $policy['currency'] !== $provider->currency)
+                || ($configuredEstimate !== null
+                    && (! is_int($configuredEstimate) || $configuredEstimate !== $estimate))) {
+                throw new DomainException('Queued image model is no longer approved.');
+            }
+
+            // Canonical API-created image drafts record their admin actor.
+            // A revoked account must not consume a queued paid generation.
+            // Legacy server-side editorial drafts may have no actor metadata.
+            $validation = $revision->validation_json;
+            $requesterId = is_array($validation)
+                && array_key_exists('requested_by', $validation)
+                    ? $validation['requested_by'] : null;
+            if (is_array($validation) && array_key_exists('requested_by', $validation)
+                && (! is_string($requesterId) || ! Str::isUuid($requesterId))) {
+                throw new DomainException('Queued image requester is invalid.');
+            }
+            if ($requesterId !== null
+                && ! User::query()->find($requesterId)?->canAccessAdmin()) {
+                throw new DomainException('Queued image requester no longer has admin access.');
+            }
+
             $asset = $this->generator->illustration($provider, $parts[3],
                 'Original abstract technical illustration without people or text. Topic: '
                     .mb_substr($article->title_en, 0, 200),
-                $job->id, $owner, $estimate);
+                $job->id, $owner, $estimate, $requesterId);
             return 'artwork/assets/'.$asset->id;
         }
 
