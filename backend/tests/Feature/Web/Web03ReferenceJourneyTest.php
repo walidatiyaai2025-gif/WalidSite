@@ -1,0 +1,144 @@
+<?php
+
+namespace Tests\Feature\Web;
+
+use App\Models\Profile;
+use App\Models\Role;
+use App\Models\Skill;
+use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use Tests\TestCase;
+
+/**
+ * WEB-03: the visible category action must filter the verified skills on
+ * /expertise, never silently switch to an unrelated recruiter-track filter.
+ * This is functional acceptance, not synthetic zero-pixel visual evidence.
+ */
+final class Web03ReferenceJourneyTest extends TestCase
+{
+    use RefreshDatabase;
+
+    private function publishedOwner(): Profile
+    {
+        $user = User::create([
+            'email' => 'web03-owner@example.test',
+            'status' => 'active',
+        ]);
+        $user->roles()->attach(Role::firstOrCreate(['name' => 'owner'])->id);
+
+        return Profile::create([
+            'user_id' => $user->id,
+            'public_name' => 'Reviewed WEB-03 owner',
+            'publish_status' => 'published',
+        ]);
+    }
+
+    private function skill(Profile $profile, string $slug, string $category, bool $verified = true): void
+    {
+        $skill = Skill::create([
+            'slug' => $slug,
+            'name_en' => 'Reviewed '.$slug,
+            'name_ar' => 'موثق '.$slug,
+            'category' => $category,
+            'evidence_status' => $verified ? 'verified' : 'unverified',
+        ]);
+
+        DB::table('profile_skill')->insert([
+            'profile_id' => $profile->id,
+            'skill_id' => $skill->id,
+        ]);
+    }
+
+    public function test_reference_stage_has_one_primary_heading_and_real_keyboard_reachable_expertise_content(): void
+    {
+        foreach (['en', 'ar'] as $locale) {
+            $response = $this->get(route('public.expertise', ['lang' => $locale]))
+                ->assertOk()
+                ->assertSee('class="t007-reference-stage"', false)
+                ->assertSee('id="expertise-title"', false)
+                ->assertSee('id="expertise-catalog"', false)
+                ->assertSee('aria-labelledby="expertise-title"', false)
+                ->assertSee('tabindex="-1"', false)
+                ->assertSee('href="#expertise-catalog"', false)
+                ->assertSee('href="'.e(route('public.projects', ['lang' => $locale])).'"', false)
+                ->assertSee('dir="'.($locale === 'ar' ? 'rtl' : 'ltr').'"', false);
+
+            preg_match_all('/<h1(?:\\s|>)/i', $response->getContent(), $headings);
+            $this->assertCount(1, $headings[0], 'WEB-03 must have one primary heading ('.$locale.')');
+            $this->assertStringContainsString(
+                '<h2 id="expertise-title">',
+                $response->getContent(),
+                'The second expertise panel must not duplicate the page h1.'
+            );
+        }
+    }
+
+    public function test_each_approved_skill_card_filters_its_real_category_not_a_recruiter_track(): void
+    {
+        $owner = $this->publishedOwner();
+        $categories = [
+            'Database & Reliability' => 'database',
+            'Software & Integration' => 'integration',
+            'Infrastructure & Security' => 'security',
+            'Project Delivery' => 'delivery',
+        ];
+        foreach ($categories as $key => $filter) {
+            $this->skill($owner, $filter.'-public', $key);
+            $this->skill($owner, $filter.'-private', $key, false);
+        }
+
+        foreach (['en', 'ar'] as $locale) {
+            $page = $this->get(route('public.expertise', ['lang' => $locale]))
+                ->assertOk()->assertSee('role="search"', false);
+
+            foreach ($categories as $category => $filter) {
+                $target = route('public.expertise', [
+                    'lang' => $locale, 'category' => $filter,
+                ]);
+                $page->assertSee('class="expertise-card-filter" href="'.e($target).'"', false)
+                    ->assertSee($locale === 'ar' ? 'تصفية المهارات حسب ' : 'Filter skills by ')
+                    ->assertDontSee($filter.'-private');
+
+                $filtered = $this->get($target)->assertOk()
+                    ->assertSee('value="'.$filter.'" selected', false)
+                    ->assertSee(($locale === 'ar' ? 'موثق ' : 'Reviewed ').$filter.'-public')
+                    ->assertDontSee($filter.'-private');
+                foreach ($categories as $otherFilter) {
+                    if ($otherFilter !== $filter) {
+                        $filtered->assertDontSee(($locale === 'ar' ? 'موثق ' : 'Reviewed ').$otherFilter.'-public');
+                    }
+                }
+            }
+        }
+    }
+
+    public function test_unapproved_accounts_or_hostile_filter_params_cannot_create_claims_or_fake_navigation(): void
+    {
+        $owner = $this->publishedOwner();
+        $this->skill($owner, 'published-database', 'Database & Reliability');
+        $this->skill($owner, 'private-database', 'Database & Reliability', false);
+
+        $outsider = User::create([
+            'email' => 'web03-reader@example.test',
+            'status' => 'active',
+        ]);
+        $other = Profile::create([
+            'user_id' => $outsider->id,
+            'public_name' => 'Private other account',
+            'publish_status' => 'published',
+        ]);
+        $this->skill($other, 'other-account-secret', 'Infrastructure & Security');
+
+        foreach (['category[]=security', 'category=not-allowed'] as $query) {
+            $this->get('/expertise?lang=en&'.$query)
+                ->assertOk()
+                ->assertSee('Reviewed published-database')
+                ->assertDontSee('private-database')
+                ->assertDontSee('other-account-secret')
+                ->assertDontSee('Clear filter')
+                ->assertDontSee('not-allowed');
+        }
+        $this->get('/projects?lang=en')->assertOk();
+    }
+}

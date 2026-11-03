@@ -16,6 +16,10 @@
 .about-jump-links{margin-top:22px}
 .about-jump-links a{background:var(--wa-muted-surface)}
 .about-screen a:focus-visible{outline:3px solid var(--wa-cta);outline-offset:3px}
+/* WEB-02: native hero/jump anchors land on the actual approved record sections.
+   Scroll and focus targets remain discoverable to keyboard users in both directions. */
+.about-screen section[id^="about-"]{scroll-margin-block-start:20px}
+.about-screen section[id^="about-"]:target{outline:3px solid var(--wa-cta);outline-offset:3px}
 .about-grid{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(270px,1fr);gap:24px;align-items:start}
 .about-panel{border:1px solid var(--wa-soft-border);border-radius:22px;background:#fff;padding:clamp(20px,3vw,32px);min-width:0}
 .about-panel h2{color:var(--wa-primary);font-size:clamp(22px,2.6vw,27px);margin:0 0 10px}
@@ -131,7 +135,7 @@ body:has(.about-screen) .header-links a[href*="/contact"]{background:#00A999;col
         </figure>
     </header>
     <div class="about-grid">
-        <section id="about-career" class="about-panel" aria-labelledby="about-career-heading">
+        <section id="about-career" class="about-panel" aria-labelledby="about-career-heading" tabindex="-1">
             <h2 id="about-career-heading">{{ $locale === 'ar' ? 'المسيرة المهنية الموثقة' : 'Verified career timeline' }}</h2>
             <p>{{ $locale === 'ar' ? 'تُعرض الفترات المعتمدة للنشر فقط، بترتيب زمني من الأحدث.' : 'Only approved, published periods appear, newest first.' }}</p>
             @if($positions->isEmpty())
@@ -156,7 +160,7 @@ body:has(.about-screen) .header-links a[href*="/contact"]{background:#00A999;col
                 </ol>
             @endif
         </section>
-        <section id="about-certifications" class="about-panel" aria-labelledby="about-certifications-heading">
+        <section id="about-certifications" class="about-panel" aria-labelledby="about-certifications-heading" tabindex="-1">
             <h2 id="about-certifications-heading">{{ $locale === 'ar' ? 'الشهادات المعتمدة' : 'Verified credentials' }}</h2>
             <p>{{ $locale === 'ar' ? 'لا تُعرض أي شهادة إلا إذا ظلت أدلتها وحقوق نشرها معتمدة.' : 'Certificates appear only while their supporting asset remains approved for public use.' }}</p>
             @if($certifications->isEmpty())
@@ -176,7 +180,7 @@ body:has(.about-screen) .header-links a[href*="/contact"]{background:#00A999;col
                 </ul>
             @endif
         </section>
-        <section id="about-evidence" class="about-panel about-panel--proof" aria-labelledby="about-evidence-heading">
+        <section id="about-evidence" class="about-panel about-panel--proof" aria-labelledby="about-evidence-heading" tabindex="-1">
             <h2 id="about-evidence-heading">{{ $locale === 'ar' ? 'عبارات مهنية مع روابط أدلتها' : 'Evidence-backed professional statements' }}</h2>
             <p>{{ $locale === 'ar' ? 'تؤدي الروابط إلى مصادر عامة اجتازت سياسة التحقق؛ لا تعتمد هذه القائمة أي شهادة أو جهة عمل إضافية.' : 'Each source link passed public evidence checks; this list does not invent further credentials or employers.' }}</p>
             @if(count($approvedClaims) === 0)

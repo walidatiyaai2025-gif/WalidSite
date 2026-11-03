@@ -298,7 +298,7 @@ body:has(.t007-reference-stage) .site-footer{margin-top:0}
         <p class="t007-reference-subtitle">{{ $copy['subtitle'] }}</p>
         <div class="t007-reference-actions">
             <a class="t007-reference-action primary" href="#t007-primary-content">{{ $t007Ui['explore'] }}</a>
-            <a class="t007-reference-action secondary" href="{{ route('public.projects', ['lang' => $locale]) }}">{{ $t007Ui['evidence'] }}</a>
+            <a class="t007-reference-action secondary" href="{{ $screen === 'about' ? '#about-evidence' : route('public.projects', ['lang' => $locale]) }}">{{ $t007Ui['evidence'] }}</a>
         </div>
         <div class="t007-visual-stack {{ $copy['portrait'] ? 'portrait' : '' }}" aria-hidden="true">
             <div class="tile one"><span>{ }</span></div>

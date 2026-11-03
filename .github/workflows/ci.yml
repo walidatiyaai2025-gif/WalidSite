@@ -335,7 +335,7 @@ jobs:
           retention-days: 7
       - name: T007 real Laravel visual diagnostics
         id: t007_visual_diagnostics
-        if: ${{ github.event_name == 'pull_request' && github.head_ref == 'feat/T007-runtime-parity-final' }}
+        if: ${{ github.event_name == 'pull_request' && (github.head_ref == 'feat/T007-runtime-parity-final' || (startsWith(github.head_ref, 'feat/') && (contains(github.head_ref, '-web-') || contains(github.head_ref, '-WEB-')))) }}
         shell: bash
         env:
           APP_ENV: testing
@@ -377,7 +377,7 @@ jobs:
           python qa/capture_t007_diagnostics.py --commit "$(git rev-parse HEAD)" --locale en --dpr 1
 
       - name: Upload T007 runtime visual diagnostics
-        if: ${{ always() && steps.t007_visual_diagnostics.outcome != 'skipped' && github.event_name == 'pull_request' && github.head_ref == 'feat/T007-runtime-parity-final' }}
+        if: ${{ always() && steps.t007_visual_diagnostics.outcome != 'skipped' && github.event_name == 'pull_request' && (github.head_ref == 'feat/T007-runtime-parity-final' || (startsWith(github.head_ref, 'feat/') && (contains(github.head_ref, '-web-') || contains(github.head_ref, '-WEB-')))) }}
         uses: actions/upload-artifact@v4
         with:
           name: T007-runtime-visual-diagnostics
