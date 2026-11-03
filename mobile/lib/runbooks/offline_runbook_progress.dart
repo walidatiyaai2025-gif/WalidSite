@@ -118,12 +118,12 @@ class AppSupportRunbookProgressStore implements RunbookProgressStore {
     final done = Completer<void>();
     _writeBarrier = done.future;
     try {
+      await prior;
       final key = await _key(scope, packVersion, runbookId);
       if (completed.length > 50 ||
           completed.any((index) => index < 0 || index >= 50)) {
         throw const FormatException('Invalid runbook step index');
       }
-      await prior;
       final data = await _readData();
       if (completed.isEmpty) {
         data.remove(key);
