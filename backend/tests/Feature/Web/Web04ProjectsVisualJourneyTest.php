@@ -98,6 +98,29 @@ final class Web04ProjectsVisualJourneyTest extends TestCase
         }
     }
 
+    public function test_empty_out_of_range_page_keeps_global_publication_status_truthful(): void
+    {
+        $this->reviewedProject('actually-published', 1);
+
+        foreach (['en', 'ar'] as $locale) {
+            $html = $this->get('/projects?lang='.$locale.'&page=7')
+                ->assertOk()
+                ->assertSee($locale === 'ar'
+                    ? 'لا تظهر دراسات حالة عامة موثقة في هذه الصفحة. عد إلى الصفحة الأولى.'
+                    : 'No evidence-verified public case studies on this page. Return to the first page.')
+                ->assertSee($locale === 'ar' ? 'الصفحة الأولى' : 'First page')
+                ->assertDontSee($locale === 'ar'
+                    ? 'لا توجد حاليًا مشاريع منشورة تستوفي أدلة النشر العامة.'
+                    : 'No published projects currently meet the public evidence checks.')
+                ->getContent();
+            $preview = explode('</section>', explode('<section class="web04-preview"', $html, 2)[1], 2)[0];
+            $this->assertSame(3, substr_count($preview, '<article class="web04-preview-card'));
+            $this->assertStringContainsString(
+                'href="'.e(route('public.projects', ['lang' => $locale])).'"', $preview
+            );
+        }
+    }
+
     public function test_first_three_canonical_cards_link_to_real_published_case_studies(): void
     {
         for ($day = 1; $day <= 4; $day++) {
