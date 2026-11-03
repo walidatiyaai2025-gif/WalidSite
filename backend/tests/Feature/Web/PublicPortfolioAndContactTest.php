@@ -161,7 +161,7 @@ class PublicPortfolioAndContactTest extends TestCase
             ->assertDontSee('hidden-web-11');
     }
 
-    public function test_home_features_safe_projects_and_articles_beyond_unusable_first_24(): void
+    public function test_directories_retain_reviewed_content_after_homepage_panels_are_removed(): void
     {
         for ($i = 1; $i <= 25; $i++) {
             $unsafe = $this->project('unusable-home-project-'.$i);
@@ -215,19 +215,33 @@ class PublicPortfolioAndContactTest extends TestCase
             $article->forceFill(['published_at' => now()->subDays(2)])->save();
         }
 
-        $page = $this->get('/?lang=en')->assertOk()
-            ->assertSee('approved-home-project-1')
-            ->assertSee('approved-home-project-2')
-            ->assertSee('approved-home-project-3')
-            ->assertSee('Approved home article 1')
-            ->assertSee('Approved home article 2')
-            ->assertSee('Approved home article 3')
+        // The screenshot-directed landing ends at its six-capability ribbon.
+        $this->get('/?lang=en')->assertOk()
+            ->assertDontSee('approved-home-project-1')
+            ->assertDontSee('Approved home article 1')
             ->assertDontSee('unusable-home-project-1')
             ->assertDontSee('Unavailable home article 1')
             ->assertDontSee('token=private');
         $this->get('/?lang=ar')->assertOk()
-            ->assertSee('مقال منشور معتمد 1')
+            ->assertDontSee('مقال منشور معتمد 1')
+            ->assertDontSee('approved-home-project-1')
+            ->assertDontSee('مقال غير صالح 1');
+
+        // Actual content remains discoverable from its existing directories.
+        $this->get('/projects?lang=en')->assertOk()
             ->assertSee('approved-home-project-1')
+            ->assertSee('approved-home-project-2')
+            ->assertSee('approved-home-project-3')
+            ->assertDontSee('unusable-home-project-1');
+        $this->get('/blog?lang=en')->assertOk()
+            ->assertSee('Approved home article 1')
+            ->assertSee('Approved home article 2')
+            ->assertSee('Approved home article 3')
+            ->assertDontSee('Unavailable home article 1')
+            ->assertDontSee('token=private');
+        $this->get('/projects?lang=ar')->assertOk()->assertSee('approved-home-project-1');
+        $this->get('/blog?lang=ar')->assertOk()
+            ->assertSee('مقال منشور معتمد 1')
             ->assertDontSee('مقال غير صالح 1');
     }
 
