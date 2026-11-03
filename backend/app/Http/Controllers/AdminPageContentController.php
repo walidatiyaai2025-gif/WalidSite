@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Domain\Content\PageContentDefaults;
 use App\Models\SitePageText;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Response;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -24,7 +25,7 @@ final class AdminPageContentController extends Controller
         return $request->query('lang') === 'ar' ? 'ar' : 'en';
     }
 
-    public function index(Request $request): View
+    public function index(Request $request): Response
     {
         $this->owner($request);
         $input = $request->validate([
@@ -42,10 +43,11 @@ final class AdminPageContentController extends Controller
             ->orderBy('field_key')->orderBy('locale')
             ->paginate(20)->withQueryString();
 
-        return view('admin.page-content.index', [
+        return response()->view('admin.page-content.index', [
             'rows' => $rows, 'selectedPage' => $page, 'selectedSection' => $section,
             'catalog' => PageContentDefaults::all(), 'locale' => $this->locale($request),
-        ]);
+        ])->header('Cache-Control', 'no-store, private')
+            ->header('X-Content-Type-Options', 'nosniff');
     }
 
     /**
