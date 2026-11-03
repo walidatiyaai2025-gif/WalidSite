@@ -823,6 +823,13 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
           _message = widget.arabic
               ? 'لا تطابق بيانات الطلب المحاولة السابقة. أعد إدخال نفس البيانات؛ لن يُنشأ تشخيص مدفوع آخر.'
               : 'This request differs from the previous attempt. Re-enter the original input; no additional paid diagnosis was created.';
+        } else if (error is MobileAiHttpException &&
+            (error.statusCode == 429 ||
+             error.statusCode == 422 ||
+             error.statusCode == 503)) {
+          // Preserve actionable quota/provider/validation status messages,
+          // while the pending key still prevents a fresh paid admission.
+          _message = _httpMessage(error.statusCode);
         } else {
           _message = widget.arabic
               ? 'حالة الطلب غير مؤكدة. قد يكون الخادم قد قبله. أعد المحاولة بنفس المفتاح فقط؛ لا يتم إرسال تشخيص جديد تلقائيًا.'
