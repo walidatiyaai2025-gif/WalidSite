@@ -2789,12 +2789,43 @@ Route::middleware('auth:web')->prefix('admin')->group(function (): void {
                 'X-Content-Type-Options' => 'nosniff',
             ]);
         }
+        // ADMIN-11 discovery KPIs must describe URLs visitors can actually
+        // open, not only rows whose SQL publication flag is set. The public
+        // Projects API and Web listing reject non-route slugs and unsafe,
+        // revoked or future-dated evidence after SQL filtering.
+        $portfolio = app(\App\Http\Controllers\Api\PublicPortfolioController::class);
+        $publicProjects = 0;
+        foreach (\App\Models\Project::query()->publiclyVerified()
+            ->with(['evidence' => static fn ($evidence) => $evidence
+                ->where('visibility', 'public')
+                ->whereNotNull('verified_at')->where('verified_at', '<=', now())
+                ->orderBy('id')->limit(50)])
+            ->orderBy('id')->lazy(100) as $project) {
+            if ($portfolio->publicProjectData($project, $request)['evidence_urls'] !== []) {
+                $publicProjects++;
+            }
+        }
+
+        // SQL publication alone is also insufficient for articles: the
+        // exact pinned revision must still satisfy current citations,
+        // editorial validation and hero-asset rights, and have a route-safe
+        // slug. Mirror the public blog's discovery gate without fetching URLs.
+        $publicArticles = 0;
+        foreach (\App\Models\Article::query()->publiclyVisible()
+            ->orderBy('id')->lazy(100) as $article) {
+            if (is_string($article->slug)
+                && preg_match('/\A[A-Za-z0-9-]+\z/D', $article->slug) === 1
+                && $article->publicRevision() !== null) {
+                $publicArticles++;
+            }
+        }
+
         return response()->view('admin.operations', [
             'section' => 'analytics', 'day' => $day, 'startDay' => $startDay,
             'window' => $window, 'usage' => $usage,
             'jobs' => $jobs,
-            'publicProjects' => \App\Models\Project::query()->publiclyVerified()->count(),
-            'publicArticles' => \App\Models\Article::query()->publiclyVisible()->count(),
+            'publicProjects' => $publicProjects,
+            'publicArticles' => $publicArticles,
         ])->header('Cache-Control', 'no-store, private');
     })->name('admin.operations.analytics')->middleware('throttle:30,1');
 });
