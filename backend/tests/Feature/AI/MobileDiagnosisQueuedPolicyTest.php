@@ -78,6 +78,75 @@ final class MobileDiagnosisQueuedPolicyTest extends TestCase
         ]];
     }
 
+
+    /** @return array{AiProvider,AiModel,AiRoute,AiDiagnosisRequest,object} */
+    private function queuedLocalDiagnosis(): array
+    {
+        $provider = AiProvider::create([
+            'display_name' => 'Pending local diagnosis',
+            'provider_type' => 'ollama-compatible',
+            'base_url' => 'http://127.0.0.1:11434',
+            'secret_ciphertext' => null,
+            'enabled' => true,
+            'health_status' => 'healthy',
+            'routing_priority' => 10,
+            'daily_budget_minor' => 0,
+            'currency' => 'USD',
+            'concurrent_limit' => 2,
+            'timeout_seconds' => 5,
+        ]);
+        $model = AiModel::create([
+            'provider_id' => $provider->id,
+            'provider_model_id' => 'local-reviewed-selector',
+            'capabilities_json' => ['text'],
+            'enabled' => true,
+            'cost_policy_json' => [],
+        ]);
+        $route = AiRoute::create([
+            'task_type' => 'mobile-ai-diagnose',
+            'primary_model_id' => $model->id,
+            'fallback_model_ids_json' => [],
+            'budget_json' => ['reservation_minor' => 0],
+            'rate_limits_json' => ['per_minute' => 4, 'per_day' => 40],
+        ]);
+        $user = User::create([
+            'email' => Str::random(12).'@example.test',
+            'status' => 'active',
+        ]);
+        $diagnosis = AiDiagnosisRequest::create([
+            'user_id' => $user->id,
+            'model_id' => $model->id,
+            'request_blob' => Crypt::encryptString(json_encode([
+                'question' => 'Private database question',
+                'technology' => 'SQL Server',
+                'code_snippet' => 'private-code-not-to-leak',
+            ], JSON_THROW_ON_ERROR)),
+            'expires_at' => now()->addHour(),
+        ]);
+        $jobId = app(DurableAiQueue::class)->enqueue(
+            $provider, 'mobile-diagnosis', 'mobile-diagnosis:'.$diagnosis->id,
+            ['classify'], 0, 1
+        );
+        $diagnosis->forceFill(['job_id' => $jobId])->save();
+
+        return [$provider, $model, $route, $diagnosis, (object) [
+            'id' => $jobId,
+            'provider_id' => $provider->id,
+            'reserved_budget_minor' => 0,
+        ]];
+    }
+
+    private function replacementLocalModel(AiProvider $provider): AiModel
+    {
+        return AiModel::create([
+            'provider_id' => $provider->id,
+            'provider_model_id' => 'newly-approved-local-selector',
+            'capabilities_json' => ['text'],
+            'enabled' => true,
+            'cost_policy_json' => [],
+        ]);
+    }
+
     private function reviewedCatalog(): string
     {
         $id = (string) Str::uuid();
@@ -378,6 +447,76 @@ final class MobileDiagnosisQueuedPolicyTest extends TestCase
             json_decode((string) DB::table('ai_usage')->where('job_id', $job->id)
                 ->value('usage_json'), true)
         );
+    }
+
+
+    public function test_queued_local_model_removed_from_admin_route_cannot_transmit_private_input(): void
+    {
+        [$provider, , $route, $diagnosis, $job] = $this->queuedLocalDiagnosis();
+        $replacement = $this->replacementLocalModel($provider);
+        $route->forceFill(['primary_model_id' => $replacement->id])->save();
+
+        // Prior to #671, the Ollama-specific path skipped the route membership
+        // guard and sent the stored question to a no-longer-approved model.
+        $this->rejectWithoutProviderCall($diagnosis, $job);
+    }
+
+    public function test_queued_local_model_revoked_during_catalog_read_cannot_call_ollama(): void
+    {
+        [$provider, , $route, $diagnosis, $job] = $this->queuedLocalDiagnosis();
+        $replacement = $this->replacementLocalModel($provider);
+        $this->reviewedCatalog();
+        Http::fake();
+        $changed = false;
+
+        DB::listen(function ($query) use (&$changed, $route, $replacement): void {
+            if (! $changed && str_contains(strtolower($query->sql), 'runbooks')) {
+                $changed = true;
+                $route->forceFill(['primary_model_id' => $replacement->id])->save();
+            }
+        });
+
+        try {
+            app(MobileDiagnosisDispatcher::class)->execute($job, 'classify', 'test-worker');
+            $this->fail('Admin route revocation during catalog lookup must block inference.');
+        } catch (RuntimeException $exception) {
+            $this->assertSame('Mobile diagnosis failed safely.', $exception->getMessage());
+        }
+
+        $this->assertTrue($changed, 'The reviewed catalog must have been read.');
+        Http::assertNothingSent();
+        $this->assertNull($diagnosis->fresh()->request_blob);
+        $this->assertNull($diagnosis->fresh()->selected_runbook_id);
+        $this->assertDatabaseMissing('ai_usage', ['job_id' => $job->id]);
+    }
+
+    public function test_still_authorized_local_model_can_select_reviewed_runbook_without_paid_charge(): void
+    {
+        [, , , $diagnosis, $job] = $this->queuedLocalDiagnosis();
+        $runbookId = $this->reviewedCatalog();
+        $this->assertSame($job->id,
+            app(DurableAiQueue::class)->claimNext('test-worker')?->id);
+        Http::fake(['http://127.0.0.1:11434/api/generate' => Http::response([
+            'response' => json_encode(['runbook_id' => $runbookId], JSON_THROW_ON_ERROR),
+            'prompt_eval_count' => 9,
+            'eval_count' => 4,
+        ], 200)]);
+
+        $ref = app(MobileDiagnosisDispatcher::class)->execute(
+            $job, 'classify', 'test-worker'
+        );
+        $this->assertSame('mobile/solutions/'.$runbookId, $ref);
+        $this->assertSame($runbookId, $diagnosis->fresh()->selected_runbook_id);
+        $this->assertNull($diagnosis->fresh()->request_blob);
+        $this->assertDatabaseHas('ai_usage', [
+            'job_id' => $job->id, 'cost_minor' => 0, 'cost_currency' => 'USD',
+        ]);
+        $this->assertSame(
+            ['input_tokens' => 9, 'output_tokens' => 4],
+            json_decode((string) DB::table('ai_usage')
+                ->where('job_id', $job->id)->value('usage_json'), true)
+        );
+        Http::assertSentCount(1);
     }
 
 }

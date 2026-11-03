@@ -239,23 +239,29 @@ final class MobileDiagnosisDispatcher
             throw new DomainException('Diagnosis model configuration changed.');
         }
 
+        // Admin route revocation applies to local inference too. A queued
+        // encrypted question must not reach a formerly selected Ollama model
+        // after an administrator removes it from the diagnosis route.
+        $route = AiRoute::query()
+            ->where('task_type', MobileDiagnosisAdmission::TASK_TYPE)->first();
+        $fallbacks = $route?->fallback_model_ids_json;
+        $configuredModels = $route === null || ! is_array($fallbacks)
+            ? [] : [$route->primary_model_id, ...$fallbacks];
+        if (! in_array($model->id, $configuredModels, true)) {
+            throw new DomainException('Diagnosis model is no longer routed.');
+        }
+
         if ($provider->provider_type === 'openai-compatible') {
-            $route = AiRoute::query()
-                ->where('task_type', MobileDiagnosisAdmission::TASK_TYPE)->first();
-            $budget = $route?->budget_json;
+            $budget = $route->budget_json;
             $policy = $model->cost_policy_json;
             $routeCurrency = is_array($budget) ? ($budget['currency'] ?? null) : null;
             $modelCurrency = is_array($policy) ? ($policy['currency'] ?? null) : null;
             $reservation = is_array($budget) ? ($budget['reservation_minor'] ?? null) : null;
-            $fallbacks = $route?->fallback_model_ids_json;
-            $configuredModels = $route === null || ! is_array($fallbacks)
-                ? [] : [$route->primary_model_id, ...$fallbacks];
 
             if (! is_string($modelCurrency) || $modelCurrency !== $provider->currency
                 || ($routeCurrency !== null && $routeCurrency !== $provider->currency)
                 || ! is_int($reservation) || $reservation < 1
                 || $reservation !== (int) ($job->reserved_budget_minor ?? 0)
-                || ! in_array($model->id, $configuredModels, true)
                 || ! is_string($provider->secret_ciphertext)
                 || trim($provider->secret_ciphertext) === '') {
                 throw new DomainException('Diagnosis paid model or route policy changed.');
