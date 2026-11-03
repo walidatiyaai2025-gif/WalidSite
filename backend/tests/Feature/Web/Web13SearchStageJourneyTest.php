@@ -170,9 +170,14 @@ final class Web13SearchStageJourneyTest extends TestCase
     {
         foreach (['en' => 'ltr', 'ar' => 'rtl'] as $lang => $direction) {
             foreach (['', 'screenneedle'] as $term) {
-                $response = $this->get(route('public.search', [
-                    'lang' => $lang, 'q' => $term, 'type' => 'all',
-                ]))->assertOk()
+                // Laravel normalizes a supplied empty q to null, which fails
+                // the existing "sometimes|string" validator. A real blank
+                // search omits q rather than transmitting q=.
+                $params = ['lang' => $lang, 'type' => 'all'];
+                if ($term !== '') {
+                    $params['q'] = $term;
+                }
+                $response = $this->get(route('public.search', $params))->assertOk()
                     ->assertSee('<html lang="'.$lang.'" dir="'.$direction.'">', false)
                     ->assertSee('aria-labelledby="web13-functional-heading"', false)
                     ->assertSee('<h2 class="ed-page-title" id="web13-functional-heading">', false)
