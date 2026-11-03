@@ -165,4 +165,54 @@ class EditorialReviewConsoleTest extends TestCase
         $this->post('/admin/content/'.$article->id.'/publish')->assertRedirect();
         $this->assertSame('published', $article->fresh()->status);
     }
+
+    public function test_direct_web_publish_refuses_self_editor_and_unknown_author_but_records_independent_checker(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $this->actingAs($admin, 'web');
+
+        $self = $this->article();
+        DB::table('article_revisions')->where('article_id', $self->id)->update([
+            'author_user_id' => $admin->id,
+            'last_editor_user_id' => $admin->id,
+        ]);
+        $this->get('/admin/content?article='.$self->id.'&lang=en')
+            ->assertOk()
+            ->assertSee('Publishing blocked: an independent checker')
+            ->assertDontSee('Approve and publish verified revision');
+        $this->post('/admin/content/'.$self->id.'/publish')->assertForbidden();
+        $this->assertSame('draft', $self->fresh()->status);
+
+        $edited = $this->article();
+        DB::table('article_revisions')->where('article_id', $edited->id)->update([
+            'last_editor_user_id' => $admin->id,
+        ]);
+        $this->get('/admin/content?article='.$edited->id.'&lang=ar')
+            ->assertOk()->assertSee('النشر محجوب: يتطلب الإصدار مراجعة مستقلة');
+        $this->post('/admin/content/'.$edited->id.'/publish')->assertForbidden();
+
+        $legacy = $this->article();
+        DB::table('article_revisions')->where('article_id', $legacy->id)->update([
+            'author_user_id' => null,
+            'last_editor_user_id' => null,
+        ]);
+        $this->post('/admin/content/'.$legacy->id.'/publish')->assertForbidden();
+        $this->assertDatabaseMissing('editorial_events', [
+            'article_id' => $legacy->id, 'action' => 'manual_published',
+        ]);
+
+        $reviewable = $this->article();
+        $revision = $reviewable->revisions()->firstOrFail();
+        $this->get('/admin/content?article='.$reviewable->id.'&lang=en')
+            ->assertOk()->assertSee('Approve and publish verified revision');
+        $this->post('/admin/content/'.$reviewable->id.'/publish')
+            ->assertRedirect();
+        $this->assertSame('published', $reviewable->fresh()->status);
+        $this->assertDatabaseHas('article_revisions', [
+            'id' => $revision->id,
+            'reviewed_by_user_id' => $admin->id,
+        ]);
+        $this->assertNotNull($revision->fresh()->reviewed_at);
+    }
+
 }
