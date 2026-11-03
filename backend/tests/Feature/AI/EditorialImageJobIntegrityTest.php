@@ -30,7 +30,7 @@ final class EditorialImageJobIntegrityTest extends TestCase
     private function queuedImage(bool $attributed = true): array
     {
         $provider = AiProvider::create([
-            'display_name' => 'Image job integrity fixture',
+            'display_name' => 'Image integrity '.Str::random(12),
             'provider_type' => 'openai-compatible',
             'base_url' => 'https://models.example.org/v1',
             'secret_ciphertext' => 'non-production-private-fixture-token',
@@ -233,6 +233,21 @@ final class EditorialImageJobIntegrityTest extends TestCase
         } finally {
             $this->travelBack();
         }
+    }
+
+    public function test_cancelled_queued_image_job_never_dispatches_or_receipts_cost(): void
+    {
+        [, , , , $jobId] = $this->queuedImage();
+        $queue = app(DurableAiQueue::class);
+        $this->assertTrue($queue->cancelJob($jobId));
+        $this->assertFalse($queue->cancelJob($jobId));
+        $this->fakeValidImage();
+
+        $this->assertSame(['state' => 'idle', 'job_id' => null], $this->tick());
+        Http::assertNothingSent();
+        $this->assertDatabaseHas('ai_jobs', ['id' => $jobId, 'status' => 'cancelled']);
+        $this->assertDatabaseMissing('ai_usage', ['job_id' => $jobId]);
+        $this->assertDatabaseCount('assets', 0);
     }
 
     public function test_malformed_image_payload_fails_before_cost_receipt_or_asset_storage(): void
