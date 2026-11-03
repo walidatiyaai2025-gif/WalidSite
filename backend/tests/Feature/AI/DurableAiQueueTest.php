@@ -182,6 +182,73 @@ class DurableAiQueueTest extends TestCase
         $queue->completeStep($id, 'worker-b', 'research', 'stolen');
     }
 
+    public function test_paid_retry_with_fully_receipted_cost_can_reclaim_at_exact_daily_cap(): void
+    {
+        $queue = new DurableAiQueue();
+        $provider = $this->provider('openai-compatible', 25);
+        $recovered = $queue->enqueue($provider, 'draft', 'receipt:fully-paid', ['write'], 25, 3);
+        $newPaidJob = $queue->enqueue($provider, 'draft', 'receipt:new-unfunded', ['write'], 25, 3);
+
+        $this->assertSame($recovered, $queue->claimNext('crashed-worker')?->id);
+        $this->assertTrue($queue->recordUsage(
+            $recovered, 'crashed-worker', 'receipt:full', 25, 'USD', 'reviewed-model'
+        ));
+
+        // Provider has consumed 100% of its cap, but recovering this
+        // already-paid checkpoint does not reserve a second 25 units.
+        DB::table('job_leases')->where('job_id', $recovered)
+            ->update(['expires_at' => now()->subSecond()]);
+        $this->assertSame(1, $queue->recoverExpired());
+        $this->travel(31)->seconds();
+        try {
+            $this->assertSame($recovered, $queue->claimNext('recovery-worker')?->id);
+            $this->assertNull($queue->claimNext('competing-worker'));
+            // A recovery worker can fail closed without any additional
+            // billable inference or ledger mutation.
+            $this->assertTrue($queue->cancelJob($recovered));
+            $this->assertNull($queue->claimNext('competing-worker'));
+        } finally {
+            $this->travelBack();
+        }
+
+        $this->assertDatabaseHas('ai_jobs', ['id' => $newPaidJob, 'status' => 'queued']);
+        $this->assertSame(1, DB::table('ai_usage')->count());
+        $this->assertSame(25, (int) DB::table('ai_usage')->sum('cost_minor'));
+    }
+
+    public function test_partially_receipted_retry_only_reserves_remaining_liability(): void
+    {
+        $queue = new DurableAiQueue();
+        $provider = $this->provider('openai-compatible', 40);
+        $recovered = $queue->enqueue($provider, 'draft', 'receipt:partial', ['write'], 30, 3);
+        $other = $queue->enqueue($provider, 'draft', 'receipt:other', ['write'], 15, 3);
+        $this->assertSame($recovered, $queue->claimNext('crashed-worker')?->id);
+        $this->assertTrue($queue->recordUsage(
+            $recovered, 'crashed-worker', 'receipt:partial-spend', 20, 'USD'
+        ));
+
+        DB::table('job_leases')->where('job_id', $recovered)
+            ->update(['expires_at' => now()->subSecond()]);
+        $this->assertSame(1, $queue->recoverExpired());
+        $this->travel(31)->seconds();
+        try {
+            // 20 already spent + 10 remaining reserve = 30 <= 40.
+            $this->assertSame($recovered, $queue->claimNext('recovery-worker')?->id);
+            // Competing new 15 cannot fit while 10 remains reserved:
+            // 20 spent + 10 outstanding + 15 new = 45 > 40.
+            $this->assertNull($queue->claimNext('competing-worker'));
+            $this->assertTrue($queue->cancelJob($recovered));
+            // After cancellation only the real 20 spent persists;
+            // a fresh 15 reservation now fits under the 40 cap.
+            $this->assertSame($other, $queue->claimNext('competing-worker')?->id);
+        } finally {
+            $this->travelBack();
+        }
+
+        $this->assertSame(1, DB::table('ai_usage')->count());
+        $this->assertSame(20, (int) DB::table('ai_usage')->sum('cost_minor'));
+    }
+
     public function test_paid_jobs_reserve_budget_and_deduplicate_usage_receipts(): void
     {
         $queue = new DurableAiQueue();
