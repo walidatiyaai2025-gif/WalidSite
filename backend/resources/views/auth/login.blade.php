@@ -1,5 +1,8 @@
 @php($locale = request()->query('lang') === 'ar' ? 'ar' : 'en')
-@php($installationComplete = session('status') === 'Installation complete. Sign in with your owner email.')
+@php($installationComplete = in_array(session('status'), [
+    'Installation complete. Sign in with your owner email.',
+    'اكتمل التثبيت. سجّل الدخول باستخدام بريد المالك.',
+], true))
 <!doctype html>
 <html lang="{{ $locale }}" dir="{{ $locale === 'ar' ? 'rtl' : 'ltr' }}">
 <head>
