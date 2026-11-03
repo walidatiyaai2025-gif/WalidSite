@@ -124,7 +124,12 @@ final class AdminApprovalRejectionSecurityTest extends TestCase
         ]);
         $this->assertFalse($old->fresh()->hasVerifiedEvidence());
 
+        // A rejected reviewer's next candidate must be written by a
+        // separate maker; otherwise the maker/checker gate is correctly 403.
+        $this->actingAs($this->actor(), 'web');
         $this->revision($article, 2);
+        Auth::forgetGuards();
+        $this->withToken($this->bearer($reviewer));
         $this->assertTrue($article->fresh()->isReadyToPublish());
         $this->postJson('/api/v1/admin/approvals/'.$article->id.'/decision', [
             'decision' => 'approve',
