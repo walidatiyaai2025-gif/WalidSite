@@ -79,8 +79,8 @@ button:disabled{background:#718096;cursor:not-allowed}
 @if($errors->any())<div role="alert" class="error">@foreach($errors->all() as $error)<p>{{ $error }}</p>@endforeach</div>@endif
 @if($status['history_mismatch'] ?? false)
 <p role="alert" class="error">{{ $locale === 'ar'
-    ? 'تاريخ ترحيلات قاعدة البيانات لا يتوافق مع هذا الإصدار. تم منع الترحيلات لحماية البيانات. لا تعيد تشغيلها دون نسخة استعادة موثقة.'
-    : 'Incompatible migration history. The deployed code cannot safely apply migrations to this database; recover a compatible release or verified backup.' }}</p>
+    ? 'قاعدة البيانات تحتوي على ترحيلات غير موجودة في هذا الإصدار. تاريخ الترحيلات غير متوافق، وتم منع الترحيلات لحماية البيانات. لا تعِد المحاولة دون نسخة استعادة موثقة.'
+    : 'Incompatible database migration history. The deployed code cannot safely apply migrations to this database; recover a compatible release or verified backup.' }}</p>
 @elseif(!($status['ready'] ?? false))
 <p role="alert" class="error">{{ $locale === 'ar' ? 'قاعدة البيانات غير متاحة؛ لا يمكن فحص الترحيلات.' : 'Database unavailable; migrations cannot be inspected.' }}</p>
 @else
