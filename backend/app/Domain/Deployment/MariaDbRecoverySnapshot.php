@@ -152,6 +152,54 @@ final class MariaDbRecoverySnapshot
             throw new DomainException('Target must be a distinct empty disposable MariaDB database.');
         }
 
+        // Validate the ENTIRE snapshot before a single DDL statement. An
+        // alphabetical child table could otherwise be created before a later
+        // parent table's corrupt file is discovered, leaving a dirty target.
+        $preflightBytes = 0;
+        foreach ($metadata['tables'] as $table => $info) {
+            $this->ident($table);
+            if (! is_array($info) || ! is_string($info['ddl'] ?? null)
+                || ! str_starts_with($info['ddl'], 'CREATE TABLE ')
+                || ! is_int($info['rows'] ?? null) || $info['rows'] < 0
+                || $info['rows'] > self::MAX_ROWS
+                || ! $this->validHash($info['file_sha256'] ?? null)
+                || ! $this->validHash($info['data_sha256'] ?? null)) {
+                throw new DomainException('Untrusted MariaDB recovery table metadata.');
+            }
+            $file = $directory.'/'.$table.'.jsonl';
+            if (! is_file($file) || is_link($file)
+                || ! hash_equals($info['file_sha256'], hash_file('sha256', $file))) {
+                throw new DomainException('MariaDB recovery file checksum mismatch before restore.');
+            }
+            $preflightBytes += filesize($file);
+            if ($preflightBytes > self::MAX_BYTES) {
+                throw new DomainException('MariaDB recovery archive exceeds safe byte limits.');
+            }
+            $input = fopen($file, 'rb');
+            if ($input === false) {
+                throw new DomainException('Cannot open MariaDB recovery rows.');
+            }
+            $count = 0;
+            $digests = [];
+            try {
+                while (($line = fgets($input)) !== false) {
+                    $encoded = json_decode($line, true, 16, JSON_THROW_ON_ERROR);
+                    $decoded = $this->decode($encoded);
+                    if (++$count > self::MAX_ROWS) {
+                        throw new DomainException('MariaDB recovery row limit exceeded.');
+                    }
+                    $digests[] = hash('sha256', $this->canonical($this->encode($decoded)));
+                }
+            } finally {
+                fclose($input);
+            }
+            sort($digests, SORT_STRING);
+            if ($count !== $info['rows']
+                || ! hash_equals($info['data_sha256'], hash('sha256', implode("\n", $digests)))) {
+                throw new DomainException('MariaDB recovery row contents mismatched before restore.');
+            }
+        }
+
         $target->exec('SET FOREIGN_KEY_CHECKS=0');
         try {
             $rows = 0;
