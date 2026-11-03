@@ -454,24 +454,32 @@ class DurableAiQueueTest extends TestCase
         ]);
     }
 
-    public function test_provider_spend_cap_rejects_excess_charges_without_partial_writes(): void
+    public function test_admin_cap_reduction_blocks_new_calls_but_retains_existing_paid_receipt(): void
     {
         $queue = new DurableAiQueue();
         $provider = $this->provider('openai-compatible', 100);
         $id = $queue->enqueue($provider, 'draft', 'budget:1', ['write'], 50);
-        $queue->claimNext('worker-a');
-        // Simulate an administrator lowering the daily cap after admission.
-        // The attempted usage fits the job reservation but exceeds the
-        // newly enforced provider cap, so this tests the daily gate alone.
+        $newJob = $queue->enqueue($provider, 'draft', 'budget:new', ['write'], 10);
+        $this->assertSame($id, $queue->claimNext('worker-a')?->id);
+        // The provider call was accepted under the old cap; it already
+        // incurred its estimate before the administrator lowered the cap.
         DB::table('ai_providers')->where('id', $provider->id)
             ->update(['daily_budget_minor' => 40]);
-        try {
-            $queue->recordUsage($id, 'worker-a', 'too:expensive', 41, 'USD');
-            $this->fail('Excess usage was accepted.');
-        } catch (DomainException $e) {
-            $this->assertSame('Daily provider spending cap reached.', $e->getMessage());
-        }
-        $this->assertDatabaseCount('ai_usage', 0);
+
+        $this->assertTrue($queue->recordUsage(
+            $id, 'worker-a', 'budget:original-call', 41, 'USD'
+        ));
+        $this->assertDatabaseHas('ai_usage', [
+            'job_id' => $id, 'cost_minor' => 41, 'cost_currency' => 'USD',
+        ]);
+        $this->assertSame(1, DB::table('ai_usage')->where('job_id', $id)->count());
+        $queue->completeStep($id, 'worker-a', 'write', 'drafts/private');
+        $queue->completeJob($id, 'worker-a');
+
+        // The already-incurred 41 exceeds the new 40 ceiling. It is not
+        // spendable headroom for an additional 10-cost provider call.
+        $this->assertNull($queue->claimNext('worker-b'));
+        $this->assertDatabaseHas('ai_jobs', ['id' => $newJob, 'status' => 'queued']);
     }
 
     public function test_three_failed_actions_open_a_temporary_provider_circuit(): void
