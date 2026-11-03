@@ -206,4 +206,70 @@ final class Web04ProjectsVisualJourneyTest extends TestCase
                 ->assertOk()->assertDontSee('PRIVATE_TOKEN');
         }
     }
+    public function test_one_or_two_verified_projects_fill_unused_preview_slots_with_real_resources(): void
+    {
+        $this->reviewedProject('never-public', 1, false);
+
+        for ($count = 1; $count <= 2; $count++) {
+            $this->reviewedProject('visible-'.$count, $count);
+
+            foreach (['en', 'ar'] as $locale) {
+                $html = $this->get('/projects?lang='.$locale)
+                    ->assertOk()
+                    ->assertDontSee('never-public')
+                    ->getContent();
+                $preview = explode('</section>', explode('<section class="web04-preview"', $html, 2)[1], 2)[0];
+
+                $this->assertSame(3, substr_count($preview, '<article class="web04-preview-card'));
+                $this->assertSame($count, substr_count($preview, 'class="web04-preview-card"'));
+                $this->assertSame(3 - $count, substr_count($preview, 'web04-preview-card--resource'));
+                $this->assertStringContainsString(
+                    'href="'.e(route('public.github', ['lang' => $locale])).'"', $preview
+                );
+                if ($count === 1) {
+                    $this->assertStringContainsString(
+                        'href="'.e(route('public.contact', ['lang' => $locale])).'"', $preview
+                    );
+                } else {
+                    $this->assertStringNotContainsString('web04-card-icon" aria-hidden="true">@', $preview);
+                }
+                for ($index = 1; $index <= $count; $index++) {
+                    $this->assertStringContainsString('Reviewed visible-'.$index, $preview);
+                    $this->assertStringContainsString(
+                        'href="'.e(route('public.project', [
+                            'slug' => 'visible-'.$index, 'lang' => $locale,
+                        ])).'"', $preview
+                    );
+                }
+            }
+        }
+    }
+
+    public function test_preview_case_study_preserves_validated_filters_and_page_on_return(): void
+    {
+        for ($index = 1; $index <= 10; $index++) {
+            $this->reviewedProject('approved-'.$index, $index);
+        }
+        $this->reviewedProject('private-matching-claim', 1, false);
+
+        foreach (['en', 'ar'] as $locale) {
+            $params = ['lang' => $locale, 'q' => 'approved', 'status' => 'completed', 'page' => 2];
+            $html = $this->get('/projects?'.http_build_query(array_merge(
+                $params, ['unsafe' => 'PRIVATE_TOKEN']
+            )))->assertOk()->assertDontSee('PRIVATE_TOKEN')->getContent();
+            $preview = explode('</section>', explode('<section class="web04-preview"', $html, 2)[1], 2)[0];
+
+            $detail = route('public.project', array_merge(['slug' => 'approved-10'], $params));
+            $this->assertStringContainsString('href="'.e($detail).'"', $preview);
+            $this->assertSame(3, substr_count($preview, '<article class="web04-preview-card'));
+            $this->assertStringNotContainsString('private-matching-claim', $preview);
+
+            $study = $this->get($detail)->assertOk()->getContent();
+            $this->assertStringContainsString(
+                'href="'.e(route('public.projects', $params)).'"',
+                $study
+            );
+        }
+    }
+
 }

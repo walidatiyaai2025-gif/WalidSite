@@ -176,19 +176,26 @@
         </div>
     </section>
     @php($web04Preview = $projects->take(3)->values())
+    {{-- Preserve three real first-viewport slots even if only one or two verified case studies exist. --}}
     @php($emptyPageHasResultsElsewhere = $projects->isEmpty() && $paginated->total() > 0)
     <section class="web04-preview" aria-label="{{ $web04Preview->isEmpty() ? ($locale === 'ar' ? 'حالة المشاريع والروابط المفيدة' : 'Project availability and resources') : ($locale === 'ar' ? 'دراسات الحالة المنشورة' : 'Published case studies') }}">
         <div class="web04-preview-grid">
-            @forelse($web04Preview as $project)
+            @foreach($web04Preview as $project)
                 <article class="web04-preview-card">
                     <div class="web04-card-icon" aria-hidden="true">{{ ['<>', 'AI', 'DB'][$loop->index] }}</div>
                     <h2>{{ $project['name'] }}</h2>
                     <p>{{ \Illuminate\Support\Str::limit($project['summary'] ?? '', 88) }}</p>
                     <div class="web04-card-rule" aria-hidden="true"></div>
-                    <a class="web04-card-link" href="{{ route('public.project', ['slug' => $project['slug'], 'lang' => $locale]) }}">{{ $locale === 'ar' ? 'عرض التفاصيل' : 'View details' }} &gt;</a>
+                    <a class="web04-card-link" href="{{ route('public.project', array_merge(
+                        ['slug' => $project['slug'], 'lang' => $locale],
+                        $safeProjectFilters,
+                        $paginated->currentPage() > 1 && $paginated->currentPage() <= $paginated->lastPage()
+                            ? ['page' => $paginated->currentPage()] : []
+                    )) }}">{{ $locale === 'ar' ? 'عرض التفاصيل' : 'View details' }} &gt;</a>
                 </article>
-            @empty
-                {{-- The reference contains three cards. No fictional case studies may fill an empty production dataset. --}}
+            @endforeach
+            @if($web04Preview->isEmpty())
+                {{-- An empty dataset gets an honest status card; never invent case studies to fill the reference. --}}
                 <article class="web04-preview-card web04-preview-card--empty">
                     <div class="web04-card-icon" aria-hidden="true">&lt;&gt;</div>
                     <h2>{{ $emptyPageHasResultsElsewhere
@@ -204,6 +211,9 @@
                         ? ($locale === 'ar' ? 'الصفحة الأولى' : 'First page')
                         : ($filtersApplied ? ($locale === 'ar' ? 'مسح المرشحات' : 'Clear filters') : ($locale === 'ar' ? 'استعراض القائمة' : 'Browse catalog')) }} &gt;</a>
                 </article>
+            @endif
+            @if($web04Preview->count() < 3)
+                {{-- A real repository resource fills only an unused case-study slot. --}}
                 <article class="web04-preview-card web04-preview-card--resource">
                     <div class="web04-card-icon" aria-hidden="true">GH</div>
                     <h2>{{ $locale === 'ar' ? 'المستودعات العامة' : 'Public repositories' }}</h2>
@@ -211,6 +221,8 @@
                     <div class="web04-card-rule" aria-hidden="true"></div>
                     <a class="web04-card-link" href="{{ route('public.github', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'عرض المستودعات' : 'Browse repositories' }} &gt;</a>
                 </article>
+            @endif
+            @if($web04Preview->count() < 2)
                 <article class="web04-preview-card web04-preview-card--resource">
                     <div class="web04-card-icon" aria-hidden="true">@</div>
                     <h2>{{ $locale === 'ar' ? 'تواصل حول مشروع' : 'Discuss a project' }}</h2>
@@ -218,7 +230,7 @@
                     <div class="web04-card-rule" aria-hidden="true"></div>
                     <a class="web04-card-link" href="{{ route('public.contact', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'تواصل' : 'Get in touch' }} &gt;</a>
                 </article>
-            @endforelse
+            @endif
         </div>
     </section>
 </div>
