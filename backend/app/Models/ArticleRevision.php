@@ -4,6 +4,7 @@ namespace App\Models;
 
 use DomainException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -23,6 +24,7 @@ class ArticleRevision extends Model
             'citations_json' => 'array',
             'validation_json' => 'array',
             'revision_no' => 'integer',
+            'reviewed_at' => 'datetime',
         ];
     }
 
@@ -33,6 +35,17 @@ class ArticleRevision extends Model
 
     protected static function booted(): void
     {
+        // Set real actor attribution only when a first-party authenticated
+        // writer is present. Historical/system revisions stay unknown and
+        // must never be invented or silently assigned to a reviewer.
+        static::creating(static function (self $revision): void {
+            $actorId = Auth::id();
+            if (is_string($actorId) && $actorId !== '') {
+                $revision->author_user_id = $actorId;
+                $revision->last_editor_user_id = $actorId;
+            }
+        });
+
         // Editorial sign-off belongs to the exact reviewed body and sources.
         // Updating either in place must never inherit earlier approval,
         // including when a caller submits "validated" in the same update.
@@ -41,10 +54,19 @@ class ArticleRevision extends Model
             // reviewed snapshot. Neither may be rewritten after creation:
             // reparenting or renumbering would transfer editorial approval to
             // another title or publication pin without a new review.
-            if ($revision->isDirty(['article_id', 'revision_no'])) {
+            if ($revision->isDirty(['article_id', 'revision_no', 'author_user_id'])) {
                 throw new DomainException('Article revision identity is immutable after creation.');
             }
 
+            if ($revision->isDirty(['body_md', 'citations_json', 'validation_json'])) {
+                // A human editor who changes the reviewed snapshot cannot
+                // also be its checker; no untrusted request field can spoof
+                // this identity because it is not mass assignable.
+                $editor = Auth::id();
+                if (is_string($editor) && $editor !== '') {
+                    $revision->last_editor_user_id = $editor;
+                }
+            }
             if ($revision->isDirty(['body_md', 'citations_json'])) {
                 $revision->status = 'draft';
                 $revision->validation_json = [
@@ -53,6 +75,18 @@ class ArticleRevision extends Model
                 ];
             }
         });
+    }
+
+    /**
+     * Fail closed for legacy/system revisions without durable authorship.
+     * A role elevation to owner/admin must not authorize self-review.
+     */
+    public function canBeIndependentlyReviewedBy(User $reviewer): bool
+    {
+        return $this->author_user_id !== null
+            && $reviewer->id !== $this->author_user_id
+            && ($this->last_editor_user_id === null
+                || $reviewer->id !== $this->last_editor_user_id);
     }
 
     public function hasVerifiedEvidence(): bool

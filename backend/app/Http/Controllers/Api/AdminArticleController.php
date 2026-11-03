@@ -51,7 +51,7 @@ final class AdminArticleController extends Controller
             'publication_mode' => ['required', 'string', 'in:draft,auto_eligible'],
         ]);
 
-        $article = DB::transaction(static function () use ($input): Article {
+        $article = DB::transaction(static function () use ($input, $user): Article {
             // Use a collision-resistant internal slug; neither a fake English
             // translation nor an unreviewed research topic is made public.
             $article = Article::create([
@@ -60,7 +60,7 @@ final class AdminArticleController extends Controller
                 'title_ar' => $input['language'] === 'ar' ? trim($input['title']) : '',
                 'canonical_lang' => $input['language'],
             ]);
-            $article->revisions()->create([
+            $revision = $article->revisions()->make([
                 'revision_no' => 1,
                 'body_md' => '',
                 'citations_json' => [],
@@ -73,6 +73,10 @@ final class AdminArticleController extends Controller
                 ],
                 'status' => 'draft',
             ]);
+            $revision->forceFill([
+                'author_user_id' => $user->id,
+                'last_editor_user_id' => $user->id,
+            ])->save();
 
             return $article;
         }, 3);

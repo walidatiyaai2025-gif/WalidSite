@@ -35,6 +35,9 @@ final class AdminApprovalRejectionSecurityTest extends TestCase
 
     private function article(): Article
     {
+        // A real, separate authenticated maker is required by the API
+        // reviewer policy; do not fabricate a legacy anonymous approval.
+        $this->actingAs($this->actor(), 'web');
         $article = Article::create([
             'slug' => 'rejected-review-'.Str::lower(Str::random(10)),
             'title_en' => 'Evidence backed draft',
@@ -42,6 +45,7 @@ final class AdminApprovalRejectionSecurityTest extends TestCase
             'canonical_lang' => 'en',
         ]);
         $this->revision($article, 1);
+        Auth::forgetGuards();
 
         return $article;
     }
@@ -120,7 +124,12 @@ final class AdminApprovalRejectionSecurityTest extends TestCase
         ]);
         $this->assertFalse($old->fresh()->hasVerifiedEvidence());
 
+        // A rejected reviewer's next candidate must be written by a
+        // separate maker; otherwise the maker/checker gate is correctly 403.
+        $this->actingAs($this->actor(), 'web');
         $this->revision($article, 2);
+        Auth::forgetGuards();
+        $this->withToken($this->bearer($reviewer));
         $this->assertTrue($article->fresh()->isReadyToPublish());
         $this->postJson('/api/v1/admin/approvals/'.$article->id.'/decision', [
             'decision' => 'approve',
