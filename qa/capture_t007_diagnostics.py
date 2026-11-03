@@ -482,7 +482,21 @@ def navigation_browser_audit(base_url: str, screens: dict) -> dict:
                             page.goto(url, wait_until="domcontentloaded")
                             page.locator(".t007-reference-action.secondary").click()
                             arrived = urlsplit(page.url)
-                            if arrived.path != "/projects" or parse_qs(arrived.query).get("lang") != [lang]:
+                            if screen_id == "WEB-02":
+                                # About evidence is a real, focusable on-page
+                                # source section, not the unrelated Projects URL.
+                                # Verify both the live browser destination and
+                                # its actual semantic/keyboard target.
+                                if (arrived.path != "/about"
+                                        or parse_qs(arrived.query).get("lang") != [lang]
+                                        or arrived.fragment != "about-evidence"):
+                                    raise RuntimeError("About evidence CTA missed source section")
+                                proof = page.locator("section#about-evidence")
+                                if (proof.count() != 1
+                                        or proof.get_attribute("tabindex") != "-1"
+                                        or proof.locator("h2#about-evidence-heading").count() != 1):
+                                    raise RuntimeError("About source evidence target not accessible")
+                            elif arrived.path != "/projects" or parse_qs(arrived.query).get("lang") != [lang]:
                                 raise RuntimeError("Evidence CTA did not reach localized projects")
                             if page.locator("main#main-content").count() != 1:
                                 raise RuntimeError("Evidence destination missing landmark")
