@@ -21,7 +21,7 @@ final class WebsitePageContentSeeder extends Seeder
             foreach ($sections as $section => $fields) {
                 foreach ($fields as $field => $translations) {
                     foreach (['en', 'ar'] as $locale) {
-                        $approvedHome = $page === 'home';
+                        $approvedHome = in_array($page, ['home', 'about'], true);
                         $rows[] = [
                             'id' => (string) Str::uuid(),
                             'page_key' => $page,

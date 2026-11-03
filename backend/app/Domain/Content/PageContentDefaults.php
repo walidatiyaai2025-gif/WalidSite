@@ -50,9 +50,7 @@ final class PageContentDefaults
                     'description' => ['en'=>'Enterprise Technology & AI Solutions Architecture','ar'=>'هندسة التقنية المؤسسية وحلول الذكاء الاصطناعي'],
                 ],
             ],
-            'about' => [
-                'intro' => ['heading'=>['en'=>'About','ar'=>'نبذة']],
-            ],
+            'about' => self::aboutCopy(),
             'projects' => [
                 'intro' => [
                     'heading'=>['en'=>'Verified projects','ar'=>'المشاريع الموثقة'],
@@ -84,6 +82,33 @@ final class PageContentDefaults
         }
 
         return $cached = $items;
+    }
+
+    /** Owner-reviewed About design fields. Seeded in both languages on first setup. */
+    public static function aboutCopy(): array
+    {
+        return self::aboutData()['copy'];
+    }
+
+    /** Fixed media slots only: untrusted filenames are never used as filesystem paths. */
+    public static function aboutMedia(): array
+    {
+        return self::aboutData()['media'];
+    }
+
+    private static function aboutData(): array
+    {
+        static $data = null;
+        if ($data !== null) {
+            return $data;
+        }
+        $file = database_path('seeders/owner-about-page-content.json');
+        $decoded = json_decode((string) file_get_contents($file), true, 512, JSON_THROW_ON_ERROR);
+        if (($decoded['schema'] ?? null) !== 'walidsite.owner-about-page.v1'
+            || ! is_array($decoded['copy'] ?? null) || ! is_array($decoded['media'] ?? null)) {
+            throw new \RuntimeException('Invalid owner About content seed.');
+        }
+        return $data = $decoded;
     }
 
     /** Exact approved screenshot text definitions; source is open owner-preview PR #800. */
