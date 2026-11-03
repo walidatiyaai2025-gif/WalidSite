@@ -244,6 +244,19 @@ class CompanionHome extends StatelessWidget {
                   builder: (_) => ReviewedRunbookLibrary(arabic: arabic),
                 ),
               ),
+              onOpenArticle: (slug) => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => MobileHomeArticleRoute(
+                    arabic: arabic,
+                    slug: slug,
+                  ),
+                ),
+              ),
+              onOpenRunbook: (id) => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => ReviewedRunbookDetail(id: id, arabic: arabic),
+                ),
+              ),
             ),
             const SizedBox(height: 16),
             Card(
