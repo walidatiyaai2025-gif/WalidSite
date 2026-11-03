@@ -119,8 +119,19 @@ final class DurableAiQueue
             ->where('consumed_usage.created_at', '>=', now('UTC')->startOfDay())
             ->groupBy('consumed_usage.provider_id');
 
+        // For a recovered queued/retry job, count only the portion of its
+        // original reservation that has NOT already been receipted. Today's
+        // provider spend already includes that paid amount. The same formula
+        // is enforced again under the provider mutex below.
+        $candidateOutstandingSql = 'CASE WHEN ai_jobs.reserved_budget_minor > '
+            .'COALESCE(candidate_receipts.recorded_minor, 0) '
+            .'THEN ai_jobs.reserved_budget_minor - COALESCE(candidate_receipts.recorded_minor, 0) '
+            .'ELSE 0 END';
+
         $ids = DB::table('ai_jobs')
             ->join('ai_providers', 'ai_providers.id', '=', 'ai_jobs.provider_id')
+            ->leftJoinSub($receiptTotals, 'candidate_receipts',
+                fn ($join) => $join->on('candidate_receipts.job_id', '=', 'ai_jobs.id'))
             ->leftJoinSub($runningCounts, 'provider_running',
                 fn ($join) => $join->on('provider_running.provider_id', '=', 'ai_providers.id'))
             ->leftJoinSub($todaySpend, 'provider_spend',
@@ -148,12 +159,14 @@ final class DurableAiQueue
             // bounded scan so they do not starve runnable later work.
             ->where(fn ($q) => $q->where('ai_providers.provider_type', '!=', 'openai-compatible')
                 ->orWhere('ai_jobs.reserved_budget_minor', '>', 0))
-            ->whereColumn('ai_jobs.reserved_budget_minor', '<=', 'ai_providers.daily_budget_minor')
+            ->whereRaw($candidateOutstandingSql.' <= ai_providers.daily_budget_minor')
             // Today's paid receipts plus unreceipted running reservations
-            // must leave enough headroom for this candidate. A frozen
-            // over-budget backlog cannot hide unrelated runnable work.
+            // must leave enough headroom for this candidate's REMAINING
+            // liability. Do not reserve an already-receipted payment again.
             // Currency consistency and races remain lock-time checks.
-            ->whereRaw('COALESCE(provider_spend.spent_today, 0) + COALESCE(provider_running.outstanding_minor, 0) + ai_jobs.reserved_budget_minor <= ai_providers.daily_budget_minor')
+            ->whereRaw('COALESCE(provider_spend.spent_today, 0) '
+                .'+ COALESCE(provider_running.outstanding_minor, 0) + ('
+                .$candidateOutstandingSql.') <= ai_providers.daily_budget_minor')
             ->when($jobTypes !== null, fn ($query) => $query->whereIn('ai_jobs.job_type', $jobTypes))
             ->whereIn('ai_jobs.status', ['queued', 'retry'])
             ->where(fn ($q) => $q->whereNull('ai_jobs.next_attempt_at')
@@ -223,9 +236,22 @@ final class DurableAiQueue
                     $recorded = (int) $jobReceipts->sum('cost_minor');
                     $outstanding += max(0, (int) $runningJob->reserved_budget_minor - $recorded);
                 }
+                // Recheck the candidate's own lifetime receipts under the
+                // same provider lock used by running job admission. Only the
+                // unreceipted remainder is a new reservation; an old receipt
+                // must not become spendable budget or count twice.
+                $candidateReceipts = DB::table('ai_usage')->where('job_id', $job->id);
+                if ((clone $candidateReceipts)
+                    ->where('cost_currency', '!=', $provider->currency)->exists()) {
+                    return null;
+                }
+                $alreadyRecorded = (int) $candidateReceipts->sum('cost_minor');
+                $candidateOutstanding = max(
+                    0, (int) $job->reserved_budget_minor - $alreadyRecorded
+                );
                 $remainingToday = (int) $provider->daily_budget_minor - $spent;
                 if ($outstanding > $remainingToday ||
-                    (int) $job->reserved_budget_minor > $remainingToday - $outstanding) {
+                    $candidateOutstanding > $remainingToday - $outstanding) {
                     return null;
                 }
                 // Paid compatible providers require a positive cost reservation.
