@@ -88,7 +88,9 @@
 </head>
 <body>
     <a class="skip-link" href="#main-content">{{ $locale === 'ar' ? 'تجاوز إلى المحتوى' : 'Skip to content' }}</a>
-    @if($t007ReferenceRoute)
+    @if(request()->routeIs('home'))
+        {{-- WEB-01 owner-approved hero has its own navigation; keep other T007 headers intact. --}}
+    @elseif($t007ReferenceRoute)
         @include('public.t007-header')
     @else
     <header class="site-header">
