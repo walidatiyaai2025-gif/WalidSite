@@ -314,4 +314,53 @@ final class AdminApprovalsAuditJourneyTest extends TestCase
                 ->assertRedirect()->assertSessionHasErrors();
         }
     }
+    public function test_admin_audit_all_domain_excludes_unclassified_editorial_events_from_html_and_csv(): void
+    {
+        $admin = $this->user('admin');
+        $article = $this->article();
+        $this->actingAs($admin, 'web');
+
+        // A legitimate review action remains visible through the shared log.
+        $this->post('/admin/approvals/'.$article->id.'/decision', [
+            'decision' => 'defer',
+            'reason' => 'source_reviewed',
+        ])->assertRedirect();
+
+        // Other internal editorial events can occupy the same physical table;
+        // they are not approved Admin-13 audit actions and must not leak via
+        // the unfiltered "all" screen or its CSV export.
+        DB::table('editorial_events')->insert([
+            'id' => (string) Str::uuid(),
+            'event_key' => 'internal-'.Str::random(16),
+            'article_id' => $article->id,
+            'revision_no' => 1,
+            'actor_id' => $admin->id,
+            'action' => 'internal_diagnostic',
+            'reason' => 'private_internal_context',
+            'created_at' => now(),
+        ]);
+
+        $this->get('/admin/audit?domain=all&lang=en')->assertOk()
+            ->assertSee('requires_review')
+            ->assertSee('Evidence reviewed candidate')
+            ->assertDontSee('internal_diagnostic')
+            ->assertDontSee('private_internal_context');
+
+        $allCsv = $this->get('/admin/audit?domain=all&format=csv')
+            ->assertOk()->streamedContent();
+        $this->assertStringContainsString('requires_review', $allCsv);
+        $this->assertStringNotContainsString('internal_diagnostic', $allCsv);
+        $this->assertStringNotContainsString('private_internal_context', $allCsv);
+
+        $this->get('/admin/audit?domain=editorial&lang=ar')->assertOk()
+            ->assertSee('requires_review')
+            ->assertDontSee('internal_diagnostic');
+
+        $this->get('/admin/audit?domain=media')->assertOk()
+            // Filter controls legitimately list possible action names;
+            // assert the actual query result count, not the select options.
+            ->assertSee('Editorial & media decisions (0)')
+            ->assertDontSee('internal_diagnostic');
+    }
+
 }
