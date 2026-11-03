@@ -186,7 +186,7 @@ final class Web03ReferenceJourneyTest extends TestCase
                 ->assertSee($locale === 'ar'
                     ? 'المهارات الموثقة المطابقة: 1'
                     : 'Matching verified skills: 1')
-                ->assertSee('Reviewed public-database', $locale === 'en')
+                ->assertSee($locale === 'ar' ? 'موثق public-database' : 'Reviewed public-database')
                 ->assertSee('class="expertise-card-filter" href="', false)
                 ->assertSee('aria-current="page" aria-describedby="expertise-filter-status"', false)
                 ->assertDontSee('foreign-security');
