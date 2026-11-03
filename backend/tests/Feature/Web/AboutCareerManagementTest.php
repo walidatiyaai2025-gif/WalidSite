@@ -28,7 +28,7 @@ final class AboutCareerManagementTest extends TestCase
     private function career(User $user, bool $public = true): CareerPosition
     {
         return CareerPosition::create([
-            'profile_id'=>$user->profile->id,
+            'profile_id'=>Profile::query()->where('user_id',$user->id)->firstOrFail()->id,
             'org_name'=>'Reviewed Organization',
             'role_en'=>'Database Administrator',
             'role_ar'=>'مسؤول قواعد البيانات',
