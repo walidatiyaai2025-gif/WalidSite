@@ -63,6 +63,12 @@ body:has(.expertise-screen) .header-links a[href*="/contact"]{background:#00A999
 .expertise-proof-links{display:flex;gap:16px;flex-wrap:wrap;margin-top:28px}
 .expertise-proof-links a{display:inline-flex;min-height:44px;align-items:center;padding:10px 16px;border:1px solid #D3E3ED;border-radius:11px;color:#163B66;background:#fff;font-weight:700;text-decoration:none}
 .expertise-empty{background:#fff;border:1px dashed #97B4C8;border-radius:16px;padding:25px;color:#315471}
+.expertise-empty p{margin:0 0 12px}
+.expertise-empty a{display:inline-flex;align-items:center;min-height:44px;padding:8px 14px;border:1px solid #00A999;border-radius:10px;color:#006D65;font-weight:800;text-decoration:none}
+.expertise-filter-status{margin:0 0 18px;padding:12px 16px;border-inline-start:4px solid #00A999;background:#EAF5FB;color:#163B66;line-height:1.55}
+.expertise-filter-status strong{overflow-wrap:anywhere}
+.expertise-visually-hidden{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
+@media(max-width:440px){.expertise-card{padding:18px;min-width:0}.expertise-hero{gap:12px}.expertise-filter select{min-width:0}.expertise-card-footer a{overflow-wrap:anywhere}}
 .expertise-screen a:focus-visible,.expertise-screen button:focus-visible,.expertise-screen select:focus-visible{outline:3px solid #126DE1;outline-offset:3px}
 @media(max-width:1100px){.expertise-cards{grid-template-columns:repeat(2,minmax(0,1fr))}.expertise-hero{grid-template-columns:minmax(0,1fr) 300px}.expertise-art{transform:scale(.8);transform-origin:center}}
 @media(max-width:720px){.expertise-hero{grid-template-columns:1fr;gap:10px}.expertise-art{max-width:380px;width:100%;height:185px;transform:scale(.8);transform-origin:top right}.expertise-cards{grid-template-columns:1fr}.expertise-hero-actions a{flex:1 1 170px}.expertise-filter>*{flex:1 1 100%}.expertise-filter select{width:100%}}
@@ -91,20 +97,43 @@ body:has(.expertise-screen) .header-links a[href*="/contact"]{background:#00A999
             <input type="hidden" name="lang" value="{{ $locale }}">
             <div>
                 <label for="expertise-category">{{ $locale === 'ar' ? 'التخصص' : 'Specialty' }}</label>
-                <select id="expertise-category" name="category">
+                <select id="expertise-category" name="category" aria-describedby="expertise-filter-hint">
                     <option value="" @selected($expertiseCategory === '')>{{ $locale === 'ar' ? 'كل التخصصات' : 'All specialties' }}</option>
                     @foreach($expertiseCategories as $key => $category)
                         <option value="{{ $key }}" @selected($expertiseCategory === $key)>{{ $locale === 'ar' ? ($categoryLabelsAr[$category] ?? $category) : $category }}</option>
                     @endforeach
                 </select>
+                <p id="expertise-filter-hint" class="expertise-visually-hidden">{{ $locale === 'ar' ? 'تُعرض المهارات المعتمدة والموثقة للنشر فقط.' : 'Only approved, evidence-verified published skills are displayed.' }}</p>
             </div>
             <button type="submit">{{ $locale === 'ar' ? 'تطبيق التصفية' : 'Apply filter' }}</button>
             @if($expertiseCategory !== '')
                 <a href="{{ route('public.expertise', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'إزالة التصفية' : 'Clear filter' }}</a>
             @endif
         </form>
+        @if($expertiseCategory !== '')
+            {{-- The active filter and actual verified count are trustworthy server-side values,
+                 not a claim that an absent category has no skills anywhere. --}}
+            <p class="expertise-filter-status" id="expertise-filter-status" role="status" aria-live="polite">
+                <strong>{{ $locale === 'ar' ? 'التخصص المحدد:' : 'Selected specialty:' }}
+                    {{ $locale === 'ar'
+                        ? ($categoryLabelsAr[$expertiseCategories[$expertiseCategory]] ?? $expertiseCategories[$expertiseCategory])
+                        : $expertiseCategories[$expertiseCategory] }}</strong>
+                — {{ $locale === 'ar'
+                    ? 'المهارات الموثقة المطابقة: '.$skills->count()
+                    : 'Matching verified skills: '.$skills->count() }}
+            </p>
+        @endif
         @if($skills->isEmpty())
-            <p class="expertise-empty" role="status">{{ $locale === 'ar' ? 'لم تُعتمد مهارات للنشر بعد.' : 'No skills have been approved with verified evidence yet.' }}</p>
+            <div class="expertise-empty">
+                <p role="status">{{ $expertiseCategory !== ''
+                    ? ($locale === 'ar'
+                        ? 'لا توجد مهارات منشورة وموثقة في هذا التخصص. يمكن عرض جميع التخصصات.'
+                        : 'No evidence-verified published skills match this specialty. View all specialties instead.')
+                    : ($locale === 'ar' ? 'لم تُعتمد مهارات للنشر بعد.' : 'No skills have been approved with verified evidence yet.') }}</p>
+                @if($expertiseCategory !== '')
+                    <a href="{{ route('public.expertise', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'عرض جميع التخصصات' : 'View all specialties' }}</a>
+                @endif
+            </div>
         @else
             <div class="expertise-cards">
                 @foreach($skills->groupBy('category') as $category => $group)
@@ -123,7 +152,7 @@ body:has(.expertise-screen) .header-links a[href*="/contact"]{background:#00A999
                             @endif
                             @if(isset($categoryFilters[$category]))
                                 {{-- Unlike recruiter tracks, this action filters exactly the clicked skill category. --}}
-                                <a class="expertise-card-filter" href="{{ route('public.expertise', ['lang' => $locale, 'category' => $categoryFilters[$category]]) }}">{{ $locale === 'ar' ? 'تصفية المهارات حسب ' : 'Filter skills by ' }}{{ $locale === 'ar' ? ($categoryLabelsAr[$category] ?? $category) : $category }}</a>
+                                <a class="expertise-card-filter" href="{{ route('public.expertise', ['lang' => $locale, 'category' => $categoryFilters[$category]]) }}" @if($expertiseCategory === $categoryFilters[$category]) aria-current="page" aria-describedby="expertise-filter-status" @endif>{{ $locale === 'ar' ? 'تصفية المهارات حسب ' : 'Filter skills by ' }}{{ $locale === 'ar' ? ($categoryLabelsAr[$category] ?? $category) : $category }}</a>
                             @else
                                 <span>{{ $locale === 'ar' ? 'المهارات المنشورة في هذا المجال' : 'Published verified skills' }}</span>
                             @endif
