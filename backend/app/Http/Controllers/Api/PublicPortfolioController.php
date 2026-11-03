@@ -196,7 +196,7 @@ class PublicPortfolioController extends Controller
         return [
             'id' => $project->id,
             'slug' => $project->slug,
-            'name' => $project->title,
+            'name' => $ar && $project->title_ar ? $project->title_ar : $project->title,
             'summary' => $ar ? $project->summary_ar : $project->summary_en,
             'role' => $ar && $project->role_ar ? $project->role_ar : $project->role_en,
             'status' => $project->status,
