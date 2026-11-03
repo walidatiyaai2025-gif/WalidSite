@@ -289,6 +289,79 @@ final class TrustedReleaseUpdateJourneyTest extends TestCase
         }
     }
 
+    public function test_second_offline_update_is_rejected_before_promoting_or_backing_up(): void
+    {
+        $signed = $this->signedZip();
+        $lock = fopen($this->paths['backup_vault'].'/.trusted-update.lock', 'c+');
+        self::assertIsResource($lock);
+        self::assertTrue(flock($lock, LOCK_EX | LOCK_NB));
+        try {
+            $this->update($signed);
+            self::fail('Concurrent trusted updater must not enter its first phase.');
+        } catch (DomainException $error) {
+            self::assertStringContainsString('already in progress', $error->getMessage());
+            self::assertSame('LIVE-vA', file_get_contents($this->paths['public'].'/index.php'));
+            self::assertSame([], glob($this->paths['releases'].'/v1.2*') ?: []);
+            self::assertSame([], glob($this->paths['backup_vault'].'/mariadb-*') ?: []);
+        } finally {
+            flock($lock, LOCK_UN);
+            fclose($lock);
+        }
+    }
+
+    public function test_second_remote_update_does_not_even_download_when_lock_is_held(): void
+    {
+        $signed = $this->signedZip();
+        unlink($this->paths['archive']);
+        $called = false;
+        $downloader = new TrustedReleaseDownloader(
+            static function () use (&$called): int {
+                $called = true;
+                return 200;
+            },
+        );
+        $lock = fopen($this->paths['backup_vault'].'/.trusted-update.lock', 'c+');
+        self::assertIsResource($lock);
+        self::assertTrue(flock($lock, LOCK_EX | LOCK_NB));
+        try {
+            (new TrustedReleaseUpdateJourney())->downloadAndExecute(
+                $this->liveDb, $this->restoreDb, $signed,
+                $this->publicKey, 'https://updates.example.test', '1.0.0',
+                $this->paths, static fn (): bool => true, static fn (): bool => true, $downloader,
+            );
+            self::fail('Concurrent updater must not invoke its HTTPS transport.');
+        } catch (DomainException $error) {
+            self::assertStringContainsString('already in progress', $error->getMessage());
+            self::assertFalse($called);
+            self::assertSame('LIVE-vA', file_get_contents($this->paths['public'].'/index.php'));
+            self::assertSame([], glob($this->paths['incoming'].'/WalidSite-update-*') ?: []);
+            self::assertSame([], glob($this->paths['backup_vault'].'/mariadb-*') ?: []);
+        } finally {
+            flock($lock, LOCK_UN);
+            fclose($lock);
+        }
+    }
+
+    public function test_health_failure_releases_outer_trusted_update_lock(): void
+    {
+        $signed = $this->signedZip();
+        try {
+            $this->update($signed, null, static fn (): bool => false);
+            self::fail('Health failures must not leave the failed release active.');
+        } catch (RuntimeException $error) {
+            self::assertStringContainsString('previous release restored', $error->getMessage());
+        }
+        $lock = fopen($this->paths['backup_vault'].'/.trusted-update.lock', 'c+');
+        self::assertIsResource($lock);
+        try {
+            self::assertTrue(flock($lock, LOCK_EX | LOCK_NB));
+            self::assertSame('LIVE-vA', file_get_contents($this->paths['public'].'/index.php'));
+        } finally {
+            flock($lock, LOCK_UN);
+            fclose($lock);
+        }
+    }
+
     public function test_signed_zip_to_isolated_restore_to_version_switch_preserves_live_data(): void
     {
         $result = $this->update($this->signedZip());
