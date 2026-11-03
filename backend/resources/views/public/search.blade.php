@@ -19,7 +19,7 @@
 </style>
 @endpush
 @section('content')
-@php
+<?php
     // At most three source-verified cards appear in the reference-size stage.
     // An 'all' search must not hide a real project behind an empty article slot.
     $web13ArticlePreviewCount = $type === 'projects' ? 0
@@ -29,7 +29,7 @@
     if ($type === 'all' && $web13ArticlePreviewCount + $web13ProjectPreviewCount < 3) {
         $web13ArticlePreviewCount = min($articles->count(), 3 - $web13ProjectPreviewCount);
     }
-@endphp
+?>
 @include('public.t012-reference-stage', ['screen' => 'search'])
 <section class="site-wrap editorial t012-functional" id="t012-functional">
 <h1>{{ $locale === 'ar' ? 'البحث في المعلومات الموثقة' : 'Search verified content' }}</h1>
