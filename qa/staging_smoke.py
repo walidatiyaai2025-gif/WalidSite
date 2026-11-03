@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""T025: read-only TLS-verified smoke checks against a real WalidSite staging URL.
+"""T025: read-only TLS-verified smoke checks against authorized staging.
 
 An all-green HTTP report does NOT prove release provenance, backups, rollback,
 visual acceptance or owner approval. No credentials or writes are supported.
@@ -62,7 +62,7 @@ class Opener(Protocol):
 
 
 def staging_origin(value: str) -> str:
-    """Accept only a public-looking HTTPS DNS origin; never arbitrary paths.
+    """Check HTTPS target syntax only; never interpret this as DNS/IP isolation.
 
     This is an operator target syntax gate, NOT a DNS-rebinding defense. Use
     only with an explicitly authorized staging DNS name.
@@ -151,8 +151,15 @@ def _check_one(origin: str, spec: Check, opener: Opener, timeout: int) -> dict:
     }
 
 
-def run(origin: str, opener: Opener | None = None, timeout: int = 8) -> dict:
+def run(origin: str, opener: Opener | None = None, timeout: int = 8,
+        approved_host: str | None = None) -> dict:
     origin = staging_origin(origin)
+    expected_host = urlsplit(origin).hostname
+    # Operator allowlisting is an explicit admission gate, not proof that DNS
+    # currently resolves to a public address. Real execution additionally
+    # requires an egress-restricted runner/network policy.
+    if not isinstance(approved_host, str) or approved_host != expected_host:
+        raise ValueError("Exact operator-approved staging hostname required")
     if type(timeout) is not int or not 1 <= timeout <= 30:
         raise ValueError("Timeout must be an integer from 1 to 30 seconds")
     if opener is None:
@@ -166,6 +173,8 @@ def run(origin: str, opener: Opener | None = None, timeout: int = 8) -> dict:
         "observed_at_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
         "read_only": True,
         "tls_verification_required": True,
+        "operator_approved_host": expected_host,
+        "network_egress_isolation_verified": False,
         "checks": results,
         "http_smoke_passed": passed,
         "deployment_release_sha_verified": False,
@@ -177,12 +186,14 @@ def run(origin: str, opener: Opener | None = None, timeout: int = 8) -> dict:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--url", required=True, help="Authorized HTTPS staging origin, no credentials")
+    parser.add_argument("--url", required=True, help="HTTPS staging origin, no credentials")
+    parser.add_argument("--approved-host", required=True,
+                        help="Explicit operator-approved DNS hostname; not a network-isolation guarantee")
     parser.add_argument("--timeout", type=int, default=8)
     parser.add_argument("--output", type=Path, help="Write a new, non-overwriting JSON receipt")
     args = parser.parse_args(argv)
     try:
-        report = run(args.url, timeout=args.timeout)
+        report = run(args.url, timeout=args.timeout, approved_host=args.approved_host)
     except ValueError as exc:
         print("INVALID TARGET: " + str(exc), file=sys.stderr)
         return 2
