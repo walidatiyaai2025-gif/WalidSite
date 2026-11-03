@@ -189,6 +189,17 @@ final class Web13SearchStageJourneyTest extends TestCase
                 preg_match_all('/<h1(?:\\s|>)/i', $html, $headings);
                 $this->assertCount(1, $headings[0], 'Only the reference-stage title is H1 ('.$lang.')');
 
+                // Browsers must not submit q= from the two forms: the GET
+                // endpoint correctly rejects a normalized null q value.
+                // Native required validation works even with JavaScript off.
+                $this->assertMatchesRegularExpression(
+                    '/<input[^>]+id="t012-top-search"[^>]+required>/',
+                    $html
+                );
+                $this->assertMatchesRegularExpression(
+                    '/<input[^>]+id="all-q"[^>]+required>/',
+                    $html
+                );
                 $this->assertStringContainsString(
                     $lang === 'ar'
                         ? 'ابحث في المقالات والمشاريع العامة الموثقة...'
