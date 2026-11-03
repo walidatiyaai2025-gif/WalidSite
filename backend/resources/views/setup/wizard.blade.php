@@ -28,7 +28,7 @@ a,button:focus-visible,input:focus-visible{outline-offset:3px}a{color:var(--acce
 @if($step === 'unlock')
 <h2>{{ $locale === 'ar' ? 'الخطوة 1: رمز الإعداد السري' : 'Step 1: Server setup token' }}</h2>
 <p>{{ $locale === 'ar' ? 'رمز الأمان يتم توليده تلقائيًا. افتح File Manager ثم application/storage/app/site-first-run.json وانسخ قيمة token فقط. لا تعدّل أي ملف.' : 'Your private token is generated automatically. In cPanel File Manager open application/storage/app/site-first-run.json and copy only the token value. Do not edit any file.' }}</p>
-<form method="post" action="{{ route('site.setup.unlock') }}">@csrf
+<form method="post" action="{{ route('site.setup.unlock', $locale === 'ar' ? ['lang' => 'ar'] : []) }}">@csrf
 <label for="token">{{ $locale === 'ar' ? 'رمز الإعداد' : 'Setup token' }}</label><input id="token" type="password" name="token" autocomplete="off" required maxlength="256">
 <button type="submit">{{ $locale === 'ar' ? 'التالي' : 'Next' }}</button></form>
 @elseif($step === 'configure')
@@ -37,7 +37,7 @@ a,button:focus-visible,input:focus-visible{outline-offset:3px}a{color:var(--acce
 <p role="alert" class="error">{{ $locale === 'ar' ? 'تعذر الاتصال بقاعدة البيانات المحفوظة. أدخل بيانات اتصال صحيحة لقاعدة فارغة لإعادة المحاولة دون تعديل ملفات الخادم.' : 'The saved database connection is unavailable. Enter working credentials for an empty database to retry without editing server files.' }}</p>
 @endif
 <p>{{ $locale === 'ar' ? 'أنشئ قاعدة بيانات فارغة ومستخدمًا لها من قسم MySQL Databases في cPanel، ثم أدخل البيانات هنا. سيتم إنشاء APP_KEY وحفظ ملف .env تلقائيًا دون Terminal.' : 'Create an empty database and user in cPanel MySQL Databases, then enter the credentials here. APP_KEY and private .env will be generated automatically; no Terminal is needed.' }}</p>
-<form method="post" action="{{ route('site.setup.configure') }}">@csrf
+<form method="post" action="{{ route('site.setup.configure', $locale === 'ar' ? ['lang' => 'ar'] : []) }}">@csrf
 <label for="site_url">{{ $locale === 'ar' ? 'الرابط الرسمي للموقع (HTTPS)' : 'Canonical website URL (HTTPS)' }}</label>
 <input id="site_url" name="site_url" type="url" inputmode="url"
        placeholder="https://example.com" value="{{ old('site_url') }}"
@@ -70,7 +70,7 @@ a,button:focus-visible,input:focus-visible{outline-offset:3px}a{color:var(--acce
 @else
 <p>{{ $locale === 'ar' ? 'الاتصال ناجح. عدد الترحيلات المنتظرة:' : 'Connection passed. Pending migrations:' }} <strong>{{ count($status['pending']) }}</strong></p>
 @if(count($status['pending']) > 0)<ul>@foreach($status['pending'] as $migration)<li><code>{{ $migration }}</code></li>@endforeach</ul>@endif
-<form method="post" action="{{ route('site.setup.database') }}">@csrf
+<form method="post" action="{{ route('site.setup.database', $locale === 'ar' ? ['lang' => 'ar'] : []) }}">@csrf
 <button type="submit">{{ $locale === 'ar' ? 'تنفيذ الترحيلات والتالي' : 'Apply migrations & Next' }}</button></form>
 @endif
 @else
@@ -80,7 +80,7 @@ a,button:focus-visible,input:focus-visible{outline-offset:3px}a{color:var(--acce
 @if(!$status['ready'] || count($status['pending']) > 0)
 <p role="alert" class="error">{{ $locale === 'ar' ? 'تم اكتشاف مشكلة في قاعدة البيانات أو ترحيلات جديدة. أعد خطوة القاعدة بعد إعادة فتح الإعداد.' : 'Database changed or migrations are pending; restart the database step.' }}</p>
 @else
-<form method="post" action="{{ route('site.setup.finish') }}">@csrf
+<form method="post" action="{{ route('site.setup.finish', $locale === 'ar' ? ['lang' => 'ar'] : []) }}">@csrf
 <label for="password">{{ $locale === 'ar' ? 'كلمة مرور قوية (14 حرفًا على الأقل)' : 'Strong password (at least 14 characters)' }}</label>
 <input id="password" type="password" name="password" minlength="14" maxlength="128" autocomplete="new-password" required>
 <label for="password_confirmation">{{ $locale === 'ar' ? 'تأكيد كلمة المرور' : 'Confirm password' }}</label>

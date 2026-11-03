@@ -17,6 +17,18 @@ final class SiteSetupController extends Controller
         abort_unless($installer->allowed(), 404);
     }
 
+    /** Keep the first-run locale on POST redirects without trusting arbitrary query keys. */
+    private function setupRedirect(Request $request): RedirectResponse
+    {
+        return redirect()->route('site.setup', $request->query('lang') === 'ar'
+            ? ['lang' => 'ar'] : []);
+    }
+
+    private function localeMessage(Request $request, string $english, string $arabic): string
+    {
+        return $request->query('lang') === 'ar' ? $arabic : $english;
+    }
+
     private function unlocked(Request $request): void
     {
         abort_unless($request->session()->get('site_setup_authorized') === true, 403);
@@ -50,14 +62,20 @@ final class SiteSetupController extends Controller
     public function unlock(Request $request, SiteInstaller $installer): RedirectResponse
     {
         $this->guard($installer);
-        $data = $request->validate(['token' => ['required', 'string', 'max:256']]);
+        $data = $request->validate(['token' => ['required', 'string', 'max:256']],
+            $request->query('lang') === 'ar' ? [
+                'token.required' => 'رمز الإعداد مطلوب.',
+                'token.string' => 'رمز الإعداد غير صالح.',
+                'token.max' => 'رمز الإعداد أطول من الحد المسموح.',
+            ] : []);
         if (! hash_equals((string) config('site.setup_token'), $data['token'])) {
-            return back()->withErrors(['token' => 'Invalid setup token.']);
+            return back()->withErrors(['token' => $this->localeMessage($request,
+                'Invalid setup token.', 'رمز الإعداد غير صحيح.')]);
         }
         $request->session()->regenerate();
         $request->session()->put('site_setup_authorized', true);
 
-        return redirect()->route('site.setup');
+        return $this->setupRedirect($request);
     }
 
     public function database(Request $request, SiteInstaller $installer, SiteUpdater $updater): RedirectResponse
@@ -70,18 +88,24 @@ final class SiteSetupController extends Controller
             $result = $updater->apply();
         } catch (Throwable $exception) {
             report($exception);
-            return back()->withErrors(['setup' => 'Migration failed. See the private application log. Restore your backup before retrying.']);
+            return back()->withErrors(['setup' => $this->localeMessage($request,
+                'Migration failed. See the private application log. Restore your backup before retrying.',
+                'فشل تنفيذ الترحيلات. راجع سجل التطبيق الخاص واستعد نسخة احتياطية موثقة قبل إعادة المحاولة.')]);
         }
 
         if ($result['state'] === 'schema_mismatch') {
-            return back()->withErrors(['setup' => 'Database migration history is incompatible with this release. Deploy compatible code or restore a verified backup.']);
+            return back()->withErrors(['setup' => $this->localeMessage($request,
+                'Database migration history is incompatible with this release. Deploy compatible code or restore a verified backup.',
+                'سجل ترحيلات قاعدة البيانات غير متوافق مع هذا الإصدار. انشر الكود المتوافق أو استعد نسخة احتياطية موثقة.')]);
         }
         if (! in_array($result['state'], ['applied', 'current'], true)) {
-            return back()->withErrors(['setup' => 'Database unavailable or an update is already running.']);
+            return back()->withErrors(['setup' => $this->localeMessage($request,
+                'Database unavailable or an update is already running.',
+                'قاعدة البيانات غير متاحة أو هناك تحديث جارٍ بالفعل.')]);
         }
         $request->session()->put('site_setup_migrated', true);
 
-        return redirect()->route('site.setup');
+        return $this->setupRedirect($request);
     }
 
     public function finish(Request $request, SiteInstaller $installer, SiteUpdater $updater): RedirectResponse
@@ -91,20 +115,32 @@ final class SiteSetupController extends Controller
         abort_unless($request->session()->get('site_setup_migrated') === true, 403);
         $data = $request->validate([
             'password' => ['required', 'string', 'min:14', 'max:128', 'confirmed'],
-        ]);
+        ], $request->query('lang') === 'ar' ? [
+            'password.required' => 'كلمة مرور المالك مطلوبة.',
+            'password.string' => 'كلمة مرور المالك غير صالحة.',
+            'password.min' => 'كلمة مرور المالك يجب أن تتكون من 14 حرفًا على الأقل.',
+            'password.max' => 'كلمة مرور المالك أطول من الحد المسموح.',
+            'password.confirmed' => 'تأكيد كلمة مرور المالك غير مطابق.',
+        ] : []);
 
         try {
             if (! $installer->complete($data['password'], $updater)) {
-                return back()->withErrors(['setup' => 'Setup is already running.']);
+                return back()->withErrors(['setup' => $this->localeMessage($request,
+                    'Setup is already running.', 'هناك عملية إعداد جارية بالفعل.')]);
             }
         } catch (Throwable $exception) {
             report($exception);
-            return back()->withErrors(['setup' => 'Installation could not finish. Check the private application logs.']);
+            return back()->withErrors(['setup' => $this->localeMessage($request,
+                'Installation could not finish. Check the private application logs.',
+                'تعذّر إكمال التثبيت. راجع سجلات التطبيق الخاصة.')]);
         }
 
         $request->session()->forget(['site_setup_authorized', 'site_setup_migrated']);
         $request->session()->regenerate();
 
-        return redirect()->route('login')->with('status', 'Installation complete. Sign in with your owner email.');
+        return redirect()->route('login', $request->query('lang') === 'ar'
+            ? ['lang' => 'ar'] : [])->with('status', $this->localeMessage($request,
+                'Installation complete. Sign in with your owner email.',
+                'اكتمل التثبيت. سجّل الدخول باستخدام بريد المالك.'));
     }
 }
