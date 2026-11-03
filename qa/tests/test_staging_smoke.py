@@ -46,6 +46,10 @@ class FakeOpener:
         return response
 
 
+def permitted_run(origin, *args, **kwargs):
+    return run(origin, *args, approved_host="staging.example.com", **kwargs)
+
+
 class StagingSmokeTest(unittest.TestCase):
     def test_https_origin_is_strictly_bounded_and_normalized(self):
         self.assertEqual(staging_origin("https://STAGING.example.com/"), "https://staging.example.com")
@@ -66,7 +70,7 @@ class StagingSmokeTest(unittest.TestCase):
 
     def test_all_nine_live_endpoints_are_read_only_and_expected_responses_count(self):
         fake = FakeOpener()
-        receipt = run("https://staging.example.com", fake)
+        receipt = permitted_run("https://staging.example.com", fake)
         self.assertEqual(len(receipt["checks"]), 9)
         self.assertTrue(receipt["http_smoke_passed"])
         self.assertFalse(receipt["production_ready"])
@@ -88,7 +92,7 @@ class StagingSmokeTest(unittest.TestCase):
             ("/api/v1/admin/dashboard", (403, "json", b'{"message": "forbidden"}')),
         ]:
             with self.subTest(path=path):
-                report = run("https://staging.example.com", FakeOpener({path: override}))
+                report = permitted_run("https://staging.example.com", FakeOpener({path: override}))
                 self.assertFalse(report["http_smoke_passed"])
                 self.assertEqual([x["path"] for x in report["checks"] if not x["passed"]], [path])
 
@@ -101,7 +105,7 @@ class StagingSmokeTest(unittest.TestCase):
             (200, "json", b'{"data": "' + b'x' * (1024 * 1024) + b'"}'),
         ]:
             with self.subTest(kind=override[1], length=len(override[2])):
-                report = run("https://staging.example.com", FakeOpener({
+                report = permitted_run("https://staging.example.com", FakeOpener({
                     "/api/v1/public/home": override,
                 }))
                 self.assertFalse(report["http_smoke_passed"])
@@ -113,11 +117,22 @@ class StagingSmokeTest(unittest.TestCase):
             def open(self, request, timeout):
                 raise URLError("secret=leak-this-host-auth-token")
 
-        report = run("https://staging.example.com", Offline())
+        report = permitted_run("https://staging.example.com", Offline())
         self.assertFalse(report["http_smoke_passed"])
         self.assertEqual(len(report["checks"]), 9)
         self.assertNotIn("leak-this-host-auth-token", json.dumps(report))
         self.assertTrue(all(x["observed_status"] is None for x in report["checks"]))
+
+    def test_operator_hostname_is_required_before_any_network_access(self):
+        fake = FakeOpener()
+        for approved in [None, "other.example.com", "STAGING.example.com", "*"]:
+            with self.subTest(approved=approved):
+                with self.assertRaisesRegex(ValueError, "approved staging hostname"):
+                    run("https://staging.example.com", fake, approved_host=approved)
+        self.assertEqual(fake.requested, [])
+        report = permitted_run("https://staging.example.com", fake)
+        self.assertFalse(report["network_egress_isolation_verified"])
+        self.assertEqual(report["operator_approved_host"], "staging.example.com")
 
     def test_redirect_handler_never_constructs_a_followup_request(self):
         handler = NoRedirects()
@@ -128,7 +143,7 @@ class StagingSmokeTest(unittest.TestCase):
         for value in [0, 31, 1.5, True, "5"]:
             with self.subTest(value=value):
                 with self.assertRaises(ValueError):
-                    run("https://staging.example.com", FakeOpener(), timeout=value)
+                    permitted_run("https://staging.example.com", FakeOpener(), timeout=value)
 
     def test_cli_does_not_overwrite_existing_receipt_or_make_fake_provenance(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -137,10 +152,11 @@ class StagingSmokeTest(unittest.TestCase):
             with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
                 with patch("qa.staging_smoke.run", return_value={"http_smoke_passed": True}):
                     self.assertEqual(main(["--url", "https://staging.example.com",
+                                           "--approved-host", "staging.example.com",
                                            "--output", str(target)]), 2)
             self.assertEqual(target.read_text(encoding="utf-8"), "DO NOT OVERWRITE")
             with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
-                self.assertEqual(main(["--url", "http://localhost"]), 2)
+                self.assertEqual(main(["--url", "http://localhost", "--approved-host", "staging.example.com"]), 2)
 
 
 if __name__ == "__main__":
