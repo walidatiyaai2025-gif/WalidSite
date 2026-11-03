@@ -1,5 +1,9 @@
 """Unit coverage for explicit, fail-closed abandoned duplicate branch cleanup."""
+import base64
+import hashlib
+from pathlib import Path
 import unittest
+from unittest.mock import patch
 from urllib.error import HTTPError
 
 from qa.cleanup_abandoned_duplicate_branches import (
@@ -9,6 +13,8 @@ from qa.cleanup_abandoned_duplicate_branches import (
     ORPHANED_480,
     Orphaned480Branch,
     reconcile_orphan_480,
+    ORPHAN_480_ROUTE_SCOPES,
+    _unchanged_scoped_route,
 )
 
 
@@ -226,6 +232,7 @@ class FakeOrphanGitHubApi:
             "ahead_by": candidate.ahead, "status": "diverged",
         }
         self.witnesses = dict(candidate.main_witnesses)
+        self.route_source = None
         self.prs = []
         self.deleted = []
         self.reads = []
@@ -243,7 +250,13 @@ class FakeOrphanGitHubApi:
             return self.history
         if "/contents/" in path:
             filename = path.split("/contents/", 1)[1].split("?ref=", 1)[0]
-            return {"sha": self.witnesses[filename]}
+            response = {"sha": self.witnesses[filename]}
+            if filename == "backend/routes/web.php" and self.route_source is not None:
+                response.update({
+                    "encoding": "base64",
+                    "content": base64.b64encode(self.route_source.encode("utf-8")).decode("ascii"),
+                })
+            return response
         if "/git/ref/heads/" in path:
             sha = self.orphan_refs.pop(0)
             if sha == "missing":
@@ -361,6 +374,80 @@ class Orphan480BranchCleanupTest(unittest.TestCase):
                 api = FakeOrphanGitHubApi(self.candidate)
                 api.witnesses[path] = "f" * 40
                 self.assertEqual(self.run_candidate(api=api), "preserved")
+                self.assertEqual(api.deleted, [])
+
+
+    def test_actual_checkout_matches_both_pinned_route_closures(self):
+        """Pin the full accepted privacy/admin logic, not just a few predicates."""
+        route_bytes = (Path(__file__).resolve().parents[2] / "backend/routes/web.php").read_bytes()
+        document = {
+            "encoding": "base64",
+            "content": base64.b64encode(route_bytes).decode("ascii"),
+        }
+        for candidate in ORPHANED_480:
+            with self.subTest(branch=candidate.branch):
+                self.assertTrue(
+                    _unchanged_scoped_route(document, candidate.branch),
+                    "Route logic changed: a deliberate re-audit is required before branch deletion",
+                )
+
+    def test_unrelated_route_change_preserves_exact_audited_closure(self):
+        for candidate in ORPHANED_480:
+            with self.subTest(branch=candidate.branch):
+                api = FakeOrphanGitHubApi(candidate)
+                api.witnesses["backend/routes/web.php"] = "f" * 40
+                start, end, _ = ORPHAN_480_ROUTE_SCOPES[candidate.branch]
+                scoped = "\n    keep_exact_logic();\n"
+                api.route_source = (
+                    "unrelated previously modified route();\n" + start + scoped +
+                    end + "\nother unrelated change();\n"
+                )
+                payload = scoped.encode("utf-8")
+                expected_git_sha = hashlib.sha1(
+                    b"blob " + str(len(payload)).encode("ascii") + b"\0" + payload
+                ).hexdigest()
+                with patch.dict(ORPHAN_480_ROUTE_SCOPES, {
+                    candidate.branch: (start, end, expected_git_sha),
+                }):
+                    self.assertEqual(self.run_candidate(candidate, api), "deleted")
+                    self.assertEqual(len(api.deleted), 1)
+
+                    # A change inside any audited closure, even a single
+                    # character, is not permitted to bypass the blob witness.
+                    changed = FakeOrphanGitHubApi(candidate)
+                    changed.witnesses["backend/routes/web.php"] = "f" * 40
+                    changed.route_source = api.route_source.replace(
+                        "keep_exact_logic();", "skip_consent_check();"
+                    )
+                    self.assertEqual(self.run_candidate(candidate, changed), "preserved")
+                    self.assertEqual(changed.deleted, [])
+
+    def test_missing_garbled_or_ambiguous_scoped_route_is_rejected(self):
+        candidate = ORPHANED_480[0]
+        start, end, _ = ORPHAN_480_ROUTE_SCOPES[candidate.branch]
+        for scenario in ("missing_data", "invalid_base64", "duplicate_start", "missing_end", "reversed"):
+            with self.subTest(scenario=scenario):
+                api = FakeOrphanGitHubApi(candidate)
+                api.witnesses["backend/routes/web.php"] = "f" * 40
+                if scenario == "missing_data":
+                    api.route_source = None
+                elif scenario == "duplicate_start":
+                    api.route_source = start + " inner " + start + " body " + end
+                elif scenario == "missing_end":
+                    api.route_source = start + " body "
+                elif scenario == "reversed":
+                    api.route_source = end + " body " + start
+                else:
+                    api.route_source = start + " body " + end
+                if scenario == "invalid_base64":
+                    old_get = api.get
+                    def get_with_bad_content(path):
+                        data = old_get(path)
+                        if "/contents/backend/routes/web.php" in path:
+                            data["content"] = "%%%not-base64%%%"
+                        return data
+                    api.get = get_with_bad_content
+                self.assertEqual(self.run_candidate(candidate, api), "preserved")
                 self.assertEqual(api.deleted, [])
 
 if __name__ == "__main__":
