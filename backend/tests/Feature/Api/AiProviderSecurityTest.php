@@ -184,6 +184,64 @@ class AiProviderSecurityTest extends TestCase
         Http::assertSentCount(1);
     }
 
+    public function test_in_flight_health_probe_rejects_a_revoked_admin_bearer_without_writing(): void
+    {
+        $issuedToken = $this->tokenFor('owner');
+        $this->withToken($issuedToken);
+        $id = $this->postJson('/api/v1/admin/ai/providers', $this->input())
+            ->assertCreated()->json('data.id');
+        $tokenId = (int) explode('|', $issuedToken, 2)[0];
+
+        // Deterministic concurrency: another request revokes the bearer
+        // while the authorized administrator awaits the external provider.
+        Http::fake(function ($request) use ($tokenId) {
+            DB::table('personal_access_tokens')->where('id', $tokenId)->delete();
+
+            return Http::response(['data' => []], 200);
+        });
+
+        $this->postJson('/api/v1/admin/ai/providers/'.$id.'/test')
+            ->assertForbidden();
+
+        $provider = AiProvider::findOrFail($id);
+        $this->assertSame('unverified', $provider->health_status);
+        $this->assertNull($provider->last_checked_at);
+        $this->assertDatabaseMissing('ai_provider_audit_events', [
+            'provider_id' => $id,
+            'action' => 'tested',
+        ]);
+        Http::assertSentCount(1);
+    }
+
+    public function test_in_flight_health_probe_rejects_admin_role_removal_without_writing(): void
+    {
+        $issuedToken = $this->tokenFor('owner');
+        $this->withToken($issuedToken);
+        $id = $this->postJson('/api/v1/admin/ai/providers', $this->input())
+            ->assertCreated()->json('data.id');
+        $tokenId = (int) explode('|', $issuedToken, 2)[0];
+        $actorId = DB::table('personal_access_tokens')->where('id', $tokenId)
+            ->value('tokenable_id');
+
+        Http::fake(function ($request) use ($actorId) {
+            DB::table('role_user')->where('user_id', $actorId)->delete();
+
+            return Http::response(['data' => []], 200);
+        });
+
+        $this->postJson('/api/v1/admin/ai/providers/'.$id.'/test')
+            ->assertForbidden();
+
+        $provider = AiProvider::findOrFail($id);
+        $this->assertSame('unverified', $provider->health_status);
+        $this->assertNull($provider->last_checked_at);
+        $this->assertDatabaseMissing('ai_provider_audit_events', [
+            'provider_id' => $id,
+            'action' => 'tested',
+        ]);
+        Http::assertSentCount(1);
+    }
+
     public function test_delete_requires_admin_and_erases_secret_while_preserving_audit(): void
     {
         $this->deleteJson('/api/v1/admin/ai/providers/00000000-0000-4000-8000-000000000000')

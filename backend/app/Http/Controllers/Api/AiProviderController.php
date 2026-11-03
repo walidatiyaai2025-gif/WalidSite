@@ -7,6 +7,7 @@ use App\AI\Adapters\OpenAiCompatibleAdapter;
 use App\AI\ProviderEndpoint;
 use App\Http\Controllers\Controller;
 use App\Models\AiProvider;
+use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -236,7 +237,37 @@ class AiProviderController extends Controller
             $provider->timeout_seconds
         );
 
-        $updated = DB::transaction(function () use ($provider, $request, $healthy, $snapshot): ?AiProvider {
+        // An administrator can lose their role or have their token revoked
+        // while an outbound health probe is in flight. Authorization before
+        // network I/O is not sufficient for the subsequent persisted write.
+        $actorId = $request->user()?->getKey();
+        $issuedToken = $request->user()?->currentAccessToken();
+        $updated = DB::transaction(function () use (
+            $provider, $request, $healthy, $snapshot, $actorId, $issuedToken
+        ): ?AiProvider {
+            // Serialize with account status changes before updating provider
+            // health. Re-read roles and token persistence from the database,
+            // not the previously authenticated (potentially stale) models.
+            $actor = User::query()->whereKey($actorId)->lockForUpdate()->first();
+            $validBearer = $actor !== null
+                && $issuedToken instanceof PersonalAccessToken
+                && $issuedToken->can('admin')
+                && $actor->tokens()->whereKey($issuedToken->getKey())
+                    ->where(static function ($query): void {
+                        $query->whereNull('expires_at')
+                            ->orWhere('expires_at', '>', now());
+                    })->exists();
+
+            // T016 also calls this controller from an authenticated,
+            // CSRF-protected named web form. Preserve that boundary while
+            // requiring the currently persisted admin role and active status.
+            $validWebForm = $request->routeIs('admin.providers.test')
+                && $request->hasSession()
+                && \Illuminate\Support\Facades\Auth::guard('web')->check()
+                && (string) \Illuminate\Support\Facades\Auth::guard('web')->id()
+                    === (string) $actorId;
+            abort_unless($actor?->canAccessAdmin() && ($validBearer || $validWebForm), 403);
+
             $current = AiProvider::query()->whereKey($provider->id)->lockForUpdate()->first();
             if ($current === null) {
                 return null; // Revoked while the external request was in flight.
