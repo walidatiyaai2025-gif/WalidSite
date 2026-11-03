@@ -10,6 +10,10 @@
 @php($contactTrack = !$reportArticle && !$reportProject
     && !array_key_exists('article', request()->query())
     && !array_key_exists('project', request()->query())
+    // Privacy and other explicit inquiry purposes must never be mixed with
+    // recruiter context, even when malformed query values are supplied.
+    && !array_key_exists('topic', request()->query())
+    && !array_key_exists('request', request()->query())
     && is_string($contactTrackRaw)
     && in_array($contactTrackRaw, ['database', 'software', 'delivery'], true) ? $contactTrackRaw : null)
 @php($contactTrackLabels = [
