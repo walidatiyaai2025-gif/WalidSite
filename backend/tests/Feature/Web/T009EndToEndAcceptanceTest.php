@@ -87,7 +87,14 @@ final class T009EndToEndAcceptanceTest extends TestCase
                 ->assertDontSee('invalid slug')
                 ->assertDontSee('invalid.slug');
 
-            $this->assertSame(9, substr_count($first->getContent(), '/projects/reachable-project-'));
+            // Cards may link to the same case more than once (title,
+            // evidence action, teaser). Assert the nine distinct real
+            // destinations rather than incorrectly counting HTML anchors.
+            for ($index = 1; $index <= 9; $index++) {
+                $first->assertSee('href="'.e(route('public.project', [
+                    'slug' => 'reachable-project-'.$index, 'lang' => $locale,
+                ])).'"', false);
+            }
             $this->get('/projects?lang='.$locale.'&page=2')->assertOk()
                 ->assertSee('reachable-project-10')
                 ->assertDontSee('reachable-project-1"')
