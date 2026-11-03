@@ -120,6 +120,7 @@ final class TrustedReleaseStagerTest extends TestCase
         $this->reject($signed, $file, $this->public, $this->public);
         $this->reject($signed, $file, $this->public, $this->private);
         $this->reject($signed, $file, $this->home, $this->home);
+        $this->reject($signed, $file, $this->home, $this->public);
         self::assertSame('LIVE-SITE-UNTOUCHED', file_get_contents($this->public.'/index.php'));
     }
 
