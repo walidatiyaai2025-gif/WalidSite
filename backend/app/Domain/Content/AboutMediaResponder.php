@@ -44,6 +44,25 @@ final class AboutMediaResponder
                 'Cache-Control'=>'public, max-age=86400',
             ]);
         }
+        // Real technology SVG logos are locally bundled from the MIT-licensed
+        // Devicon project, not generated or remotely fetched by site visitors.
+        $logo = $catalog['logo'] ?? null;
+        if (is_string($logo) && in_array($logo, [
+            'sql','laravel','flutter','php','mariadb','redis',
+            'git','github','dotnet','windows','cicd',
+        ], true)) {
+            $primary = public_path('assets/technology-logos/'.$logo.'.svg');
+            $source = base_path('../assets/technology-logos/'.$logo.'.svg');
+            $path = is_readable($primary) ? $primary : $source;
+            if (is_file($path) && is_readable($path)) {
+                return response()->file($path, [
+                    'Content-Type'=>'image/svg+xml',
+                    'X-Content-Type-Options'=>'nosniff',
+                    'Content-Security-Policy'=>"default-src 'none'; sandbox",
+                    'Cache-Control'=>'public, max-age=86400',
+                ]);
+            }
+        }
         // Icons belong to the checked-in owner pack; employer marks are
         // deliberately neutral until a rights-cleared real logo is uploaded.
         $name = $catalog['icon'];
