@@ -5,6 +5,7 @@ namespace Tests\Feature\Api;
 use App\Models\Article;
 use App\Models\ArticleRevision;
 use App\Models\Asset;
+use App\Models\Category;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
@@ -37,6 +38,146 @@ class PublicArticlePublicationTest extends TestCase
                 'technical_passed' => $valid,
             ],
         ]);
+    }
+
+    public function test_public_and_mobile_article_categories_are_verified_and_filterable_in_both_languages(): void
+    {
+        $cloud = Category::create([
+            'slug' => 'cloud-operations',
+            'name_en' => 'Cloud operations',
+            'name_ar' => 'عمليات السحابة',
+        ]);
+        $db = Category::create([
+            'slug' => 'database-recovery',
+            'name_en' => 'Database recovery',
+            'name_ar' => 'استعادة قواعد البيانات',
+        ]);
+        $draftOnly = Category::create([
+            'slug' => 'draft-only',
+            'name_en' => 'Unpublished material',
+            'name_ar' => 'مواد غير منشورة',
+        ]);
+
+        $draft = $this->article('unpublished-topic');
+        $this->revision($draft, 1);
+        $draft->categories()->attach($draftOnly);
+
+        $valid = [];
+        for ($i = 1; $i <= 13; $i++) {
+            $article = $this->article('cloud-approved-'.$i);
+            $this->revision($article, 1, true, '# Real reviewed cloud operation');
+            $article->categories()->attach($cloud);
+            $article->publishVerified();
+            $article->forceFill(['published_at' => now()->subMinutes($i)])->save();
+            $valid[] = $article->slug;
+        }
+
+        $database = $this->article('database-recovery-verified');
+        $this->revision($database, 1, true, '# Reviewed database restore');
+        $database->categories()->attach($db);
+        $database->publishVerified();
+        $database->forceFill(['published_at' => now()->subDays(2)])->save();
+
+        foreach (['/api/v1/public/articles', '/api/v1/mobile/articles'] as $url) {
+            foreach (['en', 'ar'] as $locale) {
+                $expectedName = $locale === 'ar' ? 'عمليات السحابة' : 'Cloud operations';
+                $first = $this->getJson($url.'?lang='.$locale.'&category=cloud-operations&page=1')
+                    ->assertOk()
+                    ->assertJsonCount(12, 'data')
+                    ->assertJsonPath('meta.has_more_pages', true)
+                    ->assertJsonPath('data.0.categories.0.slug', 'cloud-operations')
+                    ->assertJsonPath('data.0.categories.0.name', $expectedName)
+                    ->assertDontSee('unpublished-topic')
+                    ->assertDontSee('draft-only');
+                $second = $this->getJson($url.'?lang='.$locale.'&category=cloud-operations&page=2')
+                    ->assertOk()
+                    ->assertJsonCount(1, 'data')
+                    ->assertJsonPath('meta.has_more_pages', false);
+                $this->assertEqualsCanonicalizing($valid, array_merge(
+                    array_column($first->json('data'), 'slug'),
+                    array_column($second->json('data'), 'slug'),
+                ));
+                $this->assertSame(['cloud-operations', 'database-recovery'],
+                    array_column($first->json('meta.categories'), 'slug'));
+
+                $single = $this->getJson($url.'?lang='.$locale.'&category=database-recovery')
+                    ->assertOk()
+                    ->assertJsonCount(1, 'data')
+                    ->assertJsonPath('data.0.slug', 'database-recovery-verified');
+                $this->assertSame($locale === 'ar' ? 'استعادة قواعد البيانات' : 'Database recovery',
+                    $single->json('data.0.categories.0.name'));
+                $this->getJson($url.'?lang='.$locale.'&category=draft-only')
+                    ->assertOk()->assertJsonCount(0, 'data')
+                    ->assertJsonPath('meta.has_more_pages', false)
+                    ->assertDontSee('unpublished-topic');
+                $this->getJson($url.'?lang='.$locale.'&category=does-not-exist')
+                    ->assertOk()->assertJsonCount(0, 'data');
+            }
+
+            foreach (['_', '%', 'cloud/operations', str_repeat('z', 61)] as $invalid) {
+                $this->getJson($url.'?category='.rawurlencode($invalid))
+                    ->assertUnprocessable();
+            }
+        }
+
+        $detail = $this->getJson('/api/v1/public/articles/database-recovery-verified?lang=ar')
+            ->assertOk()
+            ->assertJsonPath('data.id', $database->id)
+            ->assertJsonPath('data.categories.0.slug', 'database-recovery')
+            ->assertJsonPath('data.categories.0.name', 'استعادة قواعد البيانات');
+        $this->assertSame($database->slug, $detail->json('data.slug'));
+    }
+
+    public function test_category_list_does_not_disclose_revoked_or_unroutable_articles(): void
+    {
+        $revokedCategory = Category::create([
+            'slug' => 'not-reviewed',
+            'name_en' => 'Revoked',
+            'name_ar' => 'ملغى',
+        ]);
+        $validCategory = Category::create([
+            'slug' => 'valid-publication',
+            'name_en' => 'Published',
+            'name_ar' => 'منشور',
+        ]);
+
+        $revoked = $this->article('revoked-category-article');
+        $revision = $this->revision($revoked);
+        $revoked->categories()->attach($revokedCategory);
+        $revoked->publishVerified();
+        $revision->update(['citations_json' => [[
+            'source_url' => 'https://example.org/verified',
+            'verified' => false,
+        ]]]);
+
+        $unroutable = $this->article('legacy_unroutable_category');
+        $this->revision($unroutable);
+        $unroutable->categories()->attach($revokedCategory);
+        $unroutable->publishVerified();
+
+        $published = $this->article('valid-category-article');
+        $this->revision($published);
+        $published->categories()->attach($validCategory);
+        $published->publishVerified();
+
+        foreach (['/api/v1/public/articles', '/api/v1/mobile/articles'] as $url) {
+            $response = $this->getJson($url.'?lang=en')->assertOk()
+                ->assertJsonCount(1, 'data')
+                ->assertJsonPath('data.0.slug', 'valid-category-article');
+            $this->assertSame(['valid-publication'],
+                array_column($response->json('meta.categories'), 'slug'));
+            $this->getJson($url.'?category=not-reviewed')
+                ->assertOk()
+                ->assertJsonCount(0, 'data')
+                ->assertJsonPath('meta.has_more_pages', false);
+        }
+
+        $published->revisions()->where('revision_no', 1)->firstOrFail()->update([
+            'validation_json' => ['citations_passed' => false, 'technical_passed' => true],
+        ]);
+        $after = $this->getJson('/api/v1/mobile/articles')->assertOk()
+            ->assertJsonCount(0, 'data');
+        $this->assertSame([], $after->json('meta.categories'));
     }
 
     public function test_revocable_article_api_is_not_cacheable_for_list_and_detail_in_both_languages(): void
