@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Domain\Content\PageContentDefaults;
 use App\Models\SitePageText;
 use App\Models\AboutMediaAsset;
+use App\Models\CareerPosition;
+use App\Models\Profile;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Response;
 use Illuminate\Http\Request;
@@ -47,6 +49,9 @@ final class AdminPageContentController extends Controller
         return response()->view('admin.page-content.index', [
             'rows' => $rows, 'selectedPage' => $page, 'selectedSection' => $section,
             'catalog' => PageContentDefaults::all(), 'locale' => $this->locale($request),
+            'careerRows' => $page === 'about' ? CareerPosition::query()
+                ->whereHas('profile', fn ($q) => $q->where('user_id', $request->user()->id))
+                ->orderByDesc('started_on')->get() : collect(),
             'mediaRows' => $page === 'about' ? AboutMediaAsset::query()
                 ->orderBy('kind')->orderBy('label')->get() : collect(),
         ])->header('Cache-Control', 'no-store, private')

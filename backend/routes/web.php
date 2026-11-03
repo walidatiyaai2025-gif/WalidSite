@@ -200,6 +200,15 @@ Route::post('/admin/login', [WebLoginController::class, 'login'])
 Route::middleware('auth:web')->group(function (): void {
     Route::post('/admin/logout', [WebLoginController::class, 'logout'])->name('admin.logout');
 
+    Route::post('/admin/page-content/career', [\App\Http\Controllers\AdminAboutCareerController::class,'create'])
+        ->name('admin.about-career.create')->middleware('throttle:10,1');
+    Route::post('/admin/page-content/career/{position}/draft', [\App\Http\Controllers\AdminAboutCareerController::class,'save'])
+        ->whereUuid('position')->name('admin.about-career.draft')->middleware('throttle:20,1');
+    Route::post('/admin/page-content/career/{position}/publish', [\App\Http\Controllers\AdminAboutCareerController::class,'publish'])
+        ->whereUuid('position')->name('admin.about-career.publish')->middleware('throttle:10,1');
+    Route::post('/admin/page-content/career/{position}/retract', [\App\Http\Controllers\AdminAboutCareerController::class,'retract'])
+        ->whereUuid('position')->name('admin.about-career.retract')->middleware('throttle:10,1');
+
     Route::post('/admin/page-content/media/{slot}/draft', [\App\Http\Controllers\AdminAboutMediaController::class, 'save'])
         ->where('slot','[a-z0-9_]+')->name('admin.about-media.draft')->middleware('throttle:8,1');
     Route::post('/admin/page-content/media/{slot}/publish', [\App\Http\Controllers\AdminAboutMediaController::class, 'publish'])
