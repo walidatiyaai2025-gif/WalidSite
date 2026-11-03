@@ -67,12 +67,11 @@ class Web01HomeScreenAcceptanceTest extends TestCase
                 ->assertDontSee('20+ Years')
                 ->assertDontSee('1,248')
                 ->assertDontSee('3,920')
-                ->assertSee($locale === 'ar'
-                    ? 'لا توجد دراسات حالة عامة مستوفية'
-                    : 'No evidence-verified public case studies are available yet.')
-                ->assertSee($locale === 'ar'
-                    ? 'لا توجد مقالات منشورة وموثقة'
-                    : 'No source-verified published articles are available yet.');
+                ->assertDontSee('Verified projects &amp; case studies', false)
+                ->assertDontSee('Latest source-checked articles')
+                ->assertDontSee('No evidence-verified public case studies')
+                ->assertDontSee('No source-verified published articles')
+                ->assertSee('body:has(.w26-landing) .site-footer { display: none; }', false);
         }
     }
 }
