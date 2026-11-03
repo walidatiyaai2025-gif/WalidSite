@@ -42,6 +42,10 @@ jobs:
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
       - name: Validate immutable v6 reference pack
         run: python3 qa/validate_pack.py
+      - name: Enforce owner-approved WEB-01 WEB-03 WEB-04 design freeze
+        run: |
+          python3 qa/validate_owner_design_freeze.py
+          python3 -m unittest qa.tests.test_owner_design_freeze -v
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
