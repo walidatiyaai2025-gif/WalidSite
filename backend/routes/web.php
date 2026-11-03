@@ -1619,7 +1619,9 @@ foreach (['about', 'expertise', 'hire'] as $professionalPage) {
                 if ($professionalPage === 'expertise' && $expertiseCategory !== '') {
                     $skillsQuery->where('category', $expertiseCategories[$expertiseCategory]);
                 }
-                $skills = $skillsQuery->orderBy('category')->orderBy('name_en')->get();
+                // Keep the browser CV bounded to the same scale as the PDF.
+        // Every returned skill still requires owner linkage and evidence.
+        $skills = $skillsQuery->orderBy('category')->orderBy('name_en')->limit(250)->get();
             }
         }
 
@@ -1700,6 +1702,13 @@ Route::get('/projects', function (Request $request) {
         ->orderBy('id')->limit(50)])
         ->orderByDesc('portfolio_featured')->orderByDesc('published_at')
         ->orderBy('id')->lazy(100) as $record) {
+        // A verified database row is not a usable public project when its
+        // stored slug cannot reach the canonical /projects/{slug} route.
+        // Skip these BEFORE counting pagination slots, just as Home and
+        // sitemap do; never expose dead-end links to visitors.
+        if (preg_match('/\\A[A-Za-z0-9-]+\\z/D', $record->slug) !== 1) {
+            continue;
+        }
         $project = $api->publicProjectData($record, $request);
         if (empty($project['evidence_urls'])) {
             continue;
@@ -1752,11 +1761,11 @@ Route::get('/resume', function (Request $request) {
 
     $positions = $profile
         ? \App\Models\CareerPosition::query()->publiclyVerified()
-            ->where('profile_id', $profile->id)->orderByDesc('started_on')->get()
+            ->where('profile_id', $profile->id)->orderByDesc('started_on')->limit(250)->get()
         : collect();
     $certifications = $profile
         ? \App\Models\Certification::query()->publiclyVerified()
-            ->where('profile_id', $profile->id)->orderBy('title')->get()
+            ->where('profile_id', $profile->id)->orderBy('title')->limit(250)->get()
         : collect();
 
     $skills = collect();
