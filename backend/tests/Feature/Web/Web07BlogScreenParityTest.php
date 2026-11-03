@@ -16,6 +16,32 @@ final class Web07BlogScreenParityTest extends TestCase
 {
     use RefreshDatabase;
 
+    private function publishedGuide(): Article
+    {
+        $article = Article::query()->create([
+            'slug' => 'web07-reviewed-guide',
+            'title_en' => 'WEB07 Reviewed live guide',
+            'title_ar' => 'دليل موثق ومتاح',
+            'canonical_lang' => 'en',
+        ]);
+        $article->revisions()->create([
+            'revision_no' => 1,
+            'body_md' => 'Source-reviewed instructions for safe browsing.',
+            'status' => 'validated',
+            'citations_json' => [[
+                'source_url' => 'https://docs.example.org/web07-verified',
+                'verified' => true,
+            ]],
+            'validation_json' => [
+                'citations_passed' => true,
+                'technical_passed' => true,
+            ],
+        ]);
+        $article->publishVerified();
+
+        return $article;
+    }
+
     public function test_empty_reference_viewport_is_explained_and_recoverable_in_both_languages(): void
     {
         foreach (['en', 'ar'] as $locale) {
@@ -40,26 +66,7 @@ final class Web07BlogScreenParityTest extends TestCase
 
     public function test_reviewed_articles_replace_empty_stage_while_drafts_remain_private(): void
     {
-        $reviewed = Article::query()->create([
-            'slug' => 'web07-reviewed-guide',
-            'title_en' => 'WEB07 Reviewed live guide',
-            'title_ar' => 'دليل موثق ومتاح',
-            'canonical_lang' => 'en',
-        ]);
-        $reviewed->revisions()->create([
-            'revision_no' => 1,
-            'body_md' => 'Source-reviewed instructions for safe browsing.',
-            'status' => 'validated',
-            'citations_json' => [[
-                'source_url' => 'https://docs.example.org/web07-verified',
-                'verified' => true,
-            ]],
-            'validation_json' => [
-                'citations_passed' => true,
-                'technical_passed' => true,
-            ],
-        ]);
-        $reviewed->publishVerified();
+        $reviewed = $this->publishedGuide();
 
         $draft = Article::query()->create([
             'slug' => 'web07-private-draft',
@@ -80,6 +87,65 @@ final class Web07BlogScreenParityTest extends TestCase
             $page->assertSee($locale === 'ar' ? 'دليل موثق ومتاح' : 'WEB07 Reviewed live guide');
             $this->get(route('public.article', ['slug' => $draft->slug, 'lang' => $locale]))
                 ->assertNotFound();
+        }
+    }
+
+    public function test_empty_feed_and_filtered_no_match_have_distinct_localized_recovery(): void
+    {
+        foreach (['en', 'ar'] as $locale) {
+            $empty = $this->get(route('public.blog', ['lang' => $locale]))->assertOk()
+                ->assertSee('class="blog-empty" role="status" aria-live="polite"', false)
+                ->assertSee('href="'.e(route('public.lab', ['lang' => $locale])).'"', false)
+                ->assertDontSee('Return to the first results page')
+                ->assertDontSee('No source-verified published articles match the current filters.');
+
+            $empty->assertSee($locale === 'ar'
+                ? 'لا توجد مقالات منشورة وموثقة حتى الآن.'
+                : 'No source-reviewed articles have been published yet.');
+
+            $filtered = $this->get(route('public.blog', [
+                'lang' => $locale, 'q' => 'not-a-published-article',
+            ]))->assertOk()
+                ->assertSee('href="'.e(route('public.blog', ['lang' => $locale])).'"', false)
+                ->assertDontSee('No source-reviewed articles have been published yet.');
+
+            $filtered->assertSee($locale === 'ar'
+                ? 'إزالة التصفيات وعرض كل المقالات'
+                : 'Clear filters and view all articles');
+        }
+    }
+
+    public function test_out_of_range_page_preserves_valid_search_and_returns_to_real_first_page(): void
+    {
+        $reviewed = $this->publishedGuide();
+        Article::query()->create([
+            'slug' => 'unpublished-web07-guide',
+            'title_en' => 'WEB07 unpublished private material',
+            'title_ar' => 'مواد خاصة غير منشورة',
+            'canonical_lang' => 'en',
+        ]);
+
+        foreach (['en', 'ar'] as $locale) {
+            $search = ['lang' => $locale, 'q' => 'WEB07'];
+            $page = $this->get(route('public.blog', [...$search, 'page' => 9]))
+                ->assertOk()
+                ->assertSee('class="blog-empty" role="status" aria-live="polite"', false)
+                ->assertSee('href="'.e(route('public.blog', $search)).'"', false)
+                ->assertDontSee('WEB07 unpublished private material')
+                ->assertDontSee('Page 9 / 1')
+                ->assertDontSee('الصفحة 9 / 1');
+
+            $page->assertSee($locale === 'ar'
+                ? 'العودة إلى أول صفحة من النتائج'
+                : 'Return to the first results page');
+
+            $this->get(route('public.blog', $search))
+                ->assertOk()
+                ->assertSee($locale === 'ar' ? $reviewed->title_ar : $reviewed->title_en)
+                ->assertDontSee('WEB07 unpublished private material');
+
+            // Reject untrusted pagination rather than reflecting it in a link.
+            $this->get('/blog?lang='.$locale.'&page=10001')->assertStatus(302);
         }
     }
 
