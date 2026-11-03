@@ -40,8 +40,14 @@ void main() {
       ),
     ));
     await tester.pumpAndSettle();
+    final scrollable = find.descendant(
+      of: find.byType(ListView),
+      matching: find.byType(Scrollable),
+    ).first;
     await tester.scrollUntilVisible(
-      find.byKey(const Key('online-runbook-save')), 200,
+      find.byKey(const Key('online-runbook-save')),
+      200,
+      scrollable: scrollable,
     );
     await tester.ensureVisible(find.byKey(const Key('online-runbook-save')));
     await tester.tap(find.byKey(const Key('online-runbook-save')));
@@ -70,8 +76,14 @@ void main() {
         ),
       ));
       await tester.pumpAndSettle();
+      final scrollable = find.descendant(
+        of: find.byType(ListView),
+        matching: find.byType(Scrollable),
+      ).first;
       await tester.scrollUntilVisible(
-        find.byKey(const Key('online-runbook-save')), 200,
+        find.byKey(const Key('online-runbook-save')),
+        200,
+        scrollable: scrollable,
       );
       await tester.ensureVisible(find.byKey(const Key('online-runbook-save')));
       await tester.tap(find.byKey(const Key('online-runbook-save')));
