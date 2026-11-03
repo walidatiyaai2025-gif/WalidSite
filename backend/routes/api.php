@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\IdentityController;
 use App\Http\Controllers\Api\AccountPrivacyController;
 use App\Http\Controllers\Api\AiProviderController;
 use App\Http\Controllers\Api\AdminDashboardController;
+use App\Http\Controllers\Api\AdminTrustedUpdateController;
 use App\Http\Controllers\Api\AdminAiRouteController;
 use App\Http\Controllers\Api\AdminAiTaskRouteController;
 use App\Http\Controllers\Api\AdminArticleController;
@@ -73,6 +74,11 @@ Route::middleware([RequireSecureApiTransport::class, 'auth:sanctum'])->group(fun
     // ADMIN-01: aggregated persisted metrics, never fabricated health or spend.
     Route::get('/admin/dashboard', [AdminDashboardController::class, 'index'])
         ->name('api.admin.dashboard')->middleware('throttle:60,1');
+
+    // P0 release freeze: owner-only read-only publisher-authenticated update check.
+    // NEVER enable code Apply from this API without verified site/queue isolation.
+    Route::get('/admin/system/updates/check', [AdminTrustedUpdateController::class, 'check'])
+        ->name('api.admin.system.updates.check')->middleware('throttle:3,1');
 
     // ADMIN-05: configured AI route priorities; no live health/cost promises.
     Route::get('/admin/ai/routes', [AdminAiRouteController::class, 'index'])
