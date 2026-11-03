@@ -751,29 +751,49 @@ class _VerifiedArticleFreshDetailState extends State<VerifiedArticleFreshDetail>
             }
             if (snapshot.hasError || !snapshot.hasData) {
               return Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      arabic
-                          ? 'المقال غير متاح حاليًا أو سُحب نشره. تحقق من الاتصال.'
-                          : 'This article is unavailable or may have been withdrawn.',
-                      key: const Key('verified-article-unavailable'),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 12),
-                    OutlinedButton(
-                      key: const Key('verified-article-retry'),
-                      onPressed: () => setState(_refresh),
-                      child: Text(arabic ? 'إعادة التحقق' : 'Retry verification'),
-                    ),
-                  ],
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        arabic
+                            ? 'المقال غير متاح حاليًا أو سُحب نشره. تحقق من الاتصال.'
+                            : 'This article is unavailable or may have been withdrawn.',
+                        key: const Key('verified-article-unavailable'),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 12),
+                      OutlinedButton(
+                        key: const Key('verified-article-retry'),
+                        onPressed: () => setState(_refresh),
+                        child: Text(arabic ? 'إعادة التحقق' : 'Retry verification'),
+                      ),
+                    ],
+                  ),
                 ),
               );
             }
-            return VerifiedArticleDetail(
-              article: snapshot.data!,
-              arabic: arabic,
+            final article = snapshot.data!;
+            return ListView(
+              padding: const EdgeInsets.all(20),
+              children: [
+                Text(article.title, style: Theme.of(context).textTheme.titleLarge),
+                const SizedBox(height: 16),
+                Text(arabic
+                    ? 'محتوى منشور موثق بمراجع؛ ليس تقرير اختبار عملي.'
+                    : 'Published source-verified reading, not a tested execution report.'),
+                const SizedBox(height: 16),
+                SelectableText(article.body, key: const Key('verified-article-body')),
+                const SizedBox(height: 24),
+                Text(arabic ? 'المراجع' : 'Citations',
+                    style: Theme.of(context).textTheme.titleLarge),
+                for (final citation in article.citations)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: SelectableText(citation),
+                  ),
+              ],
             );
           },
         ),
