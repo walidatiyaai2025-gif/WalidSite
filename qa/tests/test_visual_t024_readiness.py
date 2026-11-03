@@ -68,6 +68,15 @@ class T024ReadinessTest(unittest.TestCase):
                 "command": "python -m unittest qa.tests.test_visual_t024_readiness",
             }
             self.assertTrue(proof_ok(root, entry))
+            # The SHA256 of empty bytes is valid cryptographically, but an
+            # empty file is not evidence of an executed QA/runtime check.
+            empty = directory / "empty.json"
+            empty.write_bytes(b"")
+            self.assertFalse(proof_ok(root, {
+                **entry,
+                "path": "qa/t024-evidence/empty.json",
+                "sha256": hashlib.sha256(b"").hexdigest(),
+            }))
             self.assertFalse(proof_ok(root, {**entry, "sha256": "0" * 64}))
             self.assertFalse(proof_ok(root, {**entry, "path": "../outside.json"}))
             self.assertFalse(proof_ok(root, {**entry, "command": ""}))

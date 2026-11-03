@@ -117,7 +117,10 @@ def proof_ok(root: Path, proof: object) -> bool:
         target = target / part
         if target.is_symlink():
             return False
-    if not target.is_file() or target.stat().st_size > 2 * 1024 * 1024:
+    # A zero-byte artifact cannot demonstrate that a runtime check ran, even
+    # when its SHA256 matches the canonical hash of empty content. Keep
+    # evidence strictly bounded before reading it into memory.
+    if not target.is_file() or not 0 < target.stat().st_size <= 2 * 1024 * 1024:
         return False
     return hashlib.sha256(target.read_bytes()).hexdigest() == proof["sha256"]
 
