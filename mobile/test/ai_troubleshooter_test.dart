@@ -9,6 +9,27 @@ import 'package:waleed_tech_companion/runbooks/offline_runbooks.dart';
 import 'package:waleed_tech_companion/solutions/offline_solution_finder.dart';
 
 void main() {
+  test('MOBILE-03 total HTTP deadline rejects a never-ending body', () async {
+    final pending = Completer<void>();
+    await expectLater(
+      MobileAiClient.withinDeadline(
+        () async {
+          await pending.future;
+          return 'unreachable';
+        },
+        timeout: const Duration(milliseconds: 10),
+      ),
+      throwsA(isA<TimeoutException>()),
+    );
+    expect(
+      await MobileAiClient.withinDeadline(
+        () async => 'safe',
+        timeout: const Duration(seconds: 1),
+      ),
+      'safe',
+    );
+  });
+
   const token = '1|test-mobile-bearer-token';
   const jobId = '11111111-1111-4111-8111-111111111111';
   const runbookId = '22222222-2222-4222-8222-222222222222';
