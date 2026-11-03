@@ -74,7 +74,7 @@ final class Web06AiEngineeringVisualJourneyTest extends TestCase
             ->assertSee('@media (max-width: 600px)', false)
             ->assertSee('min-height: 44px', false)
             ->assertSee('prefers-reduced-motion: reduce', false)
-            ->assertSee('ai-evidence-card a:focus-visible', false);
+            ->assertSee('.ai-evidence-panel a:focus-visible', false);
         $page->assertDontSee('No AI capabilities are available globally');
     }
 }
