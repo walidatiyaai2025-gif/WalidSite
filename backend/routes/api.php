@@ -68,7 +68,8 @@ Route::middleware([RequireSecureApiTransport::class, 'auth:sanctum'])->group(fun
         ->whereUuid('id')->name('api.mobile.ai.job-status')
         ->middleware('throttle:60,1');
     Route::post('/auth/logout', [IdentityController::class, 'logout']);
-    Route::get('/admin/identity-check', [IdentityController::class, 'adminCheck']);
+    Route::get('/admin/identity-check', [IdentityController::class, 'adminCheck'])
+        ->middleware('throttle:60,1');
     // ADMIN-01: aggregated persisted metrics, never fabricated health or spend.
     Route::get('/admin/dashboard', [AdminDashboardController::class, 'index'])
         ->name('api.admin.dashboard')->middleware('throttle:60,1');
@@ -132,14 +133,16 @@ Route::middleware([RequireSecureApiTransport::class, 'auth:sanctum'])->group(fun
         ->name('api.admin.audit')->middleware('throttle:30,1');
 
     // Explicit administrator-scoped token + role required in the controller.
-    Route::get('/admin/ai/providers', [AiProviderController::class, 'index']);
+    Route::get('/admin/ai/providers', [AiProviderController::class, 'index'])
+        ->middleware('throttle:60,1');
     Route::post('/admin/ai/providers', [AiProviderController::class, 'store'])->middleware('throttle:10,1');
-    Route::get('/admin/ai/providers/{provider}', [AiProviderController::class, 'show']);
+    Route::get('/admin/ai/providers/{provider}', [AiProviderController::class, 'show'])
+        ->middleware('throttle:60,1');
     Route::get('/admin/ai/providers/{provider}/audit', [AiProviderController::class, 'auditHistory'])
         ->middleware('throttle:60,1');
     Route::patch('/admin/ai/providers/{provider}', [AiProviderController::class, 'update'])->middleware('throttle:20,1');
     Route::delete('/admin/ai/providers/{provider}', [AiProviderController::class, 'destroy'])
-        ->name('api.admin.ai.providers.destroy');
+        ->name('api.admin.ai.providers.destroy')->middleware('throttle:6,1');
     Route::post('/admin/ai/providers/{provider}/test', [AiProviderController::class, 'test'])->middleware('throttle:5,1');
 });
 
