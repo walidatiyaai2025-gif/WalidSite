@@ -194,8 +194,12 @@ final class TrustedReleaseDownloaderTest extends TestCase
             return 200;
         };
         $this->download($transport);
-        $this->reject($transport);
-        self::assertSame($bytes, file_get_contents($this->private.'/WalidSite-update-v1.2.0.zip'));
+        try {
+            $this->download($transport);
+            self::fail('An already verified archive cannot be replaced.');
+        } catch (DomainException) {
+            self::assertSame($bytes, file_get_contents($this->private.'/WalidSite-update-v1.2.0.zip'));
+        }
     }
 
     private function reject(\Closure $transport): void
