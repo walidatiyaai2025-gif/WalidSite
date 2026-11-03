@@ -32,6 +32,9 @@
     .case-feedback {display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;margin:0 0 20px}
     .case-feedback a,.case-empty a {display:inline-flex;align-items:center;min-height:44px;color:var(--wa-cta);font-weight:800}
     .case-feedback a:focus-visible,.case-empty a:focus-visible {outline:3px solid var(--wa-cta);outline-offset:3px}
+    .case-locale-switch { display:flex; justify-content:flex-end; margin-bottom:16px; }
+    .case-locale-switch a { display:inline-flex; align-items:center; min-height:44px; color:var(--wa-cta); font-weight:800; }
+    .case-locale-switch a:focus-visible { outline:3px solid var(--wa-cta); outline-offset:3px; }
     .case-pagination { display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-top:30px; }
     .case-pagination a, .case-pagination span { padding:9px 16px; border:1px solid var(--wa-soft-border); border-radius:10px; background:#fff; }
     .case-pagination a { color:var(--wa-cta); font-weight:800; }
@@ -221,6 +224,14 @@
 </div>
 
 <section id="web04-project-catalog" class="site-wrap case-page" aria-labelledby="project-heading">
+    {{-- The reference's desktop navbar has no language switch. Keep a visible, keyboard-
+         accessible bilingual switch just after its first viewport without changing the
+         1440x860 reference hierarchy. Carry only validated project filters and pages. --}}
+    @php($localePageFilter = $paginated->currentPage() > 1 && $paginated->currentPage() <= $paginated->lastPage() ? ['page' => $paginated->currentPage()] : [])
+    <nav class="case-locale-switch" aria-label="{{ $locale === 'ar' ? 'تغيير اللغة' : 'Change language' }}">
+        <a href="{{ route('public.projects', array_merge(['lang' => $locale === 'ar' ? 'en' : 'ar'], $safeProjectFilters, $localePageFilter)) }}"
+            lang="{{ $locale === 'ar' ? 'en' : 'ar' }}" hreflang="{{ $locale === 'ar' ? 'en' : 'ar' }}">{{ $locale === 'ar' ? 'English' : 'العربية' }}</a>
+    </nav>
     <h2 id="project-heading">{{ $locale === 'ar' ? 'مشاريع ودراسات حالة موثقة' : 'Verified projects and case studies' }}</h2>
     <p class="case-lead">{{ $locale === 'ar'
         ? 'تظهر هنا المشاريع التي تمت الموافقة على نشرها ولها أدلة عامة صالحة. لا نعرض مشاريع داخلية غير مصرح بها أو نتائج مختلقة.'
