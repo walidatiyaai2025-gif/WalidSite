@@ -19,7 +19,7 @@ body:has(.wa-about){background:#eef7fd}
 .wa-about *{box-sizing:border-box}
 .wa-about a:focus-visible,.wa-about button:focus-visible{outline:3px solid #00b89b;outline-offset:3px}
 .wa-about section[id]{scroll-margin-top:22px}
-.wa-about section[id]:target{outline:2px solid #00a995;outline-offset:3px}
+.wa-about section[id]:target,.wa-about section[id^="about-"]:target{outline:2px solid #00a995;outline-offset:3px}
 .about-hero{position:relative;isolation:isolate;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:clamp(20px,5vw,72px);align-items:center;min-height:265px;padding:30px 0 22px}
 .about-hero::before{content:"";position:absolute;z-index:-1;inset:0 50% 0 auto;transform:translateX(50%);width:100vw;background:#eaf5fb}
 .about-kicker{display:inline-block;background:#d8f4ef;color:#008d82;border-radius:13px;padding:6px 13px;margin:0 0 8px;font-size:13px;font-weight:800;letter-spacing:.045em}

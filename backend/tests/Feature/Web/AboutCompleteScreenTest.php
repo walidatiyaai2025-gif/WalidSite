@@ -41,7 +41,7 @@ final class AboutCompleteScreenTest extends TestCase
                 ->assertSee('href="#about-career"', false)
                 ->assertSee('href="#about-certifications"', false)
                 ->assertSee('href="#about-evidence"', false)
-                ->assertSee('src="'.route('public.owner-portrait').'"', false)
+                ->assertSee('src="'.route('public.about-media', ['slot'=>'portrait']).'"', false)
                 ->assertSee('href="'.route('public.resume', ['lang' => $locale]).'"', false)
                 ->assertSee('href="'.route('public.projects', ['lang' => $locale]).'"', false)
                 ->assertSee('href="'.route('public.contact', ['lang' => $locale]).'"', false)

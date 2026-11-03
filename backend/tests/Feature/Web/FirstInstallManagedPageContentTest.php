@@ -53,6 +53,8 @@ final class FirstInstallManagedPageContentTest extends TestCase
             $this->assertNotNull($this->entry('expertise', $section, 'hero_description')->draft_text);
             $this->assertNull($this->entry('expertise', $section, 'hero_description')->published_text);
         }
+        $this->assertNotNull($this->entry('about','intro','email','en')->published_text);
+        $this->assertSame(27, \App\Models\AboutMediaAsset::query()->count());
         $this->assertNotNull($this->entry()->published_text);
         $this->assertNull($this->entry()->draft_text);
         $this->assertSame(0, DB::table('projects')->count());
