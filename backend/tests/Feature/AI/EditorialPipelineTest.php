@@ -599,7 +599,7 @@ class EditorialPipelineTest extends TestCase
         );
     }
 
-    public function test_malformed_provider_token_counters_fail_without_draft_or_receipt(): void
+    public function test_malformed_paid_usage_counters_reject_draft_but_keep_incurred_estimate(): void
     {
         Http::fake(['https://models.example.org/v1/chat/completions' => Http::response([
             'choices' => [['message' => ['content' => '# Must not persist']]],
@@ -624,7 +624,14 @@ class EditorialPipelineTest extends TestCase
         }
 
         $this->assertSame(0, $article->revisions()->count());
-        $this->assertDatabaseCount('ai_usage', 0);
+        $this->assertDatabaseCount('ai_usage', 1);
+        $this->assertDatabaseHas('ai_usage', [
+            'job_id' => $jobId,
+            'cost_minor' => 80,
+            'cost_currency' => 'USD',
+        ]);
+        $this->assertSame([], json_decode((string) DB::table('ai_usage')
+            ->where('job_id', $jobId)->value('usage_json'), true));
         $this->assertSame(
             'running',
             DB::table('ai_jobs')->where('id', $jobId)->value('status')

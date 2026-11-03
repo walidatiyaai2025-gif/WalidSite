@@ -125,6 +125,15 @@ class MobileAiClient {
       String.fromEnvironment('WALIDSITE_API_ORIGIN');
   static const int _maxResponseBytes = 1024 * 1024;
 
+  /// One overall deadline for the entire authenticated HTTP exchange.
+  /// Individual read timeouts reset after each small chunk and permit
+  /// indefinitely slow streams; this deadline does not.
+  @visibleForTesting
+  static Future<T> withinDeadline<T>(
+    Future<T> Function() operation, {
+    Duration timeout = const Duration(seconds: 12),
+  }) => Future<T>.sync(operation).timeout(timeout);
+
   static Uri? configuredOrigin() =>
       VerifiedArticleReader.validatedOrigin(apiOrigin);
 
@@ -141,29 +150,31 @@ class MobileAiClient {
     final url = origin.replace(path: path);
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
     try {
-      final request = await client.openUrl(method, url)
-          .timeout(const Duration(seconds: 8));
-      request.followRedirects = false;
-      request.headers.set(HttpHeaders.acceptHeader, 'application/json');
-      request.headers.set(HttpHeaders.contentTypeHeader, 'application/json');
-      if (bearer != null) {
-        request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $bearer');
-      }
-      if (body != null) {
-        request.add(utf8.encode(jsonEncode(body)));
-      }
-      final response =
-          await request.close().timeout(const Duration(seconds: 8));
-      final bytes = BytesBuilder(copy: false);
-      await for (final chunk in response.timeout(const Duration(seconds: 8))) {
-        if (bytes.length + chunk.length > _maxResponseBytes) {
-          throw const FormatException('API response too large');
+      return await withinDeadline(() async {
+        final request = await client.openUrl(method, url);
+        request.followRedirects = false;
+        request.headers.set(HttpHeaders.acceptHeader, 'application/json');
+        request.headers.set(HttpHeaders.contentTypeHeader, 'application/json');
+        if (bearer != null) {
+          request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $bearer');
         }
-        bytes.add(chunk);
-      }
-      final raw = utf8.decode(bytes.takeBytes(), allowMalformed: false);
-      return MapEntry(response.statusCode, raw);
+        if (body != null) {
+          request.add(utf8.encode(jsonEncode(body)));
+        }
+        final response = await request.close();
+        final bytes = BytesBuilder(copy: false);
+        await for (final chunk in response) {
+          if (bytes.length + chunk.length > _maxResponseBytes) {
+            throw const FormatException('API response too large');
+          }
+          bytes.add(chunk);
+        }
+        final raw = utf8.decode(bytes.takeBytes(), allowMalformed: false);
+        return MapEntry(response.statusCode, raw);
+      });
     } finally {
+      // Also abort a slow-drip HTTP stream when the total deadline expires.
+      // Never allow an expired private request to keep its socket alive.
       client.close(force: true);
     }
   }

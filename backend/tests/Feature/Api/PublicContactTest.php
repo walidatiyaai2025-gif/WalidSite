@@ -229,4 +229,17 @@ final class PublicContactTest extends TestCase
 
         Mail::assertNothingSent();
     }
+
+    public function test_form_encoded_contact_body_still_submits_with_ar_locale(): void
+    {
+        $this->enableDelivery();
+        Mail::fake();
+        $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.85']);
+
+        $this->post('/api/v1/public/contact?lang=ar', $this->contact(), [
+            'Accept' => 'application/json',
+        ])->assertOk()->assertJsonPath('data.accepted_by_transport', true);
+
+        Mail::assertSentCount(1);
+    }
 }

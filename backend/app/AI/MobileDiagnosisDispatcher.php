@@ -150,7 +150,16 @@ final class MobileDiagnosisDispatcher
                 || trim($body) === '' || mb_strlen($body) > 1000) {
                 throw new RuntimeException('Diagnosis provider returned no bounded selection.');
             }
-            $tokens = ProviderUsage::tokens($provider->provider_type, $response);
+            // A bounded paid inference has already happened, even if the
+            // provider reports malformed token counts. Do not accept that
+            // telemetry or publish its result, but preserve incurred spend.
+            $untrustedUsage = false;
+            try {
+                $tokens = ProviderUsage::tokens($provider->provider_type, $response);
+            } catch (RuntimeException) {
+                $tokens = [];
+                $untrustedUsage = true;
+            }
 
             $cost = (int) $job->reserved_budget_minor;
             $this->queue->recordUsage(
@@ -162,6 +171,9 @@ final class MobileDiagnosisDispatcher
                 $model->provider_model_id,
                 $tokens
             );
+            if ($untrustedUsage) {
+                throw new RuntimeException('Diagnosis provider usage counters are untrusted.');
+            }
 
             // The external inference already happened. Even when the private
             // request expires during the HTTP round trip, keep its bounded
