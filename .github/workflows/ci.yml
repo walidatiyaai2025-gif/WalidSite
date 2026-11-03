@@ -445,6 +445,116 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+  build-android-qa-apk:
+    # Real native compilation, not the existing Flutter analyzer/widget suite.
+    # Run on green main and the exact LEAD implementation PR only; do not
+    # multiply native builds across every unrelated W1/W2/W3/W4 PR.
+    if: >-
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'pull_request' && github.event.action != 'closed' &&
+       github.head_ref == 'fix/751-native-android-qa-build-ci' &&
+       github.event.pull_request.head.repo.full_name == github.repository)
+    needs: required-ci-gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+      - name: Pin native build to exact tested source
+        id: source
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          source_sha="$(git rev-parse HEAD)"
+          test "$source_sha" = "$EXPECTED_SHA"
+          echo "sha=$source_sha" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Validate runner Android SDK without obsolete 'tools' package
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          test -n "$sdk_root"
+          test -d "$sdk_root/build-tools"
+          test -d "$sdk_root/platforms"
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - name: Extract expected native identity from tracked sources
+        id: identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          python3 qa/android_qa_build_metadata.py --github-output "$GITHUB_OUTPUT" > dist/android-qa-build-metadata.json
+      - name: Compile real Android debug QA APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          flutter --version
+          cd mobile
+          flutter pub get
+          flutter build apk --debug --no-pub
+          test -s build/app/outputs/flutter-apk/app-debug.apk
+      - name: Inspect APK manifest, signature and real payload bytes
+        shell: bash
+        env:
+          EXPECTED_PACKAGE_ID: ${{ steps.identity.outputs.package_id }}
+          EXPECTED_VERSION_NAME: ${{ steps.identity.outputs.version_name }}
+          EXPECTED_VERSION_CODE: ${{ steps.identity.outputs.version_code }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          set -euo pipefail
+          sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          test -n "$sdk_root"
+          test -d "$sdk_root/build-tools"
+          aapt="$(find "$sdk_root/build-tools" -mindepth 2 -maxdepth 2 -type f -name aapt | sort -V | tail -1)"
+          apksigner="$(find "$sdk_root/build-tools" -mindepth 2 -maxdepth 2 -type f -name apksigner | sort -V | tail -1)"
+          test -x "$aapt" && test -x "$apksigner"
+          apk=mobile/build/app/outputs/flutter-apk/app-debug.apk
+          python3 qa/native_android_acceptance.py \
+            --apk "$apk" --kind debug --package-id "$EXPECTED_PACKAGE_ID" \
+            --version-name "$EXPECTED_VERSION_NAME" --version-code "$EXPECTED_VERSION_CODE" \
+            --source-sha "$SOURCE_SHA" --aapt "$aapt" --apksigner "$apksigner" \
+            > dist/android-qa-verification.json
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          apk = Path("mobile/build/app/outputs/flutter-apk/app-debug.apk")
+          data = json.loads(Path("dist/android-qa-verification.json").read_text())
+          checksum = hashlib.sha256(apk.read_bytes()).hexdigest()
+          assert data["apk_sha256"] == checksum and data["apk_integrity_verified"]
+          assert data["debug_signature_verified"] and not data["production_ready"]
+          assert not data["distribution_signing_identity_verified"]
+          assert not data["device_install_launch_verified"]
+          assert not data["ios_build_verified"]
+          assert data["source_sha_supplied_not_attested"] == os.environ["SOURCE_SHA"]
+          target = Path("dist/WalidSite-Android-debug-QA.apk")
+          target.write_bytes(apk.read_bytes())
+          (Path("dist") / (target.name + ".sha256")).write_text(checksum + "  " + target.name + "\n")
+          PY
+          (cd dist && sha256sum --check WalidSite-Android-debug-QA.apk.sha256)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: WalidSite-Android-debug-QA-${{ steps.source.outputs.sha }}
+          path: |
+            dist/WalidSite-Android-debug-QA.apk
+            dist/WalidSite-Android-debug-QA.apk.sha256
+            dist/android-qa-verification.json
+            dist/android-qa-build-metadata.json
+          if-no-files-found: error
+          retention-days: 30
+
   cleanup-merged-branch:
     # Runs only after an actual merge and only for a branch in this repository.
     # No checkout or execution of PR-provided code; never deletes a reused branch.
