@@ -123,6 +123,50 @@ final class TrustedReleaseUpdateJourney
     }
 
     /**
+     * One complete backend chain: publisher catalog -> signature verification ->
+     * immutable artifact -> restorable DB/files -> health-gated code switch.
+     *
+     * The external owner-authenticated web/controller layer MUST independently
+     * establish real write+queue maintenance and authorization. Both discovery
+     * and update run under the SAME private lock to prevent concurrent checks
+     * from racing a code change.
+     *
+     * @param array<string,string> $paths Existing private update configuration.
+     * @return array<string,int|string>
+     */
+    public function discoverAndExecute(
+        PDO $liveDatabase,
+        PDO $disposableRestoreDatabase,
+        string $publisherPublicKeyBase64,
+        string $pinnedHttpsOrigin,
+        string $installedVersion,
+        array $paths,
+        callable $writesQuiesced,
+        callable $healthCheck,
+        ?TrustedReleaseCatalog $catalog = null,
+        ?TrustedReleaseDownloader $downloader = null,
+    ): array {
+        return $this->withExclusiveUpdateLock($paths, function () use (
+            $liveDatabase, $disposableRestoreDatabase, $publisherPublicKeyBase64,
+            $pinnedHttpsOrigin, $installedVersion, $paths, $writesQuiesced,
+            $healthCheck, $catalog, $downloader,
+        ): array {
+            if ($writesQuiesced() !== true) {
+                throw new DomainException('The site must be read-only before checking for trusted updates.');
+            }
+            $available = ($catalog ?? new TrustedReleaseCatalog())->check(
+                $pinnedHttpsOrigin, $publisherPublicKeyBase64, $installedVersion,
+            );
+            return $this->downloadAndExecuteUnlocked(
+                $liveDatabase, $disposableRestoreDatabase,
+                $available['envelope'], $publisherPublicKeyBase64,
+                $pinnedHttpsOrigin, $installedVersion,
+                $paths, $writesQuiesced, $healthCheck, $downloader,
+            );
+        });
+    }
+
+    /**
      * Live-source entrypoint: publisher signed metadata -> pinned HTTPS ZIP
      * acquisition -> real recovery proof -> health-gated code pointer update.
      *
