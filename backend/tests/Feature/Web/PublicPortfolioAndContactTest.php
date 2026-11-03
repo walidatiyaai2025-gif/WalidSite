@@ -56,7 +56,9 @@ class PublicPortfolioAndContactTest extends TestCase
         $this->evidence($project);
         $this->get('/projects?q=Documented')->assertOk()
             ->assertSee('Documented Project')
-            ->assertSee('href="'.route('public.project', ['slug' => $project->slug, 'lang' => 'en']).'"', false);
+            ->assertSee('href="'.e(route('public.project', [
+                'slug' => $project->slug, 'lang' => 'en', 'q' => 'Documented',
+            ])).'"', false);
         $this->get('/projects?q=Missing')->assertOk()->assertDontSee('Documented Project');
     }
 
