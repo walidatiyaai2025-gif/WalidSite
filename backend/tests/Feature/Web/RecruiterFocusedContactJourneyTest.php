@@ -131,6 +131,53 @@ final class RecruiterFocusedContactJourneyTest extends TestCase
             ->assertSee('href="'.e(route('public.contact', ['lang' => 'en'])).'"', false);
     }
 
+    public function test_data_rights_and_explicit_inquiry_queries_cannot_mix_with_recruiter_focus(): void
+    {
+        config(['mail.default' => 'smtp', 'mail.contact_recipient' => 'recipient@example.test']);
+        Mail::fake();
+
+        foreach (['en', 'ar'] as $locale) {
+            $other = $locale === 'en' ? 'ar' : 'en';
+            $subject = $locale === 'en'
+                ? 'Personal data deletion request'
+                : 'طلب حذف بياناتي';
+
+            // A privacy-rights inquiry is never a recruiter inquiry, even
+            // when a caller deliberately combines two individually valid keys.
+            $this->get('/contact?lang='.$locale.'&topic=privacy&request=deletion&track=database')
+                ->assertOk()
+                ->assertSee('id="privacy-request-disclosure"', false)
+                ->assertSee('name="subject" value="'.e($subject).'"', false)
+                ->assertDontSee('class="contact-track-context"', false)
+                ->assertDontSee('Inquiry about: Database engineering')
+                ->assertDontSee('استفسار عن مجال:')
+                ->assertSee('href="'.e(route('public.contact', [
+                    'lang' => $other, 'topic' => 'privacy', 'request' => 'deletion',
+                ])).'"', false)
+                ->assertDontSee('href="'.e(route('public.contact', [
+                    'lang' => $other, 'track' => 'database',
+                    'topic' => 'privacy', 'request' => 'deletion',
+                ])).'"', false);
+
+            // A malformed, ambiguous or unsupported inquiry purpose fails
+            // closed rather than silently becoming a recruiter focus.
+            foreach ([
+                'topic=unexpected&track=database',
+                'request=deletion&track=database',
+                'topic%5B%5D=privacy&track=database',
+            ] as $query) {
+                $this->get('/contact?lang='.$locale.'&'.$query)->assertOk()
+                    ->assertSee('name="subject" value=""', false)
+                    ->assertDontSee('class="contact-track-context"', false)
+                    ->assertDontSee('href="'.e(route('public.contact', [
+                        'lang' => $other, 'track' => 'database',
+                    ])).'"', false);
+            }
+        }
+
+        Mail::assertNothingSent();
+    }
+
     public function test_public_article_and_case_study_contexts_take_precedence_over_recruiter_track(): void
     {
         config(['mail.default' => 'smtp', 'mail.contact_recipient' => 'recipient@example.test']);
