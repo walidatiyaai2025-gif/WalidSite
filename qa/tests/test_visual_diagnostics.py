@@ -269,7 +269,7 @@ class VisualDiagnosticsTest(unittest.TestCase):
         self.assertTrue((target / "WEB-01.difference-preview.png").is_file())
         self.assertTrue((target / "WEB-02.difference-preview.png").is_file())
         self.assertTrue((target / "report.json").is_file())
-        self.assertEqual(self.ledger.read_text(), '{"screens": {}}\\n')
+        self.assertEqual(self.ledger.read_text(), '{"screens": {}}\n')
 
 
 if __name__ == "__main__":
