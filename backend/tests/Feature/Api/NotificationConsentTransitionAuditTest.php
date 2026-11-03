@@ -6,6 +6,7 @@ use App\Domain\Privacy\NotificationConsentGate;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Routing\Middleware\ThrottleRequests;
 use Illuminate\Support\Str;
@@ -145,10 +146,17 @@ final class NotificationConsentTransitionAuditTest extends TestCase
         $this->change($subjectBearer, true);
         $this->change($subjectBearer, false);
         $this->change($subjectBearer, true);
+        // Sanctum resolves its guard once per Laravel test request context;
+        // switch identity explicitly when exercising a different bearer.
+        Auth::forgetGuards();
         $this->change($otherBearer, true);
+        $this->assertDatabaseHas('notification_consent_events', [
+            'user_id' => $other->id, 'transition' => 'granted',
+        ]);
         $this->assertSame(3, DB::table('notification_consent_events')
             ->where('user_id', $subject->id)->count());
 
+        Auth::forgetGuards();
         $this->withToken($subjectBearer)->deleteJson('/api/v1/mobile/account', [
             'password' => 'fixture-only-strong-password-1!',
             'confirmation' => 'DELETE',
