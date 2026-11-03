@@ -156,7 +156,7 @@ final class Web03OwnerFourTabsTest extends TestCase
     public function test_owner_design_does_not_displace_protected_other_professional_pages(): void
     {
         $this->get('/about?lang=en')->assertOk()
-            ->assertSee('class="t007-reference-stage"', false)
+            ->assertSee('class="wa-about about-screen"', false)
             ->assertDontSee('class="expertise-tab-nav"', false);
         $this->get('/hire?lang=en')->assertOk()
             ->assertSee('class="t007-reference-stage"', false)

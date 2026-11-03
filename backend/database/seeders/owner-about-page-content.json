@@ -1,0 +1,427 @@
+{
+  "schema": "walidsite.owner-about-page.v1",
+  "source": "Owner-approved About visual brief and owner-supplied professional CV (2026-11-03). Employer records remain subject to CV publication gate.",
+  "copy": {
+    "intro": {
+      "heading": {
+        "en": "About",
+        "ar": "نبذة"
+      },
+      "eyebrow": {
+        "en": "CAREER STORY",
+        "ar": "المسيرة المهنية"
+      },
+      "headline": {
+        "en": "Technical Project Manager · Senior SQL Server DBA · AI & Automation Engineering",
+        "ar": "مدير مشاريع تقنية · خبير SQL Server · هندسة الذكاء الاصطناعي والأتمتة"
+      },
+      "description": {
+        "en": "Waleed Atiya delivers enterprise software and database initiatives across Kuwait's government and institutional environments, combining project leadership, SQL Server reliability and practical AI automation.",
+        "ar": "يقود وليد عطية مبادرات البرمجيات المؤسسية وقواعد البيانات في البيئات الحكومية والمؤسسية بالكويت، مع الجمع بين إدارة المشاريع وموثوقية SQL Server والأتمتة العملية بالذكاء الاصطناعي."
+      },
+      "location": {
+        "en": "Kuwait",
+        "ar": "الكويت"
+      },
+      "email": {
+        "en": "lido825@gmail.com",
+        "ar": "lido825@gmail.com"
+      },
+      "phone_kuwait": {
+        "en": "+96566010746",
+        "ar": "+96566010746"
+      },
+      "phone_egypt": {
+        "en": "+201099459704",
+        "ar": "+201099459704"
+      }
+    },
+    "metrics": {
+      "experience": {
+        "en": "17+",
+        "ar": "17+"
+      },
+      "experience_label": {
+        "en": "Years of experience (CV)",
+        "ar": "سنوات الخبرة حسب السيرة"
+      },
+      "government": {
+        "en": "Government & enterprise delivery",
+        "ar": "تسليم الأنظمة الحكومية والمؤسسية"
+      },
+      "database": {
+        "en": "SQL Server / HA–DR",
+        "ar": "SQL Server والتوافر العالي والتعافي"
+      },
+      "ai": {
+        "en": "AI & automation",
+        "ar": "الذكاء الاصطناعي والأتمتة"
+      }
+    },
+    "summary": {
+      "heading": {
+        "en": "Professional Summary",
+        "ar": "الملخص المهني"
+      },
+      "paragraph_1": {
+        "en": "Technology delivery leader with 17+ years across government and enterprise environments, coordinating cross-functional development, database administration and controlled software releases.",
+        "ar": "قيادة تقنية بخبرة تتجاوز 17 عامًا في البيئات الحكومية والمؤسسية، تشمل التنسيق بين فرق التطوير وإدارة قواعد البيانات والإصدارات المنضبطة."
+      },
+      "paragraph_2": {
+        "en": "Specialized in Microsoft SQL Server Always On, high availability and disaster recovery, secure operations, performance investigations, backup validation and application integration.",
+        "ar": "تخصص في SQL Server Always On والتوافر العالي والتعافي من الكوارث والعمليات الآمنة وتحليل الأداء والتحقق من النسخ الاحتياطية وتكامل التطبيقات."
+      },
+      "paragraph_3": {
+        "en": "Hands-on work spans software engineering, SharePoint and IIS operations, project delivery, mobile backends and governed AI workflows.",
+        "ar": "تشمل الخبرة العملية هندسة البرمجيات وتشغيل SharePoint وIIS وتسليم المشاريع والخدمات الخلفية للموبايل وسير العمل المنضبط للذكاء الاصطناعي."
+      }
+    },
+    "career": {
+      "heading": {
+        "en": "Work Experience",
+        "ar": "الخبرة المهنية"
+      },
+      "amiri_summary": {
+        "en": "Technical delivery, SQL Server availability and recovery, database operations, UAT and application rollout coordination.",
+        "ar": "تسليم تقني وتوافر وتعافٍ لقواعد SQL Server وعمليات قواعد البيانات واختبارات القبول وتنسيق نشر التطبيقات."
+      },
+      "crown_summary": {
+        "en": "SQL Server HA/DR operations, SharePoint and IIS enhancements, controlled changes and production support.",
+        "ar": "تشغيل التوافر العالي والتعافي لقواعد البيانات وتطوير SharePoint وIIS وإدارة التغييرات ودعم الإنتاج."
+      },
+      "paaet_summary": {
+        "en": "Student and HR systems, software development, SQL Server and SharePoint administration, testing and stakeholder handover.",
+        "ar": "أنظمة الطلاب والموارد البشرية وتطوير البرمجيات وإدارة SQL Server وSharePoint والاختبارات وتسليم الأنظمة."
+      },
+      "bizware_summary": {
+        "en": "Software engineering and development of business applications in Egypt.",
+        "ar": "هندسة البرمجيات وتطوير تطبيقات الأعمال في مصر."
+      }
+    },
+    "technologies": {
+      "heading": {
+        "en": "Technologies & Tools",
+        "ar": "التقنيات والأدوات"
+      },
+      "sql": {
+        "en": "SQL Server",
+        "ar": "SQL Server"
+      },
+      "always_on": {
+        "en": "Always On / HA–DR",
+        "ar": "Always On / HA–DR"
+      },
+      "laravel": {
+        "en": "Laravel",
+        "ar": "Laravel"
+      },
+      "flutter": {
+        "en": "Flutter",
+        "ar": "Flutter"
+      },
+      "php": {
+        "en": "PHP",
+        "ar": "PHP"
+      },
+      "mariadb": {
+        "en": "MariaDB",
+        "ar": "MariaDB"
+      },
+      "redis": {
+        "en": "Redis",
+        "ar": "Redis"
+      },
+      "git": {
+        "en": "Git",
+        "ar": "Git"
+      },
+      "github": {
+        "en": "GitHub",
+        "ar": "GitHub"
+      },
+      "iis": {
+        "en": "IIS",
+        "ar": "IIS"
+      },
+      "dotnet": {
+        "en": ".NET / C#",
+        "ar": ".NET / C#"
+      },
+      "sharepoint": {
+        "en": "SharePoint",
+        "ar": "SharePoint"
+      },
+      "api": {
+        "en": "REST APIs",
+        "ar": "REST APIs"
+      },
+      "windows": {
+        "en": "Windows Server",
+        "ar": "Windows Server"
+      },
+      "ai": {
+        "en": "AI / LLMs",
+        "ar": "AI / LLMs"
+      },
+      "cicd": {
+        "en": "CI/CD",
+        "ar": "CI/CD"
+      }
+    },
+    "focus": {
+      "heading": {
+        "en": "Selected Focus Areas",
+        "ar": "نماذج من الأعمال"
+      },
+      "diwanmam_title": {
+        "en": "DiwanMAM Media Archive",
+        "ar": "أرشيف DiwanMAM الإعلامي"
+      },
+      "diwanmam_body": {
+        "en": "Enterprise media and tape archive workflows, metadata, search and database-backed services.",
+        "ar": "أرشفة الوسائط والأشرطة المؤسسية وتدفقات البيانات الوصفية والبحث والخدمات المدعومة بقواعد البيانات."
+      },
+      "datacenter_title": {
+        "en": "Core Data Center Initiative",
+        "ar": "مبادرة مركز البيانات الأساسي"
+      },
+      "datacenter_body": {
+        "en": "Coordination of infrastructure, resilience, power, cooling and continuity planning.",
+        "ar": "تنسيق البنية التحتية والمرونة والطاقة والتبريد وتخطيط الاستمرارية."
+      },
+      "biometric_title": {
+        "en": "Biometric Attendance Platform",
+        "ar": "منصة الحضور بالبصمة"
+      },
+      "biometric_body": {
+        "en": "Mobile/backend integration, deployment coordination and UAT.",
+        "ar": "تكامل تطبيق الموبايل والخدمات الخلفية وتنسيق النشر والاختبارات."
+      },
+      "wordpress_title": {
+        "en": "AIWordPressManager",
+        "ar": "AIWordPressManager"
+      },
+      "wordpress_body": {
+        "en": "AI-assisted content, SEO and approval workflows in .NET.",
+        "ar": "المحتوى وتحسين محركات البحث وسير الاعتماد باستخدام الذكاء الاصطناعي و.NET."
+      },
+      "aimwweb_title": {
+        "en": "AIMWWeb",
+        "ar": "AIMWWeb"
+      },
+      "aimwweb_body": {
+        "en": "Tenant-aware Laravel and WordPress automation workflows.",
+        "ar": "أتمتة Laravel وWordPress متعددة المستأجرين."
+      },
+      "walidsite_title": {
+        "en": "WalidSite AI Integration",
+        "ar": "تكامل AI في WalidSite"
+      },
+      "walidsite_body": {
+        "en": "Local and cloud provider configuration with cost-governance design; production rollout in progress.",
+        "ar": "إعداد مزودي AI المحليين والسحابيين وحوكمة التكلفة؛ النشر الإنتاجي قيد التطوير."
+      }
+    },
+    "education": {
+      "heading": {
+        "en": "Education & Certifications",
+        "ar": "التعليم والشهادات"
+      },
+      "degree": {
+        "en": "B.Sc. Computer Science & Mathematics",
+        "ar": "بكالوريوس علوم الحاسب والرياضيات"
+      },
+      "university": {
+        "en": "Cairo University · 2006",
+        "ar": "جامعة القاهرة · 2006"
+      },
+      "certification_label": {
+        "en": "Qualifications listed in owner CV",
+        "ar": "المؤهلات الواردة في السيرة"
+      },
+      "pmp": {
+        "en": "PMP",
+        "ar": "PMP"
+      },
+      "itil": {
+        "en": "ITIL Expert v3",
+        "ar": "ITIL Expert v3"
+      }
+    }
+  },
+  "media": [
+    {
+      "slot": "portrait",
+      "label": "Owner original portrait",
+      "icon": "about",
+      "kind": "portrait"
+    },
+    {
+      "slot": "employer_amiri",
+      "label": "Amiri Diwan",
+      "icon": "briefcase",
+      "kind": "employer"
+    },
+    {
+      "slot": "employer_crown",
+      "label": "Crown Prince Diwan",
+      "icon": "briefcase",
+      "kind": "employer"
+    },
+    {
+      "slot": "employer_paaet",
+      "label": "PAAET / Diyar United",
+      "icon": "briefcase",
+      "kind": "employer"
+    },
+    {
+      "slot": "employer_bizware",
+      "label": "Bizware",
+      "icon": "briefcase",
+      "kind": "employer"
+    },
+    {
+      "slot": "tech_sql",
+      "label": "SQL Server",
+      "icon": "database",
+      "kind": "technology",
+      "logo": "sql"
+    },
+    {
+      "slot": "tech_always_on",
+      "label": "Always On / HA–DR",
+      "icon": "database",
+      "kind": "technology"
+    },
+    {
+      "slot": "tech_laravel",
+      "label": "Laravel",
+      "icon": "code",
+      "kind": "technology",
+      "logo": "laravel"
+    },
+    {
+      "slot": "tech_flutter",
+      "label": "Flutter",
+      "icon": "code",
+      "kind": "technology",
+      "logo": "flutter"
+    },
+    {
+      "slot": "tech_php",
+      "label": "PHP",
+      "icon": "code",
+      "kind": "technology",
+      "logo": "php"
+    },
+    {
+      "slot": "tech_mariadb",
+      "label": "MariaDB",
+      "icon": "database",
+      "kind": "technology",
+      "logo": "mariadb"
+    },
+    {
+      "slot": "tech_redis",
+      "label": "Redis",
+      "icon": "database",
+      "kind": "technology",
+      "logo": "redis"
+    },
+    {
+      "slot": "tech_git",
+      "label": "Git",
+      "icon": "code",
+      "kind": "technology",
+      "logo": "git"
+    },
+    {
+      "slot": "tech_github",
+      "label": "GitHub",
+      "icon": "github",
+      "kind": "technology",
+      "logo": "github"
+    },
+    {
+      "slot": "tech_iis",
+      "label": "IIS",
+      "icon": "database",
+      "kind": "technology"
+    },
+    {
+      "slot": "tech_dotnet",
+      "label": ".NET / C#",
+      "icon": "code",
+      "kind": "technology",
+      "logo": "dotnet"
+    },
+    {
+      "slot": "tech_sharepoint",
+      "label": "SharePoint",
+      "icon": "store",
+      "kind": "technology"
+    },
+    {
+      "slot": "tech_api",
+      "label": "REST APIs",
+      "icon": "api",
+      "kind": "technology"
+    },
+    {
+      "slot": "tech_windows",
+      "label": "Windows Server",
+      "icon": "database",
+      "kind": "technology",
+      "logo": "windows"
+    },
+    {
+      "slot": "tech_ai",
+      "label": "AI / LLMs",
+      "icon": "ai",
+      "kind": "technology"
+    },
+    {
+      "slot": "tech_cicd",
+      "label": "CI/CD",
+      "icon": "workflow",
+      "kind": "technology",
+      "logo": "cicd"
+    },
+    {
+      "slot": "focus_diwanmam",
+      "label": "DiwanMAM",
+      "icon": "projects",
+      "kind": "focus"
+    },
+    {
+      "slot": "focus_datacenter",
+      "label": "Data Center",
+      "icon": "database",
+      "kind": "focus"
+    },
+    {
+      "slot": "focus_biometric",
+      "label": "Biometric Attendance",
+      "icon": "security",
+      "kind": "focus"
+    },
+    {
+      "slot": "focus_wordpress",
+      "label": "AIWordPressManager",
+      "icon": "ai",
+      "kind": "focus"
+    },
+    {
+      "slot": "focus_aimwweb",
+      "label": "AIMWWeb",
+      "icon": "code",
+      "kind": "focus"
+    },
+    {
+      "slot": "focus_walidsite",
+      "label": "WalidSite",
+      "icon": "about",
+      "kind": "focus"
+    }
+  ]
+}

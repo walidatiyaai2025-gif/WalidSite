@@ -55,7 +55,7 @@ class Web01HomeScreenAcceptanceTest extends TestCase
             ->assertDontSee('src="assets/screen-reference/web_home.png"', false);
 
         $this->get('/about?lang=en')->assertOk()
-            ->assertSee('class="t007-reference-stage"', false);
+            ->assertSee('class="wa-about about-screen"', false);
     }
 
     public function test_owner_landing_keeps_professional_claims_and_demo_numbers_unpublished(): void

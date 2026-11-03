@@ -36,6 +36,10 @@ class TestCpanelPackage(unittest.TestCase):
             "backend/tests/OwnerTest.php": "<?php",
             "contracts/owner-cv-baseline.json": "{}",
             "assets/portraits/portrait-light-derived.jpg": "approved derivative",
+            "assets/icons/briefcase.svg": "<svg xmlns=\"http://www.w3.org/2000/svg\"/>",
+            "assets/icons/database.svg": "<svg xmlns=\"http://www.w3.org/2000/svg\"/>",
+            "assets/technology-logos/laravel.svg": "<svg xmlns=\"http://www.w3.org/2000/svg\"/>",
+            "assets/technology-logos/LICENSE": "MIT License",
             "docs/CPANEL_PACKAGE_AR.md": "Cpanel instructions",
         }
         for name, data in files.items():
@@ -53,6 +57,10 @@ class TestCpanelPackage(unittest.TestCase):
                 "application/.env.example", "contracts/owner-cv-baseline.json",
                 "public_html/index.php", "public_html/.htaccess",
                 "public_html/assets/portraits/portrait-light-derived.jpg",
+                "public_html/assets/icons/briefcase.svg",
+                "public_html/assets/icons/database.svg",
+                "public_html/assets/technology-logos/laravel.svg",
+                "public_html/assets/technology-logos/LICENSE",
                 "application/storage/framework/views/.gitignore",
                 *PRIVATE_GUARD_PATHS,
                 "INSTALL-CPANEL-AR.md", "PACKAGE-MANIFEST.json",

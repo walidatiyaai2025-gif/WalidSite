@@ -85,10 +85,13 @@ class T007LocaleNavigationTest extends TestCase
     public function test_t007_hero_and_evidence_gated_cards_render_bilingual_rtl_content(): void
     {
         $screens = [
-            ['/about', 'المسيرة المهنية', 'نبذة', 'تُعرض فقط السجلات المهنية', 'CAREER STORY'],
             ['/ai-engineering', 'تطبيقات الذكاء الاصطناعي', 'هندسة الذكاء الاصطناعي', 'سلامة الذكاء الاصطناعي', 'AI PRACTICE'],
             ['/hire', 'عرض التوظيف', 'مساحة التوظيف', 'المهارات المنشورة بالأدلة فقط', 'HIRING VIEW'],
         ];
+        $this->get('/about?lang=ar')->assertOk()
+            ->assertSee('class="wa-about about-screen"', false)
+            ->assertSee('المسيرة المهنية')->assertSee('نبذة')
+            ->assertDontSee('CAREER STORY');
         foreach ($screens as [$route, $pill, $title, $details, $englishPill]) {
             $this->get($route.'?lang=ar')->assertOk()
                 ->assertSee('dir="rtl"', false)
@@ -138,7 +141,7 @@ class T007LocaleNavigationTest extends TestCase
             ->assertSee('المشاريع ودراسات الحالة المتحقق منها')
             ->assertSee('href="'.route('public.projects', ['lang' => 'ar']).'"', false);
         $this->get('/about?lang=ar')->assertOk()
-            ->assertSee('لا توجد فترات مهنية اجتازت التحقق والنشر بعد.')
+            ->assertSee('لا توجد فترات مهنية تم التحقق منها وإتاحتها للنشر حاليًا.')
             ->assertDontSee('Government & enterprise systems');
         $this->get('/hire?lang=ar')->assertOk()
             ->assertSee('href="'.route('public.resume', ['lang' => 'ar']).'"', false)

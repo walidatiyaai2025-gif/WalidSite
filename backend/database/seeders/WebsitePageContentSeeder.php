@@ -21,7 +21,7 @@ final class WebsitePageContentSeeder extends Seeder
             foreach ($sections as $section => $fields) {
                 foreach ($fields as $field => $translations) {
                     foreach (['en', 'ar'] as $locale) {
-                        $approvedHome = $page === 'home';
+                        $approvedHome = in_array($page, ['home', 'about'], true);
                         $rows[] = [
                             'id' => (string) Str::uuid(),
                             'page_key' => $page,
@@ -46,6 +46,13 @@ final class WebsitePageContentSeeder extends Seeder
         DB::transaction(static function () use ($rows): void {
             foreach (array_chunk($rows, 150) as $batch) {
                 DB::table('site_page_texts')->insertOrIgnore($batch);
+            }
+            foreach (PageContentDefaults::aboutMedia() as $item) {
+                DB::table('about_media_assets')->insertOrIgnore([
+                    'slot'=>$item['slot'], 'label'=>$item['label'], 'kind'=>$item['kind'],
+                    'fallback_icon'=>$item['icon'], 'revision'=>0,
+                    'created_at'=>now('UTC'), 'updated_at'=>now('UTC'),
+                ]);
             }
         });
     }

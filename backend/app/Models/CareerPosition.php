@@ -16,7 +16,7 @@ class CareerPosition extends Model
 
     protected function casts(): array
     {
-        return ['started_on' => 'date', 'ended_on' => 'date', 'publishable' => 'boolean', 'verified' => 'boolean'];
+        return ['started_on' => 'date', 'ended_on' => 'date', 'publishable' => 'boolean', 'verified' => 'boolean', 'draft_json' => 'array', 'cms_revision' => 'integer'];
     }
 
     public function profile(): BelongsTo

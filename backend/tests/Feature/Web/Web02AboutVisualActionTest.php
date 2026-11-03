@@ -25,7 +25,7 @@ final class Web02AboutVisualActionTest extends TestCase
         foreach (['en', 'ar'] as $locale) {
             $page = $this->get('/about?lang='.$locale)->assertOk()
                 ->assertSee('<html lang="'.$locale.'" dir="'.($locale === 'ar' ? 'rtl' : 'ltr').'">', false)
-                ->assertSee('class="t007-reference-action secondary" href="#about-evidence"', false)
+                ->assertSee('class="t007-reference-action secondary quiet" href="#about-evidence"', false)
                 ->assertSee('class="t007-reference-action primary" href="#t007-primary-content"', false)
                 ->assertSee('id="about-evidence" class="about-panel about-panel--proof" aria-labelledby="about-evidence-heading" tabindex="-1"', false)
                 ->assertSee('id="about-career" class="about-panel" aria-labelledby="about-career-heading" tabindex="-1"', false)
@@ -81,7 +81,7 @@ final class Web02AboutVisualActionTest extends TestCase
 
         foreach (['en', 'ar'] as $locale) {
             $this->get('/about?lang='.$locale)->assertOk()
-                ->assertSee('class="t007-reference-action secondary" href="#about-evidence"', false)
+                ->assertSee('class="t007-reference-action secondary quiet" href="#about-evidence"', false)
                 ->assertSee('id="about-evidence"', false)
                 ->assertSee($locale === 'ar' ? 'دليل عام تمت مراجعته' : 'Reviewed accessible proof')
                 ->assertSee('href="https://docs.example.org/web02-proof"', false)
