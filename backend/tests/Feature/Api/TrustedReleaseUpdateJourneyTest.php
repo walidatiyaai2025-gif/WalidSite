@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Api;
 
+use App\Domain\Deployment\TrustedReleaseDownloader;
 use App\Domain\Deployment\TrustedReleaseUpdateJourney;
 use DomainException;
 use FilesystemIterator;
@@ -172,6 +173,98 @@ final class TrustedReleaseUpdateJourneyTest extends TestCase
             $writes ?? static fn (): bool => true,
             $health ?? fn (): bool => file_get_contents($this->paths['public'].'/index.php') === 'NEW-vB',
         );
+    }
+
+    public function test_remote_signed_download_through_real_mariadb_restore_and_vb_cutover(): void
+    {
+        $signed = $this->signedZip();
+        $bytes = file_get_contents($this->paths['archive']);
+        unlink($this->paths['archive']);
+        $requests = 0;
+
+        $downloader = new TrustedReleaseDownloader(
+            static function (string $url, \Closure $write) use ($bytes, &$requests): int {
+                $requests++;
+                self::assertSame(
+                    'https://updates.example.test/releases/WalidSite-update-v1.2.0.zip',
+                    $url,
+                );
+                for ($offset = 0; $offset < strlen($bytes); $offset += 17) {
+                    $part = substr($bytes, $offset, 17);
+                    self::assertSame(strlen($part), $write($part));
+                }
+                return 200;
+            },
+        );
+
+        $result = (new TrustedReleaseUpdateJourney())->downloadAndExecute(
+            $this->liveDb, $this->restoreDb, $signed,
+            $this->publicKey, 'https://updates.example.test', '1.0.0',
+            $this->paths, static fn (): bool => true,
+            fn (): bool => file_get_contents($this->paths['public'].'/index.php') === 'NEW-vB',
+            $downloader,
+        );
+
+        self::assertSame(1, $requests);
+        self::assertSame('switched', $result['state']);
+        self::assertSame('1.2.0', $result['version']);
+        self::assertSame('NEW-vB', file_get_contents($this->paths['public'].'/index.php'));
+        self::assertSame('APP_KEY=keep-existing-secret', file_get_contents($this->paths['environment']));
+        self::assertSame('محتوى عربي', $this->restoreDb->query('SELECT memo FROM billing WHERE id=1')->fetchColumn());
+        self::assertSame($bytes, file_get_contents($this->paths['archive']));
+    }
+
+    public function test_broken_remote_release_never_touches_live_code_or_starts_backup(): void
+    {
+        $signed = $this->signedZip();
+        unlink($this->paths['archive']);
+
+        foreach ([302, 200] as $status) {
+            $transport = new TrustedReleaseDownloader(
+                static function (string $url, \Closure $write) use ($status): int {
+                    $write('not-a-signed-archive');
+                    return $status;
+                },
+            );
+            try {
+                (new TrustedReleaseUpdateJourney())->downloadAndExecute(
+                    $this->liveDb, $this->restoreDb, $signed,
+                    $this->publicKey, 'https://updates.example.test', '1.0.0',
+                    $this->paths, static fn (): bool => true,
+                    static fn (): bool => true, $transport,
+                );
+                self::fail('Untrusted downloaded artifact must not activate.');
+            } catch (DomainException) {
+                self::assertSame('LIVE-vA', file_get_contents($this->paths['public'].'/index.php'));
+                self::assertSame([], glob($this->paths['backup_vault'].'/mariadb-*') ?: []);
+                self::assertSame([], glob($this->paths['incoming'].'/WalidSite-update-*') ?: []);
+            }
+        }
+    }
+
+    public function test_remote_download_is_blocked_while_writers_are_active(): void
+    {
+        $signed = $this->signedZip();
+        unlink($this->paths['archive']);
+        $requested = false;
+        $transport = new TrustedReleaseDownloader(
+            static function () use (&$requested): int {
+                $requested = true;
+                return 200;
+            },
+        );
+        try {
+            (new TrustedReleaseUpdateJourney())->downloadAndExecute(
+                $this->liveDb, $this->restoreDb, $signed,
+                $this->publicKey, 'https://updates.example.test', '1.0.0',
+                $this->paths, static fn (): bool => false,
+                static fn (): bool => true, $transport,
+            );
+            self::fail('An active writer must prevent the trusted transfer.');
+        } catch (DomainException) {
+            self::assertFalse($requested);
+            self::assertSame('LIVE-vA', file_get_contents($this->paths['public'].'/index.php'));
+        }
     }
 
     public function test_signed_zip_to_isolated_restore_to_version_switch_preserves_live_data(): void
