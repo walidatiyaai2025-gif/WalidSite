@@ -217,5 +217,60 @@ class VisualDiagnosticsTest(unittest.TestCase):
             self.assertEqual((count, total), (1, 1))
 
 
+    def test_multiple_real_renderer_artifacts_stay_outside_checkout_during_attestation(self):
+        # A live clean-checkout guard would reject the old implementation's
+        # own untracked temporary PNG and previous-screen comparison outputs.
+        Image.new("RGBA", (2, 2), (0, 0, 0, 255)).save(
+            self.root / "assets/screen-reference/ref-02.png"
+        )
+        second = {
+            **self.plan["captures"][0],
+            "screen_id": "WEB-02",
+            "route": "/about",
+        }
+        plan = {"version": 1, "captures": [self.plan["captures"][0], second]}
+        checked = []
+
+        def clean_source(root, commit):
+            self.assertEqual(root, self.root.resolve())
+            self.assertEqual(commit, self.sha)
+            generated = root / "qa/visual-diagnostics"
+            if generated.exists():
+                self.assertEqual(
+                    [p for p in generated.rglob("*") if p.is_file()],
+                    [],
+                    "Intermediate diagnostic outputs must not dirty Git status",
+                )
+            checked.append(commit)
+            return True
+
+        def renderer(command, *, env, **kwargs):
+            destination = Path(env["WALIDSITE_CAPTURE_PATH"])
+            self.assertFalse(
+                destination.resolve().is_relative_to(self.root.resolve()),
+                "Temporary screenshot must be rendered outside the Git checkout",
+            )
+            Image.new("RGBA", (2, 2), (12, 34, 56, 255)).save(destination)
+            return subprocess.CompletedProcess(command, 0)
+
+        with patch("qa.visual_diagnostics.verified_head", side_effect=clean_source), patch(
+            "qa.visual_diagnostics.audit", return_value=([], 0, 40)
+        ):
+            report = diagnose(self.root, plan, self.sha, runner=renderer)
+
+        self.assertGreaterEqual(len(checked), 4)
+        self.assertEqual(
+            {key: value["status"] for key, value in report["screens"].items()},
+            {"WEB-01": "mismatch", "WEB-02": "mismatch"},
+        )
+        target = self.root / "qa/visual-diagnostics" / self.sha
+        self.assertTrue((target / "WEB-01.runtime.png").is_file())
+        self.assertTrue((target / "WEB-02.runtime.png").is_file())
+        self.assertTrue((target / "WEB-01.difference-preview.png").is_file())
+        self.assertTrue((target / "WEB-02.difference-preview.png").is_file())
+        self.assertTrue((target / "report.json").is_file())
+        self.assertEqual(self.ledger.read_text(), '{"screens": {}}\\n')
+
+
 if __name__ == "__main__":
     unittest.main()
