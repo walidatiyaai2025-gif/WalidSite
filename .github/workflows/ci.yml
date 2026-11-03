@@ -131,7 +131,7 @@ jobs:
           echo "PASS: MariaDB migration and repeated owner CV seed are idempotent and fail-closed\n";
           '
       - name: Issue 481 real authenticated Admin runtime diagnostics
-        if: ${{ github.event_name == 'pull_request' && startsWith(github.head_ref, 'feat/481-') }}
+        if: ${{ github.event_name == 'pull_request' && (startsWith(github.head_ref, 'feat/481-') || startsWith(github.head_ref, 'fix/481-') || startsWith(github.head_ref, 'chore/481-')) }}
         shell: bash
         env:
           APP_ENV: testing
@@ -324,12 +324,12 @@ jobs:
           PY
 
       - name: Upload Issue 481 Admin runtime visual diagnostics
-        if: ${{ always() && github.event_name == 'pull_request' && startsWith(github.head_ref, 'feat/481-') }}
+        if: ${{ always() && github.event_name == 'pull_request' && (startsWith(github.head_ref, 'feat/481-') || startsWith(github.head_ref, 'fix/481-') || startsWith(github.head_ref, 'chore/481-')) }}
         uses: actions/upload-artifact@v4
         with:
           name: issue-481-admin-and-web-runtime-visual-diagnostics
           path: qa/visual-diagnostics/
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 7
       - name: T007 real Laravel visual diagnostics
         id: t007_visual_diagnostics
