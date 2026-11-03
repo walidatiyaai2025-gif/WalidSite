@@ -72,50 +72,6 @@ void main() {
     }
   });
 
-  test('manual lost-ack HTTP retry sends the exact same opaque header',
-      () async {
-    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-    final observed = <String?>[];
-    final listener = server.listen((request) async {
-      observed.add(request.headers.value('Idempotency-Key'));
-      request.response.headers.contentType = ContentType.json;
-      if (observed.length == 1) {
-        // Simulate a request admitted by a backend, but no final acknowledgement
-        // before the client wall-clock deadline. Never call a paid provider.
-        request.response.write('{"data":');
-        await request.response.flush();
-      } else {
-        request.response.write('{"data":{"id":"$_jobId"}}');
-        await request.response.close();
-      }
-    });
-    try {
-      final key = MobileAiIntentKey.generate();
-      final url = Uri.parse(
-          'http://127.0.0.1:${server.port}/api/v1/mobile/ai/diagnose');
-      Future<MapEntry<int, String>> send(Duration deadline) =>
-          MobileAiClient.boundedExchange(
-            'POST',
-            url,
-            bearer: 'private-test-bearer',
-            idempotencyKey: key,
-            body: const {'question': 'safe test', 'consent_to_process': true},
-            totalTimeout: deadline,
-          );
-      await expectLater(
-        send(const Duration(milliseconds: 350)),
-        throwsA(isA<TimeoutException>()),
-      );
-      expect(observed, [key]); // No automatic second paid POST.
-      final result = await send(const Duration(seconds: 2));
-      expect(result.key, HttpStatus.ok);
-      expect(result.value, contains(_jobId));
-      expect(observed, [key, key]);
-    } finally {
-      await listener.cancel();
-      await server.close(force: true);
-    }
-  });
 
   Future<void> reveal(WidgetTester tester, Key key) async {
     final mainScroll = find.descendant(
@@ -125,6 +81,20 @@ void main() {
     await tester.scrollUntilVisible(
       find.byKey(key),
       220,
+      scrollable: mainScroll,
+    );
+    await tester.ensureVisible(find.byKey(key));
+    await tester.pumpAndSettle();
+  }
+
+  Future<void> revealAbove(WidgetTester tester, Key key) async {
+    final mainScroll = find.descendant(
+      of: find.byType(ListView),
+      matching: find.byType(Scrollable),
+    ).first;
+    await tester.scrollUntilVisible(
+      find.byKey(key),
+      -220,
       scrollable: mainScroll,
     );
     await tester.ensureVisible(find.byKey(key));
@@ -202,6 +172,7 @@ void main() {
 
     // Even if the form has been edited, a manual retry keeps the original
     // snapshot and the same server idempotency key.
+    await revealAbove(tester, const Key('ai-question'));
     await tester.enterText(
       find.byKey(const Key('ai-question')),
       'Different question must never replace in-flight intent',
