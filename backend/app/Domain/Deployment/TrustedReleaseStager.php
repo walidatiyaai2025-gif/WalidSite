@@ -36,7 +36,7 @@ final class TrustedReleaseStager
         if ($private === false || $public === false || $archive === false
             || ! is_dir($private) || ! is_dir($public)
             || is_link($privateRoot) || is_link($archiveDirectory)
-            || $private === $public || $this->isWithin($private, $public)
+            || $private === $public || $this->isWithin($private, $public) || $this->isWithin($public, $private)
             || ! $this->isWithin($archive, $private) || $this->isWithin($archive, $public)
             || ! is_writable($private)) {
             throw new DomainException('A separate writable private release root is required.');
@@ -126,7 +126,9 @@ final class TrustedReleaseStager
                         fclose($source);
                         fclose($output);
                     }
-                    @chmod($destination, 0600);
+                    if (! chmod($destination, 0600)) {
+                        throw new RuntimeException('Cannot restrict staged release file permissions.');
+                    }
                     $files++;
                 }
             } finally {
