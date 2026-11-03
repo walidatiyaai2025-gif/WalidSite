@@ -1619,18 +1619,12 @@ foreach (['about', 'expertise', 'hire'] as $professionalPage) {
  * serializer so public web cannot bypass the backend evidence URL policy.
  */
 Route::get('/projects', function (Request $request) {
-    // Owner-requested visual preview of CV / public repository projects.
-    // This is NOT the published, evidence-verified case-study API and must
-    // never be indexed or substituted for the publication-gated catalog.
-    // Exact scalar opt-in prevents array/query input from controlling view selection.
-    if ($request->query('preview') === 'cv') {
-        // Symfony's BinaryFileResponse defaults to public caching unless we
-        // explicitly mark the preview private after creating the response.
-        return response()->file(public_path('portfolio-projects-preview.html'), [
-            'X-Robots-Tag' => 'noindex, nofollow',
-            'Cache-Control' => 'no-store, private',
-        ])->setPrivate();
-    }
+    // The public route IS the real database-backed portfolio; no mockup,
+    // preview flag or second unreviewed set of projects is served here.
+    $rawCategory = $request->query('category', 'featured');
+    $portfolioCategory = is_string($rawCategory) && in_array($rawCategory, [
+        'featured', 'government', 'education', 'workflows', 'ai', 'enterprise',
+    ], true) ? $rawCategory : 'featured';
 
     $rawSearch = $request->query('q', '');
     $search = is_string($rawSearch) ? mb_substr(trim($rawSearch), 0, 80) : '';
@@ -1641,6 +1635,11 @@ Route::get('/projects', function (Request $request) {
         && in_array($rawStatus, ['completed', 'in_progress', 'research', 'archived'], true)
             ? $rawStatus : '';
     $query = \App\Models\Project::query()->publiclyVerified();
+    if ($portfolioCategory === 'featured') {
+        $query->where('portfolio_featured', true);
+    } else {
+        $query->where('portfolio_category', $portfolioCategory);
+    }
     if ($status !== '') {
         $query->where('status', $status);
     }
@@ -1685,7 +1684,9 @@ Route::get('/projects', function (Request $request) {
         ]
     );
 
-    return view('public.projects', compact('projects', 'paginated', 'search', 'status'));
+    return view('public.projects', compact(
+        'projects', 'paginated', 'search', 'status', 'portfolioCategory'
+    ));
 })->name('public.projects');
 
 Route::get('/projects/{slug}', function (Request $request, string $slug) {
