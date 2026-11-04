@@ -423,6 +423,11 @@ typedef ArticleCategoryPageLoader = Future<VerifiedArticlePage> Function(
 typedef ArticleLoginAction = Future<String> Function(String email, String password);
 typedef ArticleSaveAction = Future<void> Function(String bearer, String articleId);
 
+/// Authorization loss should clear any temporary login intent on this screen.
+class ArticleSaveAuthorizationException implements Exception {
+  const ArticleSaveAuthorizationException();
+}
+
 class VerifiedArticleLibrary extends StatefulWidget {
   const VerifiedArticleLibrary({
     required this.arabic,
@@ -843,12 +848,16 @@ class VerifiedArticleFreshDetail extends StatefulWidget {
     required this.slug,
     required this.arabic,
     this.loader,
+    this.loginAction,
+    this.saveAction,
     super.key,
   });
 
   final String slug;
   final bool arabic;
   final Future<VerifiedArticle> Function(String slug)? loader;
+  final ArticleLoginAction? loginAction;
+  final ArticleSaveAction? saveAction;
 
   @override
   State<VerifiedArticleFreshDetail> createState() =>
@@ -857,6 +866,10 @@ class VerifiedArticleFreshDetail extends StatefulWidget {
 
 class _VerifiedArticleFreshDetailState extends State<VerifiedArticleFreshDetail> {
   late Future<VerifiedArticle> _detail;
+  bool _saving = false;
+  bool _saved = false;
+  String? _saveMessage;
+  int _saveEpoch = 0;
 
   @override
   void initState() {
@@ -869,7 +882,13 @@ class _VerifiedArticleFreshDetailState extends State<VerifiedArticleFreshDetail>
     super.didUpdateWidget(oldWidget);
     if (widget.slug != oldWidget.slug ||
         widget.arabic != oldWidget.arabic ||
-        widget.loader != oldWidget.loader) {
+        widget.loader != oldWidget.loader ||
+        widget.loginAction != oldWidget.loginAction ||
+        widget.saveAction != oldWidget.saveAction) {
+      _saveEpoch++;
+      _saving = false;
+      _saved = false;
+      _saveMessage = null;
       _refresh();
     }
   }
@@ -894,6 +913,57 @@ class _VerifiedArticleFreshDetailState extends State<VerifiedArticleFreshDetail>
     // observes this original request and displays its safe failure state.
     unawaited(request.then<void>((_) {}, onError: (Object _, StackTrace __) {}));
     _detail = request;
+  }
+
+  Future<void> _saveVerified(VerifiedArticle article) async {
+    final articleId = article.id;
+    if (_saving || _saved || articleId == null ||
+        widget.loginAction == null || widget.saveAction == null) return;
+    final epoch = _saveEpoch;
+    // Claim synchronously: two taps may not open two logins or send two POSTs.
+    setState(() {
+      _saving = true;
+      _saveMessage = null;
+    });
+    try {
+      final bearer = await showDialog<String>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => _ArticleSaveLoginDialog(
+          arabic: widget.arabic,
+          login: widget.loginAction!,
+        ),
+      );
+      if (!mounted || epoch != _saveEpoch || bearer == null) return;
+      // A current published detail, not a stale catalog row, supplies this ID.
+      await widget.saveAction!(bearer, articleId);
+      if (!mounted || epoch != _saveEpoch) return;
+      setState(() {
+        _saved = true;
+        _saveMessage = widget.arabic
+            ? 'تم حفظ المقال الموثق في حسابك.'
+            : 'Verified article saved to your account.';
+      });
+    } catch (error) {
+      if (!mounted || epoch != _saveEpoch) return;
+      setState(() {
+        _saveMessage = error is TimeoutException
+            ? (widget.arabic
+                ? 'لم يصل تأكيد الحفظ. افتح محفوظات حسابك للتحقق قبل إعادة المحاولة.'
+                : 'Save confirmation was not received. Check your account Saved list before retrying.')
+            : error is ArticleSaveAuthorizationException
+                ? (widget.arabic
+                    ? 'انتهت صلاحية الجلسة. سجّل الدخول مجددًا للحفظ.'
+                    : 'Session no longer authorized. Sign in again to save.')
+                : (widget.arabic
+                    ? 'تعذر تأكيد حفظ هذا المقال. لم يُعرض على أنه محفوظ.'
+                    : 'Article save could not be confirmed. It is not marked saved.');
+      });
+    } finally {
+      if (mounted && epoch == _saveEpoch) {
+        setState(() => _saving = false);
+      }
+    }
   }
 
   @override
@@ -941,6 +1011,25 @@ class _VerifiedArticleFreshDetailState extends State<VerifiedArticleFreshDetail>
               padding: const EdgeInsets.all(20),
               children: [
                 Text(article.title, style: Theme.of(context).textTheme.titleLarge),
+                if (article.id != null &&
+                    widget.loginAction != null && widget.saveAction != null) ...[
+                  const SizedBox(height: 12),
+                  FilledButton.icon(
+                    key: const Key('verified-article-save'),
+                    onPressed: _saving || _saved ? null : () => _saveVerified(article),
+                    icon: Icon(_saved ? Icons.bookmark_added : Icons.bookmark_add_outlined),
+                    label: Text(_saving
+                        ? (arabic ? 'جارٍ التحقق...' : 'Confirming...')
+                        : _saved
+                            ? (arabic ? 'محفوظ' : 'Saved')
+                            : (arabic ? 'احفظ في حسابي' : 'Save to my account')),
+                  ),
+                  if (_saveMessage != null)
+                    Semantics(
+                      liveRegion: true,
+                      child: Text(_saveMessage!, key: const Key('verified-article-save-status')),
+                    ),
+                ],
                 const SizedBox(height: 16),
                 Text(arabic
                     ? 'محتوى منشور موثق بمراجع؛ ليس تقرير اختبار عملي.'
@@ -960,6 +1049,107 @@ class _VerifiedArticleFreshDetailState extends State<VerifiedArticleFreshDetail>
           },
         ),
       ),
+    );
+  }
+}
+
+class _ArticleSaveLoginDialog extends StatefulWidget {
+  const _ArticleSaveLoginDialog({required this.arabic, required this.login});
+  final bool arabic;
+  final ArticleLoginAction login;
+
+  @override
+  State<_ArticleSaveLoginDialog> createState() => _ArticleSaveLoginDialogState();
+}
+
+class _ArticleSaveLoginDialogState extends State<_ArticleSaveLoginDialog> {
+  final _email = TextEditingController();
+  final _password = TextEditingController();
+  bool _busy = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _email.dispose();
+    _password.dispose();
+    super.dispose();
+  }
+
+  Future<void> _signIn() async {
+    if (_busy) return;
+    final email = _email.text.trim();
+    if (email.isEmpty || email.length > 254 ||
+        !_email.text.contains('@') || _password.text.isEmpty) {
+      setState(() => _error = widget.arabic
+          ? 'أدخل بريدًا إلكترونيًا وكلمة مرور صالحين.'
+          : 'Enter a valid email and password.');
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      final bearer = await widget.login(email, _password.text);
+      if (bearer.isEmpty || bearer.length > 8192) {
+        throw const FormatException('Invalid login response');
+      }
+      if (!mounted) return;
+      Navigator.of(context).pop(bearer);
+    } catch (_) {
+      if (mounted) {
+        setState(() => _error = widget.arabic
+            ? 'تعذر تسجيل الدخول. تحقق من البيانات أو الاتصال.'
+            : 'Could not sign in. Check your credentials or connection.');
+      }
+    } finally {
+      _password.clear();
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ar = widget.arabic;
+    return AlertDialog(
+      title: Text(ar ? 'تسجيل الدخول لحفظ المقال' : 'Sign in to save this article'),
+      content: SizedBox(
+        width: 360,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              key: const Key('article-save-login-email'),
+              controller: _email,
+              keyboardType: TextInputType.emailAddress,
+              autofillHints: const [AutofillHints.username],
+              decoration: InputDecoration(labelText: ar ? 'البريد الإلكتروني' : 'Email'),
+            ),
+            TextField(
+              key: const Key('article-save-login-password'),
+              controller: _password,
+              obscureText: true,
+              autofillHints: const [AutofillHints.password],
+              decoration: InputDecoration(labelText: ar ? 'كلمة المرور' : 'Password'),
+              onSubmitted: (_) => _signIn(),
+            ),
+            if (_error != null)
+              Text(_error!, key: const Key('article-save-login-error')),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          key: const Key('article-save-login-cancel'),
+          onPressed: _busy ? null : () => Navigator.of(context).pop(),
+          child: Text(ar ? 'إلغاء' : 'Cancel'),
+        ),
+        FilledButton(
+          key: const Key('article-save-login-submit'),
+          onPressed: _busy ? null : _signIn,
+          child: Text(ar ? 'تسجيل الدخول والحفظ' : 'Sign in & save'),
+        ),
+      ],
     );
   }
 }
