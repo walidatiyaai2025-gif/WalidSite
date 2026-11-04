@@ -63,10 +63,11 @@ class SiteMaintenanceTest extends TestCase
                     ->assertSee('<html lang="'.$lang.'" dir="'.$direction.'">', false)
                     ->assertSee($headings[$lang]);
                 $html = $response->getContent();
-                $this->assertSame(1, substr_count($html, 'aria-current="step"'));
-
+                // Count only rendered step elements, not the CSS rule
+                // that styles [aria-current="step"] in the same response.
                 $matches = [];
                 preg_match_all('/<li[^>]*aria-current="step"[^>]*>(.*?)<\/li>/us', $html, $matches);
+                $this->assertCount(1, $matches[1]);
                 $this->assertSame([$number.' — '.$labels[$lang]],
                     array_map('trim', $matches[1]));
             }
