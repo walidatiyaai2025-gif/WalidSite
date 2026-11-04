@@ -72,9 +72,20 @@ class PublisherConsumerAcceptanceTest(unittest.TestCase):
                 z.writestr(name, data)
         # The input is a synthetic fixture; real-source provenance and full
         # manifest validation remain protected separately by cPanel pack tests.
-        with patch("qa.build_trusted_update_release.verify_archive", return_value={"version": VERSION}) as verify:
+        def verify_private_snapshot(snapshot, sha):
+            self.assertEqual(sha, SOURCE_SHA)
+            self.assertNotEqual(snapshot, self.cpanel)
+            self.assertEqual(snapshot.name, "source.zip")
+            self.assertTrue(snapshot.is_file())
+            with zipfile.ZipFile(snapshot) as source:
+                self.assertEqual(source.read("application/bootstrap/app.php"), b"<?php return 1;")
+            return {"version": VERSION}
+
+        with patch("qa.build_trusted_update_release.verify_archive",
+                   side_effect=verify_private_snapshot) as verify:
             receipt = build(self.cpanel, self.root, VERSION, SOURCE_SHA)
-        verify.assert_called_once_with(self.cpanel, SOURCE_SHA)
+        verify.assert_called_once()
+        self.assertFalse(verify.call_args.args[0].exists())  # private source removed
         self.archive = self.root / receipt["artifact_file"]
         self.meta = {key: value for key, value in receipt.items()
                      if key != "publisher_signature_verified"}
