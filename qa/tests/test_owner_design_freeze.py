@@ -54,6 +54,19 @@ class OwnerApprovedWebDesignFreezeTests(unittest.TestCase):
         path.unlink()
         self.assertTrue(any("WEB-04" in e and "missing/unsafe" in e for e in audit(self.root)))
 
+    def test_owner_directed_home_radio_override_cannot_be_repurposed(self):
+        self.manifest["owner_directed_overrides"]["WEB-01"]["new_git_blob_sha1"] = "0" * 40
+        self.write()
+        self.assertTrue(any("owner-directed" in e.lower() for e in audit(self.root)))
+
+    def test_owner_directed_override_cannot_be_extended_to_other_screens(self):
+        self.manifest["owner_directed_overrides"]["WEB-03"] = {
+            "path": "backend/resources/views/public/expertise-screen.blade.php",
+            "new_git_blob_sha1": "a" * 40,
+        }
+        self.write()
+        self.assertTrue(any("owner-directed" in e.lower() for e in audit(self.root)))
+
     def test_fake_pixel_parity_attestation_is_rejected(self):
         self.manifest["runtime_zero_rgba_comparison"] = "matched"
         self.write()
