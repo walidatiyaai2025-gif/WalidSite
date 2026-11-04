@@ -693,7 +693,7 @@ class _VerifiedArticleLibraryState extends State<VerifiedArticleLibrary> {
                         padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
                         child: DropdownButtonFormField<String>(
                           key: const Key('article-category-filter'),
-                          value: first.categories.any((item) => item.slug == _category)
+                          initialValue: first.categories.any((item) => item.slug == _category)
                               ? _category : '',
                           decoration: InputDecoration(
                             labelText: ar ? 'تصنيف المقالات' : 'Article category',
