@@ -4,7 +4,7 @@
 
 ## تنزيل الحزمة والتحقق من سلامتها
 
-اسم الملف الإصدارى هو `WalidSite-Setup-vX.Y.Z.zip`؛ استبدل X.Y.Z بالإصدار الموجود في `application/VERSION` و`PACKAGE-MANIFEST.json` (الإصدار التجريبي الحالي 0.1.0). رفع ملف ZIP الداخلي واحد فقط إلى cPanel؛ وملف `.sha256` للتحقق قبل الرفع وليس خطوة رفع ثانية.
+اسم الملف الإصدارى هو `WalidSite-Setup-vX.Y.Z.zip`؛ استبدل X.Y.Z بالإصدار الموجود في `application/VERSION` و`PACKAGE-MANIFEST.json` (الإصدار التجريبي الحالي 0.1.1). رفع ملف ZIP الداخلي واحد فقط إلى cPanel؛ وملف `.sha256` للتحقق قبل الرفع وليس خطوة رفع ثانية.
 
 1. افتح صفحة **Actions → PR CI** في GitHub واختر تشغيل **main** الناجح الذي يحتوي على خطوة `build-cpanel-package` بعد نجاح `required-ci-gate` على نفس SHA. نزّل Artifact باسم `WalidSite-Setup-installer` وفك ضغط ملف الـArtifact على جهازك؛ ستجد `WalidSite-Setup-vX.Y.Z.zip` و`WalidSite-Setup-vX.Y.Z.zip.sha256`.
 2. تأكد أن الـSHA الظاهر في `PACKAGE-MANIFEST.json` داخل الحزمة يساوي SHA تشغيل GitHub الناجح الذي قمت بتنزيله؛ وجود SHA في ملف بمفرده لا يثبت الهوية أو التوقيع الرقمي.
