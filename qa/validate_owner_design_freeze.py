@@ -40,6 +40,19 @@ SCREENS = {
 }
 OWNER_APPROVED_SHA = "cf5b72f129d9daa11f3aa1d55a9d6d52740eeb0b"
 OWNER_APPROVAL_ID = "owner-2026-11-03-web-01-03-04"
+# Owner's 2026-11-04 explicit *targeted* home-language-control request.
+# This does not replace the 2026-11-03 screen approval or assert pixel parity.
+OWNER_DIRECTED_OVERRIDE = {
+    "WEB-01": {
+        "path": "backend/resources/views/public/owner-landing-2026.blade.php",
+        "original_git_blob_sha1": "be588fde75771d0bcb5c52e203435a3bb549c847",
+        "new_git_blob_sha1": "95fbce2bc8f53cbeb798229af0ae0003b03e0ee9",
+        "request_date": "2026-11-04",
+        "scope": "Only top home-header native EN/Arabic radio selector on desktop/mobile next to owner name; preserve other WEB-01/03/04 design",
+        "base_main_sha": "3278f50cc5a4ba584597508af322d5e45b097819",
+        "visual_pixel_parity": "not_asserted",
+    },
+}
 
 
 def git_blob_sha1(data: bytes) -> str:
@@ -69,6 +82,9 @@ def audit(root: Path) -> list[str]:
     for field, expected in expected_header.items():
         if manifest.get(field) != expected:
             errors.append(f"Owner freeze metadata {field} changed without an approved revision")
+
+    if manifest.get("owner_directed_overrides") != OWNER_DIRECTED_OVERRIDE:
+        errors.append("Owner-directed WEB-01 locale override metadata changed without approval")
 
     if not isinstance(manifest.get("screens"), dict) or set(manifest["screens"]) != set(SCREENS):
         return errors + ["Owner freeze must cover exactly WEB-01, WEB-03, WEB-04"]
@@ -103,6 +119,13 @@ def audit(root: Path) -> list[str]:
                 errors.append(f"{screen_id}: missing/unsafe owner-frozen template {relpath}")
                 continue
             actual_sha = git_blob_sha1(path.read_bytes())
+            owner_override = OWNER_DIRECTED_OVERRIDE.get(screen_id)
+            if (actual_sha != expected_sha and owner_override is not None
+                    and manifest.get("owner_directed_overrides") == OWNER_DIRECTED_OVERRIDE
+                    and owner_override["path"] == relpath
+                    and owner_override["original_git_blob_sha1"] == expected_sha
+                    and owner_override["new_git_blob_sha1"] == actual_sha):
+                continue
             if actual_sha != expected_sha:
                 errors.append(
                     f"{screen_id}: frozen design changed in {relpath} "
