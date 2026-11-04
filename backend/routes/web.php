@@ -2228,17 +2228,23 @@ Route::get('/search', function (Request $request) {
         'q' => ['sometimes', 'string', 'max:80'],
         'lang' => ['sometimes', 'in:ar,en'],
         'type' => ['sometimes', 'in:all,articles,projects'],
+        'page' => ['sometimes', 'integer', 'min:1', 'max:10000'],
     ]);
     $search = trim($input['q'] ?? '');
     $type = $input['type'] ?? 'all';
+    $page = (int) ($input['page'] ?? 1);
+    $perPage = 10;
+    $offset = ($page - 1) * $perPage;
     $articles = collect();
     $projects = collect();
+    $articleTotal = 0;
+    $projectTotal = 0;
 
     if ($search !== '') {
         $term = '%'.str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $search).'%';
-        // The canonical published revision and portfolio evidence gates are
-        // applied before consuming any of the ten quick-search result slots.
-        // Skip querying the excluded type instead of discarding results later.
+        // Only definitive, currently published content contributes to totals
+        // or page offsets. SQL-visible but rights-revoked entries never occupy
+        // a result slot or create a misleading extra page.
         if ($type !== 'projects') {
             foreach (\App\Models\Article::query()->publiclyVisible()
                 ->where(fn ($builder) => $builder
@@ -2253,10 +2259,10 @@ Route::get('/search', function (Request $request) {
                     || $article->publicRevision() === null) {
                     continue;
                 }
-                $articles->push($article);
-                if ($articles->count() === 10) {
-                    break;
+                if ($articleTotal >= $offset && $articles->count() < $perPage) {
+                    $articles->push($article);
                 }
+                $articleTotal++;
             }
         }
 
@@ -2272,15 +2278,20 @@ Route::get('/search', function (Request $request) {
                 if (empty($project['evidence_urls'])) {
                     continue;
                 }
-                $projects->push($project);
-                if ($projects->count() === 10) {
-                    break;
+                if ($projectTotal >= $offset && $projects->count() < $perPage) {
+                    $projects->push($project);
                 }
+                $projectTotal++;
             }
         }
     }
 
-    return view('public.search', compact('search', 'articles', 'projects', 'type'));
+    // Both content types are independently page-sized; mixed results never
+    // starve one verified type or expose unreviewed record counts.
+    $totalPages = max(1, (int) ceil(max($articleTotal, $projectTotal) / $perPage));
+    abort_if($page > $totalPages, 404);
+
+    return view('public.search', compact('search', 'articles', 'projects', 'type', 'page', 'totalPages'));
 })->name('public.search')->middleware('throttle:60,1');
 
 
