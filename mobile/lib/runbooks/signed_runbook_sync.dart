@@ -162,6 +162,18 @@ class SignedRunbookSource {
     final pack = OfflineRunbookPack.parse(
       utf8.decode(payload, allowMalformed: false),
     );
+    // An Ed25519 signature authenticates the payload, not the internal
+    // checksum claim. Verify exact UTF-8 markdown bytes before storing it.
+    for (final item in pack.items) {
+      if (item.publishedMarkdown == null) continue;
+      final digest = await Sha256().hash(utf8.encode(item.publishedMarkdown!));
+      final actual = digest.bytes.map(
+        (byte) => byte.toRadixString(16).padLeft(2, '0'),
+      ).join();
+      if (actual != item.publishedBodySha256) {
+        throw const FormatException('Signed publication content mismatch');
+      }
+    }
     final verified = pack.verifiedAt;
     if (verified == null ||
         verified.isAfter(DateTime.now().toUtc().add(const Duration(minutes: 5)))) {
@@ -223,6 +235,22 @@ class AppSupportRunbookStore implements RunbookSnapshotStore {
   }
 }
 
+/// Live reviewed identity refreshed on explicit user Download; a generic
+/// signed educational pack cannot masquerade as this published revision.
+class PublishedRunbookRevision {
+  const PublishedRunbookRevision({
+    required this.id,
+    required this.version,
+    required this.markdown,
+    required this.validatedAt,
+  });
+
+  final String id;
+  final int version;
+  final String markdown;
+  final DateTime validatedAt;
+}
+
 class OfflineRunbookRepository {
   OfflineRunbookRepository({
     SignedRunbookSource? source,
@@ -270,11 +298,21 @@ class OfflineRunbookRepository {
     return _syncAfter(prior, completed);
   }
 
+  /// A signed envelope for a different UUID/revision must NEVER replace the
+  /// last trusted copy as the result of a user-selected published download.
+  Future<OfflineRunbookPack> syncPublished(PublishedRunbookRevision revision) {
+    final prior = _syncBarrier;
+    final completed = Completer<void>();
+    _syncBarrier = completed.future;
+    return _syncAfter(prior, completed, revision);
+  }
+
   Future<OfflineRunbookPack> _syncAfter(
-      Future<void> prior, Completer<void> completed) async {
+      Future<void> prior, Completer<void> completed,
+      [PublishedRunbookRevision? revision]) async {
     try {
       await prior;
-      return await _syncOnce();
+      return await _syncOnce(revision);
     } finally {
       // Never strand queued updates if fetching, signature verification or
       // persistence fails. The barrier itself must not complete with error.
@@ -282,12 +320,26 @@ class OfflineRunbookRepository {
     }
   }
 
-  Future<OfflineRunbookPack> _syncOnce() async {
+  Future<OfflineRunbookPack> _syncOnce(
+      [PublishedRunbookRevision? revision]) async {
     if (!source.configured) {
       throw const FormatException('Signed runbook updates not configured');
     }
     final received = await source.fetch();
     final fresh = await source.verify(received);
+    if (revision != null) {
+      // Compare against the live API's current identity, not just the
+      // previously listed item or a publisher-controlled label.
+      final matches = fresh.items.where((item) =>
+          item.id == revision.id.toLowerCase() &&
+          item.publishedVersion == revision.version &&
+          item.publishedMarkdown == revision.markdown &&
+          item.publishedValidatedAt?.isAtSameMomentAs(
+              revision.validatedAt) == true).toList();
+      if (matches.length != 1) {
+        throw const FormatException('Published revision absent from signed pack');
+      }
+    }
     final snapshot = await _trustedSnapshot();
     if (snapshot != null) {
       final order = fresh.verifiedAt!.compareTo(snapshot.pack.verifiedAt!);

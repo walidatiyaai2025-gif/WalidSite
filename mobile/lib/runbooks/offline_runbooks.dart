@@ -95,6 +95,29 @@ class OfflineRunbookPack {
       final titleAr = entry['title_ar'];
       final stepsEn = entry['steps_en'];
       final stepsAr = entry['steps_ar'];
+      // Only a publisher-signed pack can establish reviewed live identity.
+      const publicationFields = [
+        'published_version', 'published_markdown',
+        'published_validated_at', 'published_body_sha256',
+      ];
+      final hasPublication = publicationFields.any(entry.containsKey);
+      final pubVersion = entry['published_version'];
+      final pubMarkdown = entry['published_markdown'];
+      final pubChecksum = entry['published_body_sha256'];
+      DateTime? pubValidatedAt;
+      if (hasPublication) {
+        pubValidatedAt = dateOrNull(entry['published_validated_at']);
+        if (id is! String ||
+            !RegExp(r'^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$').hasMatch(id) ||
+            pubVersion is! int || pubVersion < 1 ||
+            pubMarkdown is! String || pubMarkdown.trim().isEmpty ||
+            pubMarkdown.length > 65536 || pubValidatedAt == null ||
+            pubChecksum is! String ||
+            !RegExp(r'^[a-f0-9]{64}$').hasMatch(pubChecksum) ||
+            publicationFields.any((name) => !entry.containsKey(name))) {
+          throw const FormatException('Invalid published runbook provenance');
+        }
+      }
       if (id is! String || !RegExp(r'^[a-z0-9-]{1,60}$').hasMatch(id) ||
           !seen.add(id) || titleEn is! String || titleAr is! String ||
           titleEn.trim().isEmpty || titleAr.trim().isEmpty ||
@@ -114,6 +137,10 @@ class OfflineRunbookPack {
         titleAr: titleAr,
         stepsEn: List<String>.unmodifiable(stepsEn.cast<String>()),
         stepsAr: List<String>.unmodifiable(stepsAr.cast<String>()),
+        publishedVersion: hasPublication ? pubVersion as int : null,
+        publishedMarkdown: hasPublication ? pubMarkdown as String : null,
+        publishedValidatedAt: pubValidatedAt,
+        publishedBodySha256: hasPublication ? pubChecksum as String : null,
       ));
     }
     return OfflineRunbookPack(
@@ -133,6 +160,10 @@ class OfflineRunbook {
     required this.titleAr,
     required this.stepsEn,
     required this.stepsAr,
+    this.publishedVersion,
+    this.publishedMarkdown,
+    this.publishedValidatedAt,
+    this.publishedBodySha256,
   });
 
   final String id;
@@ -140,6 +171,12 @@ class OfflineRunbook {
   final String titleAr;
   final List<String> stepsEn;
   final List<String> stepsAr;
+  /// Only valid as published evidence after the full pack signature and
+  /// the exact content SHA-256 are checked by SignedRunbookSource.
+  final int? publishedVersion;
+  final String? publishedMarkdown;
+  final DateTime? publishedValidatedAt;
+  final String? publishedBodySha256;
 
   String title(bool arabic) => arabic ? titleAr : titleEn;
   List<String> steps(bool arabic) => arabic ? stepsAr : stepsEn;
@@ -436,6 +473,20 @@ class _OfflineRunbookDetailState extends State<OfflineRunbookDetail> {
           const SizedBox(height: 20),
           if (_progressWarning != null)
             Text(_progressWarning!, key: const Key('runbook-progress-warning')),
+          if (pack.signedVerified && item.publishedMarkdown != null) ...[
+            Text(
+              arabic
+                  ? 'النص المنشور للدليل ${item.id} — الإصدار ${item.publishedVersion}'
+                  : 'Signed published revision ${item.publishedVersion} for ${item.id}',
+              key: const Key('runbook-published-revision'),
+            ),
+            const SizedBox(height: 10),
+            SelectableText(
+              item.publishedMarkdown!,
+              key: const Key('runbook-published-markdown'),
+            ),
+            const SizedBox(height: 18),
+          ],
           Text(arabic ? 'خطوات توضيحية عامة' : 'General guidance steps',
               style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 12),
