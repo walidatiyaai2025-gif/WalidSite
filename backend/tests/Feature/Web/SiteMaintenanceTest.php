@@ -427,6 +427,10 @@ class SiteMaintenanceTest extends TestCase
 
     public function test_signed_release_check_restricts_owner_and_request_overrides(): void
     {
+        // This test asserts authorization/validation across five consecutive
+        // requests; retain real route throttling but isolate it here so 429
+        // does not mask an eventual suspended-owner 403 decision.
+        $this->withoutMiddleware(\Illuminate\Routing\Middleware\ThrottleRequests::class);
         $this->post('/admin/updates/check')->assertRedirect('/admin/login');
         $user = User::create([
             'email' => 'release-check-admin@example.test',
