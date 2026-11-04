@@ -87,8 +87,8 @@ select{max-width:100%;padding:7px;border:1px solid #9db9cd;border-radius:9px}
 @forelse($rows as $entry)
 <article class="card">
 <h3>{{ $entry->field_key }} <span class="locale" lang="{{ $entry->locale }}" dir="{{ $entry->locale==='ar'?'rtl':'ltr' }}">{{ strtoupper($entry->locale) }}</span></h3>
-<p class="field-state">{{ $ar ? 'آخر مراجعة' : 'Revision' }}: {{ $entry->revision }} · {{ $entry->published_at ? ($ar ? 'منشور' : 'Published') : ($ar ? 'غير منشور' : 'Unpublished') }}</p>
-@if($entry->published_text!==null)<p class="published"><strong>{{ $ar ? 'النص المنشور' : 'Live text' }}:</strong> {{ $entry->published_text }}</p>@endif
+<p class="field-state">{{ $ar ? 'آخر مراجعة' : 'Revision' }}: {{ $entry->revision }} · {{ $entry->published_at ? ($ar ? 'منشور' : 'Published') : ($entry->published_text === '' ? ($ar ? 'مسحوب' : 'Withdrawn') : ($ar ? 'غير منشور' : 'Unpublished')) }}</p>
+@if($entry->published_at && $entry->published_text!==null)<p class="published"><strong>{{ $ar ? 'النص المنشور' : 'Live text' }}:</strong> {{ $entry->published_text }}</p>@endif
 <form action="{{ route('admin.page-content.draft',['entry'=>$entry->id,'lang'=>$locale]) }}" method="post">@csrf
 <input type="hidden" name="revision" value="{{ $entry->revision }}">
 <label for="text-{{ $entry->id }}">{{ $ar ? 'تعديل المسودة' : 'Edit private draft' }}</label>
@@ -104,6 +104,15 @@ select{max-width:100%;padding:7px;border:1px solid #9db9cd;border-radius:9px}
 <label class="checkbox"><input type="checkbox" name="source_reviewed" value="1" required>{{ $ar ? 'راجعت المصدر وصحة المحتوى' : 'I verified the source and factual accuracy' }}</label>
 <label class="checkbox"><input type="checkbox" name="publication_rights_confirmed" value="1" required>{{ $ar ? 'تحققت من صلاحية النشر وحقوق المحتوى' : 'I confirmed publication rights and clearance' }}</label>
 <div class="controls"><button type="submit">{{ $ar ? 'اعتماد ونشر هذا النص' : 'Review & publish text' }}</button></div>
+</form>
+@endif
+@if($entry->published_at && $entry->published_text !== null && $entry->published_text !== '')
+<form action="{{ route('admin.page-content.retract',['entry'=>$entry->id,'lang'=>$locale]) }}" method="post" class="draft" data-testid="page-copy-retract-{{ $entry->id }}">@csrf
+<input type="hidden" name="revision" value="{{ $entry->revision }}">
+<p>{{ $ar ? 'سحب النص يوقف عرضه فورًا دون إعادة النص الافتراضي. يمكن نشر مسودة لاحقًا بعد مراجعة المصدر والحقوق.' : 'Withdrawal immediately hides this copy without restoring default fallback text. A new reviewed draft may be published later.' }}</p>
+<label for="retract-reason-{{ $entry->id }}">{{ $ar ? 'سبب سحب النشر' : 'Reason for withdrawal' }}</label>
+<input type="text" name="source_note" id="retract-reason-{{ $entry->id }}" minlength="12" maxlength="240" required>
+<div class="controls"><button type="submit">{{ $ar ? 'سحب النص من الموقع' : 'Withdraw published text' }}</button></div>
 </form>
 @endif
 </article>
