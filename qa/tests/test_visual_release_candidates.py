@@ -24,6 +24,7 @@ class ReleaseCandidateTest(unittest.TestCase):
             'application/bootstrap/app.php': b'<?php return 1;',
             'application/vendor/autoload.php': b'<?php return 2;',
             'application/composer.lock': b'{"packages":[]}',
+            'application/VERSION': b'1.2.3\n',
             'application/.env.example': b'APP_KEY=NEVER_COMMIT',
             'public_html/index.php': b'<?php echo "ok";',
             'public_html/.htaccess': b'RewriteEngine On',
@@ -41,6 +42,7 @@ class ReleaseCandidateTest(unittest.TestCase):
                      for name, data in self.entries.items()}
         proof = {'schema': 'walidsite.cpanel-package.v1', 'source_sha': SHA,
                  'production_vendor_included': True, 'secrets_included': False,
+                 'version': '1.2.3',
                  'files': inventory}
         with zipfile.ZipFile(self.source, 'w', zipfile.ZIP_DEFLATED) as archive:
             for name, data in self.entries.items():
@@ -79,6 +81,9 @@ class ReleaseCandidateTest(unittest.TestCase):
             prepare(self.source, self.out, '1.2.3', SHA)
         self.assertEqual(list(self.out.iterdir()), [])
         self.make_source()
+        # Valid but different SemVer must not relabel an attested installer.
+        with self.assertRaisesRegex(ValueError, 'does not match verified source VERSION'):
+            prepare(self.source, self.out, '1.2.4', SHA)
         with self.assertRaises(ValueError):
             prepare(self.source, self.out, '1.2.3', 'f' * 40)
         for version in ('1.2', '01.2.3', '1.2.3-rc1', '../../x'):
