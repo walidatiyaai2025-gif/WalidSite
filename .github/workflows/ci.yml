@@ -451,6 +451,11 @@ jobs:
           (cd dist && sha256sum --check "WalidSite-Setup-v${version}.zip.sha256")
           PACKAGE="$package" python3 -c 'from pathlib import Path; from qa.build_cpanel_package import verify_archive; import os; verify_archive(Path(os.environ["PACKAGE"]), os.environ["GITHUB_SHA"])'
           python3 qa/cpanel_first_run_http_probe.py --cpanel-zip "$package"
+          # A code-only candidate MUST bind to this exact source SHA and version,
+          # but never publish it without a separate private Ed25519 publisher gate.
+          mkdir -p dist/unsigned-check
+          python3 qa/build_trusted_update_release.py --cpanel-zip "$package" --output-dir dist/unsigned-check --version "$version" --sha "$GITHUB_SHA" > dist/unsigned-check/receipt.json
+          python3 -c 'import json; r=json.load(open("dist/unsigned-check/receipt.json")); assert r["update_artifact_prepared"] is True and r["publisher_signature_verified"] is False'
       - uses: actions/upload-artifact@v4
         with:
           name: WalidSite-Setup-installer
