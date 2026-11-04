@@ -6,7 +6,9 @@ return [
     'setup_enabled' => filter_var(env('SITE_SETUP_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
     'setup_token' => (string) env('SITE_SETUP_TOKEN', ''),
     'setup_database_ready' => filter_var(env('SITE_SETUP_DATABASE_READY', false), FILTER_VALIDATE_BOOLEAN),
-    'environment_path' => base_path('.env'),
+    // When an immutable cPanel release is active, the dispatcher pins
+    // environmentPath() to the original private application root.
+    'environment_path' => app()->environmentPath().'/.env',
     'bootstrap_path' => storage_path('app/site-first-run.json'),
     'install_lock_path' => storage_path('app/site-installed.lock'),
 
