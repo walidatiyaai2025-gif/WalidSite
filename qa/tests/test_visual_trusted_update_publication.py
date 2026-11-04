@@ -11,7 +11,7 @@ import unittest
 from unittest.mock import patch
 import zipfile
 
-from qa.build_trusted_update_release import build, code_path
+from qa.build_trusted_update_release import build, code_path, frozen_setup_archive
 
 SHA = 'a' * 40
 VERSION = '1.2.3'
@@ -46,7 +46,15 @@ class TrustedUpdatePublicationTest(unittest.TestCase):
         # Here assert it is invoked with exact SHA, then inspect derived code.
         with patch('qa.build_trusted_update_release.verify_archive', return_value={'version': VERSION}) as verifier:
             result = build(self.source, self.root, VERSION, SHA)
-        verifier.assert_called_once_with(self.source, SHA)
+        verifier.assert_called_once()
+        frozen, expected_sha = verifier.call_args.args
+        self.assertEqual(expected_sha, SHA)
+        self.assertIsInstance(frozen, Path)
+        self.assertNotEqual(frozen, self.source)
+        self.assertEqual(frozen.name, "source.zip")
+        # The verified source is a private temporary snapshot; never the
+        # operator's mutable original pathname. It is removed after build.
+        self.assertFalse(frozen.exists())
         return result
 
     def test_payload_is_complete_code_without_owner_or_installer_state(self):
@@ -85,6 +93,60 @@ class TrustedUpdatePublicationTest(unittest.TestCase):
         for version in ('1.2', '01.2.3', '1.2.3-beta', '../../1.2.3'):
             with self.assertRaises(ValueError):
                 build(self.source, self.root, version, SHA)
+
+    def test_unverified_path_replacement_after_verification_cannot_change_code(self):
+        """Attacker rewriting original ZIP cannot affect verified private bytes."""
+        approved = self.entries['application/bootstrap/app.php']
+        replacement = b'<?php exit("unverified replacement");'
+        verified = []
+
+        def swap_source_after_verification(frozen, source_sha):
+            self.assertEqual(source_sha, SHA)
+            self.assertNotEqual(frozen, self.source)
+            self.assertTrue(frozen.exists())
+            self.assertEqual(zipfile.ZipFile(frozen).read('application/bootstrap/app.php'), approved)
+            self.entries['application/bootstrap/app.php'] = replacement
+            self.make_zip()  # Same pathname but different PHP payload.
+            verified.append(frozen)
+            return {'version': VERSION}
+
+        with patch('qa.build_trusted_update_release.verify_archive',
+                   side_effect=swap_source_after_verification) as mock:
+            receipt = build(self.source, self.root, VERSION, SHA)
+        mock.assert_called_once()
+        with zipfile.ZipFile(self.root / receipt['artifact_file']) as candidate:
+            self.assertEqual(candidate.read('application/bootstrap/app.php'), approved)
+            self.assertNotEqual(candidate.read('application/bootstrap/app.php'), replacement)
+        self.assertFalse(verified[0].exists())  # private snapshot cleaned
+        self.assertFalse(receipt['publisher_signature_verified'])
+
+    def test_snapshot_is_private_and_rejects_symlink_and_nonregular_source(self):
+        if os.name != 'posix' or not getattr(os, 'O_NOFOLLOW', 0):
+            self.skipTest("Release build intentionally requires POSIX no-follow")
+        original = self.source.read_bytes()
+        with frozen_setup_archive(self.source) as frozen:
+            self.assertEqual(frozen.read_bytes(), original)
+            self.assertEqual(frozen.parent.stat().st_mode & 0o777, 0o700)
+            self.assertNotEqual(frozen, self.source)
+            self.source.write_bytes(b'forged source after private snapshot')
+            self.assertEqual(frozen.read_bytes(), original)
+        self.assertFalse(frozen.exists())
+        self.source.unlink()
+        other = self.root / 'external.zip'
+        other.write_bytes(original)
+        self.source.symlink_to(other)
+        with self.assertRaises(ValueError):
+            self.make_update()
+        self.source.unlink()
+        os.mkfifo(self.source)
+        with self.assertRaises(ValueError):
+            self.make_update()
+
+    def test_missing_secure_nofollow_primitives_fail_closed(self):
+        with patch('qa.build_trusted_update_release.os.O_NOFOLLOW', 0):
+            with self.assertRaisesRegex(ValueError, 'Secure source archive descriptors unavailable'):
+                self.make_update()
+        self.assertFalse((self.root / f'WalidSite-update-v{VERSION}.zip').exists())
 
     @unittest.skipUnless(shutil.which('php'), 'PHP CLI not installed')
     def test_real_ed25519_signing_roundtrip_and_tamper_rejection(self):
