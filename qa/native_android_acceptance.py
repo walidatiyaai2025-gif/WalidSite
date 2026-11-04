@@ -188,6 +188,15 @@ def _inspect_frozen(apk: Path, *, kind: str, expected_id: str,
     permissions = sorted(set(PERMISSION.findall(perms.stdout)))
     if "android.permission.INTERNET" not in permissions:
         raise ApkAcceptanceError("Compiled APK is missing the required INTERNET permission")
+    # Release-freeze permission inventory is pinned to the real signed debug APK
+    # produced from main. A transitive plugin cannot silently add sensitive
+    # permissions while keeping the receipt's integrity_verified flag green.
+    allowed_permissions = {
+        "android.permission.INTERNET",
+        expected_id + ".DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION",
+    }
+    if set(permissions) - allowed_permissions:
+        raise ApkAcceptanceError("Compiled APK requests unapproved Android permissions")
     # Both QA kinds must be cryptographically valid APKs. A QA signature is
     # never evidence of store/distribution signing authority.
     signature = _command([apksigner, "verify", "--verbose", str(apk)])

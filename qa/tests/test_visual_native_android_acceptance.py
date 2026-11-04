@@ -305,5 +305,45 @@ class NativeAndroidAcceptanceTest(unittest.TestCase):
 
 
 
+    def test_compiled_permission_inventory_accepts_only_reviewed_baseline(self):
+        internal = self.args["expected_id"] + ".DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+        reviewed = PERMISSIONS + "uses-permission: name='" + internal + "'\n"
+
+        def approved(argv):
+            if argv[0] == "aapt" and argv[2] == "permissions":
+                return CompletedProcess(argv, 0, reviewed, "")
+            return self.command(argv)
+
+        with patch("qa.native_android_acceptance._command", side_effect=approved):
+            receipt = inspect(self.apk, **self.args)
+        self.assertEqual(receipt["permissions"],
+                         ["android.permission.INTERNET", internal])
+        self.assertTrue(receipt["apk_integrity_verified"])
+        self.assertFalse(receipt["production_ready"])
+
+    def test_transitive_sensitive_and_foreign_permission_rejected_before_signer(self):
+        packages = [
+            "android.permission.READ_SMS",
+            "android.permission.ACCESS_FINE_LOCATION",
+            "android.permission.READ_CONTACTS",
+            "android.permission.CAMERA",
+            "android.permission.MANAGE_EXTERNAL_STORAGE",
+            "com.untrusted.other.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION",
+        ]
+        for unexpected in packages:
+            with self.subTest(permission=unexpected):
+                calls = []
+                def tampered(argv):
+                    calls.append(argv[0])
+                    if argv[0] == "aapt" and argv[2] == "permissions":
+                        return CompletedProcess(argv, 0,
+                            PERMISSIONS + "uses-permission: name='" + unexpected + "'\n", "")
+                    return self.command(argv)
+                with patch("qa.native_android_acceptance._command", side_effect=tampered):
+                    with self.assertRaisesRegex(ApkAcceptanceError, "unapproved Android permissions"):
+                        inspect(self.apk, **self.args)
+                self.assertNotIn("apksigner", calls)
+
+
 if __name__ == "__main__":
     unittest.main()
