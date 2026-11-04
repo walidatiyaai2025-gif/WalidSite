@@ -35,10 +35,11 @@ final class CpanelImmutableCodePointerTest extends TestCase
         file_put_contents($this->home.'/application/.env', 'KEEP_MY_PRIVATE_APP_KEY');
         file_put_contents($this->home.'/application/storage/app/photo.txt', 'PRIVATE_UPLOAD');
         copy($this->front, $this->home.'/public_html/index.php');
+        file_put_contents($this->home.'/public_html/.htaccess', 'RewriteEngine On');
         file_put_contents($this->candidate.'/application/bootstrap/app.php', '<?php');
         file_put_contents($this->candidate.'/application/vendor/autoload.php', '<?php');
         file_put_contents($this->candidate.'/application/VERSION', "0.1.2\n");
-        file_put_contents($this->candidate.'/public_html/index.php', '<?php');
+        copy($this->front, $this->candidate.'/public_html/index.php');
         file_put_contents($this->candidate.'/public_html/.htaccess', 'RewriteEngine On');
     }
 
@@ -124,6 +125,13 @@ final class CpanelImmutableCodePointerTest extends TestCase
     public function test_untrusted_public_dispatcher_is_rejected(): void
     {
         file_put_contents($this->home.'/public_html/index.php', '<?php echo "untrusted";');
+        $this->expectException(DomainException::class);
+        (new CpanelImmutableCodePointer())->activate(...$this->args());
+    }
+
+    public function test_changed_public_router_or_htaccess_blocks_unsafe_cutover(): void
+    {
+        file_put_contents($this->candidate.'/public_html/.htaccess', 'RewriteEngine Off');
         $this->expectException(DomainException::class);
         (new CpanelImmutableCodePointer())->activate(...$this->args());
     }
