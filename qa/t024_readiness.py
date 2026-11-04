@@ -10,6 +10,9 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import hmac
+import os
+import stat
 import json
 import re
 import subprocess
@@ -91,10 +94,11 @@ def openapi_operations(source: str) -> tuple[set[str], set[str]]:
 
 
 def proof_ok(root: Path, proof: object) -> bool:
-    """A proof must be an existing, pinned, small on-repo file, not a URL.
+    """Verify a small, pinned on-repo artifact without following or re-opening paths.
 
-    This verifies integrity and bookkeeping only. Human/functional review
-    must separately establish that its contents came from a real runtime.
+    A checksum proves content integrity, not real runtime provenance. Directory
+    descriptors and a single no-follow file descriptor prevent path substitution
+    during verification. Fail closed when POSIX no-follow support is unavailable.
     """
     if not isinstance(proof, dict) or set(proof) != {
         "path", "sha256", "source_sha", "command"
@@ -104,7 +108,10 @@ def proof_ok(root: Path, proof: object) -> bool:
     if not isinstance(rel, str) or not rel.startswith("qa/t024-evidence/"):
         return False
     parts = Path(rel).parts
-    if not parts or any(part in (".", "..") for part in parts) or Path(rel).is_absolute():
+    if (len(parts) < 3 or parts[:2] != ("qa", "t024-evidence")
+            or rel != "/".join(parts)
+            or any(part in (".", "..") for part in parts)
+            or Path(rel).is_absolute()):
         return False
     if (not isinstance(proof["sha256"], str) or not SHA256.fullmatch(proof["sha256"])
             or not isinstance(proof["source_sha"], str)
@@ -112,17 +119,68 @@ def proof_ok(root: Path, proof: object) -> bool:
             or not isinstance(proof["command"], str)
             or not 1 <= len(proof["command"].strip()) <= 1024):
         return False
-    target = root
-    for part in parts:
-        target = target / part
-        if target.is_symlink():
-            return False
-    # A zero-byte artifact cannot demonstrate that a runtime check ran, even
-    # when its SHA256 matches the canonical hash of empty content. Keep
-    # evidence strictly bounded before reading it into memory.
-    if not target.is_file() or not 0 < target.stat().st_size <= 2 * 1024 * 1024:
+
+    # Do not silently degrade to stat(path) + open(path): that has a TOCTOU
+    # window, and opening an attacker-supplied FIFO can block the audit.
+    if (os.name != "posix" or not all(
+        getattr(os, name, 0)
+        for name in ("O_NOFOLLOW", "O_DIRECTORY", "O_NONBLOCK")
+    )):
         return False
-    return hashlib.sha256(target.read_bytes()).hexdigest() == proof["sha256"]
+
+    dir_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    file_flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK
+    dir_flags |= getattr(os, "O_CLOEXEC", 0)
+    file_flags |= getattr(os, "O_CLOEXEC", 0)
+    directory_fd = None
+    file_fd = None
+    limit = 2 * 1024 * 1024
+
+    def identity(s):
+        return (s.st_dev, s.st_ino, s.st_size, s.st_mtime_ns, s.st_ctime_ns)
+
+    try:
+        directory_fd = os.open(root, dir_flags)
+        for part in parts[:-1]:
+            child_fd = os.open(part, dir_flags, dir_fd=directory_fd)
+            os.close(directory_fd)
+            directory_fd = child_fd
+
+        # The name is resolved relative to a pinned directory; the descriptor
+        # stays on the same inode even if someone renames/replaces the pathname.
+        file_fd = os.open(parts[-1], file_flags, dir_fd=directory_fd)
+        before = os.fstat(file_fd)
+        named_before = os.stat(parts[-1], dir_fd=directory_fd, follow_symlinks=False)
+        if (not stat.S_ISREG(before.st_mode)
+                or not stat.S_ISREG(named_before.st_mode)
+                or identity(before) != identity(named_before)
+                or not 0 < before.st_size <= limit):
+            return False
+
+        digest = hashlib.sha256()
+        length = 0
+        while True:
+            data = os.read(file_fd, min(131072, limit - length + 1))
+            if not data:
+                break
+            length += len(data)
+            if length > limit:
+                return False
+            digest.update(data)
+
+        after = os.fstat(file_fd)
+        named_after = os.stat(parts[-1], dir_fd=directory_fd, follow_symlinks=False)
+        return (length == before.st_size
+                and identity(before) == identity(after) == identity(named_after)
+                and stat.S_ISREG(named_after.st_mode)
+                and hmac.compare_digest(digest.hexdigest(), proof["sha256"]))
+    except (OSError, TypeError, ValueError, NotImplementedError):
+        return False
+    finally:
+        if file_fd is not None:
+            os.close(file_fd)
+        if directory_fd is not None:
+            os.close(directory_fd)
 
 
 def source_proof_ok(root: Path, source_sha: str) -> bool:
