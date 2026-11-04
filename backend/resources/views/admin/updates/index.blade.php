@@ -66,6 +66,36 @@ button:disabled{background:#718096;cursor:not-allowed}
     ? 'يمكن فحص كتالوج الإصدارات الموقّعة بمفتاح ناشر مثبت على الخادم. لكن تثبيت الكود يتطلب إثبات النسخ الاحتياطي والاستعادة والتبديل الآمن وفحص السلامة؛ لذلك لا يوجد زر تثبيت غير آمن.'
     : 'You can check the publisher-signed release catalog using server-pinned trust settings. Full-code Apply remains unavailable until recoverable backups, controlled cutover and health checks are proven.' }}</p>
 </div>
+<section aria-labelledby="signed-zip-upload">
+<h3 id="signed-zip-upload">{{ $locale === 'ar' ? 'رفع حزمة تحديث موقّعة والتحقق منها' : 'Upload & Verify Signed Update ZIP' }}</h3>
+<p>{{ $locale === 'ar'
+    ? 'ارفع فقط حزمة WalidSite-Update الصادرة من الناشر المعتمد. يتم فحص التوقيع الرقمي Ed25519 والبصمة والمحتويات دون تشغيل PHP أو تحديث الموقع.'
+    : 'Upload only the approved publisher WalidSite Update ZIP. Ed25519, SHA-256 and ZIP path/symlink checks run before the package is kept in private quarantine. No PHP is executed.' }}</p>
+<form method="post" enctype="multipart/form-data"
+    action="{{ route('admin.updates.verify-upload', ['lang' => $locale]) }}" data-testid="trusted-zip-upload-form">
+@csrf
+<label for="signed-package">{{ $locale === 'ar' ? 'ملف تحديث ZIP الموقّع' : 'Signed Update ZIP file' }}</label>
+<input type="file" name="package" id="signed-package" accept=".zip,application/zip" required>
+<button type="submit" @disabled(!config('site.updates_enabled')) data-testid="verify-signed-update-zip">
+{{ $locale === 'ar' ? 'فحص أصالة الحزمة ومحتوياتها' : 'Verify Package' }}</button>
+</form>
+@if($errors->has('upload'))
+<p class="error" role="alert">{{ $errors->first('upload') }}</p>
+@endif
+@if($verifiedUpload)
+<div class="success" data-testid="owner-signed-upload-verified" role="status">
+<strong>{{ $locale === 'ar' ? 'تم التحقق من التوقيع والحزمة، ولم يتم تثبيت التحديث.' : 'Verified signed package. Not installed.' }}</strong>
+<p>{{ $locale === 'ar' ? 'الإصدار المستهدف:' : 'Target version:' }} <code>{{ $verifiedUpload['version'] }}</code>
+— {{ $locale === 'ar' ? 'ملفات الحزمة:' : 'Verified files:' }} {{ $verifiedUpload['files'] }}</p>
+<p>{{ $locale === 'ar' ? 'SHA-256:' : 'SHA-256:' }} <code>{{ $verifiedUpload['artifact_sha256'] }}</code></p>
+</div>
+@endif
+<p class="blocked">{{ $locale === 'ar'
+    ? 'Backup Now وInstall Update سيظلان متوقفين حتى يتوفر إثبات نسخ احتياطي قابل للاسترجاع وفحص توافق الاستضافة والتبديل الآمن وإيقاف الكتابة أثناء التحديث.'
+    : 'Backup Now and Install Update remain blocked until independently restorable backups, hosting-compatible atomic cutover, write quiescence and verified recovery are available.' }}</p>
+<button type="button" disabled aria-describedby="code-updates-title">{{ $locale === 'ar' ? 'تثبيت التحديث — غير متاح بعد' : 'Install Update — Hosting/Recovery Blocked' }}</button>
+</section>
+
 <form method="post" action="{{ route('admin.updates.check', ['lang' => $locale]) }}">
 @csrf
 <button type="submit" @disabled(!config('site.updates_enabled')) data-testid="trusted-release-check">
