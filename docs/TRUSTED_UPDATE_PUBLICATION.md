@@ -10,7 +10,7 @@ The setup package is now named `WalidSite-Setup-vX.Y.Z.zip` (replace X.Y.Z with 
 2. On an isolated publisher runner derive the code-only ZIP, replacing VERSION and SHA with the reviewed stable SemVer and exact 40-hex Git commit:
 
 ~~~sh
-python3 qa/build_trusted_update_release.py \
+python3 -m qa.build_trusted_update_release \
   --cpanel-zip /trusted/WalidSite-Setup-vX.Y.Z.zip \
   --output-dir /private/releases --version "$VERSION" --sha "$SHA" \
   > /private/unsigned-build-receipt.json
