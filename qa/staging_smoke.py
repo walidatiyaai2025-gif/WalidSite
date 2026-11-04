@@ -34,6 +34,7 @@ class Check:
     status: int
     kind: str
     data_type: type | None = None
+    redirect_to: str | None = None
 
 
 # GET-only probes: no provisioning, mutations, secrets or fake test accounts.
@@ -42,6 +43,10 @@ CHECKS = (
     Check("/", 200, "html"),
     Check("/admin/login", 200, "html"),
     Check("/setup", 404, "any"),
+    Check("/install", 404, "any"),
+    # Without any owner session, the Updates control plane must deny access.
+    # A redirect is allowed ONLY to the same-origin owner login.
+    Check("/admin/updates", 302, "redirect", redirect_to="/admin/login"),
     Check("/api/v1/public/app-bootstrap", 200, "json", dict),
     Check("/api/v1/public/home", 200, "json", dict),
     Check("/api/v1/public/projects", 200, "json", list),
@@ -117,6 +122,12 @@ def _check_one(origin: str, spec: Check, opener: Opener, timeout: int) -> dict:
         observed = int(response.status if hasattr(response, "status") else response.code)
         if observed != spec.status:
             reason = "unexpected_http_status"
+        elif spec.kind == "redirect":
+            # A 302 to an attacker-controlled origin must never pass a guest
+            # authorization check. Compare exact targets; do not follow them.
+            location = response.headers.get("Location", "")
+            if location not in (spec.redirect_to, origin + spec.redirect_to):
+                reason = "unsafe_or_unexpected_redirect"
         elif spec.kind == "html" and "text/html" not in response.headers.get("Content-Type", "").lower():
             reason = "non_html_response"
         elif spec.kind == "json":
