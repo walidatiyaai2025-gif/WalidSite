@@ -58,6 +58,86 @@ String pageJson({
     });
 
 void main() {
+  for (final arabic in [false, true]) {
+    testWidgets('only acknowledged Save unlocks one in-memory Saved handoff — ${arabic ? 'AR' : 'EN'}',
+        (tester) async {
+      final serverAcknowledgement = Completer<void>();
+      var saves = 0;
+      var destinations = 0;
+      String? handedOffBearer;
+      await tester.pumpWidget(MaterialApp(
+        home: VerifiedArticleFreshDetail(
+          slug: articleSlug,
+          arabic: arabic,
+          loader: (_) async => article(articleSlug),
+          loginAction: (_, __) async => 'session-from-real-login-fixture',
+          saveAction: (token, id) async {
+            expect(token, 'session-from-real-login-fixture');
+            expect(id, articleId);
+            saves++;
+            await serverAcknowledgement.future;
+          },
+          onViewSaved: (context, token) async {
+            destinations++;
+            handedOffBearer = token;
+          },
+        ),
+      ));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('verified-article-view-saved')), findsNothing);
+      await tester.tap(find.byKey(const Key('verified-article-save')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const Key('article-save-login-email')),
+          'reader@example.org');
+      await tester.enterText(find.byKey(const Key('article-save-login-password')),
+          'fixture-only-password');
+      await tester.tap(find.byKey(const Key('article-save-login-submit')));
+      await tester.pump();
+      expect(saves, 1);
+      expect(destinations, 0);
+      expect(find.byKey(const Key('verified-article-view-saved')), findsNothing);
+      serverAcknowledgement.complete();
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('verified-article-view-saved')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('verified-article-view-saved')));
+      await tester.pumpAndSettle();
+      expect(destinations, 1);
+      expect(handedOffBearer, 'session-from-real-login-fixture');
+      expect(find.byKey(const Key('verified-article-view-saved')), findsNothing,
+          reason: 'Handed-off bearer is erased from article detail after use');
+      expect(find.text(handedOffBearer!), findsNothing);
+    });
+
+    testWidgets('ambiguous Save never unlocks Saved session handoff — ${arabic ? 'AR' : 'EN'}',
+        (tester) async {
+      var destinations = 0;
+      await tester.pumpWidget(MaterialApp(
+        home: VerifiedArticleFreshDetail(
+          slug: articleSlug,
+          arabic: arabic,
+          loader: (_) async => article(articleSlug),
+          loginAction: (_, __) async => 'session-fixture',
+          saveAction: (_, __) async =>
+              throw TimeoutException('private-server-trace'),
+          onViewSaved: (_, __) async { destinations++; },
+        ),
+      ));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('verified-article-save')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const Key('article-save-login-email')),
+          'reader@example.org');
+      await tester.enterText(find.byKey(const Key('article-save-login-password')),
+          'fixture-only-password');
+      await tester.tap(find.byKey(const Key('article-save-login-submit')));
+      await tester.pumpAndSettle();
+      expect(destinations, 0);
+      expect(find.byKey(const Key('verified-article-view-saved')), findsNothing);
+      expect(find.textContaining('private-server-trace'), findsNothing);
+      expect(find.byKey(const Key('verified-article-save-status')), findsOneWidget);
+    });
+  }
+
   test('only real validated server IDs/categories can unlock article Save', () {
     final page = VerifiedArticlePage.parse(pageJson(), 1);
     expect(page.articles.single.id, articleId);
