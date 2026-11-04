@@ -77,10 +77,12 @@ final class FoodexInstallController extends Controller
     ): RedirectResponse {
         abort_unless($installer->allowed(), 404);
         abort_unless(isset(self::STEPS[$step]), 404);
-        abort_unless($this->stage($request) === $step, 409);
+        // An unauthenticated visitor must not learn the active step number
+        // from a 409 response; reject before comparing server-side progress.
         if ($step > 1) {
             abort_unless($request->session()->get('site_setup_authorized') === true, 403);
         }
+        abort_unless($this->stage($request) === $step, 409);
 
         try {
             switch ($step) {
