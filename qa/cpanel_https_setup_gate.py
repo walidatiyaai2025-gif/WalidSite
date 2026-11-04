@@ -32,6 +32,7 @@ PRIVATE_PATHS = (
     "/vendor/autoload.php",
     "/storage/logs/laravel.log",
     "/site-first-run.json",
+    "/storage/app/site-first-run.json",
 )
 TOKEN_RE = re.compile(r"[a-f0-9]{64}\Z")
 CSRF_RE = re.compile(r"[A-Za-z0-9]{40,128}\Z")
@@ -78,8 +79,14 @@ def private_token(account_home: Path) -> str:
     if account_home.is_symlink():
         raise AcceptanceError("Account-home symlink refused")
     account_home = account_home.resolve(strict=True)
-    if not (account_home / "public_html").is_dir() or not (account_home / "application").is_dir():
-        raise AcceptanceError("Expected account-home application and public_html siblings")
+    public_root = account_home / "public_html"
+    private_root = account_home / "application"
+    # A symlinked public root can expose the private application tree even
+    # when a shallow root-level probe returns 404. Fail before any HTTP calls.
+    if (public_root.is_symlink() or private_root.is_symlink()
+            or not public_root.is_dir() or not private_root.is_dir()
+            or public_root.resolve(strict=True) == private_root.resolve(strict=True)):
+        raise AcceptanceError("Expected distinct real application and public_html directories")
     path = account_home / "application/storage/app/site-first-run.json"
     if any(item.is_symlink() for item in [path, *path.parents] if item != Path("/")):
         raise AcceptanceError("Private bootstrap symlink refused")
