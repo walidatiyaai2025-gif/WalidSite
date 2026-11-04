@@ -68,11 +68,10 @@ def verify(folder: Path, manifest_path: Path, source_sha: str | None = None) -> 
     # descriptor operations a racy symlink swap must never yield a PASS.
     if not all(hasattr(os, name) for name in ("O_NOFOLLOW", "O_NONBLOCK", "O_DIRECTORY")):
         raise ValueError("Secure no-follow file verification is unavailable")
-    if folder.is_symlink():
-        raise ValueError("Artifact root must not be a symbolic link")
-    folder = folder.resolve(strict=True)
-    if not folder.is_dir():
-        raise ValueError("Artifact root must be a directory")
+    # Never resolve an attacker-writable pathname before opening it.  A
+    # symlink swapped between is_symlink() and resolve() would otherwise
+    # redirect the trusted root despite O_NOFOLLOW on the resolved target.
+    folder = Path(folder)
     # The manifest may live beside the artifacts, as documented. Keep its
     # original pathname: resolve() here would bypass O_NOFOLLOW on symlinks.
     with _stable_reader(manifest_path) as (stream, metadata):
