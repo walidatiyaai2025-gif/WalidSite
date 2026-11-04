@@ -162,8 +162,11 @@ class MobileAccountClient {
     final uri = origin.replace(path: path, queryParameters: query);
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
     try {
-      final request = await client.openUrl(method, uri)
-          .timeout(const Duration(seconds: 8));
+      // One deadline covers headers, ALL response bytes and JSON decode.
+      // A slow-drip peer must not retain a bearer or save action forever.
+      return await MobileAiClient.withinDeadline(() async {
+        final request = await client.openUrl(method, uri)
+            .timeout(const Duration(seconds: 8));
       request.followRedirects = false;
       request.headers.set(HttpHeaders.acceptHeader, 'application/json');
       if (bearer != null) {
@@ -184,7 +187,8 @@ class MobileAccountClient {
         }
         bytes.add(chunk);
       }
-      return utf8.decode(bytes.takeBytes(), allowMalformed: false);
+        return utf8.decode(bytes.takeBytes(), allowMalformed: false);
+      });
     } finally {
       client.close(force: true);
     }
@@ -223,6 +227,39 @@ class MobileAccountClient {
       'GET', '/api/v1/mobile/saved', bearer,
       query: {'lang': arabic ? 'ar' : 'en', 'page': '$page'},
     ), page);
+  }
+
+  /// Parse the acknowledgement, not just an HTTP 200. A timed-out POST
+  /// remains indeterminate until the account's Saved page is read afresh.
+  @visibleForTesting
+  static void verifyArticleSaved(String raw, String articleId) {
+    if (raw.length > 16384) {
+      throw const FormatException('Save acknowledgement too large');
+    }
+    final json = jsonDecode(raw);
+    if (json is! Map<String, dynamic> ||
+        json.length != 1 ||
+        json['data'] is! Map<String, dynamic>) {
+      throw const FormatException('Unverified article save');
+    }
+    final data = json['data'] as Map<String, dynamic>;
+    if (data.length != 3 ||
+        data['resource_type'] != 'article' ||
+        data['resource_id'] != articleId ||
+        data['saved'] != true) {
+      throw const FormatException('Unverified article save');
+    }
+  }
+
+  Future<void> saveArticle(String bearer, String articleId) async {
+    if (!_uuid.hasMatch(articleId)) {
+      throw const FormatException('Invalid published article identity');
+    }
+    final raw = await _request(
+      'POST', '/api/v1/mobile/saved', bearer,
+      body: {'resource_type': 'article', 'resource_id': articleId},
+    );
+    verifyArticleSaved(raw, articleId);
   }
 
   Future<void> remove(String bearer, MobileSavedResource item) async {
