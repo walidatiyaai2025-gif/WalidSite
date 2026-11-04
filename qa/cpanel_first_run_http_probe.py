@@ -21,6 +21,12 @@ import urllib.error
 import urllib.request
 import zipfile
 
+# Support both `python qa/...py` in CI and `python -m qa...` in QA tests.
+if __package__:
+    from qa.build_cpanel_package import verify_archive
+else:
+    from build_cpanel_package import verify_archive
+
 
 def status(opener, port: int, host: str) -> tuple[int, bytes]:
     request = urllib.request.Request(
@@ -32,6 +38,13 @@ def status(opener, port: int, host: str) -> tuple[int, bytes]:
         response = error
     with response:
         return response.status, response.read(100_000)
+
+
+def extract_verified_archive(package: Path, target: Path) -> None:
+    """Never decompress or execute a first-run ZIP before provenance/safety verification."""
+    verify_archive(package)
+    with zipfile.ZipFile(package) as archive:
+        archive.extractall(target)
 
 
 def probe(app_root: Path, public_root: Path) -> None:
@@ -122,10 +135,7 @@ def main() -> None:
         probe(root, root / "public")
     else:
         with tempfile.TemporaryDirectory(prefix="walidsite-bootstrap-probe-") as tmp:
-            with zipfile.ZipFile(args.cpanel_zip) as archive:
-                if archive.testzip() is not None:
-                    raise RuntimeError("Damaged cPanel artifact")
-                archive.extractall(tmp)
+            extract_verified_archive(args.cpanel_zip, Path(tmp))
             home = Path(tmp)
             probe(home / "application", home / "public_html")
 
