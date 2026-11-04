@@ -4,12 +4,14 @@ This implements the publisher build boundary, not Admin update activation. It re
 
 ## Immutable package and signature
 
-1. Build the real WalidSite-cPanel.zip on a trusted, exact-source-SHA CI runner with production Composer vendor/assets using the existing packaging job. Record source SHA, ZIP SHA256 and PACKAGE-MANIFEST.json.
+The setup package is now named `WalidSite-Setup-vX.Y.Z.zip` (replace X.Y.Z with the exact signed-release version). A complete code update is a separate independently signed artifact, never an arbitrary ZIP accepted from a browser. The existing Admin Apply endpoint still handles migrations only; full code Apply remains blocked pending host-compatible atomic layout, verified backup/recovery, and owner-authorized runtime orchestration.
+
+1. Build the real WalidSite-Setup-vX.Y.Z.zip on a trusted, exact-source-SHA CI runner with production Composer vendor/assets using the existing packaging job. Record source SHA, ZIP SHA256 and PACKAGE-MANIFEST.json.
 2. On an isolated publisher runner derive the code-only ZIP, replacing VERSION and SHA with the reviewed stable SemVer and exact 40-hex Git commit:
 
 ~~~sh
 python3 qa/build_trusted_update_release.py \
-  --cpanel-zip /trusted/WalidSite-cPanel.zip \
+  --cpanel-zip /trusted/WalidSite-Setup-vX.Y.Z.zip \
   --output-dir /private/releases --version "$VERSION" --sha "$SHA" \
   > /private/unsigned-build-receipt.json
 ~~~
