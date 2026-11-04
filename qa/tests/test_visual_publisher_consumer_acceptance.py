@@ -72,7 +72,7 @@ class PublisherConsumerAcceptanceTest(unittest.TestCase):
                 z.writestr(name, data)
         # The input is a synthetic fixture; real-source provenance and full
         # manifest validation remain protected separately by cPanel pack tests.
-        with patch("qa.build_trusted_update_release.verify_archive") as verify:
+        with patch("qa.build_trusted_update_release.verify_archive", return_value={"version": VERSION}) as verify:
             receipt = build(self.cpanel, self.root, VERSION, SOURCE_SHA)
         verify.assert_called_once_with(self.cpanel, SOURCE_SHA)
         self.archive = self.root / receipt["artifact_file"]
