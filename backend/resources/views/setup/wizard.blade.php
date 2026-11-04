@@ -15,6 +15,12 @@ label{display:block;font-weight:700;margin-block:14px 5px}input{width:100%;min-h
 button{min-height:46px;margin-top:18px;border:0;border-radius:10px;background:var(--accent);color:white;padding:10px 22px;font:inherit;cursor:pointer}
 a,button:focus-visible,input:focus-visible{outline-offset:3px}a{color:var(--accent)}
 .error{color:#a01826}code{overflow-wrap:anywhere}ul{padding-inline-start:22px}li{margin-block:6px}
+.preflight{margin:18px 0;border:1px solid var(--border);border-radius:12px;padding:14px;background:#f7fbfd}
+.preflight h3{margin:0 0 8px;font-size:1.1rem}.preflight ul{list-style:none;padding:0;margin:0}
+.preflight li{display:flex;align-items:flex-start;gap:8px;padding:9px 0;border-bottom:1px solid var(--border)}
+.preflight li:last-child{border:0}.preflight small{display:block;color:#35526b;font-weight:400;line-height:1.5}
+.preflight .pass{font-weight:800;color:#12704c}.preflight .fail{font-weight:800;color:#ad2434}
+.preflight .ready{color:#12704c;font-weight:700}.preflight .blocked{color:#ad2434;font-weight:700}
 </style>
 @include('partials.web-fonts')
 </head>
@@ -43,6 +49,24 @@ a,button:focus-visible,input:focus-visible{outline-offset:3px}a{color:var(--acce
 <p role="alert" class="error">{{ $locale === 'ar' ? 'تعذر الاتصال بقاعدة البيانات المحفوظة. أدخل بيانات اتصال صحيحة لقاعدة فارغة لإعادة المحاولة دون تعديل ملفات الخادم.' : 'The saved database connection is unavailable. Enter working credentials for an empty database to retry without editing server files.' }}</p>
 @endif
 <p>{{ $locale === 'ar' ? 'أنشئ قاعدة بيانات فارغة ومستخدمًا لها من قسم MySQL Databases في cPanel، ثم أدخل البيانات هنا. سيتم إنشاء APP_KEY وحفظ ملف .env تلقائيًا دون Terminal.' : 'Create an empty database and user in cPanel MySQL Databases, then enter the credentials here. APP_KEY and private .env will be generated automatically; no Terminal is needed.' }}</p>
+<section class="preflight" aria-labelledby="hosting-preflight-title" data-testid="hosting-preflight">
+<h3 id="hosting-preflight-title">{{ $locale === 'ar' ? 'فحص الاستضافة قبل التثبيت — مثل FOODEX' : 'Server requirements and permissions preflight' }}</h3>
+<p role="status" class="{{ $preflightReady ? 'ready' : 'blocked' }}">{{ $preflightReady
+    ? ($locale === 'ar' ? 'الفحوصات الأساسية ناجحة، ويمكنك متابعة إعداد قاعدة البيانات.' : 'Required hosting checks passed. You may configure the database.')
+    : ($locale === 'ar' ? 'أصلح الفحوصات الفاشلة من cPanel قبل متابعة المعالج.' : 'Fix failing checks in cPanel before proceeding.') }}</p>
+<ul>
+@foreach($preflight as $check)
+<li>
+<span aria-hidden="true" class="{{ $check['ok'] ? 'pass' : 'fail' }}">{{ $check['ok'] ? '✓' : '✗' }}</span>
+<div><strong>{{ $check[$locale === 'ar' ? 'label_ar' : 'label_en'] }}</strong>
+@if(!$check['ok'])<small>{{ $check[$locale === 'ar' ? 'hint_ar' : 'hint_en'] }}</small>@endif
+</div></li>
+@endforeach
+</ul>
+<p><small>{{ $locale === 'ar'
+    ? 'إضافة ZIP مطلوبة لتحديثات لوحة الإدارة لاحقًا. إنشاء قاعدة البيانات ومستخدمها من cPanel قد يبقى خطوة ضرورية ولا ينشئهما الموقع دون الصلاحيات.'
+    : 'PHP ZIP is required for later Admin updates. Database and database user may still need to be created with cPanel privileges.' }}</small></p>
+</section>
 <form method="post" action="{{ route('site.setup.configure', $locale === 'ar' ? ['lang' => 'ar'] : []) }}">@csrf
 <label for="site_url">{{ $locale === 'ar' ? 'الرابط الرسمي للموقع (HTTPS)' : 'Canonical website URL (HTTPS)' }}</label>
 <input id="site_url" name="site_url" type="url" inputmode="url"
@@ -61,7 +85,7 @@ a,button:focus-visible,input:focus-visible{outline-offset:3px}a{color:var(--acce
 <input id="db_username" name="db_username" value="{{ old('db_username') }}" required maxlength="64" autocomplete="off">
 <label for="db_password">{{ $locale === 'ar' ? 'كلمة مرور قاعدة البيانات' : 'Database password' }}</label>
 <input id="db_password" name="db_password" type="password" required maxlength="255" autocomplete="new-password">
-<button type="submit">{{ $locale === 'ar' ? 'فحص الاتصال وحفظ الإعدادات — التالي' : 'Test connection, save settings & Next' }}</button>
+<button type="submit" @disabled(! $preflightReady)>{{ $locale === 'ar' ? 'فحص الاتصال وحفظ الإعدادات — التالي' : 'Test connection, save settings & Next' }}</button>
 </form>
 <p><small>{{ $locale === 'ar' ? 'تُحفظ كلمة المرور على الخادم فقط، ولا يتم عرضها مرة أخرى أو تسجيلها في السجلات.' : 'Credentials are only stored in private server configuration, never echoed or logged.' }}</small></p>
 @elseif($step === 'database')
