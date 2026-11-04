@@ -96,9 +96,6 @@ jobs:
           composer validate --strict
           composer install --no-interaction --prefer-dist --no-progress
           php artisan test
-      - name: Verify missing-key real HTTP first boot
-        if: ${{ hashFiles('backend/composer.json') != '' }}
-        run: python3 qa/cpanel_first_run_http_probe.py --app-root backend
       - name: MariaDB migration and owner CV idempotency smoke
         if: ${{ hashFiles('backend/composer.json') != '' }}
         shell: bash
@@ -422,7 +419,11 @@ jobs:
           flutter test
 
   build-cpanel-package:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: >-
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'pull_request' && github.event.action != 'closed' &&
+       github.head_ref == 'fix/732-cpanel-first-boot-missing-key' &&
+       github.event.pull_request.head.repo.full_name == github.repository)
     needs: required-ci-gate
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -430,6 +431,8 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.3'
@@ -440,21 +443,27 @@ jobs:
           composer install --no-dev --prefer-dist --no-interaction --no-progress --optimize-autoloader
           composer check-platform-reqs --no-dev
       - name: Package trusted checked-in code for cPanel
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || '' }}
         run: |
+          source_sha="$(git rev-parse HEAD)"
+          if [[ "$GITHUB_EVENT_NAME" == "pull_request" && "$source_sha" != "$PR_HEAD_SHA" ]]; then
+            echo "Wrong PR source commit"; exit 1
+          fi
           version="$(cat backend/VERSION)"
           if [[ ! "$version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
             echo "Invalid version"; exit 1
           fi
           package="dist/WalidSite-Setup-v${version}.zip"
-          python3 qa/build_cpanel_package.py --source . --output "$package" --sha "$GITHUB_SHA"
+          python3 qa/build_cpanel_package.py --source . --output "$package" --sha "$source_sha"
           unzip -t "$package"
           (cd dist && sha256sum --check "WalidSite-Setup-v${version}.zip.sha256")
-          PACKAGE="$package" python3 -c 'from pathlib import Path; from qa.build_cpanel_package import verify_archive; import os; verify_archive(Path(os.environ["PACKAGE"]), os.environ["GITHUB_SHA"])'
+          PACKAGE="$package" SOURCE_SHA="$source_sha" python3 -c 'from pathlib import Path; from qa.build_cpanel_package import verify_archive; import os; verify_archive(Path(os.environ["PACKAGE"]), os.environ["SOURCE_SHA"])'
           python3 qa/cpanel_first_run_http_probe.py --cpanel-zip "$package"
           # A code-only candidate MUST bind to this exact source SHA and version,
           # but never publish it without a separate private Ed25519 publisher gate.
           mkdir -p dist/unsigned-check
-          python3 qa/build_trusted_update_release.py --cpanel-zip "$package" --output-dir dist/unsigned-check --version "$version" --sha "$GITHUB_SHA" > dist/unsigned-check/receipt.json
+          python3 qa/build_trusted_update_release.py --cpanel-zip "$package" --output-dir dist/unsigned-check --version "$version" --sha "$source_sha" > dist/unsigned-check/receipt.json
           python3 -c 'import json; r=json.load(open("dist/unsigned-check/receipt.json")); assert r["update_artifact_prepared"] is True and r["publisher_signature_verified"] is False'
       - uses: actions/upload-artifact@v4
         with:
