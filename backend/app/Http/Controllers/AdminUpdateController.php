@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Domain\Deployment\TrustedReleaseCatalog;
+use App\Domain\Deployment\TrustedOwnerUpdateInbox;
+use Illuminate\Http\UploadedFile;
 use App\Support\Deployment\SiteUpdater;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -38,7 +40,28 @@ final class AdminUpdateController extends Controller
             }
         }
 
-        return view('admin.updates.index', compact('status', 'installedVersion'));
+        $verifiedUpload = null;
+        $inboxId = $request->session()->get('verified_owner_update_inbox');
+        if (is_string($inboxId) && $installedVersion !== null
+            && hash_equals($installedVersion, (string) config('site.trusted_installed_version'))
+            && filled(config('site.trusted_release_origin'))
+            && filled(config('site.trusted_release_public_key'))) {
+            try {
+                $verifiedUpload = app(TrustedOwnerUpdateInbox::class)->getVerified(
+                    $inboxId,
+                    (string) $request->user()->getKey(),
+                    storage_path('app/private/verified-updates'),
+                    public_path(),
+                    (string) config('site.trusted_release_origin'),
+                    (string) config('site.trusted_release_public_key'),
+                    $installedVersion,
+                );
+            } catch (Throwable) {
+                $request->session()->forget('verified_owner_update_inbox');
+            }
+        }
+
+        return view('admin.updates.index', compact('status', 'installedVersion', 'verifiedUpload'));
     }
 
     /**
@@ -90,6 +113,59 @@ final class AdminUpdateController extends Controller
         return redirect()->route('admin.updates.index', [
             'lang' => ($input['lang'] ?? 'en') === 'ar' ? 'ar' : 'en',
         ])->with('trusted_release_check', $state);
+    }
+
+    /**
+     * Upload and verify only. Even a publisher-signed PHP archive MUST NOT be
+     * executed from this action. Full Apply still requires independent,
+     * restorable backups and an atomic host/runtime gate.
+     */
+    public function verifyUpload(
+        Request $request,
+        TrustedOwnerUpdateInbox $inbox,
+        TrustedReleaseCatalog $catalog,
+    ): RedirectResponse {
+        $this->authorizeOwner($request);
+        abort_unless(config('site.updates_enabled') === true, 403);
+        $data = $request->validate([
+            'package' => ['required', 'file', 'max:512000'],
+        ]);
+        $uploaded = $data['package'];
+        if (! $uploaded instanceof UploadedFile) {
+            abort(422);
+        }
+
+        $installed = trim((string) @file_get_contents(base_path('VERSION')));
+        if (! preg_match('/\A(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\z/D', $installed)
+            || ! hash_equals($installed, (string) config('site.trusted_installed_version'))
+            || ! filled(config('site.trusted_release_origin'))
+            || ! filled(config('site.trusted_release_public_key'))) {
+            return back()->withErrors(['upload' => 'The installed release and trusted publisher are not configured.']);
+        }
+
+        try {
+            $verified = $inbox->verifyUpload(
+                $uploaded, $catalog,
+                (string) config('site.trusted_release_origin'),
+                (string) config('site.trusted_release_public_key'),
+                $installed,
+                (string) $request->user()->getKey(),
+                storage_path('app/private/verified-updates'),
+                public_path(),
+            );
+        } catch (Throwable $error) {
+            // Publisher/network/file errors may contain credentials, paths or
+            // untrusted bytes. Log only a class; never echo those values.
+            \Illuminate\Support\Facades\Log::warning('admin.updates.package_rejected', [
+                'type' => $error::class,
+            ]);
+            return back()->withErrors(['upload' => 'Update ZIP was rejected: publisher signature, release identity or archive safety could not be verified.']);
+        }
+
+        $request->session()->put('verified_owner_update_inbox', $verified['id']);
+        return redirect()->route('admin.updates.index', [
+            'lang' => $request->query('lang') === 'ar' ? 'ar' : 'en',
+        ])->with('status', 'Signed update package verified. No code was installed or changed.');
     }
 
     public function apply(Request $request, SiteUpdater $updater): RedirectResponse
