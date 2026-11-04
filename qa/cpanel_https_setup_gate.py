@@ -214,6 +214,52 @@ def accept(origin: str, account_home: Path, ca_file: Path) -> dict:
     session = [c for c in client.cookies if c.name == "walidsite-session"]
     check("secure_httponly_session", len(session) == 1 and session[0].secure
           and any(key.lower() == "httponly" for key in session[0]._rest))
+
+    # The canonical FOODEX 15-stage wizard must be checked independently.
+    # The legacy /setup happy path above is NOT proof that /install's token
+    # gate, session progression and strict ordered stages are protected.
+    # Use a fresh cookie jar so the already-unlocked legacy session cannot
+    # accidentally authorize this separate canonical security assertion.
+    foodex = Client(origin, ca_file)
+    welcome = foodex.request("/install")
+    check("foodex_independent_welcome_token_gate", welcome.status == 200
+          and 'name="token"' in welcome.body and token not in welcome.body)
+    initial_csrf = csrf_from_html(welcome.body)
+    bypass = foodex.request("/install/step/2", {"_token": initial_csrf})
+    check("foodex_preunlock_requirements_forbidden", bypass.status == 403)
+    invalid = foodex.request("/install/step/1", {
+        "_token": initial_csrf, "token": "invalid",
+    })
+    check("foodex_wrong_possession_denied", invalid.status == 302
+          and invalid.location == foodex.origin + "/install"
+          and token not in invalid.body)
+    retry = foodex.request("/install")
+    check("foodex_bad_token_did_not_advance", retry.status == 200
+          and 'name="token"' in retry.body and token not in retry.body)
+    authorized = foodex.request("/install/step/1", {
+        "_token": csrf_from_html(retry.body), "token": token,
+    })
+    check("foodex_valid_possession_advances", authorized.status == 302
+          and authorized.location == foodex.origin + "/install"
+          and token not in authorized.body)
+    requirements = foodex.request("/install")
+    next_action = 'action="' + foodex.origin + '/install/step/2"'
+    check("foodex_requirements_stage_rendered", requirements.status == 200
+          and next_action in requirements.body
+          and 'name="token"' not in requirements.body
+          and token not in requirements.body)
+    skip = foodex.request("/install/step/3", {
+        "_token": csrf_from_html(requirements.body),
+    })
+    check("foodex_cannot_skip_requirements", skip.status == 409)
+    unchanged = foodex.request("/install")
+    check("foodex_skip_keeps_requirements", unchanged.status == 200
+          and next_action in unchanged.body and token not in unchanged.body)
+    foodex_session = [c for c in foodex.cookies if c.name == "walidsite-session"]
+    check("foodex_session_secure_httponly", len(foodex_session) == 1
+          and foodex_session[0].secure
+          and any(key.lower() == "httponly" for key in foodex_session[0]._rest))
+
     return {
         "schema": "walidsite.local-https-first-run-acceptance.v1",
         "tested_origin": client.origin,
