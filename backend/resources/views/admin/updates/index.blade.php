@@ -87,6 +87,7 @@ button:disabled{background:#718096;cursor:not-allowed}
 <strong>{{ $locale === 'ar' ? 'تم التحقق من التوقيع والحزمة، ولم يتم تثبيت التحديث.' : 'Verified signed package. Not installed.' }}</strong>
 <p>{{ $locale === 'ar' ? 'الإصدار المستهدف:' : 'Target version:' }} <code>{{ $verifiedUpload['version'] }}</code>
 — {{ $locale === 'ar' ? 'ملفات الحزمة:' : 'Verified files:' }} {{ $verifiedUpload['files'] }}</p>
+<p>{{ $locale === 'ar' ? 'Source SHA:' : 'Source SHA:' }} <code>{{ $verifiedUpload['source_sha'] }}</code></p>
 <p>{{ $locale === 'ar' ? 'SHA-256:' : 'SHA-256:' }} <code>{{ $verifiedUpload['artifact_sha256'] }}</code></p>
 </div>
 @endif
