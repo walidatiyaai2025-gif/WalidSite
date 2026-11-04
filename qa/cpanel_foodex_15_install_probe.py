@@ -8,6 +8,7 @@ Never print credentials, possession token, cookies, APP_KEY, HTTP bodies or logs
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -24,6 +25,79 @@ from urllib.parse import urlsplit
 from qa.build_cpanel_package import verify_archive
 from qa.cpanel_full_install_probe import Client, SetupFailure, csrf
 
+
+def post_publish_security(client: Client, guest: Client, application: Path,
+                          public: Path) -> list[str]:
+    """Probe the *installed* HTTP server after owner Publish, without secrets.
+
+    This is a real HTTP test in the cPanel/MariaDB CI job. In APP_ENV=testing
+    Laravel may exempt POSTs from CSRF, so it does NOT certify production CSRF.
+    """
+    if (client.origin != guest.origin
+            or urlsplit(client.origin).hostname != "127.0.0.1"):
+        raise SetupFailure("post_publish_loopback_only")
+
+    protected = {
+        "environment": application / ".env",
+        "install_lock": application / "storage/app/site-installed.lock",
+        "version": application / "VERSION",
+        "public_controller": public / "index.php",
+    }
+    if any(not path.is_file() or path.is_symlink()
+           for path in protected.values()):
+        raise SetupFailure("post_publish_immutable_files_missing")
+    before = {name: hashlib.sha256(path.read_bytes()).hexdigest()
+              for name, path in protected.items()}
+    checks: list[str] = []
+
+    def check(name: str, condition: bool) -> None:
+        if not condition:
+            raise SetupFailure("post_publish_" + name)
+        checks.append("post_publish_" + name)
+
+    def denied(status: int, location: str) -> bool:
+        redirect = urlsplit(location)
+        return status in (401, 403, 419) or (
+            status == 302 and redirect.path == "/admin/login"
+            and (not redirect.netloc
+                 or redirect.netloc == urlsplit(client.origin).netloc)
+        )
+
+    status, location, _ = guest.call("/admin/updates")
+    check("anonymous_update_view_denied", denied(status, location))
+    for route, name in (
+        ("/admin/updates/check", "check"),
+        ("/admin/updates/verify-upload", "upload"),
+        ("/admin/updates/apply", "apply"),
+    ):
+        status, location, _ = guest.call(route, {"_token": "x" * 40})
+        check("anonymous_update_" + name + "_denied",
+              denied(status, location))
+
+    # The completed first-run wizard must reject POST re-entry, not just GET.
+    for route, name in (
+        ("/install/step/15", "foodex_reinstall"),
+        ("/setup/finish", "legacy_reinstall"),
+    ):
+        status, _, _ = client.call(route, {"_token": "x" * 40})
+        check(name + "_post_blocked", status == 404)
+
+    # A Laravel fallback route must not accidentally serve private files.
+    for route, name in (
+        ("/.env", "env"),
+        ("/application/.env", "private_app"),
+        ("/contracts/owner-cv-baseline.json", "owner_contract"),
+    ):
+        status, _, _ = guest.call(route)
+        check("no_public_" + name, status in (403, 404))
+
+    after = {name: hashlib.sha256(path.read_bytes()).hexdigest()
+             for name, path in protected.items()}
+    for name in protected:
+        check("preserve_" + name, before[name] == after[name])
+    check("owner_session_still_live", client.call("/admin")[0] == 200)
+    check("public_site_still_live", guest.call("/")[0] == 200)
+    return checks
 
 def run(package: Path, sha: str, host: str, port: int, database: str,
         user: str, password: str) -> dict:
@@ -188,6 +262,8 @@ def run(package: Path, sha: str, host: str, port: int, database: str,
             check("private_settings_permissions",
                   private_env.is_file() and not private_env.is_symlink()
                   and stat.S_IMODE(private_env.stat().st_mode) & 0o077 == 0)
+            checks.extend(post_publish_security(
+                client, Client(web_port), application, public))
         finally:
             server.terminate()
             try:
