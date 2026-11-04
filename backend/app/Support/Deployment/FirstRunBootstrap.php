@@ -10,7 +10,10 @@ final class FirstRunBootstrap
 {
     public function prepare(): void
     {
-        if (filled(config('app.key')) || app()->environment('testing')) {
+        // CLI test runners intentionally provide their own test APP_KEY.
+        // A real HTTP request must still bootstrap securely even if the host
+        // incorrectly exported APP_ENV=testing (cPanel may inherit PHP env).
+        if (filled(config('app.key')) || (app()->runningInConsole() && app()->environment('testing'))) {
             return;
         }
         config(['app.debug' => false]);
