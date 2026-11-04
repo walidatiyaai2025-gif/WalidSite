@@ -423,7 +423,8 @@ jobs:
       (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
       (github.event_name == 'pull_request' && github.event.action != 'closed' &&
        (github.head_ref == 'fix/732-cpanel-first-boot-missing-key' ||
-        github.head_ref == 'fix/26-cpanel-full-install-ci-acceptance') &&
+        github.head_ref == 'fix/26-cpanel-full-install-ci-acceptance' ||
+        github.head_ref == 'fix/26-foodex15-zip-mariadb-acceptance') &&
        github.event.pull_request.head.repo.full_name == github.repository)
     needs: required-ci-gate
     runs-on: ubuntu-latest
@@ -438,6 +439,20 @@ jobs:
           MARIADB_PASSWORD: walidsite-ci-password
         ports:
           - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+      mariadb_foodex:
+        image: mariadb:10.11
+        env:
+          MARIADB_ROOT_PASSWORD: walidsite-ci-root
+          MARIADB_DATABASE: walidsite_ci_foodex
+          MARIADB_USER: walidsite_ci
+          MARIADB_PASSWORD: walidsite-ci-password
+        ports:
+          - 3307:3306
         options: >-
           --health-cmd="healthcheck.sh --connect --innodb_initialized"
           --health-interval=10s
@@ -481,6 +496,12 @@ jobs:
             CI_INSTALL_DB_NAME=walidsite_ci_install CI_INSTALL_DB_USER=walidsite_ci \
             CI_INSTALL_DB_PASSWORD=walidsite-ci-password \
             python3 -m qa.cpanel_full_install_probe --cpanel-zip "$package" --sha "$source_sha"
+          # Independently exercise the new FOODEX 15-stage wizard using a second
+          # empty disposable MariaDB. Preserve the legacy /setup acceptance above.
+          CI_FOODEX_DB_HOST=127.0.0.1 CI_FOODEX_DB_PORT=3307 \
+            CI_FOODEX_DB_NAME=walidsite_ci_foodex CI_FOODEX_DB_USER=walidsite_ci \
+            CI_FOODEX_DB_PASSWORD=walidsite-ci-password \
+            python3 -m qa.cpanel_foodex_15_install_probe --cpanel-zip "$package" --sha "$source_sha"
           # A code-only candidate MUST bind to this exact source SHA and version,
           # but never publish it without a separate private Ed25519 publisher gate.
           mkdir -p dist/unsigned-check
