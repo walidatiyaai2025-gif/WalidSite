@@ -29,18 +29,18 @@ CONSUMER = r"""
 require $argv[1];
 require $argv[2];
 try {
-    $release = (new \\App\\Domain\\Deployment\\TrustedReleaseMetadata())->verify(
+    $release = (new \App\Domain\Deployment\TrustedReleaseMetadata())->verify(
         file_get_contents($argv[3]), $argv[6], $argv[8], $argv[7]
     );
     $result = ['version' => $release['version'],
                'sha256' => $release['artifact_sha256']];
     if ($argv[9] === 'inspect') {
-        $result += (new \\App\\Domain\\Deployment\\TrustedReleaseArchive())->inspect(
+        $result += (new \App\Domain\Deployment\TrustedReleaseArchive())->inspect(
             $release, $argv[4], $argv[5]
         );
     }
     echo json_encode($result, JSON_THROW_ON_ERROR);
-} catch (\\Throwable $error) {
+} catch (\Throwable $error) {
     fwrite(STDERR, get_class($error));
     exit(21);
 }
