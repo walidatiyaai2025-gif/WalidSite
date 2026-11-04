@@ -82,8 +82,8 @@ class FirstRunHttpGateTest(unittest.TestCase):
 
             def request(self, path, form=None):
                 responses = [
-                    ("/", 302, "/setup", ""),
-                    ("/admin/login", 302, "/setup", ""),
+                    ("/", 302, "/install", ""),
+                    ("/admin/login", 302, "/install", ""),
                     *[(p, 404, "", "") for p in (
                         "/.env", "/application/.env",
                         "/contracts/owner-cv-baseline.json",
@@ -92,6 +92,7 @@ class FirstRunHttpGateTest(unittest.TestCase):
                         "/site-first-run.json",
                     )],
                     ("/up", 200, "", "healthy"),
+                    ("/install", 200, "", UNLOCK),
                     ("/setup", 200, "", UNLOCK),
                     ("/setup/unlock", 419, "", "csrf denied"),
                     ("/setup/database", 403, "", "unauthorized"),

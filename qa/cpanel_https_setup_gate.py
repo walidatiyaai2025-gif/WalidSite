@@ -165,16 +165,21 @@ def accept(origin: str, account_home: Path, ca_file: Path) -> dict:
 
     home = client.request("/")
     check("fresh_home_redirect", home.status == 302
-          and home.location == client.origin + "/setup")
+          and home.location == client.origin + "/install")
     login = client.request("/admin/login")
     check("owner_login_requires_setup", login.status == 302
-          and login.location == client.origin + "/setup")
+          and login.location == client.origin + "/install")
     for path in PRIVATE_PATHS:
         result = client.request(path)
         check("private_http_denied_" + path.strip("/").replace("/", "_"),
               result.status in (403, 404) and token not in result.body)
     public = client.request("/up")
     check("laravel_health_endpoint_reachable", public.status == 200)
+    # First-time domain entry now uses the canonical 15-stage FOODEX flow.
+    # The old guarded /setup remains directly testable for recovery only.
+    install = client.request("/install")
+    check("foodex_https_first_step_available", install.status == 200
+          and 'name="token"' in install.body and token not in install.body)
     setup = client.request("/setup")
     check("setup_https_available", setup.status == 200
           and 'name="token"' in setup.body and token not in setup.body)
