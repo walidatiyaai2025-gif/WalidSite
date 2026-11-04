@@ -54,9 +54,12 @@ final class CpanelReleaseMaintenance
                 || ! fflush($stream) || (function_exists('fsync') && ! fsync($stream))) {
                 throw new RuntimeException('Cannot durably create update barrier.');
             }
-        } finally {
+        } catch (\Throwable $error) {
             fclose($stream);
+            @unlink($path);
+            throw $error;
         }
+        fclose($stream);
         return ['token' => $token, 'expires_at' => $expires];
     }
 
@@ -69,7 +72,8 @@ final class CpanelReleaseMaintenance
             throw new DomainException('Private maintenance barrier is unavailable.');
         }
         $marker = json_decode((string) file_get_contents($path), true, 8, JSON_THROW_ON_ERROR);
-        if (! is_array($marker) || $marker['schema'] !== 1
+        if (! is_array($marker) || array_keys($marker) !== ['schema', 'expires_at', 'previous_root', 'previous_version', 'probe_sha256']
+            || $marker['schema'] !== 1
             || ! is_int($marker['expires_at']) || $marker['expires_at'] <= time()
             || $marker['previous_root'] !== $previousRoot
             || ! is_string($marker['probe_sha256'])
