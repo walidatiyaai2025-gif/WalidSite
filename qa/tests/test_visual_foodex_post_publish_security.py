@@ -9,7 +9,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from qa.cpanel_foodex_15_install_probe import post_publish_security
+from qa.cpanel_foodex_15_install_probe import post_publish_security, authenticated_session_csrf
 from qa.cpanel_full_install_probe import SetupFailure
 
 
@@ -37,6 +37,12 @@ class FakeClient:
             if path == "/":
                 return (200, "", b"public")
         else:
+            if path == "/admin/updates":
+                # The real page has three forms, all bound to one session CSRF.
+                token = b"a" * 40
+                html = (b'<input name="_token" value="' + token + b'">'
+                        + b'<input name="_token" value="' + token + b'">')
+                return (200, "", html)
             if path in ("/install/step/15", "/setup/finish"):
                 return (404, "", b"")
             if path == "/admin":
@@ -63,7 +69,7 @@ class PostPublishSecurityTest(unittest.TestCase):
             app, public = self.fixture(Path(tmp))
             owner, guest = FakeClient(guest=False), FakeClient(guest=True)
             checks = post_publish_security(owner, guest, app, public)
-            self.assertEqual(len(checks), 15)
+            self.assertEqual(len(checks), 16)
             self.assertIn("post_publish_anonymous_update_apply_denied", checks)
             self.assertIn("post_publish_preserve_environment", checks)
             self.assertIn("post_publish_owner_session_still_live", checks)
@@ -95,7 +101,35 @@ class PostPublishSecurityTest(unittest.TestCase):
                 "/admin/updates/apply": (419, "", b""),
             })
             self.assertEqual(len(post_publish_security(
-                FakeClient(guest=False), guest, app, public)), 15)
+                FakeClient(guest=False), guest, app, public)), 16)
+
+
+    def test_real_session_csrf_is_used_for_reinstall_replay(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            app, public = self.fixture(Path(tmp))
+            values = []
+
+            def capture(path, form):
+                if path in ("/install/step/15", "/setup/finish"):
+                    values.append(form.get("_token"))
+
+            owner = FakeClient(guest=False, on_call=capture)
+            checks = post_publish_security(owner, FakeClient(guest=True), app, public)
+            self.assertIn("post_publish_owner_update_form_reachable", checks)
+            self.assertEqual(values, ["a" * 40, "a" * 40])
+
+    def test_missing_conflicting_or_invalid_owner_csrf_fails_closed(self):
+        examples = (
+            b"<html>No owner update form</html>",
+            (b'<input name="_token" value="' + b"a" * 40
+             + b'"><input name="_token" value="' + b"b" * 40 + b'">'),
+            b'<input name="_token" value="short">',
+            b"\xff\xfe",
+        )
+        for html in examples:
+            with self.subTest(html_variant=repr(html[:16])):
+                with self.assertRaisesRegex(SetupFailure, "owner_csrf"):
+                    authenticated_session_csrf(html)
 
     def test_post_install_reentry_redirect_is_rejected(self):
         for route in ("/install/step/15", "/setup/finish"):
