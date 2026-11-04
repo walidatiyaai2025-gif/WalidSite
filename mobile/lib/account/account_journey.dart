@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -323,6 +324,7 @@ class MobileAccountJourney extends StatefulWidget {
   const MobileAccountJourney({
     required this.arabic,
     this.initialSection = MobileAccountSection.saved,
+    this.initialSession,
     this.loginAction,
     this.profileAction,
     this.profileUpdateAction,
@@ -335,6 +337,9 @@ class MobileAccountJourney extends StatefulWidget {
 
   final bool arabic;
   final MobileAccountSection initialSection;
+  /// Ephemeral token from a successful article Save. It is never persisted.
+  /// The screen must still GET and verify profile + Saved before disclosure.
+  final MobileAiSession? initialSession;
   final AccountLogin? loginAction;
   final AccountReadProfile? profileAction;
   final AccountUpdateProfile? profileUpdateAction;
@@ -413,6 +418,18 @@ class _MobileAccountJourneyState extends State<MobileAccountJourney> {
   void initState() {
     super.initState();
     _showProfile = widget.initialSection == MobileAccountSection.profile;
+    final initial = widget.initialSession;
+    if (initial != null && initial.token.isNotEmpty &&
+        initial.token.length <= 8192 &&
+        (initial.expiresAt == null ||
+         initial.expiresAt!.isAfter(DateTime.now().toUtc()))) {
+      _session = initial;
+      // Do not expose identity, Saved entries or profile from the incoming
+      // token alone. Both must be fetched using the protected API first.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) unawaited(_retryAccount());
+      });
+    }
   }
 
   @override
