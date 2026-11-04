@@ -38,9 +38,110 @@ def operation_key(path: str, method: str) -> str:
     return method.lower() + " " + PARAMETER.sub("{}", path)
 
 
+def _php_code_mask(source: str) -> str:
+    """Preserve offsets/newlines, blanking strings and comments in PHP source.
+
+    A regex on raw text can count a commented-out Route::get as a deployed
+    endpoint. Mask code-vs-data before admitting a route; the ORIGINAL source
+    is used to parse its quoted literal URI once a real Route:: token exists.
+    Recognize multiline quoted strings, block/line comments and heredocs.
+    """
+    masked = list(source)
+    mode = "code"
+    quote = ""
+    heredoc = ""
+    i = 0
+    n = len(source)
+
+    def blank(pos: int) -> None:
+        if source[pos] not in "\r\n":
+            masked[pos] = " "
+
+    while i < n:
+        ch = source[i]
+        nxt = source[i + 1] if i + 1 < n else ""
+
+        if mode == "code":
+            if source.startswith("<<<", i):
+                marker = re.match(
+                    r"""<<<[ \t]*(?:'([A-Za-z_]\w*)'|"([A-Za-z_]\w*)"|([A-Za-z_]\w*))""",
+                    source[i:],
+                )
+                if marker is not None:
+                    heredoc = next(group for group in marker.groups() if group)
+                    for pos in range(i, i + marker.end()):
+                        blank(pos)
+                    i += marker.end()
+                    mode = "heredoc"
+                    continue
+            if ch in ("'", '"'):
+                quote = ch
+                mode = "string"
+                blank(i)
+            elif ch == "/" and nxt == "*":
+                blank(i)
+                blank(i + 1)
+                i += 2
+                mode = "block"
+                continue
+            elif (ch == "/" and nxt == "/") or ch == "#":
+                blank(i)
+                if ch == "/":
+                    blank(i + 1)
+                    i += 2
+                else:
+                    i += 1
+                mode = "line"
+                continue
+        elif mode == "string":
+            blank(i)
+            if ch == "\\" and i + 1 < n:
+                blank(i + 1)
+                i += 2
+                continue
+            if ch == quote:
+                mode = "code"
+        elif mode == "block":
+            blank(i)
+            if ch == "*" and nxt == "/":
+                blank(i + 1)
+                i += 2
+                mode = "code"
+                continue
+        elif mode == "line":
+            if ch == "\n":
+                mode = "code"
+            else:
+                blank(i)
+        elif mode == "heredoc":
+            # PHP permits indented closing markers. Do not treat a fake route
+            # inside a multiline nowdoc/heredoc body as executable PHP.
+            if i == 0 or source[i - 1] == "\n":
+                end = re.match(
+                    r"[ \t]*" + re.escape(heredoc) + r"(?=[,);\r\n])",
+                    source[i:],
+                )
+                if end is not None:
+                    for pos in range(i, i + end.end()):
+                        blank(pos)
+                    i += end.end()
+                    mode = "code"
+                    continue
+            blank(i)
+        i += 1
+    return "".join(masked)
+
+
 def php_routes(source: str) -> dict[str, list[str]]:
     found: dict[str, list[str]] = defaultdict(list)
+    code = _php_code_mask(source)
     for match in LITERAL_ROUTE.finditer(source):
+        # The regex deliberately extracts the URI from unmasked source.
+        # Its Route:: token must independently be executable PHP, not a
+        # comment, a quoted string, or a heredoc containing sample code.
+        prefix = match.start(1) - len("Route::")
+        if prefix < 0 or code[prefix:prefix + len("Route::")] != "Route::":
+            continue
         method, _, path = match.groups()
         found[operation_key(path, method)].append(method.upper() + " " + path)
     if not found:
