@@ -24,6 +24,8 @@ Route::middleware(RequireSecureSetup::class)->group(static function (): void {
 Route::middleware('auth:web')->group(function (): void {
     Route::get('/admin/updates', [AdminUpdateController::class, 'index'])
         ->name('admin.updates.index');
+    Route::post('/admin/updates/check', [AdminUpdateController::class, 'check'])
+        ->middleware('throttle:3,1')->name('admin.updates.check');
     Route::post('/admin/updates/apply', [AdminUpdateController::class, 'apply'])
         ->middleware('throttle:2,1')->name('admin.updates.apply');
 });
