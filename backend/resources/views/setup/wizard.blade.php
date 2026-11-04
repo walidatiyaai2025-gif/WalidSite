@@ -1,4 +1,5 @@
 @php($locale = request()->query('lang') === 'ar' ? 'ar' : 'en')
+@php($setupStage = match ($step) { 'unlock' => 1, 'configure' => 2, 'database' => 3, 'owner' => 4, default => 1 })
 <!doctype html>
 <html lang="{{ $locale }}" dir="{{ $locale === 'ar' ? 'rtl' : 'ltr' }}">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -9,7 +10,7 @@
 *{box-sizing:border-box}body{margin:0;background:#f5f9fc;color:var(--ink);font:16px/1.6 Inter,Arial,sans-serif}
 :lang(ar) body{font-family:Tajawal,Arial,sans-serif}
 main{max-width:720px;margin:5vh auto;padding:clamp(18px,4vw,40px);background:white;border:1px solid var(--border);border-radius:20px}
-.steps{display:flex;gap:10px;flex-wrap:wrap;padding:0;list-style:none}.steps li{padding:8px 12px;background:#eaf5fb;border-radius:8px}
+.steps{display:flex;gap:10px;flex-wrap:wrap;padding:0;list-style:none}.steps li{padding:8px 12px;background:#eaf5fb;border-radius:8px}.steps li[aria-current="step"]{background:#176db7;color:#fff;font-weight:700}
 label{display:block;font-weight:700;margin-block:14px 5px}input{width:100%;min-height:46px;border:1px solid #8ca8bd;border-radius:10px;padding:10px;font:inherit}
 button{min-height:46px;margin-top:18px;border:0;border-radius:10px;background:var(--accent);color:white;padding:10px 22px;font:inherit;cursor:pointer}
 a,button:focus-visible,input:focus-visible{outline-offset:3px}a{color:var(--accent)}
@@ -20,7 +21,12 @@ a,button:focus-visible,input:focus-visible{outline-offset:3px}a{color:var(--acce
 <body><main>
 <h1>{{ $locale === 'ar' ? 'إعداد وليد سايت لأول مرة' : 'Set up WalidSite' }}</h1>
 <nav aria-label="{{ $locale === 'ar' ? 'مراحل الإعداد' : 'Setup steps' }}">
-<ol class="steps"><li>1 — {{ $locale === 'ar' ? 'التحقق' : 'Verify' }}</li><li>2 — {{ $locale === 'ar' ? 'قاعدة البيانات' : 'Database' }}</li><li>3 — {{ $locale === 'ar' ? 'الترحيلات' : 'Migrations' }}</li><li>4 — {{ $locale === 'ar' ? 'المالك' : 'Owner' }}</li></ol>
+<ol class="steps">
+<li @if($setupStage === 1) aria-current="step" @endif>1 — {{ $locale === 'ar' ? 'التحقق' : 'Verify' }}</li>
+<li @if($setupStage === 2) aria-current="step" @endif>2 — {{ $locale === 'ar' ? 'قاعدة البيانات' : 'Database' }}</li>
+<li @if($setupStage === 3) aria-current="step" @endif>3 — {{ $locale === 'ar' ? 'الترحيلات' : 'Migrations' }}</li>
+<li @if($setupStage === 4) aria-current="step" @endif>4 — {{ $locale === 'ar' ? 'المالك' : 'Owner' }}</li>
+</ol>
 </nav>
 <a href="{{ route('site.setup', ['lang' => $locale === 'ar' ? 'en' : 'ar']) }}">{{ $locale === 'ar' ? 'English' : 'العربية' }}</a>
 @if($errors->any())<div role="alert" class="error"><ul>@foreach($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></div>@endif
@@ -59,7 +65,7 @@ a,button:focus-visible,input:focus-visible{outline-offset:3px}a{color:var(--acce
 </form>
 <p><small>{{ $locale === 'ar' ? 'تُحفظ كلمة المرور على الخادم فقط، ولا يتم عرضها مرة أخرى أو تسجيلها في السجلات.' : 'Credentials are only stored in private server configuration, never echoed or logged.' }}</small></p>
 @elseif($step === 'database')
-<h2>{{ $locale === 'ar' ? 'الخطوة 2: الاتصال وMigrations' : 'Step 2: Database and migrations' }}</h2>
+<h2>{{ $locale === 'ar' ? 'الخطوة 3: ترحيلات قاعدة البيانات' : 'Step 3: Database migrations' }}</h2>
 <p>{{ $locale === 'ar' ? 'تم حفظ بيانات الاتصال. نفّذ الآن الترحيلات المطلوبة من خلال هذه الصفحة.' : 'Database settings saved. Apply the pending migrations directly from this page.' }}</p>
 @if($historyMismatch)
 <p role="alert" class="error">{{ $locale === 'ar'
@@ -74,7 +80,7 @@ a,button:focus-visible,input:focus-visible{outline-offset:3px}a{color:var(--acce
 <button type="submit">{{ $locale === 'ar' ? 'تنفيذ الترحيلات والتالي' : 'Apply migrations & Next' }}</button></form>
 @endif
 @else
-<h2>{{ $locale === 'ar' ? 'الخطوة 3: تفعيل حساب المالك' : 'Step 3: Activate owner account' }}</h2>
+<h2>{{ $locale === 'ar' ? 'الخطوة 4: تفعيل حساب المالك' : 'Step 4: Activate owner account' }}</h2>
 <p>{{ $locale === 'ar' ? 'سيتم إدخال بيانات السيرة الذاتية المعتمدة وتفعيل بريد المالك التالي فقط:' : 'The approved CV will be seeded, and only its verified owner email will be activated:' }}</p>
 <p><strong>{{ $ownerEmail }}</strong></p>
 @if(!$status['ready'] || count($status['pending']) > 0)
