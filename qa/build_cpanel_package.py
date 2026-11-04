@@ -122,9 +122,12 @@ def verify_archive(output, expected_sha=None):
                 raise ValueError("Oversized ZIP package manifest")
         for info in infos:
             name = info.filename
-            parts = Path(name).parts
+            # Never normalize ZIP entry names before validating them. Distinct
+            # central-directory names such as a//b and a/./b can target the
+            # SAME extracted file despite having distinct manifest keys.
+            parts = name.split("/")
             if (not name or name.startswith("/") or "\\" in name
-                    or ".." in parts or "." in parts
+                    or any(part in ("", ".", "..") for part in parts)
                     or (not name.startswith(("application/", "public_html/", "contracts/"))
                         and name not in ("PACKAGE-MANIFEST.json", "INSTALL-CPANEL-AR.md"))):
                 raise ValueError("Unsafe ZIP entry: " + name)
