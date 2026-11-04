@@ -10,6 +10,8 @@ import 'package:share_plus/share_plus.dart';
 import '../articles/verified_articles.dart';
 import 'offline_guide_text_search.dart';
 import 'reviewed_runbook_actions.dart';
+import 'offline_runbooks.dart';
+import 'signed_runbook_sync.dart';
 
 /// This is the live public *reviewed* catalog. It is not a cryptographically
 /// signed offline download; the independent Ed25519 pack has its own UI.
@@ -437,6 +439,7 @@ class ReviewedRunbookDetail extends StatefulWidget {
     this.loginAction,
     this.saveAction,
     this.shareAction,
+    this.offlineRepository,
     super.key,
   });
 
@@ -447,6 +450,7 @@ class ReviewedRunbookDetail extends StatefulWidget {
   final ReviewedRunbookLoginAction? loginAction;
   final ReviewedRunbookSaveAction? saveAction;
   final ReviewedRunbookShareAction? shareAction;
+  final OfflineRunbookRepository? offlineRepository;
 
   @override
   State<ReviewedRunbookDetail> createState() => _ReviewedRunbookDetailState();
@@ -457,6 +461,10 @@ class _ReviewedRunbookDetailState extends State<ReviewedRunbookDetail> {
   String? _bearer;
   bool _saving = false;
   bool _sharing = false;
+  bool _downloading = false;
+  String? _downloadMessage;
+  final OfflineRunbookRepository _defaultOfflineRepository =
+      OfflineRunbookRepository();
   bool _saved = false;
   String? _actionMessage;
   int _detailEpoch = 0;
@@ -488,6 +496,8 @@ class _ReviewedRunbookDetailState extends State<ReviewedRunbookDetail> {
       _bearer = _validatedBearer(widget.initialBearer);
       _saving = false;
       _sharing = false;
+      _downloading = false;
+      _downloadMessage = null;
       _saved = false;
       _actionMessage = null;
       if (guideChanged) _refresh();
@@ -588,6 +598,58 @@ class _ReviewedRunbookDetailState extends State<ReviewedRunbookDetail> {
     } finally {
       if (mounted && epoch == _detailEpoch) {
         setState(() => _saving = false);
+      }
+    }
+  }
+
+  Future<void> _downloadReviewed(ReviewedRunbook item) async {
+    if (_downloading) return;
+    final epoch = _detailEpoch;
+    final repository = widget.offlineRepository ?? _defaultOfflineRepository;
+    if (!repository.source.configured) return;
+    setState(() {
+      _downloading = true;
+      _downloadMessage = null;
+    });
+    try {
+      // Recheck publication at the time of Download, including revocation
+      // and latest reviewed revision. A list-card is not approval evidence.
+      final current = await (widget.loader?.call(widget.id) ??
+          const ReviewedRunbookReader().loadDetail(widget.id));
+      if (current.id.toLowerCase() != item.id.toLowerCase()) {
+        throw const FormatException('Changed reviewed runbook identifier');
+      }
+      final pack = await repository.syncPublished(PublishedRunbookRevision(
+        id: current.id,
+        version: current.version,
+        markdown: current.markdown,
+        validatedAt: current.validatedAt,
+      ));
+      if (!mounted || epoch != _detailEpoch) return;
+      final matches = pack.items.where((offline) =>
+          offline.id == current.id.toLowerCase() &&
+          offline.publishedVersion == current.version).toList();
+      if (!pack.signedVerified || matches.length != 1) {
+        throw const FormatException('Missing signed downloaded runbook');
+      }
+      setState(() => _downloadMessage = widget.arabic
+          ? 'تم التحقق من النسخة الموقعة وحفظها محليًا.'
+          : 'Signed published revision verified and saved offline.');
+      await Navigator.of(context).push(MaterialPageRoute<void>(
+        builder: (_) => OfflineRunbookDetail(
+          item: matches.single,
+          pack: pack,
+          arabic: widget.arabic,
+        ),
+      ));
+    } catch (_) {
+      if (!mounted || epoch != _detailEpoch) return;
+      setState(() => _downloadMessage = widget.arabic
+          ? 'تعذر التحقق من التنزيل. النسخة المحلية السابقة لم تتغير.'
+          : 'Download verification failed. Prior offline content was kept.');
+    } finally {
+      if (mounted && epoch == _detailEpoch) {
+        setState(() => _downloading = false);
       }
     }
   }
@@ -751,6 +813,32 @@ class _ReviewedRunbookDetailState extends State<ReviewedRunbookDetail> {
                             ? (ar ? 'جارٍ الحفظ...' : 'Saving...')
                             : (ar ? 'حفظ' : 'Save')),
                   ),
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    key: const Key('online-runbook-download'),
+                    onPressed: _downloading ||
+                            !(widget.offlineRepository ??
+                                _defaultOfflineRepository).source.configured
+                        ? null
+                        : () => _downloadReviewed(item),
+                    icon: const Icon(Icons.download_for_offline_outlined),
+                    label: Text(_downloading
+                        ? (ar ? 'جارٍ التحقق من النسخة...' : 'Verifying download...')
+                        : (ar ? 'تنزيل النسخة الموقّعة دون إنترنت'
+                            : 'Download signed offline revision')),
+                  ),
+                  if (!(widget.offlineRepository ??
+                      _defaultOfflineRepository).source.configured)
+                    Text(
+                      ar ? 'التنزيل الموقّع غير مهيأ؛ لن تُحفظ نسخة غير موثقة.'
+                          : 'Signed download is not configured; no unverified copy is cached.',
+                      key: const Key('online-runbook-download-unconfigured'),
+                    ),
+                  if (_downloadMessage != null)
+                    Text(
+                      _downloadMessage!,
+                      key: const Key('online-runbook-download-status'),
+                    ),
                   const SizedBox(height: 8),
                   Builder(builder: (buttonContext) => OutlinedButton.icon(
                     key: const Key('online-runbook-share'),
