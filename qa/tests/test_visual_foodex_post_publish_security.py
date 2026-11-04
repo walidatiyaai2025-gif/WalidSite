@@ -93,6 +93,37 @@ class PostPublishSecurityTest(unittest.TestCase):
             with self.assertRaisesRegex(SetupFailure, "anonymous_update_view_denied"):
                 post_publish_security(FakeClient(guest=False), guest, app, public)
 
+    def test_same_host_different_scheme_or_ambiguous_redirect_is_rejected(self):
+        # Matching hostname/port is insufficient for same-origin security.
+        invalid_locations = (
+            "https://127.0.0.1:8088/admin/login",
+            "//127.0.0.1:8088/admin/login",
+            "http://127.0.0.1:8088/admin/login?continue=elsewhere",
+            "/admin/login#fragment",
+            "/admin/login?next=/admin/updates",
+            "http://user@127.0.0.1:8088/admin/login",
+        )
+        for location in invalid_locations:
+            with self.subTest(location=location), tempfile.TemporaryDirectory() as tmp:
+                app, public = self.fixture(Path(tmp))
+                guest = FakeClient(guest=True, overrides={
+                    "/admin/updates": (302, location, b""),
+                })
+                with self.assertRaisesRegex(
+                        SetupFailure, "anonymous_update_view_denied"):
+                    post_publish_security(FakeClient(guest=False), guest, app, public)
+
+    def test_exact_same_origin_absolute_and_relative_login_are_accepted(self):
+        for location in ("/admin/login", "http://127.0.0.1:8088/admin/login"):
+            with self.subTest(location=location), tempfile.TemporaryDirectory() as tmp:
+                app, public = self.fixture(Path(tmp))
+                guest = FakeClient(guest=True, overrides={
+                    "/admin/updates": (302, location, b""),
+                })
+                checks = post_publish_security(
+                    FakeClient(guest=False), guest, app, public)
+                self.assertIn("post_publish_anonymous_update_view_denied", checks)
+
     def test_valid_explicit_denials_are_accepted(self):
         with tempfile.TemporaryDirectory() as tmp:
             app, public = self.fixture(Path(tmp))
