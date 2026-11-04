@@ -22,7 +22,7 @@ class SiteMaintenanceTest extends TestCase
         $this->get('/')->assertOk();
     }
 
-    public function test_setup_redirects_new_site_requires_server_secret_and_uses_session(): void
+    public function test_first_visit_opens_full_installer_and_legacy_setup_stays_token_gated(): void
     {
         config([
             'site.setup_enabled' => true,
@@ -30,7 +30,8 @@ class SiteMaintenanceTest extends TestCase
             'site.setup_database_ready' => true,
         ]);
 
-        $this->get('/')->assertRedirect('/setup');
+        // Default first visit uses the 15-stage installer; /setup is recovery only.
+        $this->get('/')->assertRedirect('/install');
         $this->get('/setup?lang=ar')->assertOk()
             ->assertSee('dir="rtl"', false)
             ->assertSee('name="token"', false)
