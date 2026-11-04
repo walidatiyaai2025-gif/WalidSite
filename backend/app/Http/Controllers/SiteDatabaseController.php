@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Support\Deployment\DatabaseConfiguration;
 use App\Support\Deployment\SiteInstaller;
 use App\Support\Deployment\SiteUpdater;
+use App\Support\Deployment\SetupPreflight;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Throwable;
@@ -16,7 +17,7 @@ final class SiteDatabaseController extends Controller
         return $request->query('lang') === 'ar' ? $arabic : $english;
     }
 
-    public function store(Request $request, SiteInstaller $installer, DatabaseConfiguration $database, SiteUpdater $updater): RedirectResponse
+    public function store(Request $request, SiteInstaller $installer, DatabaseConfiguration $database, SiteUpdater $updater, SetupPreflight $preflight): RedirectResponse
     {
         abort_unless($installer->allowed(), 404);
         abort_unless($request->session()->get('site_setup_authorized') === true, 403);
@@ -31,6 +32,15 @@ final class SiteDatabaseController extends Controller
         }
         if (app()->environment('production') && ! $request->isSecure()) {
             abort(403, 'HTTPS is required for setup.');
+        }
+
+        // A cPanel first run must not write .env or test DB credentials when
+        // the runtime / filesystem is not ready. ZIP is advisory here:
+        // it becomes mandatory only before enabling signed code updates.
+        if (! $preflight->readyForInstallation($preflight->inspect($request))) {
+            return back()->withErrors(['preflight' => $this->localeMessage($request,
+                'Server requirements are not ready. Review the checks above the database form.',
+                'متطلبات الاستضافة غير جاهزة. راجع الفحوصات أعلى نموذج قاعدة البيانات.')]);
         }
 
         $data = $request->validate([
