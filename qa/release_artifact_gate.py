@@ -9,8 +9,11 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
+import stat
 import sys
+from contextlib import contextmanager
 from pathlib import Path
 
 SHA256 = re.compile(r"[0-9a-f]{64}\Z")
@@ -28,16 +31,54 @@ def artifact_name(value: object) -> bool:
             and ".." not in value)
 
 
+def _file_fingerprint(metadata: os.stat_result) -> tuple[int, int, int, int, int]:
+    return (metadata.st_dev, metadata.st_ino, metadata.st_size,
+            metadata.st_mtime_ns, metadata.st_ctime_ns)
+
+
+@contextmanager
+def _stable_reader(path: str | Path, *, dir_fd: int | None = None):
+    """Pin a regular file descriptor; never validate one path and read another.
+
+    O_NONBLOCK prevents a swapped FIFO from hanging the release verifier.
+    O_NOFOLLOW rejects a symlink introduced even after the preflight check.
+    """
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+                     dir_fd=dir_fd)
+    except OSError as exc:
+        raise ValueError("Cannot securely open release file") from exc
+    with os.fdopen(fd, "rb") as stream:
+        before = os.fstat(stream.fileno())
+        if not stat.S_ISREG(before.st_mode):
+            raise ValueError("Release input is not a regular file")
+        yield stream, before
+        after = os.fstat(stream.fileno())
+        if _file_fingerprint(after) != _file_fingerprint(before):
+            raise ValueError("Release input changed during verification")
+
+
 def verify(folder: Path, manifest_path: Path, source_sha: str | None = None) -> dict:
     """Verify a release inventory without reading outside the artifact directory."""
+    # The release gate is intentionally Linux/POSIX-only: without no-follow
+    # descriptor operations a racy symlink swap must never yield a PASS.
+    if not all(hasattr(os, name) for name in ("O_NOFOLLOW", "O_NONBLOCK", "O_DIRECTORY")):
+        raise ValueError("Secure no-follow file verification is unavailable")
+    if folder.is_symlink():
+        raise ValueError("Artifact root must not be a symbolic link")
     folder = folder.resolve(strict=True)
-    if not folder.is_dir() or manifest_path.is_symlink():
-        raise ValueError("Artifact root must be a directory and manifest must not be a link")
-    manifest_path = manifest_path.resolve(strict=True)
-    if not manifest_path.is_file() or manifest_path.stat().st_size > MAX_MANIFEST_BYTES:
-        raise ValueError("Invalid or oversized release manifest")
+    if not folder.is_dir():
+        raise ValueError("Artifact root must be a directory")
+    # The manifest may live beside the artifacts, as documented. Keep its
+    # original pathname: resolve() here would bypass O_NOFOLLOW on symlinks.
+    with _stable_reader(manifest_path) as (stream, metadata):
+        if not 0 < metadata.st_size <= MAX_MANIFEST_BYTES:
+            raise ValueError("Invalid or oversized release manifest")
+        raw_manifest = stream.read(MAX_MANIFEST_BYTES + 1)
+        if not 0 < len(raw_manifest) <= MAX_MANIFEST_BYTES:
+            raise ValueError("Invalid or oversized release manifest")
     try:
-        obj = json.loads(manifest_path.read_text(encoding="utf-8"))
+        obj = json.loads(raw_manifest.decode("utf-8"))
     except (UnicodeError, ValueError) as exc:
         raise ValueError("Invalid JSON release manifest") from exc
     if not isinstance(obj, dict) or set(obj) != {"schema", "version", "source_sha", "artifacts"}:
@@ -53,32 +94,36 @@ def verify(folder: Path, manifest_path: Path, source_sha: str | None = None) -> 
     items = obj["artifacts"]
     if not isinstance(items, list) or not 1 <= len(items) <= 12:
         raise ValueError("Expected 1–12 explicitly inventoried release artifacts")
-    seen = set()
-    results = []
-    for item in items:
-        if not isinstance(item, dict) or set(item) != {"name", "kind", "bytes", "sha256"}:
-            raise ValueError("Invalid artifact record")
-        name, kind, size, digest = (item[k] for k in ("name", "kind", "bytes", "sha256"))
-        if (not artifact_name(name) or not isinstance(kind, str)
-                or kind not in KINDS or not name.endswith(KINDS[kind])):
-            raise ValueError("Unsafe artifact name or mismatched file kind")
-        if name in seen:
-            raise ValueError("Duplicate release artifact")
-        seen.add(name)
-        if type(size) is not int or size <= 0 or not isinstance(digest, str) or not SHA256.fullmatch(digest):
-            raise ValueError("Invalid artifact size or SHA-256")
-        path = folder / name
-        if path.is_symlink() or not path.is_file():
-            raise ValueError("Release artifact must be an existing regular file")
-        if path.stat().st_size != size:
-            raise ValueError("Release artifact size mismatch: " + name)
-        h = hashlib.sha256()
-        with path.open("rb") as stream:
-            while chunk := stream.read(1024 * 1024):
-                h.update(chunk)
-        if h.hexdigest() != digest:
-            raise ValueError("Release artifact checksum mismatch: " + name)
-        results.append({"name": name, "kind": kind, "sha256": digest, "bytes": size})
+    try:
+        root_fd = os.open(folder, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    except OSError as exc:
+        raise ValueError("Cannot securely open artifact root") from exc
+    try:
+        seen = set()
+        results = []
+        for item in items:
+            if not isinstance(item, dict) or set(item) != {"name", "kind", "bytes", "sha256"}:
+                raise ValueError("Invalid artifact record")
+            name, kind, size, digest = (item[k] for k in ("name", "kind", "bytes", "sha256"))
+            if (not artifact_name(name) or not isinstance(kind, str)
+                    or kind not in KINDS or not name.endswith(KINDS[kind])):
+                raise ValueError("Unsafe artifact name or mismatched file kind")
+            if name in seen:
+                raise ValueError("Duplicate release artifact")
+            seen.add(name)
+            if type(size) is not int or size <= 0 or not isinstance(digest, str) or not SHA256.fullmatch(digest):
+                raise ValueError("Invalid artifact size or SHA-256")
+            h = hashlib.sha256()
+            with _stable_reader(name, dir_fd=root_fd) as (stream, metadata):
+                if metadata.st_size != size:
+                    raise ValueError("Release artifact size mismatch: " + name)
+                while chunk := stream.read(1024 * 1024):
+                    h.update(chunk)
+            if h.hexdigest() != digest:
+                raise ValueError("Release artifact checksum mismatch: " + name)
+            results.append({"name": name, "kind": kind, "sha256": digest, "bytes": size})
+    finally:
+        os.close(root_fd)
     return {
         "version": obj["version"], "source_sha": obj["source_sha"],
         "artifact_integrity_verified": True, "artifacts": results,
