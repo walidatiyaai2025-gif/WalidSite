@@ -42,6 +42,133 @@ Future<void> login(WidgetTester tester) async {
 }
 
 void main() {
+  for (final arabic in [false, true]) {
+    testWidgets('verified article session opens Saved without second login — ${arabic ? 'AR' : 'EN'}',
+        (tester) async {
+      var profileReads = 0;
+      var savedReads = 0;
+      var loginCalls = 0;
+      await tester.pumpWidget(MaterialApp(
+        home: MobileAccountJourney(
+          arabic: arabic,
+          initialSection: MobileAccountSection.saved,
+          initialSession: const MobileAiSession(token: bearer, expiresAt: null),
+          loginAction: (_, __) async {
+            loginCalls++;
+            return const MobileAiSession(token: 'unexpected', expiresAt: null);
+          },
+          profileAction: (token) async {
+            expect(token, bearer);
+            profileReads++;
+            return const MobileAccount(articleId, email);
+          },
+          savedAction: (token, locale, number) async {
+            expect(token, bearer);
+            expect(locale, arabic);
+            expect(number, 1);
+            savedReads++;
+            return MobileSavedPage.parse(page(1, [article()]), 1);
+          },
+        ),
+      ));
+      await tester.pumpAndSettle();
+      expect(loginCalls, 0, reason: 'Handoff must not create a second bearer');
+      expect(profileReads, 1);
+      expect(savedReads, 1);
+      expect(find.text('Source-verified Laravel guide'), findsOneWidget);
+      expect(find.byKey(const Key('account-login')), findsNothing);
+      expect(find.text(bearer), findsNothing);
+    });
+
+    testWidgets('revoked handoff never shows Saved or account identity — ${arabic ? 'AR' : 'EN'}',
+        (tester) async {
+      var savedReads = 0;
+      await tester.pumpWidget(MaterialApp(
+        home: MobileAccountJourney(
+          arabic: arabic,
+          initialSession: const MobileAiSession(token: bearer, expiresAt: null),
+          loginAction: (_, __) async =>
+              const MobileAiSession(token: 'fresh', expiresAt: null),
+          profileAction: (_) async => throw const MobileAiHttpException(401),
+          savedAction: (_, __, ___) async {
+            savedReads++;
+            return MobileSavedPage.parse(page(1, [article()]), 1);
+          },
+        ),
+      ));
+      await tester.pumpAndSettle();
+      expect(savedReads, 0);
+      expect(find.byKey(const Key('account-login')), findsOneWidget);
+      expect(find.text('Source-verified Laravel guide'), findsNothing);
+      expect(find.text(email), findsNothing);
+      expect(find.text(bearer), findsNothing);
+    });
+
+    testWidgets('temporary Saved outage keeps bearer for read-only retry — ${arabic ? 'AR' : 'EN'}',
+        (tester) async {
+      var reads = 0;
+      var logins = 0;
+      await tester.pumpWidget(MaterialApp(
+        home: MobileAccountJourney(
+          arabic: arabic,
+          initialSession: const MobileAiSession(token: bearer, expiresAt: null),
+          loginAction: (_, __) async {
+            logins++;
+            return const MobileAiSession(token: 'unexpected', expiresAt: null);
+          },
+          profileAction: (token) async {
+            expect(token, bearer);
+            reads++;
+            if (reads == 1) throw const MobileAiHttpException(503);
+            return const MobileAccount(articleId, email);
+          },
+          savedAction: (token, _, __) async {
+            expect(token, bearer);
+            return MobileSavedPage.parse(page(1, [article()]), 1);
+          },
+        ),
+      ));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('account-load-unavailable')), findsOneWidget);
+      expect(find.text(email), findsNothing);
+      expect(find.text(bearer), findsNothing);
+      expect(find.byKey(const Key('account-retry-data')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('account-retry-data')));
+      await tester.pumpAndSettle();
+      expect(logins, 0);
+      expect(reads, 2);
+      expect(find.text('Source-verified Laravel guide'), findsOneWidget);
+    });
+  }
+
+  testWidgets('expired account handoff is never fetched or displayed', (tester) async {
+    var privateReads = 0;
+    await tester.pumpWidget(MaterialApp(
+      home: MobileAccountJourney(
+        arabic: false,
+        initialSession: MobileAiSession(
+          token: bearer,
+          expiresAt: DateTime.utc(2020, 1, 1),
+        ),
+        loginAction: (_, __) async =>
+            const MobileAiSession(token: 'fresh', expiresAt: null),
+        profileAction: (_) async {
+          privateReads++;
+          return const MobileAccount(articleId, email);
+        },
+        savedAction: (_, __, ___) async {
+          privateReads++;
+          return MobileSavedPage.parse(page(1, [article()]), 1);
+        },
+      ),
+    ));
+    await tester.pumpAndSettle();
+    expect(privateReads, 0);
+    expect(find.byKey(const Key('account-login')), findsOneWidget);
+    expect(find.text(bearer), findsNothing);
+    expect(find.text(email), findsNothing);
+  });
+
   test('saved resource parser rejects untrusted fields, URLs and duplicates', () {
     final valid = MobileSavedPage.parse(page(1, [article(), runbook()]), 1);
     expect(valid.items.length, 2);

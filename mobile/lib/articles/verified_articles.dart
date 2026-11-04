@@ -422,6 +422,9 @@ typedef ArticleCategoryPageLoader = Future<VerifiedArticlePage> Function(
     int page, String? category);
 typedef ArticleLoginAction = Future<String> Function(String email, String password);
 typedef ArticleSaveAction = Future<void> Function(String bearer, String articleId);
+/// Transfer a freshly authenticated, in-memory session only after the server
+/// confirms a Save. This callback never persists or logs bearer credentials.
+typedef ArticleSavedNavigation = Future<void> Function(BuildContext context, String bearer);
 
 /// Authorization loss should clear any temporary login intent on this screen.
 class ArticleSaveAuthorizationException implements Exception {
@@ -437,6 +440,7 @@ class VerifiedArticleLibrary extends StatefulWidget {
     this.detailLoader,
     this.loginAction,
     this.saveAction,
+    this.onViewSaved,
     super.key,
   });
 
@@ -451,6 +455,7 @@ class VerifiedArticleLibrary extends StatefulWidget {
   final ArticleCategoryPageLoader? categoryPageLoader;
   final ArticleLoginAction? loginAction;
   final ArticleSaveAction? saveAction;
+  final ArticleSavedNavigation? onViewSaved;
 
   // Injected only by widget tests. Production always refetches the current
   // publication through the verified server detail endpoint.
@@ -784,6 +789,7 @@ class _VerifiedArticleLibraryState extends State<VerifiedArticleLibrary> {
                                           loader: widget.detailLoader,
                                           loginAction: widget.loginAction,
                                           saveAction: widget.saveAction,
+                                          onViewSaved: widget.onViewSaved,
                                         ),
                                       ),
                                     ),
@@ -850,6 +856,7 @@ class VerifiedArticleFreshDetail extends StatefulWidget {
     this.loader,
     this.loginAction,
     this.saveAction,
+    this.onViewSaved,
     super.key,
   });
 
@@ -858,6 +865,7 @@ class VerifiedArticleFreshDetail extends StatefulWidget {
   final Future<VerifiedArticle> Function(String slug)? loader;
   final ArticleLoginAction? loginAction;
   final ArticleSaveAction? saveAction;
+  final ArticleSavedNavigation? onViewSaved;
 
   @override
   State<VerifiedArticleFreshDetail> createState() =>
@@ -868,6 +876,8 @@ class _VerifiedArticleFreshDetailState extends State<VerifiedArticleFreshDetail>
   late Future<VerifiedArticle> _detail;
   bool _saving = false;
   bool _saved = false;
+  String? _savedBearer;
+  bool _openingSaved = false;
   String? _saveMessage;
   int _saveEpoch = 0;
 
@@ -888,6 +898,8 @@ class _VerifiedArticleFreshDetailState extends State<VerifiedArticleFreshDetail>
       _saveEpoch++;
       _saving = false;
       _saved = false;
+      _savedBearer = null;
+      _openingSaved = false;
       _saveMessage = null;
       _refresh();
     }
@@ -940,6 +952,7 @@ class _VerifiedArticleFreshDetailState extends State<VerifiedArticleFreshDetail>
       if (!mounted || epoch != _saveEpoch) return;
       setState(() {
         _saved = true;
+        _savedBearer = bearer;
         _saveMessage = widget.arabic
             ? 'تم حفظ المقال الموثق في حسابك.'
             : 'Verified article saved to your account.';
@@ -947,6 +960,7 @@ class _VerifiedArticleFreshDetailState extends State<VerifiedArticleFreshDetail>
     } catch (error) {
       if (!mounted || epoch != _saveEpoch) return;
       setState(() {
+        _savedBearer = null;
         _saveMessage = error is TimeoutException
             ? (widget.arabic
                 ? 'لم يصل تأكيد الحفظ. افتح محفوظات حسابك للتحقق قبل إعادة المحاولة.'
@@ -963,6 +977,25 @@ class _VerifiedArticleFreshDetailState extends State<VerifiedArticleFreshDetail>
       if (mounted && epoch == _saveEpoch) {
         setState(() => _saving = false);
       }
+    }
+  }
+
+  Future<void> _viewSaved() async {
+    final bearer = _savedBearer;
+    if (!_saved || _openingSaved || bearer == null ||
+        widget.onViewSaved == null) return;
+    // Account screen takes exclusive ownership of this ephemeral session.
+    // Never keep a second reusable copy after the route returns or fails.
+    setState(() {
+      _openingSaved = true;
+      _savedBearer = null;
+    });
+    try {
+      await widget.onViewSaved!(context, bearer);
+    } catch (_) {
+      // A failed navigation cannot convert a Save into a new API attempt.
+    } finally {
+      if (mounted) setState(() => _openingSaved = false);
     }
   }
 
@@ -1024,6 +1057,14 @@ class _VerifiedArticleFreshDetailState extends State<VerifiedArticleFreshDetail>
                             ? (arabic ? 'محفوظ' : 'Saved')
                             : (arabic ? 'احفظ في حسابي' : 'Save to my account')),
                   ),
+                  if (_saved && _savedBearer != null &&
+                      widget.onViewSaved != null)
+                    OutlinedButton.icon(
+                      key: const Key('verified-article-view-saved'),
+                      onPressed: _openingSaved ? null : _viewSaved,
+                      icon: const Icon(Icons.bookmarks_outlined),
+                      label: Text(arabic ? 'عرض محفوظاتي' : 'View Saved'),
+                    ),
                   if (_saveMessage != null)
                     Semantics(
                       liveRegion: true,
