@@ -145,6 +145,49 @@ class DatabaseConfiguration
         ]);
     }
 
+    /**
+     * Allow only non-secret installer runtime configuration plus the optional
+     * mail password. All values are written through the existing private,
+     * atomic env writer; unknown fields cannot override APP_KEY or database.
+     *
+     * @param array<string,string> $fields
+     */
+    public function saveWizardRuntime(array $fields): void
+    {
+        $allowed = [
+            'APP_NAME', 'APP_LOCALE', 'FILESYSTEM_DISK',
+            'CACHE_STORE', 'QUEUE_CONNECTION', 'MAIL_MAILER',
+            'MAIL_HOST', 'MAIL_PORT', 'MAIL_USERNAME',
+            'MAIL_PASSWORD', 'MAIL_FROM_ADDRESS', 'MAIL_FROM_NAME',
+            'MAIL_SCHEME',
+        ];
+        if ($fields === [] || array_diff(array_keys($fields), $allowed) !== []) {
+            throw new RuntimeException('Unsupported installer runtime setting.');
+        }
+        foreach ($fields as $name => $value) {
+            if (! is_string($value) || strlen($value) > 512) {
+                throw new RuntimeException('Invalid installer runtime setting.');
+            }
+        }
+        if (isset($fields['APP_LOCALE']) && ! in_array($fields['APP_LOCALE'], ['ar', 'en'], true)) {
+            throw new RuntimeException('Unsupported application locale.');
+        }
+        if (isset($fields['FILESYSTEM_DISK']) && ! in_array($fields['FILESYSTEM_DISK'], ['local', 'public'], true)) {
+            throw new RuntimeException('Unsupported storage disk.');
+        }
+        if (isset($fields['CACHE_STORE']) && $fields['CACHE_STORE'] !== 'file') {
+            throw new RuntimeException('Unsupported cache driver for no-terminal cPanel install.');
+        }
+        if (isset($fields['QUEUE_CONNECTION']) && $fields['QUEUE_CONNECTION'] !== 'sync') {
+            throw new RuntimeException('Unsupported queue driver without a verified worker.');
+        }
+        if (isset($fields['MAIL_MAILER']) && ! in_array($fields['MAIL_MAILER'], ['log', 'smtp'], true)) {
+            throw new RuntimeException('Unsupported mail transport.');
+        }
+
+        $this->write($fields);
+    }
+
     public function disableSetup(): void
     {
         $this->write([
