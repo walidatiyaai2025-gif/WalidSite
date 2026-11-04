@@ -463,7 +463,7 @@ jobs:
           # A code-only candidate MUST bind to this exact source SHA and version,
           # but never publish it without a separate private Ed25519 publisher gate.
           mkdir -p dist/unsigned-check
-          python3 qa/build_trusted_update_release.py --cpanel-zip "$package" --output-dir dist/unsigned-check --version "$version" --sha "$source_sha" > dist/unsigned-check/receipt.json
+          python3 -m qa.build_trusted_update_release --cpanel-zip "$package" --output-dir dist/unsigned-check --version "$version" --sha "$source_sha" > dist/unsigned-check/receipt.json
           python3 -c 'import json; r=json.load(open("dist/unsigned-check/receipt.json")); assert r["update_artifact_prepared"] is True and r["publisher_signature_verified"] is False'
       - uses: actions/upload-artifact@v4
         with:
