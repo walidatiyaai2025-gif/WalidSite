@@ -57,5 +57,16 @@
       },
       "status": "owner_approved_frozen"
     }
+  },
+  "owner_directed_overrides": {
+    "WEB-01": {
+      "path": "backend/resources/views/public/owner-landing-2026.blade.php",
+      "original_git_blob_sha1": "be588fde75771d0bcb5c52e203435a3bb549c847",
+      "new_git_blob_sha1": "95fbce2bc8f53cbeb798229af0ae0003b03e0ee9",
+      "request_date": "2026-11-04",
+      "scope": "Only top home-header native EN/Arabic radio selector on desktop/mobile next to owner name; preserve other WEB-01/03/04 design",
+      "base_main_sha": "3278f50cc5a4ba584597508af322d5e45b097819",
+      "visual_pixel_parity": "not_asserted"
+    }
   }
 }
