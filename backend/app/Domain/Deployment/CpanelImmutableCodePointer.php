@@ -178,7 +178,8 @@ final class CpanelImmutableCodePointer
             if (in_array($relative, ['index.php', '.htaccess'], true)) {
                 continue;
             }
-            if (! preg_match('/\.(?:css|js|mjs|png|jpe?g|webp|svg|gif|ico|woff2?|ttf|pdf|txt|xml|json|map|webmanifest)$/iD', $relative)
+            if (! (preg_match('/\.(?:css|js|mjs|png|jpe?g|webp|svg|gif|ico|woff2?|ttf|pdf|txt|xml|json|map|webmanifest|md)$/iD', $relative)
+                    || basename($relative) === 'LICENSE')
                 || ++$count > 5000) {
                 throw new DomainException('Executable or oversized public release inventory.');
             }
