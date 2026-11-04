@@ -41,6 +41,11 @@ final class CpanelImmutableCodePointerTest extends TestCase
         file_put_contents($this->candidate.'/application/VERSION', "0.1.2\n");
         copy($this->front, $this->candidate.'/public_html/index.php');
         file_put_contents($this->candidate.'/public_html/.htaccess', 'RewriteEngine On');
+        mkdir($this->candidate.'/public_html/assets/icons', 0700, true);
+        mkdir($this->candidate.'/public_html/assets/technology-logos', 0700, true);
+        file_put_contents($this->candidate.'/public_html/assets/icons/new.svg', '<svg/>');
+        file_put_contents($this->candidate.'/public_html/assets/technology-logos/LICENSE', 'MIT');
+        file_put_contents($this->candidate.'/public_html/assets/technology-logos/ATTRIBUTION.md', 'Review');
     }
 
     protected function tearDown(): void
@@ -88,6 +93,9 @@ final class CpanelImmutableCodePointerTest extends TestCase
         $this->assertSame('KEEP_MY_PRIVATE_APP_KEY', file_get_contents($this->home.'/application/.env'));
         $this->assertSame('PRIVATE_UPLOAD', file_get_contents($this->home.'/application/storage/app/photo.txt'));
         $this->assertSame(file_get_contents($this->front), file_get_contents($this->home.'/public_html/index.php'));
+        $this->assertSame('<svg/>', file_get_contents($this->home.'/public_html/assets/icons/new.svg'));
+        $this->assertSame('MIT', file_get_contents($this->home.'/public_html/assets/technology-logos/LICENSE'));
+        $this->assertSame('Review', file_get_contents($this->home.'/public_html/assets/technology-logos/ATTRIBUTION.md'));
     }
 
     public function test_failed_health_restores_previous_code_without_touching_private_data(): void
@@ -127,6 +135,20 @@ final class CpanelImmutableCodePointerTest extends TestCase
         file_put_contents($this->home.'/public_html/index.php', '<?php echo "untrusted";');
         $this->expectException(DomainException::class);
         (new CpanelImmutableCodePointer())->activate(...$this->args());
+    }
+
+    public function test_immutable_public_asset_collision_rejects_replace_without_overwriting_existing_file(): void
+    {
+        mkdir($this->home.'/public_html/assets/icons', 0700, true);
+        file_put_contents($this->home.'/public_html/assets/icons/new.svg', '<svg>existing</svg>');
+        try {
+            (new CpanelImmutableCodePointer())->activate(...$this->args());
+            $this->fail('Existing public asset was silently overwritten');
+        } catch (DomainException $error) {
+            $this->assertStringContainsString('collision', $error->getMessage());
+            $this->assertSame('<svg>existing</svg>', file_get_contents($this->home.'/public_html/assets/icons/new.svg'));
+            $this->assertFileDoesNotExist($this->home.'/.walidsite-active-release.json');
+        }
     }
 
     public function test_changed_public_router_or_htaccess_blocks_unsafe_cutover(): void
