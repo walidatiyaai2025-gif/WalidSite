@@ -141,6 +141,46 @@ class TestCpanelPackage(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Unsafe ZIP entry"):
             verify_archive(self.output, "e" * 40)
 
+    def test_noncanonical_member_aliases_rejected_before_inflate(self):
+        """A rehashed ZIP inventory cannot legitimize two extraction aliases."""
+        build(self.root, self.output, "e" * 40)
+        with zipfile.ZipFile(self.output) as archive:
+            original = {
+                name: archive.read(name)
+                for name in archive.namelist()
+                if name != "PACKAGE-MANIFEST.json"
+            }
+            baseline = json.loads(archive.read("PACKAGE-MANIFEST.json"))
+
+        for alias in (
+            "application/app//Test.php",
+            "application/app/./Test.php",
+            "application//app/Test.php",
+            "application/app/sub/../Test.php",
+        ):
+            with self.subTest(alias=alias):
+                added = b'<?php echo "different extracted bytes";'
+                payload = {**original, alias: added}
+                inventory = {
+                    **baseline["files"],
+                    alias: {
+                        "bytes": len(added),
+                        "sha256": hashlib.sha256(added).hexdigest(),
+                    },
+                }
+                manifest = {**baseline, "files": inventory}
+                with zipfile.ZipFile(self.output, "w", zipfile.ZIP_DEFLATED) as archive:
+                    for name, data in payload.items():
+                        archive.writestr(name, data)
+                    archive.writestr("PACKAGE-MANIFEST.json", json.dumps(manifest).encode())
+
+                # These are individually valid, re-inventoried member bytes.
+                # The verifier must reject the unsafe *name* even before CRC.
+                with patch.object(zipfile.ZipFile, "testzip",
+                                  side_effect=AssertionError("unsafe name decompressed")):
+                    with self.assertRaisesRegex(ValueError, "Unsafe ZIP entry"):
+                        verify_archive(self.output, "e" * 40)
+
     def test_duplicate_entries_never_pass_integrity_validation(self):
         build(self.root, self.output, "e" * 40)
         with zipfile.ZipFile(self.output, "a") as zip:
