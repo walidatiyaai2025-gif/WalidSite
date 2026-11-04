@@ -371,8 +371,8 @@ class _MobileAccountJourneyState extends State<MobileAccountJourney> {
   bool _editingProfile = false;
   String? _message;
 
-  bool get _configured => widget.loginAction != null ||
-      MobileAccountClient.configuredOrigin() != null;
+  bool get _configured => widget.initialSession != null ||
+      widget.loginAction != null || MobileAccountClient.configuredOrigin() != null;
   AccountLogin get _login => widget.loginAction ??
       const MobileAiClient().login;
   AccountReadProfile get _readProfile => widget.profileAction ??
