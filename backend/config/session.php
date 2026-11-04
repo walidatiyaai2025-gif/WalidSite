@@ -1,7 +1,5 @@
 <?php
 
-use Illuminate\Support\Str;
-
 return [
 
     /*
@@ -127,9 +125,14 @@ return [
     |
     */
 
+    // Keep the possession-verified first-install session across .env creation.
+    // APP_NAME changes from the pre-install default when the owner saves DB
+    // settings; deriving this cookie name from APP_NAME would silently relock
+    // the wizard between its Database and Migration steps. Explicit private
+    // SESSION_COOKIE overrides remain supported for existing installations.
     'cookie' => env(
         'SESSION_COOKIE',
-        Str::slug((string) env('APP_NAME', 'laravel')).'-session'
+        'walidsite-session'
     ),
 
     /*
