@@ -197,6 +197,47 @@ class NativeAndroidAcceptanceTest(unittest.TestCase):
         with self.assertRaises(ApkAcceptanceError):
             inspect(self.apk, **self.args)
 
+    def test_aliases_and_file_directory_collisions_fail_before_crc_or_sdk(self):
+        required = [("AndroidManifest.xml", b"manifest"), ("classes.dex", b"dex")]
+        bad_entries = {
+            "double_separator": [("assets//icon.png", b"x")],
+            "literal_dot": [("assets/./icon.png", b"x")],
+            "parent_segment": [("assets/../icon.png", b"x")],
+            "empty_directory_segment": [("assets//", b"")],
+            "file_directory_alias": [("assets", b"x"), ("assets/", b"")],
+            "implicit_parent_is_file": [("assets", b"x"), ("assets/icon.png", b"y")],
+            "required_file_directory_alias": [("AndroidManifest.xml/", b"")],
+            "directory_with_bytes": [("assets/", b"not a directory")],
+        }
+        for case, extra in bad_entries.items():
+            with self.subTest(case=case):
+                with zipfile.ZipFile(self.apk, "w") as archive:
+                    for name, contents in required + extra:
+                        archive.writestr(name, contents)
+                # Invalid paths must be refused before costly decompression
+                # or any native inspection, even if ZIP member CRCs are valid.
+                with patch.object(zipfile.ZipFile, "testzip",
+                                  side_effect=AssertionError("unsafe member was inflated")):
+                    with patch("qa.native_android_acceptance._command",
+                               side_effect=AssertionError("native tool reached")):
+                        with self.assertRaisesRegex(
+                            ApkAcceptanceError, "Unsafe|collide"
+                        ):
+                            inspect(self.apk, **self.args)
+
+    def test_canonical_directory_entry_remains_accepted_by_synthetic_probe(self):
+        with zipfile.ZipFile(self.apk, "w") as archive:
+            archive.writestr("AndroidManifest.xml", b"synthetic manifest")
+            archive.writestr("classes.dex", b"synthetic bytecode")
+            archive.writestr("META-INF/", b"")
+            archive.writestr("META-INF/NOTICE.SF", b"synthetic signature")
+        # This test validates only ZIP structural acceptance. Native SDK
+        # responses are synthetic, not a signed distribution artifact.
+        with patch("qa.native_android_acceptance._command", side_effect=self.command):
+            receipt = inspect(self.apk, **self.args)
+        self.assertTrue(receipt["apk_integrity_verified"])
+        self.assertFalse(receipt["production_ready"])
+
     def test_cli_fails_closed_without_exposing_user_paths(self):
         with redirect_stderr(io.StringIO()) as stream:
             code = main(["--apk", str(self.apk), "--kind", "debug",

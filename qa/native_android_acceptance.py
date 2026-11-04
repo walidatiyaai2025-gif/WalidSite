@@ -59,12 +59,33 @@ def _inspect_zip(path: Path) -> str:
                 raise ApkAcceptanceError("APK is missing required native Android payload")
             if sum(item.file_size for item in infos) > MAX_UNCOMPRESSED_BYTES:
                 raise ApkAcceptanceError("APK expanded size exceeds bounded acceptance limits")
+            # Compare extraction destinations, not only central-directory
+            # member strings. 'assets//x' and 'assets/x' can alias on disk;
+            # 'assets/' and a regular file named 'assets' also collide.
+            targets = set()
+            regular_files = set()
             for item in infos:
-                parts = item.filename.split("/")
-                if (item.filename.startswith("/") or "\\" in item.filename
-                    or any(part in (".", "..") for part in parts)
+                is_directory = item.is_dir()
+                target = item.filename[:-1] if is_directory else item.filename
+                parts = target.split("/")
+                if (not target or item.filename.startswith("/")
+                    or "\\" in item.filename
+                    or any(part in ("", ".", "..") for part in parts)
+                    or target in targets
+                    or (is_directory and item.file_size != 0)
                     or (item.external_attr >> 16) & 0o170000 == 0o120000):
-                    raise ApkAcceptanceError("Unsafe APK ZIP entry")
+                    raise ApkAcceptanceError("Unsafe or colliding APK ZIP entry")
+                targets.add(target)
+                if not is_directory:
+                    regular_files.add(target)
+
+            # Even without explicit directory entries, a path cannot be both
+            # a regular file and the parent of another member.
+            for target in targets:
+                components = target.split("/")
+                for depth in range(1, len(components)):
+                    if "/".join(components[:depth]) in regular_files:
+                        raise ApkAcceptanceError("APK ZIP file and directory paths collide")
             if package.testzip() is not None:
                 raise ApkAcceptanceError("APK ZIP CRC validation failed")
     except (zipfile.BadZipFile, EOFError, OSError) as exc:
