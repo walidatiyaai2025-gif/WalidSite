@@ -422,11 +422,27 @@ jobs:
     if: >-
       (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
       (github.event_name == 'pull_request' && github.event.action != 'closed' &&
-       github.head_ref == 'fix/732-cpanel-first-boot-missing-key' &&
+       (github.head_ref == 'fix/732-cpanel-first-boot-missing-key' ||
+        github.head_ref == 'fix/26-cpanel-full-install-ci-acceptance') &&
        github.event.pull_request.head.repo.full_name == github.repository)
     needs: required-ci-gate
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
+    services:
+      mariadb:
+        image: mariadb:10.11
+        env:
+          MARIADB_ROOT_PASSWORD: walidsite-ci-root
+          MARIADB_DATABASE: walidsite_ci_install
+          MARIADB_USER: walidsite_ci
+          MARIADB_PASSWORD: walidsite-ci-password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
     permissions:
       contents: read
     steps:
@@ -460,6 +476,11 @@ jobs:
           (cd dist && sha256sum --check "WalidSite-Setup-v${version}.zip.sha256")
           PACKAGE="$package" SOURCE_SHA="$source_sha" python3 -c 'from pathlib import Path; from qa.build_cpanel_package import verify_archive; import os; verify_archive(Path(os.environ["PACKAGE"]), os.environ["SOURCE_SHA"])'
           python3 qa/cpanel_first_run_http_probe.py --cpanel-zip "$package"
+          # The same immutable Setup ZIP must complete a disposable MariaDB HTTP install.
+          CI_INSTALL_DB_HOST=127.0.0.1 CI_INSTALL_DB_PORT=3306 \
+            CI_INSTALL_DB_NAME=walidsite_ci_install CI_INSTALL_DB_USER=walidsite_ci \
+            CI_INSTALL_DB_PASSWORD=walidsite-ci-password \
+            python3 -m qa.cpanel_full_install_probe --cpanel-zip "$package" --sha "$source_sha"
           # A code-only candidate MUST bind to this exact source SHA and version,
           # but never publish it without a separate private Ed25519 publisher gate.
           mkdir -p dist/unsigned-check
