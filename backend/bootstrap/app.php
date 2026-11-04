@@ -32,7 +32,10 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withExceptions(function (Exceptions $exceptions): void {
         // Laravel flashes invalid form fields into the session by default.
         // Credentials for the cPanel first-run wizard must never be retained.
-        $exceptions->dontFlash(['db_password', 'token']);
+        $exceptions->dontFlash([
+            'db_password', 'token', 'admin_password', 'admin_password_confirmation',
+            'mail_password',
+        ]);
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*') || $request->expectsJson(),
         );
