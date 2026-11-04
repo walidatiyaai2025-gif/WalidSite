@@ -86,6 +86,58 @@ class ApiContractRouteParityTest(unittest.TestCase):
         self.assertEqual(report["missing_operations"], ["DELETE /private/ghost"])
         self.assertTrue(errors)
 
+    def test_multiline_php_comments_cannot_fake_an_openapi_endpoint(self):
+        root = self.fixture(
+            "paths:\n  /public/home:\n    get:\n  /private/ghost:\n    post:\n",
+            "<?php\n"
+            "/* Documentation example:\n"
+            "Route::post('/private/ghost', NotDeployed::class);\n"
+            "*/\n"
+            "Route::get('/public/home', Actual::class);\n",
+        )
+        report, errors = audit(root)
+        self.assertEqual(report["matched_operations"], 1)
+        self.assertEqual(report["missing_operations"], ["POST /private/ghost"])
+        self.assertTrue(errors)
+        self.assertEqual(report["duplicate_registrations"], [])
+
+    def test_php_multiline_strings_and_nowdocs_are_never_routes(self):
+        root = self.fixture(
+            "paths:\n  /public/home:\n    get:\n"
+            "  /private/quoted:\n    delete:\n"
+            "  /private/nowdoc:\n    put:\n",
+            "<?php\n"
+            '$text = "example line\n'
+            "Route::delete('/private/quoted', Sample::class);\n"
+            'example closing";\n'
+            "$sample = <<<'ROUTE_EXAMPLE'\n"
+            "Route::put('/private/nowdoc', Sample::class);\n"
+            "ROUTE_EXAMPLE;\n"
+            "Route::get('/public/home', Actual::class);\n",
+        )
+        report, errors = audit(root)
+        self.assertEqual(report["matched_operations"], 1)
+        self.assertEqual(
+            report["missing_operations"],
+            ["DELETE /private/quoted", "PUT /private/nowdoc"],
+        )
+        self.assertTrue(errors)
+
+    def test_real_routes_after_comments_and_strings_are_still_counted(self):
+        root = self.fixture(
+            "paths:\n  /public/home:\n    get:\n  /public/about:\n    post:\n",
+            "<?php\n"
+            "$origin = 'https://example.test'; // route URI is not a comment\n"
+            "# Route::get('/false', Phantom::class);\n"
+            "/* inline sample Route::post('/false', Phantom::class); */\n"
+            "Route::get('/public/home', Actual::class);\n"
+            "Route::post('/public/about', Actual::class);\n",
+        )
+        report, errors = audit(root)
+        self.assertEqual(errors, [])
+        self.assertEqual(report["matched_operations"], 2)
+        self.assertEqual(report["uncontracted_registrations"], [])
+
     def test_unreadable_routes_and_malformed_template_fail_closed(self):
         root = self.fixture(
             "paths:\n  /public/home:\n    get:\n",
