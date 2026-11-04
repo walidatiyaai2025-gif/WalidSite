@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AdminUpdateController;
 use App\Http\Controllers\SiteSetupController;
+use App\Http\Controllers\FoodexInstallController;
 use App\Http\Controllers\SiteDatabaseController;
 use App\Http\Middleware\RequireSecureSetup;
 use Illuminate\Support\Facades\Route;
@@ -9,6 +10,12 @@ use Illuminate\Support\Facades\Route;
 // Web group (session + CSRF) is supplied by bootstrap/app.php.
 // Reject all first-run HTTP requests in production before any secrets are read.
 Route::middleware(RequireSecureSetup::class)->group(static function (): void {
+    // FOODEX-style fifteen-stage new installation. The established /setup
+    // workflow remains available for backward-compatible interrupted installs.
+    Route::get('/install', [FoodexInstallController::class, 'show'])->name('site.install');
+    Route::post('/install/step/{step}', [FoodexInstallController::class, 'next'])
+        ->whereNumber('step')->middleware('throttle:site-setup-actions')->name('site.install.next');
+
     Route::get('/setup', [SiteSetupController::class, 'show'])->name('site.setup');
     Route::post('/setup/unlock', [SiteSetupController::class, 'unlock'])
         ->middleware('throttle:site-setup-unlock')->name('site.setup.unlock');

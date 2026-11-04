@@ -47,6 +47,16 @@ STORAGE = ("storage/app/private", "storage/framework/cache/data",
            "storage/logs", "bootstrap/cache")
 
 
+# Fail closed on ZIP metadata BEFORE CRC checks or any decompression.
+# cPanel vendor/assets belong within these conservative shared-hosting limits.
+MAX_ARCHIVE_ENTRIES = 30000
+MAX_COMPRESSED_ARCHIVE_BYTES = 1024 * 1024 * 1024
+MAX_EXPANDED_ARCHIVE_BYTES = 1024 * 1024 * 1024
+MAX_SINGLE_ENTRY_BYTES = 128 * 1024 * 1024
+MAX_MANIFEST_BYTES = 2 * 1024 * 1024
+MAX_EXPANSION_RATIO = 200
+
+
 def safe(file, root):
     if file.is_symlink():
         # Composer creates vendor/bin CLI shims as symlinks; the web app
@@ -79,12 +89,38 @@ def add_folder(entries, folder, dest, root):
 
 
 def verify_archive(output, expected_sha=None):
-    """Reject missing, modified, duplicate or path-escaping ZIP inventory entries."""
+    """Reject unsafe ZIP metadata before decompressing any archive member."""
+    output = Path(output)
+    if (output.is_symlink() or not output.is_file()
+            or output.stat().st_size > MAX_COMPRESSED_ARCHIVE_BYTES):
+        raise ValueError("Unsafe or oversized ZIP file")
     with zipfile.ZipFile(output) as archive:
-        names = archive.namelist()
+        infos = archive.infolist()
+        if len(infos) > MAX_ARCHIVE_ENTRIES:
+            raise ValueError("Excessive ZIP entry count")
+        names = [info.filename for info in infos]
         if len(names) != len(set(names)):
             raise ValueError("Duplicate ZIP entry")
-        for info in archive.infolist():
+        total_expanded = 0
+        for info in infos:
+            # ZIP central-directory sizes are untrusted. Bound both the total
+            # potential expansion and a single allocation before testzip().
+            if info.is_dir():
+                raise ValueError("Unexpected ZIP directory entry")
+            if info.file_size > MAX_SINGLE_ENTRY_BYTES:
+                raise ValueError("Oversized ZIP entry")
+            total_expanded += info.file_size
+            if total_expanded > MAX_EXPANDED_ARCHIVE_BYTES:
+                raise ValueError("Excessive ZIP expanded size")
+            if info.file_size and info.compress_size == 0:
+                raise ValueError("Invalid ZIP compressed entry size")
+            if (info.file_size > 1024 * 1024
+                    and info.file_size > info.compress_size * MAX_EXPANSION_RATIO):
+                raise ValueError("Excessive ZIP compression ratio")
+            if (info.filename == "PACKAGE-MANIFEST.json"
+                    and info.file_size > MAX_MANIFEST_BYTES):
+                raise ValueError("Oversized ZIP package manifest")
+        for info in infos:
             name = info.filename
             parts = Path(name).parts
             if (not name or name.startswith("/") or "\\" in name

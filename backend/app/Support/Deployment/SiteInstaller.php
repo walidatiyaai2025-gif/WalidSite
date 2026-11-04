@@ -75,6 +75,21 @@ final class SiteInstaller
      */
     public function complete(string $password, SiteUpdater $updater): bool
     {
+        return $this->completeWithPreparedPasswordHash(Hash::make($password), $updater);
+    }
+
+    /**
+     * Step 7 of the 15-stage wizard stores only this password hash inside
+     * the server-side session. The plaintext password is never persisted.
+     * Final activation occurs only after migrations, seed and health gates.
+     */
+    public function completeWithPreparedPasswordHash(string $preparedHash, SiteUpdater $updater): bool
+    {
+        if (! in_array(password_get_info($preparedHash)['algoName'] ?? '', ['bcrypt', 'argon2id'], true)
+            || strlen($preparedHash) > 255) {
+            throw new RuntimeException('Prepared owner password hash is invalid.');
+        }
+
         $lock = Cache::lock('walidsite:first-install', 180);
         if (! $lock->get()) {
             return false;
@@ -94,7 +109,7 @@ final class SiteInstaller
                 throw new RuntimeException('Installation state directory is not writable.');
             }
 
-            DB::transaction(function () use ($email, $password): void {
+            DB::transaction(function () use ($email, $preparedHash): void {
                 // Fail closed for previously initialized databases.
                 if (User::query()->whereNotNull('password_hash')->exists()) {
                     throw new RuntimeException('An account is already configured.');
@@ -122,7 +137,7 @@ final class SiteInstaller
                 $owner = User::query()->where('email', $email)->firstOrFail();
                 $role = Role::firstOrCreate(['name' => 'owner']);
                 $owner->forceFill([
-                    'password_hash' => Hash::make($password),
+                    'password_hash' => $preparedHash,
                     'status' => 'active',
                 ])->save();
                 $owner->roles()->syncWithoutDetaching([$role->id]);
@@ -165,4 +180,36 @@ final class SiteInstaller
             $lock->release();
         }
     }
+    /**
+     * Stage 12: deterministic, trusted baseline seeding before owner activation.
+     * The existing final activation reseeds idempotently before publication;
+     * both operations use the same reviewed project data, never arbitrary ZIPs.
+     */
+    public function seedForFirstInstall(SiteUpdater $updater): void
+    {
+        if (! $this->allowed()) {
+            throw new RuntimeException('First-run installation is already closed.');
+        }
+        $state = $updater->inspect();
+        if (! $state['ready'] || $state['pending'] !== []) {
+            throw new RuntimeException('Schema is not ready for initial seeds.');
+        }
+        DB::transaction(static function (): void {
+            foreach ([
+                OwnerCvBaselineSeeder::class,
+                WebsitePageContentSeeder::class,
+                OwnerProjectsPortfolioSeeder::class,
+            ] as $seeder) {
+                if (Artisan::call('db:seed', [
+                    '--class' => $seeder,
+                    '--force' => true,
+                    '--no-interaction' => true,
+                ]) !== 0) {
+                    throw new RuntimeException('Trusted initial content could not be seeded.');
+                }
+            }
+        });
+    }
+
+
 }

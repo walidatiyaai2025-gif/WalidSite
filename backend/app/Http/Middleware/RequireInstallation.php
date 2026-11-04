@@ -18,6 +18,7 @@ final class RequireInstallation
         if (! config('site.setup_enabled')
             || strlen((string) config('site.setup_token')) < 32
             || $request->is('setup') || $request->is('setup/*')
+            || $request->is('install') || $request->is('install/*')
             || $this->installer->isInstalled()) {
             return $next($request);
         }

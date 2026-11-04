@@ -199,7 +199,7 @@ def accept(origin: str, account_home: Path, ca_file: Path) -> dict:
     arabic = client.request("/setup?lang=ar")
     check("rtl_after_unlock", arabic.status == 200
           and 'dir="rtl"' in arabic.body and token not in arabic.body)
-    session = [c for c in client.cookies if c.name == "laravel-session"]
+    session = [c for c in client.cookies if c.name == "walidsite-session"]
     check("secure_httponly_session", len(session) == 1 and session[0].secure
           and any(key.lower() == "httponly" for key in session[0]._rest))
     return {
