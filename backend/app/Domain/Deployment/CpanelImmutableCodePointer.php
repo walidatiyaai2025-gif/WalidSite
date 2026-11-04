@@ -29,6 +29,7 @@ final class CpanelImmutableCodePointer
         string $version,
         string $sourceSha,
         string $trustedFrontController,
+        string $maintenanceToken,
         callable $maintenanceReady,
         callable $recoveryVerified,
         callable $signedCandidateVerified,
@@ -101,6 +102,10 @@ final class CpanelImmutableCodePointer
                 || ! is_file($oldRoot.'/application/VERSION')) {
                 throw new DomainException('Previous installed release cannot be identified.');
             }
+            // A real private, expiring, one-owner update barrier is mandatory,
+            // not merely a caller returning true from a maintenance callback.
+            $previousRoot = $previous === null ? 'legacy' : $previous['root'];
+            (new CpanelReleaseMaintenance())->assertActive($home, $maintenanceToken, $previousRoot);
             $oldVersion = trim((string) file_get_contents($oldRoot.'/application/VERSION'));
             if (! preg_match('/\A(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\z/D', $oldVersion)
                 || version_compare($version, $oldVersion, '<=')) {
@@ -116,6 +121,7 @@ final class CpanelImmutableCodePointer
             // Preload only non-executable static assets before pointer switch.
             // Public name collisions with different bytes fail closed.
             $this->preloadImmutableAssets($candidate.'/public_html', $home.'/public_html');
+            (new CpanelReleaseMaintenance())->assertActive($home, $maintenanceToken, $previousRoot);
             if ($maintenanceReady() !== true || $signedCandidateVerified() !== true) {
                 throw new DomainException('Maintenance or candidate identity changed during update.');
             }
