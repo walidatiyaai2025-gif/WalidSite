@@ -132,7 +132,7 @@ final class SignedPublishedRunbookPublisherTest extends TestCase
         $publisher = $this->publisher();
         foreach ([
             [[$id], ''],
-            [[$id], base64_encode(str_repeat('x', 64))],
+            [[$id], base64_encode(str_repeat('x', 63))],
             [[$id, $id], $this->secret],
             [['not-a-uuid'], $this->secret],
             [[strtoupper($id)], $this->secret],
@@ -197,4 +197,58 @@ final class SignedPublishedRunbookPublisherTest extends TestCase
         $this->assertStringNotContainsString('https://', $raw);
         $this->assertFalse(is_file(public_path('reviewed-runbooks.json')));
     }
+
+    public function test_cli_uses_only_process_secret_and_produces_recoverable_private_artifact(): void
+    {
+        $id = $this->guide();
+        $directory = storage_path('app/private/runbook-publisher');
+        $previous = getenv('WALIDSITE_RUNBOOK_SIGNING_KEY_B64');
+        $existing = glob($directory.DIRECTORY_SEPARATOR.'reviewed-runbooks-*.json') ?: [];
+        putenv('WALIDSITE_RUNBOOK_SIGNING_KEY_B64='.$this->secret);
+
+        try {
+            $this->artisan('runbooks:prepare-signed', ['--id' => [$id]])
+                ->expectsOutput('Private signed runbook candidate prepared; NOT published.')
+                ->assertExitCode(0);
+
+            $after = glob($directory.DIRECTORY_SEPARATOR.'reviewed-runbooks-*.json') ?: [];
+            $new = array_values(array_diff($after, $existing));
+            $this->assertCount(1, $new);
+            $this->assertSame(0600, fileperms($new[0]) & 0777);
+            $envelope = json_decode((string) file_get_contents($new[0]), true, flags: JSON_THROW_ON_ERROR);
+            $payload = base64_decode($envelope['payload_base64'], true);
+            $signature = base64_decode($envelope['signature_base64'], true);
+            $this->assertTrue(sodium_crypto_sign_verify_detached($signature, $payload, $this->public));
+            $data = json_decode($payload, true, flags: JSON_THROW_ON_ERROR);
+            $this->assertSame($id, $data['items'][0]['id']);
+        } finally {
+            $after = glob($directory.DIRECTORY_SEPARATOR.'reviewed-runbooks-*.json') ?: [];
+            foreach (array_diff($after, $existing) as $candidate) {
+                @unlink($candidate);
+            }
+            if ($previous === false) {
+                putenv('WALIDSITE_RUNBOOK_SIGNING_KEY_B64');
+            } else {
+                putenv('WALIDSITE_RUNBOOK_SIGNING_KEY_B64='.$previous);
+            }
+        }
+    }
+
+    public function test_cli_rejects_missing_key_without_disclosing_reviewed_text(): void
+    {
+        $id = $this->guide();
+        $previous = getenv('WALIDSITE_RUNBOOK_SIGNING_KEY_B64');
+        putenv('WALIDSITE_RUNBOOK_SIGNING_KEY_B64');
+
+        try {
+            $this->artisan('runbooks:prepare-signed', ['--id' => [$id]])
+                ->expectsOutput('Publisher signing unavailable; supply reviewed UUIDs and a private process key.')
+                ->assertExitCode(1);
+        } finally {
+            if ($previous !== false) {
+                putenv('WALIDSITE_RUNBOOK_SIGNING_KEY_B64='.$previous);
+            }
+        }
+    }
+
 }
