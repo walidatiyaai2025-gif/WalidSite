@@ -107,6 +107,16 @@ class ReleaseArtifactGateTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             verify(directory_link, self.manifest, SHA)
 
+    def test_root_never_resolves_racy_untrusted_path_before_no_follow_open(self):
+        # Path.resolve() here would allow a root swapped to a symlink after
+        # is_symlink() preflight to be trusted as an outside release folder.
+        # Directory O_NOFOLLOW must be applied to the ORIGINAL pathname.
+        with patch.object(Path, "resolve", side_effect=AssertionError(
+            "Root pathname must not be resolved before secure open"
+        )):
+            result = verify(self.root, self.manifest, SHA)
+        self.assertTrue(result["artifact_integrity_verified"])
+
     def test_open_descriptor_detects_in_place_change_even_when_size_unchanged(self):
         with self.assertRaisesRegex(ValueError, "changed during verification"):
             with _stable_reader(self.pkg) as (stream, metadata):
