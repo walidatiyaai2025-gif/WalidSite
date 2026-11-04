@@ -38,6 +38,14 @@ class NativeAndroidAcceptanceTest(unittest.TestCase):
             return CompletedProcess(args, 0, BADGING if args[2] == "badging" else PERMISSIONS, "")
         return CompletedProcess(args, 0, "Verified using v2 scheme: true", "")
 
+    @staticmethod
+    def release_command(args):
+        result = NativeAndroidAcceptanceTest.command(args)
+        if args[0] == "aapt" and args[2] == "badging":
+            result.stdout = result.stdout.replace(
+                "com.example.waleed_tech_companion", "com.walidsite.qa")
+        return result
+
     def test_synthetic_parser_requires_tools_and_does_not_claim_distribution(self):
         with patch("qa.native_android_acceptance._command", side_effect=self.command) as proc:
             result = inspect(self.apk, **self.args)
@@ -54,32 +62,66 @@ class NativeAndroidAcceptanceTest(unittest.TestCase):
         self.assertEqual(result["source_sha_supplied_not_attested"], SHA)
 
     def test_release_qa_requires_valid_signature_and_non_debuggable_manifest(self):
+        release_args = {**self.args, "kind": "release-qa",
+                        "expected_id": "com.walidsite.qa"}
+
         def unsigned(args):
             if args[0] == "apksigner":
                 return CompletedProcess(args, 1, "", "DOES NOT VERIFY")
-            return self.command(args)
+            return self.release_command(args)
 
         with patch("qa.native_android_acceptance._command", side_effect=unsigned):
             with self.assertRaisesRegex(ApkAcceptanceError, "signature"):
-                inspect(self.apk, **{**self.args, "kind": "release-qa"})
+                inspect(self.apk, **release_args)
 
-        with patch("qa.native_android_acceptance._command", side_effect=self.command):
-            result = inspect(self.apk, **{**self.args, "kind": "release-qa"})
+        with patch("qa.native_android_acceptance._command",
+                   side_effect=self.release_command):
+            result = inspect(self.apk, **release_args)
         self.assertTrue(result["apk_integrity_verified"])
         self.assertTrue(result["apk_signature_cryptographically_valid"])
+        self.assertEqual(result["package_id"], "com.walidsite.qa")
         self.assertFalse(result["debug_signature_verified"])
         self.assertFalse(result["production_ready"])
         self.assertFalse(result["distribution_signing_identity_verified"])
 
         def debuggable(args):
-            base = self.command(args)
+            base = self.release_command(args)
             if args[0] == "aapt" and args[2] == "badging":
                 base.stdout += "application-debuggable\n"
             return base
 
         with patch("qa.native_android_acceptance._command", side_effect=debuggable):
             with self.assertRaisesRegex(ApkAcceptanceError, "debuggable"):
-                inspect(self.apk, **{**self.args, "kind": "release-qa"})
+                inspect(self.apk, **release_args)
+
+    def test_release_qa_rejects_placeholder_package_identity_before_native_tools(self):
+        for package in ("com.example.waleed_tech_companion",
+                        "org.example.walidsite", "net.example.test_app"):
+            with self.subTest(package=package):
+                with patch("qa.native_android_acceptance._command") as command:
+                    with self.assertRaisesRegex(ApkAcceptanceError, "non-placeholder"):
+                        inspect(self.apk, **{**self.args, "kind": "release-qa",
+                                             "expected_id": package})
+                    command.assert_not_called()
+        # Development-only debug APKs may retain a visibly untrusted ID.
+        with patch("qa.native_android_acceptance._command", side_effect=self.command):
+            self.assertFalse(inspect(self.apk, **self.args)["production_ready"])
+
+    def test_apk_replacement_during_signature_verification_fails_integrity_gate(self):
+        def replaced_on_signature(args):
+            result = self.command(args)
+            if args[0] == "apksigner":
+                # A distinct, structurally valid APK now occupies the same
+                # pathname after the earlier SHA/CRC and native inspection.
+                with zipfile.ZipFile(self.apk, "w") as archive:
+                    archive.writestr("AndroidManifest.xml", b"changed native manifest")
+                    archive.writestr("classes.dex", b"changed compiled code")
+            return result
+
+        with patch("qa.native_android_acceptance._command",
+                   side_effect=replaced_on_signature):
+            with self.assertRaisesRegex(ApkAcceptanceError, "changed"):
+                inspect(self.apk, **self.args)
 
     def test_missing_duplicated_zero_and_inverted_sdk_levels_fail_closed(self):
         invalid = {
