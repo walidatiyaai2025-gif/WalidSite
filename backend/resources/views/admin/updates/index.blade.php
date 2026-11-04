@@ -1,5 +1,8 @@
 @php($locale = request()->query('lang') === 'ar' ? 'ar' : 'en')
 @php($releaseRef = trim((string) config('site.release_ref', '')))
+@php($trustedCheck = session('trusted_release_check'))
+@php($trustedState = is_array($trustedCheck) ? ($trustedCheck['state'] ?? null) : null)
+@php($signedCandidateVerified = $trustedState === 'signed_release_available')
 @php($identifiedRelease = $releaseRef !== '' && $releaseRef !== 'unidentified')
 <!doctype html>
 <html lang="{{ $locale }}" dir="{{ $locale === 'ar' ? 'rtl' : 'ltr' }}">
@@ -46,7 +49,7 @@ button:disabled{background:#718096;cursor:not-allowed}
 <div><dt>{{ $locale === 'ar' ? 'معرّف الإصدار الموجود' : 'Configured deployed release' }}</dt>
 <dd><code>{{ $identifiedRelease ? $releaseRef : ($locale === 'ar' ? 'غير محدد' : 'Unidentified') }}</code></dd></div>
 <div><dt>{{ $locale === 'ar' ? 'الإصدار المتاح' : 'Available version' }}</dt>
-<dd>{{ $locale === 'ar' ? 'غير متحقق منه' : 'Not verified' }}</dd></div>
+<dd>{{ $signedCandidateVerified ? $trustedCheck['version'] : ($locale === 'ar' ? 'غير متحقق منه' : 'Not verified') }}</dd></div>
 <div><dt>{{ $locale === 'ar' ? 'النسخة الاحتياطية' : 'Backup status' }}</dt>
 <dd>{{ $locale === 'ar' ? 'لم يتم التحقق' : 'Not verified' }}</dd></div>
 <div><dt>{{ $locale === 'ar' ? 'تحديث الكود من الإدارة' : 'Admin code upgrade' }}</dt>
@@ -58,11 +61,37 @@ button:disabled{background:#718096;cursor:not-allowed}
 <div class="blocked" role="status" data-testid="trusted-code-update-unavailable">
 <strong>{{ $locale === 'ar' ? 'التحديث الآمن للكود غير متاح بعد.' : 'Trusted code updates are not yet available.' }}</strong>
 <p>{{ $locale === 'ar'
-    ? 'لا توجد في هذا الإصدار واجهة خلفية موصولة للتحقق من توقيع الإصدار وتنزيله، وإنشاء نسخة احتياطية قابلة للاستعادة، واستبدال الكود والتحقق من السلامة. لذلك لم يُعرض زر تثبيت قد يغيّر ملفات الموقع دون حماية.'
-    : 'This deployed interface has no connected publisher-authenticated release, verified recoverable backup, controlled code replacement or post-update health service. No unsafe install button is offered.' }}</p>
+    ? 'يمكن فحص كتالوج الإصدارات الموقّعة بمفتاح ناشر مثبت على الخادم. لكن تثبيت الكود يتطلب إثبات النسخ الاحتياطي والاستعادة والتبديل الآمن وفحص السلامة؛ لذلك لا يوجد زر تثبيت غير آمن.'
+    : 'You can check the publisher-signed release catalog using server-pinned trust settings. Full-code Apply remains unavailable until recoverable backups, controlled cutover and health checks are proven.' }}</p>
 </div>
+<form method="post" action="{{ route('admin.updates.check', ['lang' => $locale]) }}">
+@csrf
+<button type="submit" @disabled(!config('site.updates_enabled')) data-testid="trusted-release-check">
+{{ $locale === 'ar' ? 'فحص إصدار موقّع (قراءة فقط)' : 'Check for signed release (read-only)' }}
+</button>
+</form>
+@if($signedCandidateVerified)
+<div class="success" role="status" data-testid="trusted-release-verified">
+<strong>{{ $locale === 'ar' ? 'تم التحقق من توقيع الناشر وهوية الإصدار.' : 'Publisher signature and release identity verified.' }}</strong>
+<p>{{ $locale === 'ar' ? 'الإصدار الحالي الموثق:' : 'Pinned installed version:' }} <code>{{ $trustedCheck['installed_version'] }}</code>
+— {{ $locale === 'ar' ? 'الإصدار الموقّع المتاح:' : 'Verified available version:' }} <code>{{ $trustedCheck['version'] }}</code></p>
+<p>{{ $locale === 'ar' ? 'مرجع المصدر الموقّع:' : 'Signed source commit:' }} <code>{{ $trustedCheck['source_sha'] }}</code></p>
+<p>{{ $locale === 'ar' ? 'بصمة الحزمة الموقّعة SHA-256:' : 'Signed archive SHA-256:' }} <code>{{ $trustedCheck['artifact_sha256'] }}</code></p>
+<p>{{ $locale === 'ar' ? 'هذا فحص قراءة فقط. لم يتم تنزيل كود أو تطبيق تحديث أو إنشاء نسخة احتياطية.' : 'Read-only discovery only: no code downloaded, no update applied and no backup performed.' }}</p>
+</div>
+@elseif($trustedState === 'not_configured')
+<p class="blocked" role="status" data-testid="trusted-release-not-configured">{{ $locale === 'ar'
+    ? 'إعدادات نسخة التثبيت ومصدر الإصدارات والمفتاح العام الموثوق غير مكتملة على الخادم. لم يُجرَ اتصال خارجي.'
+    : 'Pinned installed version, release origin or publisher public key is not configured on the server. No network request was made.' }}</p>
+@elseif($trustedState === 'disabled')
+<p class="blocked" role="status">{{ $locale === 'ar' ? 'فحص التحديثات معطّل من إعدادات الخادم.' : 'Release checks are disabled by server configuration.' }}</p>
+@elseif($trustedState === 'publisher_unverified')
+<p class="error" role="alert" data-testid="trusted-release-unverified">{{ $locale === 'ar'
+    ? 'تعذّر التحقق من المصدر الموثوق أو التوقيع. لم يُقبل أي إصدار؛ راجع إعدادات الخادم وسجلاته الخاصة.'
+    : 'Publisher transport or signature verification failed. No release was accepted. Review private server configuration and logs.' }}</p>
+@endif
 <ol class="steps" aria-label="{{ $locale === 'ar' ? 'مراحل تحديث الإصدار الكامل' : 'Full code update requirements' }}">
-<li><strong>{{ $locale === 'ar' ? 'فحص إصدار موثوق' : 'Check authenticated release' }}</strong><span class="status">{{ $locale === 'ar' ? 'لا يوجد مصدر إصدارات موثق ومتصل بعد.' : 'No verified release feed connected.' }}</span></li>
+<li><strong>{{ $locale === 'ar' ? 'فحص إصدار موثوق' : 'Check authenticated release' }}</strong><span class="status">{{ $locale === 'ar' ? 'اضغط فحص الإصدار للتحقق من كتالوج الناشر المثبت على الخادم؛ النتيجة تظهر أعلاه.' : 'Use Check to verify the server-pinned publisher catalog; the result appears above.' }}</span></li>
 <li><strong>{{ $locale === 'ar' ? 'فحص التوافق والنسخ الاحتياطي' : 'Preflight and recoverable backup' }}</strong><span class="status">{{ $locale === 'ar' ? 'لم تُنفّذ نسخة احتياطية أو تجربة استعادة.' : 'Backup and restore have not been verified.' }}</span></li>
 <li><strong>{{ $locale === 'ar' ? 'تطبيق الملفات والترحيلات' : 'Install code and migrations' }}</strong><span class="status">{{ $locale === 'ar' ? 'استبدال الكود الكامل غير متاح؛ الترحيلات المحلية منفصلة أدناه.' : 'Full code replacement is not available; local migrations are handled separately below.' }}</span></li>
 <li><strong>{{ $locale === 'ar' ? 'التحقق من الصحة والاستعادة' : 'Verify health and recovery' }}</strong><span class="status">{{ $locale === 'ar' ? 'لا توجد نتيجة تحقق أو سجل تحديث كود.' : 'No code-update health receipt or version history exists.' }}</span></li>
