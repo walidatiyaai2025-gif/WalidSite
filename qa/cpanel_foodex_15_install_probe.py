@@ -211,6 +211,75 @@ def post_publish_missing_lock_security(owner: Client, guest: Client,
     return checks
 
 
+
+def invalid_database_retry_probe(client: Client, application: Path,
+                                 public: Path, valid: dict[str, str]) -> list[str]:
+    """Prove wrong MariaDB credentials cannot damage fresh Setup ZIP state.
+
+    Must run only inside the disposable FOODEX CI extraction *before* step 4.
+    The caller then retries correct credentials in the same session and
+    completes all fifteen stages on the identical release ZIP.
+    """
+    origin = urlsplit(client.origin)
+    if (origin.scheme != "http" or origin.hostname != "127.0.0.1"
+            or origin.username or origin.password
+            or application.is_symlink() or public.is_symlink()
+            or application.name != "application" or public.name != "public_html"
+            or application.parent != public.parent
+            or not application.parent.name.startswith("walidsite-ci-foodex-")
+            or not application.is_dir() or not public.is_dir()):
+        raise SetupFailure("invalid_database_disposable_loopback_only")
+
+    bootstrap = application / "storage/app/site-first-run.json"
+    config = application / ".env"
+    version = application / "VERSION"
+    front = public / "index.php"
+    if (config.exists() or config.is_symlink()
+            or any(not path.is_file() or path.is_symlink()
+                   for path in (bootstrap, version, front))):
+        raise SetupFailure("invalid_database_pristine_private_files_required")
+    if set(valid) != {"site_url", "db_host", "db_port", "db_database",
+                      "db_username", "db_password"} or not valid["db_password"]:
+        raise SetupFailure("invalid_database_valid_fixture_incomplete")
+
+    digest = {p: hashlib.sha256(p.read_bytes()).hexdigest()
+              for p in (bootstrap, version, front)}
+    checks: list[str] = []
+
+    def check(name: str, passed: bool) -> None:
+        if not passed:
+            raise SetupFailure("invalid_database_" + name)
+        checks.append("invalid_database_" + name)
+
+    status, _, html = client.call("/install")
+    check("step_4_current", status == 200
+          and b"/install/step/4" in html)
+    wrong = "QaInvalid-" + secrets.token_urlsafe(32)
+    check("invalid_password_distinct", wrong != valid["db_password"])
+    attempt = dict(valid)
+    attempt["db_password"] = wrong
+    status, location, body = client.call(
+        "/install/step/4", {"_token": csrf(html), **attempt})
+    target = urlsplit(location)
+    check("rejected_without_advancing",
+          status == 302 and target.path == "/install"
+          and not target.query and not target.fragment
+          and (not target.netloc or
+               (target.scheme == origin.scheme and target.netloc == origin.netloc)))
+    check("wrong_password_not_in_redirect",
+          wrong.encode() not in body and wrong not in location)
+    status, _, html = client.call("/install")
+    check("same_step_recoverable", status == 200
+          and b"/install/step/4" in html)
+    check("wrong_password_not_in_page", wrong.encode() not in html)
+    check("no_private_env_written", not config.exists() and not config.is_symlink())
+    check("possession_and_code_preserved",
+          all(p.is_file() and not p.is_symlink()
+              and hashlib.sha256(p.read_bytes()).hexdigest() == digest[p]
+              for p in digest))
+    return checks
+
+
 def run(package: Path, sha: str, host: str, port: int, database: str,
         user: str, password: str) -> dict:
     if (host != "127.0.0.1" or port != 3307
@@ -316,14 +385,17 @@ def run(package: Path, sha: str, host: str, port: int, database: str,
             advance(1, {"token": token})
             advance(2)
             advance(3)
-            advance(4, {
+            valid_db = {
                 "site_url": client.origin,
                 "db_host": host,
                 "db_port": str(port),
                 "db_database": database,
                 "db_username": user,
                 "db_password": password,
-            })
+            }
+            checks.extend(invalid_database_retry_probe(
+                client, application, public, valid_db))
+            advance(4, valid_db)
             check("private_env_written", (application / ".env").is_file())
             advance(5)
             # Changing APP_NAME may not rename the authenticated session cookie.
