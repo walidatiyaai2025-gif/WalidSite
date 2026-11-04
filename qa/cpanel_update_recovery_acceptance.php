@@ -120,7 +120,7 @@ try {
     // The source .env and uploads must survive unchanged, and no restored copy
     // of the corrupted snapshot may be treated as valid.
     $fileBackups = glob($home.'/.walidsite-backups/recovery-*', GLOB_ONLYDIR);
-    $databaseBackups = glob($home.'/.walidsite-backups/mariadb-*', GLOB_ONLYDIR);
+    $databaseBackups = glob($home.'/.walidsite-backups/.mariadb-*', GLOB_ONLYDIR);
     if (count($fileBackups) !== 1 || count($databaseBackups) !== 1) {
         throw new RuntimeException('Expected one private-file and one database snapshot.');
     }
