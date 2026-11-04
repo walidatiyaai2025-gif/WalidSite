@@ -17,8 +17,8 @@ from pathlib import Path
 from qa.build_cpanel_package import verify_archive
 from qa.build_trusted_update_release import build as build_update
 
-SEMVER = re.compile(r'(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)\\Z')
-SOURCE_SHA = re.compile(r'[0-9a-f]{40}\\Z')
+SEMVER = re.compile(r'(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\Z')
+SOURCE_SHA = re.compile(r'[0-9a-f]{40}\Z')
 
 
 def _sha256(path: Path) -> str:
@@ -96,20 +96,20 @@ def prepare(cpanel_zip: Path, output_dir: Path, version: str, sha: str) -> dict:
             sidecar = output_dir / (archive.name + '.sha256')
             with sidecar.open('x', encoding='ascii') as stream:
                 created.append(sidecar)
-                stream.write(f'{digest}  {archive.name}\\n')
+                stream.write(f'{digest}  {archive.name}\n')
         with manifest.open('x', encoding='utf-8') as stream:
             created.append(manifest)
             json.dump(result, stream, indent=2, sort_keys=True)
-            stream.write('\\n')
+            stream.write('\n')
         with notes.open('x', encoding='utf-8') as stream:
             created.append(notes)
-            stream.write(f'# WalidSite v{version} — UNPUBLISHED candidate\\n\\n')
-            stream.write(f'Exact source SHA: `{sha}`. This candidate is **not a production release**.\\n\\n')
+            stream.write(f'# WalidSite v{version} — UNPUBLISHED candidate\n\n')
+            stream.write(f'Exact source SHA: `{sha}`. This candidate is **not a production release**.\n\n')
             stream.write('The Setup ZIP is byte-identical to the source-verified cPanel ZIP. '
-                         'The Update ZIP is code-only; it has **no publisher signature or trusted latest.json**.\\n\\n')
+                         'The Update ZIP is code-only; it has **no publisher signature or trusted latest.json**.\n\n')
             stream.write('Release blocked pending trusted publisher signing, compatible initial '
                          'cPanel layout, live browser install, Admin code apply, backup/restore '
-                         'and HTTPS staging smoke. Do not deploy this Update ZIP as a trusted release.\\n')
+                         'and HTTPS staging smoke. Do not deploy this Update ZIP as a trusted release.\n')
         return result
     except Exception:
         for path in reversed(created):
