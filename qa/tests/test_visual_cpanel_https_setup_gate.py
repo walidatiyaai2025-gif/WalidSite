@@ -16,6 +16,10 @@ CSRF = "A" * 40
 TOKEN = "f" * 64
 UNLOCK = '<form><input name="_token" value="' + CSRF + '"><input name="token"></form>'
 DATABASE = '<form><input name="db_database"></form>'
+FOODEX_WELCOME = ('<form action="https://localhost:18966/install/step/1">'
+                  '<input name="_token" value="' + CSRF + '"><input name="token"></form>')
+FOODEX_REQUIREMENTS = ('<form action="https://localhost:18966/install/step/2">'
+                       '<input name="_token" value="' + CSRF + '"></form>')
 
 
 class FirstRunHttpGateTest(unittest.TestCase):
@@ -80,7 +84,10 @@ class FirstRunHttpGateTest(unittest.TestCase):
                 with self.assertRaises(AcceptanceError):
                     csrf_from_html(bad)
 
-    def fake_client(self, *, failed_step=None, secret_leak=False, exposed_token_path=False):
+    def fake_client(self, *, failed_step=None, secret_leak=False, exposed_token_path=False,
+                    foodex_failed_step=None, foodex_secret_leak=False):
+        instances = 0
+
         class Cookie:
             name = "walidsite-session"
             secure = True
@@ -89,10 +96,13 @@ class FirstRunHttpGateTest(unittest.TestCase):
             origin = "https://localhost:18966"
             cookies = [Cookie()]
             def __init__(self, origin, ca_file):
+                nonlocal instances
+                instances += 1
+                self.mode = instances
                 self.n = 0
 
             def request(self, path, form=None):
-                responses = [
+                legacy_responses = [
                     ("/", 302, "/install", ""),
                     ("/admin/login", 302, "/install", ""),
                     *[(p, 404, "", "") for p in (
@@ -114,23 +124,45 @@ class FirstRunHttpGateTest(unittest.TestCase):
                     ("/setup", 200, "", DATABASE),
                     ("/setup?lang=ar", 200, "", '<html dir="rtl">' + DATABASE),
                 ]
+                foodex_responses = [
+                    ("/install", 200, "", FOODEX_WELCOME),
+                    ("/install/step/2", 403, "", "unauthorized"),
+                    ("/install/step/1", 302, "/install", "bad token"),
+                    ("/install", 200, "", FOODEX_WELCOME),
+                    ("/install/step/1", 302, "/install", "valid token"),
+                    ("/install", 200, "", FOODEX_REQUIREMENTS),
+                    ("/install/step/3", 409, "", "wrong stage"),
+                    ("/install", 200, "", FOODEX_REQUIREMENTS),
+                ]
+                responses = legacy_responses if self.mode == 1 else foodex_responses
                 expected, status, location, body = responses[self.n]
                 self.n += 1
                 assert path == expected
-                if failed_step == self.n:
-                    status = 200 if status != 200 else 403
-                if secret_leak and path == "/install":
-                    body += TOKEN
-                if exposed_token_path and path == "/storage/app/site-first-run.json":
-                    status = 200
-                    body = TOKEN
+                if self.mode == 1:
+                    if failed_step == self.n:
+                        status = 200 if status != 200 else 403
+                    if secret_leak and path == "/install":
+                        body += TOKEN
+                    if exposed_token_path and path == "/storage/app/site-first-run.json":
+                        status = 200
+                        body = TOKEN
+                else:
+                    if path == "/install/step/1":
+                        assert form is not None
+                        assert form.get("token") == ("invalid" if self.n == 3 else TOKEN)
+                    if foodex_failed_step == self.n:
+                        status = 200 if status != 200 else 403
+                    if foodex_secret_leak and path == "/install":
+                        body += TOKEN
                 return Response(status, self.origin + location if location else "", body)
         return Fake
 
     def test_mock_contract_success_remains_explicitly_non_production(self):
         with patch("qa.cpanel_https_setup_gate.Client", self.fake_client()):
             result = accept("https://localhost:18966", self.home, Path("ca.pem"))
-        self.assertGreaterEqual(result["http_checks_passed"], 14)
+        self.assertGreaterEqual(result["http_checks_passed"], 29)
+        self.assertIn("foodex_cannot_skip_requirements", result["checks"])
+        self.assertIn("foodex_valid_possession_advances", result["checks"])
         self.assertTrue(result["first_run_http_possession_verified"])
         for key in ("database_install_verified", "owner_activation_verified",
                     "browser_interaction_verified", "production_staging_verified",
@@ -142,6 +174,22 @@ class FirstRunHttpGateTest(unittest.TestCase):
         for args in ({"failed_step": 1}, {"failed_step": 14}, {"secret_leak": True}):
             with self.subTest(args=args):
                 with patch("qa.cpanel_https_setup_gate.Client", self.fake_client(**args)):
+                    with self.assertRaises(AcceptanceError):
+                        accept("https://localhost:18966", self.home, Path("ca.pem"))
+
+    def test_foodex_hostile_redirect_or_unexpected_progression_fails_closed(self):
+        for case in (
+            {"foodex_failed_step": 1},
+            {"foodex_failed_step": 2},
+            {"foodex_failed_step": 3},
+            {"foodex_failed_step": 5},
+            {"foodex_failed_step": 6},
+            {"foodex_failed_step": 7},
+            {"foodex_failed_step": 8},
+            {"foodex_secret_leak": True},
+        ):
+            with self.subTest(case=case):
+                with patch("qa.cpanel_https_setup_gate.Client", self.fake_client(**case)):
                     with self.assertRaises(AcceptanceError):
                         accept("https://localhost:18966", self.home, Path("ca.pem"))
 
