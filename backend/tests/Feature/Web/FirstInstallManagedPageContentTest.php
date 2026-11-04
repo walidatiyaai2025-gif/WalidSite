@@ -178,7 +178,7 @@ final class FirstInstallManagedPageContentTest extends TestCase
             $this->assertNull($row->published_by);
             $this->assertSame(1, $row->revision);
             $this->assertNull($row->draft_text);
-            $this->assertSame('', app(\\App\\Domain\\Content\\PageContentRepository::class)
+            $this->assertSame('', app(\App\Domain\Content\PageContentRepository::class)
                 ->publishedMap('home', $locale)['hero']['intro']);
             $this->get('/?lang='.$locale)->assertOk()->assertDontSee($original);
 
