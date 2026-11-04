@@ -23,7 +23,23 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from qa.build_cpanel_package import verify_archive
-from qa.cpanel_full_install_probe import Client, SetupFailure, csrf
+from qa.cpanel_full_install_probe import Client, SetupFailure, csrf, Inputs
+
+
+def authenticated_session_csrf(body: bytes) -> str:
+    """Extract one consistent current-session token from all owner forms."""
+    parser = Inputs()
+    try:
+        parser.feed(body.decode("utf-8", "strict"))
+    except UnicodeError as error:
+        raise SetupFailure("post_publish_owner_csrf_invalid_html") from None
+    tokens = [item.get("value") for item in parser.items
+              if item.get("name") == "_token"]
+    if (not tokens or any(not isinstance(token, str) for token in tokens)
+            or len(set(tokens)) != 1
+            or re.fullmatch(r"[A-Za-z0-9]{40,128}", tokens[0]) is None):
+        raise SetupFailure("post_publish_owner_csrf_missing_or_ambiguous")
+    return tokens[0]
 
 
 def post_publish_security(client: Client, guest: Client, application: Path,
@@ -74,12 +90,17 @@ def post_publish_security(client: Client, guest: Client, application: Path,
         check("anonymous_update_" + name + "_denied",
               denied(status, location))
 
-    # The completed first-run wizard must reject POST re-entry, not just GET.
+    # A forged CSRF token yields HTTP 419 *before* the installer lock can
+    # execute. Read the owner's actual session token from the three Admin
+    # Update forms so this assertion tests the installed-state gate itself.
+    owner_status, _, owner_html = client.call("/admin/updates")
+    check("owner_update_form_reachable", owner_status == 200)
+    session_token = authenticated_session_csrf(owner_html)
     for route, name in (
         ("/install/step/15", "foodex_reinstall"),
         ("/setup/finish", "legacy_reinstall"),
     ):
-        status, _, _ = client.call(route, {"_token": "x" * 40})
+        status, _, _ = client.call(route, {"_token": session_token})
         check(name + "_post_blocked", status == 404)
 
     # A Laravel fallback route must not accidentally serve private files.
