@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Web;
 
+use App\Domain\Deployment\TrustedReleaseCatalog;
 use App\Models\Role;
 use App\Models\User;
 use App\Support\Deployment\SiteInstaller;
@@ -290,6 +291,160 @@ class SiteMaintenanceTest extends TestCase
             ->assertSee('Unidentified')
             ->assertSee('Not verified')
             ->assertSee('Not available');
+    }
+
+    public function test_owner_can_check_real_ed25519_publisher_release_without_applying_code(): void
+    {
+        if (! function_exists('sodium_crypto_sign_detached')) {
+            $this->markTestSkipped('Ed25519 sodium extension required.');
+        }
+
+        $pair = sodium_crypto_sign_keypair();
+        $publicKey = base64_encode(sodium_crypto_sign_publickey($pair));
+        $payload = json_encode([
+            'product' => 'walidsite',
+            'version' => '1.2.0',
+            'source_sha' => str_repeat('a', 40),
+            'artifact_sha256' => str_repeat('b', 64),
+            'artifact_size' => 4096,
+            'min_php' => '8.3.0',
+            'artifact_file' => 'WalidSite-update-v1.2.0.zip',
+        ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+        $envelope = json_encode([
+            'payload' => base64_encode($payload),
+            'signature' => base64_encode(sodium_crypto_sign_detached(
+                $payload, sodium_crypto_sign_secretkey($pair),
+            )),
+        ], JSON_THROW_ON_ERROR);
+        $calls = 0;
+        $this->app->instance(TrustedReleaseCatalog::class, new TrustedReleaseCatalog(
+            static function (string $url, \Closure $write) use (&$calls, $envelope): int {
+                self::assertSame('https://updates.example.test/releases/latest.json', $url);
+                $calls++;
+                self::assertSame(strlen($envelope), $write($envelope));
+                return 200;
+            },
+        ));
+        config([
+            'site.updates_enabled' => true,
+            'site.trusted_installed_version' => '1.0.0',
+            'site.trusted_release_origin' => 'https://updates.example.test',
+            'site.trusted_release_public_key' => $publicKey,
+        ]);
+        $owner = User::create([
+            'email' => 'signed-check-owner@example.test',
+            'password_hash' => 'unused',
+            'status' => 'active',
+        ]);
+        $owner->roles()->attach(Role::firstOrCreate(['name' => 'owner'])->id);
+        $this->actingAs($owner);
+
+        // Loading the update panel must never trigger outbound discovery.
+        $this->get('/admin/updates?lang=en')->assertOk()
+            ->assertSee('Check for signed release (read-only)')
+            ->assertSee('data-testid="trusted-code-update-unavailable"', false)
+            ->assertDontSee('1.2.0');
+        $this->assertSame(0, $calls);
+        $this->post('/admin/updates/check?lang=ar')
+            ->assertRedirect('/admin/updates?lang=ar')
+            ->assertSessionHas('trusted_release_check.state', 'signed_release_available')
+            ->assertSessionHas('trusted_release_check.version', '1.2.0');
+        $this->assertSame(1, $calls);
+
+        $this->get('/admin/updates?lang=ar')->assertOk()
+            ->assertSee('dir="rtl"', false)
+            ->assertSee('data-testid="trusted-release-verified"', false)
+            ->assertSee('1.2.0')
+            ->assertSee(str_repeat('a', 40))
+            ->assertSee(str_repeat('b', 64))
+            ->assertDontSee('https://updates.example.test')
+            ->assertDontSee($publicKey)
+            ->assertDontSee($envelope)
+            ->assertDontSee('name="release_url"', false);
+    }
+
+    public function test_missing_publisher_trust_configuration_never_contacts_release_host(): void
+    {
+        $calls = 0;
+        $this->app->instance(TrustedReleaseCatalog::class, new TrustedReleaseCatalog(
+            static function () use (&$calls): int {
+                $calls++;
+                return 200;
+            },
+        ));
+        config([
+            'site.updates_enabled' => true,
+            'site.trusted_installed_version' => '',
+            'site.trusted_release_origin' => '',
+            'site.trusted_release_public_key' => '',
+        ]);
+        $owner = User::create([
+            'email' => 'signed-check-unconfigured@example.test',
+            'password_hash' => 'unused',
+            'status' => 'active',
+        ]);
+        $owner->roles()->attach(Role::firstOrCreate(['name' => 'owner'])->id);
+        $this->actingAs($owner)->post('/admin/updates/check?lang=en')
+            ->assertRedirect('/admin/updates?lang=en')
+            ->assertSessionHas('trusted_release_check.state', 'not_configured');
+        $this->assertSame(0, $calls);
+        $this->get('/admin/updates?lang=en')->assertOk()
+            ->assertSee('data-testid="trusted-release-not-configured"', false);
+    }
+
+    public function test_untrusted_catalog_fails_closed_and_hides_transport_error(): void
+    {
+        $calls = 0;
+        $this->app->instance(TrustedReleaseCatalog::class, new TrustedReleaseCatalog(
+            static function (string $url, \Closure $write) use (&$calls): int {
+                $calls++;
+                $write('private-signature-error-do-not-display');
+                return 200;
+            },
+        ));
+        config([
+            'site.updates_enabled' => true,
+            'site.trusted_installed_version' => '1.0.0',
+            'site.trusted_release_origin' => 'https://updates.example.test',
+            'site.trusted_release_public_key' => base64_encode(str_repeat('x', 32)),
+        ]);
+        $owner = User::create([
+            'email' => 'signed-check-untrusted@example.test',
+            'password_hash' => 'unused',
+            'status' => 'active',
+        ]);
+        $owner->roles()->attach(Role::firstOrCreate(['name' => 'owner'])->id);
+        $this->actingAs($owner)->post('/admin/updates/check?lang=en')
+            ->assertRedirect('/admin/updates?lang=en')
+            ->assertSessionHas('trusted_release_check.state', 'publisher_unverified');
+        $this->assertSame(1, $calls);
+        $this->get('/admin/updates?lang=en')->assertOk()
+            ->assertSee('data-testid="trusted-release-unverified"', false)
+            ->assertDontSee('private-signature-error-do-not-display')
+            ->assertDontSee('updates.example.test')
+            ->assertDontSee(base64_encode(str_repeat('x', 32)));
+    }
+
+    public function test_signed_release_check_restricts_owner_and_request_overrides(): void
+    {
+        $this->post('/admin/updates/check')->assertRedirect('/admin/login');
+        $user = User::create([
+            'email' => 'release-check-admin@example.test',
+            'password_hash' => 'unused',
+            'status' => 'active',
+        ]);
+        $user->roles()->attach(Role::firstOrCreate(['name' => 'admin'])->id);
+        $this->actingAs($user)->post('/admin/updates/check')->assertForbidden();
+
+        $user->roles()->attach(Role::firstOrCreate(['name' => 'owner'])->id);
+        $this->post('/admin/updates/check?lang=en', [
+            'release_url' => 'https://attacker.example.test/release.zip',
+            'publisher_public_key' => 'untrusted',
+        ])->assertSessionHasErrors('updates');
+        $this->post('/admin/updates/check?origin=https://attacker.example.test')
+            ->assertSessionHasErrors('updates');
+        $user->forceFill(['status' => 'suspended'])->save();
+        $this->post('/admin/updates/check?lang=ar')->assertForbidden();
     }
 
 }
