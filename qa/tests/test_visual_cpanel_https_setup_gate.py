@@ -71,7 +71,7 @@ class FirstRunHttpGateTest(unittest.TestCase):
 
     def fake_client(self, *, failed_step=None, secret_leak=False):
         class Cookie:
-            name = "laravel-session"
+            name = "walidsite-session"
             secure = True
             _rest = {"HttpOnly": None}
         class Fake:
