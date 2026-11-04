@@ -3,29 +3,92 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: Immutable version (e.g. 1.0.0)
+        description: 'Immutable SemVer candidate version (e.g. 1.2.3); never implies production acceptance'
         required: true
+        type: string
 permissions:
   contents: read
+  checks: read
 concurrency:
   group: release-main
   cancel-in-progress: false
 jobs:
-  release-gate:
+  release-candidates:
     runs-on: ubuntu-latest
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: main
-      - name: Validate release prerequisites
+          ref: ${{ github.sha }}
+      - name: Require exact current main SHA with successful CI and installer build
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TESTED_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = 'refs/heads/main'
+          test "$(git rev-parse HEAD)" = "$TESTED_SHA"
+          test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$TESTED_SHA"
+          gh api -H 'Accept: application/vnd.github+json' \
+            "repos/${GITHUB_REPOSITORY}/commits/${TESTED_SHA}/check-runs?per_page=100" \
+            | jq -e '(.check_runs | any(.name == "required-ci-gate" and .status == "completed" and .conclusion == "success")) and (.check_runs | any(.name == "build-cpanel-package" and .status == "completed" and .conclusion == "success"))' >/dev/null
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, xml, pdo_mysql, zip, sodium
+      - name: Install trusted production dependencies
         shell: bash
         run: |
-          test -n '${{ inputs.version }}'
-          test -f backend/composer.json
-          test -f mobile/pubspec.yaml
-          echo 'RELEASE GATE ONLY: no deployment/signing is assumed.'
-      - name: Deployment requires provisioned secrets and environment approvals
+          set -euo pipefail
+          cd backend
+          composer install --no-dev --prefer-dist --no-interaction --no-progress --optimize-autoloader
+          composer check-platform-reqs --no-dev
+      - name: Produce versioned Setup and Update inspection candidates
+        shell: bash
+        env:
+          CANDIDATE_VERSION: ${{ inputs.version }}
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist/candidates
+          python3 qa/build_cpanel_package.py \
+            --source . --output dist/WalidSite-cPanel.zip --sha "$SOURCE_SHA"
+          (cd dist && sha256sum --check WalidSite-cPanel.zip.sha256)
+          python3 qa/prepare_release_candidate.py \
+            --cpanel-zip dist/WalidSite-cPanel.zip \
+            --output-dir dist/candidates \
+            --version "$CANDIDATE_VERSION" --sha "$SOURCE_SHA" \
+            > dist/candidate-build-receipt.json
+          (cd dist/candidates && sha256sum --check ./*.sha256)
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          data = json.loads(Path('dist/candidate-build-receipt.json').read_text())
+          assert data['candidate_prepared'] is True
+          assert data['source_sha'] == os.environ['SOURCE_SHA']
+          assert data['production_ready'] is False
+          assert data['published'] is False
+          assert data['publisher_signature_verified'] is False
+          assert all(value is False for value in data['acceptance'].values())
+          assert not (Path('dist/candidates') / 'latest.json').exists()
+          PY
+      - name: Retain unpublished inspection candidates only
+        uses: actions/upload-artifact@v4
+        with:
+          name: WalidSite-UNPUBLISHED-candidates-${{ inputs.version }}-${{ github.sha }}
+          path: |
+            dist/candidates/*
+            dist/candidate-build-receipt.json
+          if-no-files-found: error
+          retention-days: 14
+  release-gate:
+    needs: release-candidates
+    runs-on: ubuntu-latest
+    steps:
+      - name: Block release until authorized staging and publisher acceptance
         shell: bash
         run: |
-          echo 'Provision staging/prod deploy steps only after T025 acceptance.'
+          echo 'BLOCKED EXTERNAL: no verified signed publisher release, first-install cPanel staging, Admin code-update/restore acceptance, or mobile production signing.'
+          echo 'Candidate artifacts are UNSIGNED and UNPUBLISHED; do not treat them as a release.'
           exit 1
