@@ -100,10 +100,22 @@ def inspect(apk: Path, *, kind: str, expected_id: str,
     permissions = sorted(set(PERMISSION.findall(perms.stdout)))
     if "android.permission.INTERNET" not in permissions:
         raise ApkAcceptanceError("Compiled APK is missing the required INTERNET permission")
+    # Both QA kinds must be cryptographically valid APKs. A QA signature is
+    # never evidence of store/distribution signing authority.
     signature = _command([apksigner, "verify", "--verbose", str(apk)])
-    if kind == "debug" and signature.returncode != 0:
-        raise ApkAcceptanceError("Debug APK signature verification failed")
-    sdks = dict((k, int(v)) for k, v in SDK.findall(badging.stdout))
+    if signature.returncode != 0:
+        raise ApkAcceptanceError("APK cryptographic signature verification failed")
+
+    # Do not certify a native build when its manifest omits, duplicates, or
+    # contradicts the actual minimum/target Android API levels.
+    sdk_fields = SDK.findall(badging.stdout)
+    if (len(sdk_fields) != 2
+            or {key for key, _ in sdk_fields} != {"sdkVersion", "targetSdkVersion"}):
+        raise ApkAcceptanceError("APK minimum/target SDK manifest is missing or ambiguous")
+    sdks = {key: int(value) for key, value in sdk_fields}
+    if (sdks["sdkVersion"] < 1 or sdks["targetSdkVersion"] < sdks["sdkVersion"]
+            or sdks["targetSdkVersion"] > 1000):
+        raise ApkAcceptanceError("APK minimum/target SDK manifest is inconsistent")
     return {
         "apk_integrity_verified": True,
         "apk_sha256": digest,
@@ -115,8 +127,8 @@ def inspect(apk: Path, *, kind: str, expected_id: str,
         "min_sdk": sdks.get("sdkVersion"),
         "target_sdk": sdks.get("targetSdkVersion"),
         "permissions": permissions,
-        "debug_signature_verified": kind == "debug" and signature.returncode == 0,
-        "apk_signature_cryptographically_valid": signature.returncode == 0,
+        "debug_signature_verified": kind == "debug",
+        "apk_signature_cryptographically_valid": True,
         "distribution_signing_identity_verified": False,
         "device_install_launch_verified": False,
         "ios_build_verified": False,

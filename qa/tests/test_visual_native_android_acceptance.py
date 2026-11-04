@@ -46,30 +46,61 @@ class NativeAndroidAcceptanceTest(unittest.TestCase):
         self.assertTrue(result["debug_signature_verified"])
         self.assertEqual(result["package_id"], self.args["expected_id"])
         self.assertEqual(result["permissions"], ["android.permission.INTERNET"])
+        self.assertEqual(result["min_sdk"], 23)
+        self.assertEqual(result["target_sdk"], 36)
         self.assertFalse(result["production_ready"])
         self.assertFalse(result["distribution_signing_identity_verified"])
         self.assertFalse(result["device_install_launch_verified"])
         self.assertEqual(result["source_sha_supplied_not_attested"], SHA)
 
-    def test_release_qa_requires_non_debuggable_but_not_distribution_signature(self):
+    def test_release_qa_requires_valid_signature_and_non_debuggable_manifest(self):
         def unsigned(args):
             if args[0] == "apksigner":
                 return CompletedProcess(args, 1, "", "DOES NOT VERIFY")
             return self.command(args)
+
         with patch("qa.native_android_acceptance._command", side_effect=unsigned):
+            with self.assertRaisesRegex(ApkAcceptanceError, "signature"):
+                inspect(self.apk, **{**self.args, "kind": "release-qa"})
+
+        with patch("qa.native_android_acceptance._command", side_effect=self.command):
             result = inspect(self.apk, **{**self.args, "kind": "release-qa"})
         self.assertTrue(result["apk_integrity_verified"])
-        self.assertFalse(result["apk_signature_cryptographically_valid"])
+        self.assertTrue(result["apk_signature_cryptographically_valid"])
+        self.assertFalse(result["debug_signature_verified"])
         self.assertFalse(result["production_ready"])
+        self.assertFalse(result["distribution_signing_identity_verified"])
 
         def debuggable(args):
             base = self.command(args)
             if args[0] == "aapt" and args[2] == "badging":
                 base.stdout += "application-debuggable\n"
             return base
+
         with patch("qa.native_android_acceptance._command", side_effect=debuggable):
-            with self.assertRaises(ApkAcceptanceError):
+            with self.assertRaisesRegex(ApkAcceptanceError, "debuggable"):
                 inspect(self.apk, **{**self.args, "kind": "release-qa"})
+
+    def test_missing_duplicated_zero_and_inverted_sdk_levels_fail_closed(self):
+        invalid = {
+            "missing_min": BADGING.replace("sdkVersion:'23'\n", ""),
+            "missing_target": BADGING.replace("targetSdkVersion:'36'\n", ""),
+            "duplicate_min": BADGING + "sdkVersion:'23'\n",
+            "duplicate_target": BADGING + "targetSdkVersion:'36'\n",
+            "zero_min": BADGING.replace("sdkVersion:'23'", "sdkVersion:'0'"),
+            "inverted": BADGING.replace("targetSdkVersion:'36'", "targetSdkVersion:'22'"),
+            "overflow": BADGING.replace("targetSdkVersion:'36'", "targetSdkVersion:'1001'"),
+        }
+        for name, badging in invalid.items():
+            with self.subTest(case=name):
+                def command(args):
+                    if args[0] == "aapt" and args[2] == "badging":
+                        return CompletedProcess(args, 0, badging, "")
+                    return self.command(args)
+
+                with patch("qa.native_android_acceptance._command", side_effect=command):
+                    with self.assertRaisesRegex(ApkAcceptanceError, "SDK"):
+                        inspect(self.apk, **self.args)
 
     def test_identity_version_and_permission_fail_closed(self):
         for key, value in (("expected_id", "com.other.site"),
