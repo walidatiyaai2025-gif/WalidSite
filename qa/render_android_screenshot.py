@@ -16,7 +16,7 @@ from pathlib import Path
 
 from PIL import Image, UnidentifiedImageError
 
-PACKAGE = "com.example.waleed_tech_companion"
+PACKAGE = "com.walidatiya.walidsite"
 # These must be *visible AppBar titles in the actual Flutter source*, not
 # off-screen home navigation cards. Require title in the top of the viewport.
 HEADINGS = {

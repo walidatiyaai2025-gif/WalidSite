@@ -13,7 +13,7 @@ or updates the visual ledger itself. Evidence is admitted only through
    Build and install the **actual** Flutter app with matching repository code
    on a controlled Android emulator/device (no production credentials or PII).
    The current Android ID in \`mobile/android/app/build.gradle.kts\` is
-   \`com.example.waleed_tech_companion\` (development only; not a release ID).
+   \`com.walidatiya.walidsite\` (source candidate; not proof of store-signing or release readiness).
 2. Use Android Platform Tools' \`adb\` and a **single explicitly identified**
    device serial; verify \`adb devices\` and \`adb -s SERIAL get-state\`. Launch
    the real app; navigate using the genuine Flutter UI to the desired screen.

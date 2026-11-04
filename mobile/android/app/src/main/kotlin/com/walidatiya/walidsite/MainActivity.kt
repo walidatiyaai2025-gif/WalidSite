@@ -1,4 +1,4 @@
-package com.example.waleed_tech_companion
+package com.walidatiya.walidsite
 
 import io.flutter.embedding.android.FlutterActivity
 

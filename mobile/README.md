@@ -54,7 +54,7 @@ verified online article content. Do not claim AI diagnosis or publish results.
 
 The Android main manifest now declares `android.permission.INTERNET` for **release** as well as debug/profile, because the verified article reader uses the approved HTTPS public API. The main application explicitly rejects cleartext traffic. No network request is made if the configured origin is absent.
 
-Release APK signing no longer falls back to Flutter's debug keystore: the release variant remains **unsigned until a verified store identity is installed securely**, not from a committed key. `com.example.waleed_tech_companion` remains a development-only application ID and must be replaced with an approved package ID before distribution. These changes do not imply an uploaded APK, production signing, iOS device smoke, or staging verification. `mobile/test/platform_security_test.dart` guards these native source constraints in Flutter CI.
+Release APK signing no longer falls back to Flutter's debug keystore: the release variant remains **unsigned until a verified store identity is installed securely**, not from a committed key. `com.walidatiya.walidsite` is now the source-defined candidate application ID; actual Play package ownership, distribution signing and existing debug-install data migration are **not verified**. These changes do not imply an uploaded APK, production signing, iOS device smoke, or staging verification. `mobile/test/platform_security_test.dart` guards these native source constraints in Flutter CI.
 
 ## T005 automatic device language (2026-11-01)
 
@@ -69,7 +69,7 @@ unsupported-language fallback.
 
 Validated the checked-in iOS runner on macOS 15.8.1 with Flutter 3.47.6 and Xcode 26.3. `flutter analyze` reported no issues; `flutter test` passed all 22 tests. Xcode built the simulator app with code signing disabled and `IPHONEOS_DEPLOYMENT_TARGET=13.0`; the app installed and launched on an iPhone 17 Pro / iOS 26.3 Simulator. The captured home screen is [`evidence/t005-ios-simulator-home-en.png`](evidence/t005-ios-simulator-home-en.png).
 
-This confirms a debug simulator build and launch against the checked-in iOS 13 target; it is not an iOS device build, release artifact, App Store signing, or staging smoke. Android's `com.example.waleed_tech_companion` and iOS's `com.example.waleedTechCompanion` remain development identifiers pending owner-approved production IDs. T005 remains open until those external release/staging gates are resolved.
+This confirms a debug simulator build and launch against the checked-in iOS 13 target; it is not an iOS device build, release artifact, App Store signing, or staging smoke. Android and iOS now share the source-defined candidate identity `com.walidatiya.walidsite`; Play/App Store ownership, distribution identities/signing and on-device upgrade behavior remain external release blockers. T005 remains open until those external release/staging gates are resolved.
 
 ## T013 signed offline snapshot sync — operational contract
 

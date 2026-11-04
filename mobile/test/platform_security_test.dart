@@ -24,6 +24,24 @@ void main() {
     );
   });
 
+  test('Android and iOS use the same non-placeholder candidate identity', () {
+    const id = 'com.walidatiya.walidsite';
+    final gradle = File('android/app/build.gradle.kts').readAsStringSync();
+    final activity = File(
+      'android/app/src/main/kotlin/com/walidatiya/walidsite/MainActivity.kt',
+    ).readAsStringSync();
+    final ios = File('ios/Runner.xcodeproj/project.pbxproj').readAsStringSync();
+
+    expect(gradle, contains('namespace = "$id"'));
+    expect(gradle, contains('applicationId = "$id"'));
+    expect(gradle, isNot(contains('com.example.')));
+    expect(activity, contains('package $id'));
+    expect(activity, contains('class MainActivity : FlutterActivity()'));
+    expect(ios, contains('PRODUCT_BUNDLE_IDENTIFIER = $id;'));
+    expect(ios, contains('PRODUCT_BUNDLE_IDENTIFIER = $id.RunnerTests;'));
+    expect(ios, isNot(contains('com.example.')));
+  });
+
   test('Android release never inherits development debug signing', () {
     final buildScript = File(
       'android/app/build.gradle.kts',
