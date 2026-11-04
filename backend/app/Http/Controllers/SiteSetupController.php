@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Support\Deployment\SiteInstaller;
+use App\Support\Deployment\SetupPreflight;
 use App\Support\Deployment\DatabaseConfiguration;
 use App\Support\Deployment\SiteUpdater;
 use Illuminate\Http\RedirectResponse;
@@ -34,7 +35,7 @@ final class SiteSetupController extends Controller
         abort_unless($request->session()->get('site_setup_authorized') === true, 403);
     }
 
-    public function show(Request $request, SiteInstaller $installer, SiteUpdater $updater, DatabaseConfiguration $database): View
+    public function show(Request $request, SiteInstaller $installer, SiteUpdater $updater, DatabaseConfiguration $database, SetupPreflight $preflightService): View
     {
         $this->guard($installer);
         $unlocked = $request->session()->get('site_setup_authorized') === true;
@@ -55,8 +56,11 @@ final class SiteSetupController extends Controller
             && $status['ready'] && $status['pending'] === [];
         $step = ! $unlocked ? 'unlock' : ((! $configured || $connectionFailed) ? 'configure' : ($migrated ? 'owner' : 'database'));
         $ownerEmail = $migrated ? $installer->ownerEmail() : null;
+        // Never publish host details until private first-install possession is verified.
+        $preflight = $unlocked ? $preflightService->inspect($request) : [];
+        $preflightReady = $unlocked && $preflightService->readyForInstallation($preflight);
 
-        return view('setup.wizard', compact('step', 'status', 'ownerEmail', 'connectionFailed', 'historyMismatch'));
+        return view('setup.wizard', compact('step', 'status', 'ownerEmail', 'connectionFailed', 'historyMismatch', 'preflight', 'preflightReady'));
     }
 
     public function unlock(Request $request, SiteInstaller $installer): RedirectResponse

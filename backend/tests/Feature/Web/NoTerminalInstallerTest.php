@@ -4,6 +4,7 @@ namespace Tests\Feature\Web;
 
 use App\Support\Deployment\DatabaseConfiguration;
 use App\Support\Deployment\FirstRunBootstrap;
+use App\Support\Deployment\SetupPreflight;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Mockery;
 use Tests\TestCase;
@@ -68,6 +69,52 @@ class NoTerminalInstallerTest extends TestCase
             ->assertSee('name="token"', false)
             ->assertDontSee(str_repeat('q', 64));
         $this->get('http://127.0.0.1/setup')->assertOk();
+    }
+
+    public function test_owner_unlocked_setup_shows_actual_host_preflight_without_exposing_secrets(): void
+    {
+        $token = str_repeat('z', 40);
+        config([
+            'site.setup_enabled' => true,
+            'site.setup_token' => $token,
+            'site.setup_database_ready' => false,
+        ]);
+        $this->get('https://localhost/setup')->assertOk()
+            ->assertDontSee('data-testid="hosting-preflight"', false)
+            ->assertDontSee($token);
+
+        $this->post('https://localhost/setup/unlock', ['token' => $token])->assertRedirect('/setup');
+        $this->get('https://localhost/setup')->assertOk()
+            ->assertSee('data-testid="hosting-preflight"', false)
+            ->assertSee('PHP 8.3 or newer')
+            ->assertSee('Production Composer dependencies')
+            ->assertSee('Private storage, cache and environment are writable')
+            ->assertSee('ZIP extension for future Admin updates')
+            ->assertDontSee($token)
+            ->assertDontSee('APP_KEY=base64:');
+        $this->get('https://localhost/setup?lang=ar')->assertOk()
+            ->assertSee('فحص الاستضافة قبل التثبيت')
+            ->assertSee('صلاحيات مجلدات التخزين والكاش والإعدادات');
+    }
+
+    public function test_required_host_checks_block_install_but_future_zip_is_advisory(): void
+    {
+        $preflight = new SetupPreflight();
+        $request = \Illuminate\Http\Request::create('https://localhost/setup', 'GET');
+        $checks = $preflight->inspect($request);
+        $this->assertArrayHasKey('permissions', $checks);
+        $this->assertArrayHasKey('private_root', $checks);
+        $this->assertArrayHasKey('https', $checks);
+        $checks['php']['ok'] = false;
+        $this->assertFalse($preflight->readyForInstallation($checks));
+        $checks['php']['ok'] = true;
+        $checks['zip']['ok'] = false;
+        // ZipArchive is a later signed-update requirement, not a dependency
+        // for the initial owner activation on a cPanel host.
+        $this->assertSame(
+            $preflight->readyForInstallation($checks),
+            $preflight->readyForInstallation(array_replace_recursive($checks, ['zip' => ['ok' => true]])),
+        );
     }
 
     public function test_browser_wizard_accepts_database_settings_without_terminal_or_env_upload(): void
