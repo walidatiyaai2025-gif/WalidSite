@@ -45,12 +45,12 @@ final class AdminSignedUpdateUploadTest extends TestCase
         $pub = base64_encode(sodium_crypto_sign_publickey($pair));
         $payload = json_encode([
             'product' => 'walidsite',
-            'version' => '0.1.1',
+            'version' => '0.1.2',
             'source_sha' => str_repeat('a', 40),
             'artifact_sha256' => hash_file('sha256', $zipFile),
             'artifact_size' => filesize($zipFile),
             'min_php' => '8.3.0',
-            'artifact_file' => 'WalidSite-update-v0.1.1.zip',
+            'artifact_file' => 'WalidSite-update-v0.1.2.zip',
         ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
         $envelope = json_encode([
             'payload' => base64_encode($payload),
@@ -87,17 +87,17 @@ final class AdminSignedUpdateUploadTest extends TestCase
             $this->assertMatchesRegularExpression('/^[a-f0-9]{32}$/D', $id);
             $this->get('https://localhost/admin/updates')->assertOk()
                 ->assertSee('data-testid="owner-signed-upload-verified"', false)
-                ->assertSee('0.1.1')
+                ->assertSee('0.1.2')
                 ->assertSee(str_repeat('a', 40))
                 ->assertDontSee($pub)
                 ->assertDontSee($envelope);
-            $this->assertSame('0.1.0', trim(file_get_contents(base_path('VERSION'))));
+            $this->assertSame('0.1.1', trim(file_get_contents(base_path('VERSION'))));
         } finally {
             $id = session('verified_owner_update_inbox');
             if (is_string($id) && preg_match('/^[a-f0-9]{32}$/D', $id)) {
                 $root = storage_path('app/private/verified-updates/'.$id);
                 @unlink($root.'/receipt.json');
-                @unlink($root.'/WalidSite-update-v0.1.1.zip');
+                @unlink($root.'/WalidSite-update-v0.1.2.zip');
                 @rmdir($root);
                 @rmdir(storage_path('app/private/verified-updates'));
             }
