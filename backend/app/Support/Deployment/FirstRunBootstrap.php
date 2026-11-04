@@ -71,7 +71,15 @@ final class FirstRunBootstrap
                     || ($stagedStat['mode'] & 0077) !== 0 || $stagedStat['nlink'] !== 1) {
                     throw new RuntimeException('Private first-run state staging is unsafe.');
                 }
-                if (! @link($staged, $path) && ! is_file($path)) {
+                $published = @link($staged, $path);
+                if ($published) {
+                    // Keep the original installer permission contract explicit.
+                    // The staged inode is already 0600; only chmod a newly
+                    // published file, never a preexisting competing worker's.
+                    if (! chmod($path, 0600)) {
+                        throw new RuntimeException('Cannot protect published first-run state.');
+                    }
+                } elseif (! is_file($path)) {
                     // Never fall back to a non-atomic fopen on the final path.
                     throw new RuntimeException('Atomic private first-run state is unsupported by this host.');
                 }
