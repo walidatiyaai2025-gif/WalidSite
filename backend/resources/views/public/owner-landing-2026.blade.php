@@ -88,8 +88,21 @@
 .w26-ribbon-icon{color:#75f7eb;font-size:2.85cqw;min-width:2.8cqw;text-align:center;line-height:1.1}
 .w26-ribbon strong{font-size:1.05cqw;line-height:1.25;display:block;white-space:nowrap}
 .w26-ribbon small{font-size:.68cqw;line-height:1.5;display:block;color:#f1f9ff;margin-top:.4cqw}
-.w26-languages{position:absolute;right:1.8%;top:44%;z-index:8;font-size:.8cqw}
-.w26-languages a{color:#1c5392;text-decoration:underline;text-underline-offset:3px;font-weight:800}
+.w26-languages{position:absolute;left:56%;top:2.65%;z-index:8;font-size:.92cqw}
+.w26-locale-form{margin:0;display:inline-flex;align-items:center}
+.w26-locale-group{border:.08cqw solid #bed9e9;border-radius:99px;padding:.15cqw;display:inline-flex;gap:.12cqw;background:rgba(255,255,255,.91);box-shadow:0 .17cqw .55cqw #0b35651c}
+.w26-locale-group legend{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.w26-locale-choice{display:inline-flex;position:relative;cursor:pointer;align-items:center}
+.w26-locale-choice input{position:absolute;width:1px;height:1px;opacity:0;inset:50% auto auto 50%}
+.w26-locale-choice span{display:inline-flex;align-items:center;gap:.35em;padding:.39em .68em;border-radius:99px;white-space:nowrap;font-weight:850;line-height:1.1;color:#21557e;min-height:2.25em}
+.w26-locale-choice span::before{content:'';width:.86em;height:.86em;border:1.7px solid #3385ad;background:white;border-radius:50%;box-sizing:border-box;flex-shrink:0}
+.w26-locale-choice input:checked + span{background:#096bc3;color:white}
+.w26-locale-choice input:checked + span::before{border:2px solid white;box-shadow:inset 0 0 0 2px #096bc3;background:white}
+.w26-locale-choice input:focus-visible + span{outline:3px solid #005f99;outline-offset:2px}
+.w26-locale-choice:hover span{box-shadow:inset 0 0 0 1px #0c8bbd}
+.w26-locale-apply{border:1px solid #bed9e9;border-radius:99px;background:white;color:#075c9a;cursor:pointer}
+.w26-mobile-languages .w26-locale-group{font-size:12px;border-width:1px;padding:2px;gap:2px}
+.w26-mobile-languages .w26-locale-choice span{padding:6px 8px;min-height:32px}
 .w26-landing[dir=rtl] .w26-headline{direction:rtl;text-align:right}
 .w26-landing[dir=rtl] .w26-intro{line-height:1.7}
 .w26-landing[dir=rtl] .w26-ribbon{direction:rtl}
@@ -100,7 +113,7 @@
  .w26-mobile{display:block;background:radial-gradient(circle at 90% 10%,#cfecff,#fafdff 55%,#e5f6ff);padding:24px 20px 30px;overflow:hidden}
  .w26-mobile-header{display:flex;justify-content:space-between;gap:14px;align-items:center}
  .w26-mobile-logo{font-size:42px;font-weight:900;line-height:1;background:linear-gradient(115deg,#0074f2,#00b6ac);background-clip:text;-webkit-background-clip:text;color:transparent}
- .w26-mobile-header strong{font-size:17px}.w26-mobile-header a{font-size:14px;font-weight:750;color:#0759b0}
+ .w26-mobile-header strong{font-size:17px;white-space:nowrap}.w26-mobile-header a{font-size:14px;font-weight:750;color:#0759b0}
  .w26-mobile-hero{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,.9fr);gap:8px;align-items:center;padding-top:24px}
  .w26-mobile-hero h1{font-size:clamp(35px,7vw,64px);line-height:1.05;letter-spacing:-.05em;margin:0 0 12px}
  .w26-mobile-hero h1 span{color:#077dec}
@@ -114,7 +127,7 @@
  .w26-mobile-nav a{background:#103659;color:#fff;text-decoration:none;padding:16px;border-radius:16px;font-size:15px;font-weight:800;min-height:68px;display:flex;align-items:center}
  .w26-mobile-note{color:#335775;font-size:13px;margin-top:18px}
 }
-@media(max-width:480px){.w26-mobile-hero{grid-template-columns:1fr}.w26-mobile-photo{max-height:280px}.w26-mobile-hero h1{font-size:42px}}
+@media(max-width:480px){.w26-mobile-hero{grid-template-columns:1fr}.w26-mobile-photo{max-height:280px}.w26-mobile-hero h1{font-size:42px}.w26-mobile-header{gap:6px}.w26-mobile-header strong{font-size:14px}.w26-mobile-languages .w26-locale-group{font-size:11px}.w26-mobile-languages .w26-locale-choice span{padding:5px 6px}}
 @media(prefers-reduced-motion:reduce){.w26-landing *{scroll-behavior:auto}}
 </style>
 <div class="w26-landing" dir="{{ $w26Ar ? 'rtl' : 'ltr' }}">
@@ -156,7 +169,16 @@
         <div class="w26-proof" aria-label="{{ $w26Ar ? 'مراجع العمل' : 'Public work and learning tracks' }}">
             <span>{{ $w26Ar ? 'مشاريع موثقة' : 'Verified projects' }}</span><span>{{ $w26Ar ? 'أدلة تقنية' : 'Technical guides' }}</span>
         </div>
-        <div class="w26-languages"><a href="{{ route('home', ['lang' => $w26Ar ? 'en' : 'ar']) }}" hreflang="{{ $w26Ar ? 'en' : 'ar' }}">{{ $w26Ar ? 'English' : 'العربية' }}</a></div>
+        <div class="w26-languages" data-testid="home-header-locale">
+            <form class="w26-locale-form" method="get" action="{{ route('home') }}" onchange="this.requestSubmit()">
+                <fieldset class="w26-locale-group" aria-label="{{ $w26Ar ? 'لغة الموقع' : 'Site language' }}">
+                    <legend>{{ $w26Ar ? 'لغة الموقع' : 'Site language' }}</legend>
+                    <label class="w26-locale-choice" for="w26-desktop-en"><input type="radio" name="lang" id="w26-desktop-en" value="en" @checked(!$w26Ar)><span lang="en">EN</span></label>
+                    <label class="w26-locale-choice" for="w26-desktop-ar"><input type="radio" name="lang" id="w26-desktop-ar" value="ar" @checked($w26Ar)><span lang="ar">عربي</span></label>
+                </fieldset>
+                <noscript><button class="w26-locale-apply" type="submit">{{ $w26Ar ? 'تغيير اللغة' : 'Apply' }}</button></noscript>
+            </form>
+        </div>
         <div class="w26-devices">
             <a class="w26-laptop" href="{{ route('public.projects', ['lang' => $locale]) }}" aria-label="{{ $w26Ar ? 'استكشف المشاريع ودراسات الحالة' : 'Explore projects and case studies' }}">
                 <div class="w26-laptop-screen"><div class="w26-laptop-nav"><strong>W Waleed Atiya</strong><span>Home　 About　 Expertise　 Projects　 AI Lab</span></div>
@@ -188,7 +210,18 @@
         </nav>
     </section>
     <section class="w26-mobile" aria-labelledby="w26-mobile-title">
-        <div class="w26-mobile-header"><div style="display:flex;align-items:center;gap:10px"><span class="w26-mobile-logo" aria-hidden="true">W</span><strong>Waleed Atiya</strong></div><a href="{{ route('home', ['lang' => $w26Ar ? 'en' : 'ar']) }}">{{ $w26Ar ? 'English' : 'العربية' }}</a></div>
+        <div class="w26-mobile-header"><div style="display:flex;align-items:center;gap:10px"><span class="w26-mobile-logo" aria-hidden="true">W</span><strong>{{ $w26Ar ? 'وليد عطية' : 'Waleed Atiya' }}</strong></div>
+            <div class="w26-mobile-languages" data-testid="home-mobile-header-locale">
+                <form class="w26-locale-form" method="get" action="{{ route('home') }}" onchange="this.requestSubmit()">
+                    <fieldset class="w26-locale-group" aria-label="{{ $w26Ar ? 'لغة الموقع' : 'Site language' }}">
+                        <legend>{{ $w26Ar ? 'لغة الموقع' : 'Site language' }}</legend>
+                        <label class="w26-locale-choice" for="w26-mobile-en"><input type="radio" name="lang" id="w26-mobile-en" value="en" @checked(!$w26Ar)><span lang="en">EN</span></label>
+                        <label class="w26-locale-choice" for="w26-mobile-ar"><input type="radio" name="lang" id="w26-mobile-ar" value="ar" @checked($w26Ar)><span lang="ar">عربي</span></label>
+                    </fieldset>
+                    <noscript><button class="w26-locale-apply" type="submit">{{ $w26Ar ? 'تغيير اللغة' : 'Apply' }}</button></noscript>
+                </form>
+            </div>
+        </div>
         <div class="w26-mobile-hero"><div><h1 id="w26-mobile-title">Waleed <span>Atiya</span></h1><p>{{ $w26Copy['mobile']['description'] ?? ($w26Ar ? 'هندسة التقنية المؤسسية وحلول الذكاء الاصطناعي' : 'Enterprise Technology & AI Solutions Architecture') }}</p></div>
             <figure class="w26-mobile-photo"><img src="{{ route('public.owner-portrait') }}" alt="{{ $w26Ar ? 'الصورة الشخصية الأصلية المعتمدة لوليد عطية' : 'Approved real portrait of Waleed Atiya' }}" loading="lazy" width="640" height="760"></figure></div>
         <div class="w26-mobile-actions"><a href="{{ route('public.projects', ['lang' => $locale]) }}">{{ $w26Ar ? 'استكشف المشاريع' : 'Explore projects' }}</a><a href="{{ route('public.ai-engineering', ['lang' => $locale]) }}">{{ $w26Ar ? 'هندسة الذكاء الاصطناعي' : 'AI Engineering' }}</a></div>
