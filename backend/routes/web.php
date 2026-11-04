@@ -228,6 +228,8 @@ Route::middleware('auth:web')->group(function (): void {
         ->whereUuid('entry')->name('admin.page-content.draft')->middleware('throttle:20,1');
     Route::post('/admin/page-content/{entry}/publish', [\App\Http\Controllers\AdminPageContentController::class, 'publish'])
         ->whereUuid('entry')->name('admin.page-content.publish')->middleware('throttle:10,1');
+    Route::post('/admin/page-content/{entry}/retract', [\App\Http\Controllers\AdminPageContentController::class, 'retract'])
+        ->whereUuid('entry')->name('admin.page-content.retract')->middleware('throttle:10,1');
 
     Route::get('/admin', function (Request $request) {
         abort_unless($request->user()?->canAccessAdmin(), 403);
