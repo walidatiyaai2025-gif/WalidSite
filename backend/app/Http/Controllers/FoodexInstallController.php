@@ -233,7 +233,7 @@ final class FoodexInstallController extends Controller
 
                 case 13:
                     $key = (string) config('app.key');
-                    $env = base_path('.env');
+                    $env = (string) config('site.environment_path');
                     if (! preg_match('/^base64:[A-Za-z0-9+\/]{43}=$/D', $key)
                         || ! is_file($env) || is_link($env) || ! is_readable($env)
                         || ! str_contains((string) file_get_contents($env), 'APP_KEY=')) {
