@@ -45,6 +45,31 @@ class Web01HomeScreenAcceptanceTest extends TestCase
         }
     }
 
+    public function test_owner_home_radio_language_is_beside_brand_on_desktop_and_mobile(): void
+    {
+        foreach (['ar', 'en'] as $locale) {
+            $page = $this->get('/?lang='.$locale)->assertOk()
+                ->assertSee('data-testid="home-header-locale"', false)
+                ->assertSee('data-testid="home-mobile-header-locale"', false)
+                ->assertSee('name="lang" id="w26-desktop-en" value="en"', false)
+                ->assertSee('name="lang" id="w26-desktop-ar" value="ar"', false)
+                ->assertSee('name="lang" id="w26-mobile-en" value="en"', false)
+                ->assertSee('name="lang" id="w26-mobile-ar" value="ar"', false)
+                ->assertSee('class="w26-locale-choice"', false)
+                ->assertSee('onchange="this.requestSubmit()"', false)
+                ->assertSee('action="'.route('home').'"', false)
+                ->assertSee('aria-label="'.($locale === 'ar' ? 'لغة الموقع' : 'Site language').'"', false);
+            // Every viewport has a real keyboard-operable native radio group;
+            // the active locale is selected by the rendered HTTP query.
+            $page->assertSee('value="'.$locale.'" checked', false)
+                ->assertSee('name="lang" id="w26-desktop-en"', false)
+                ->assertSee('name="lang" id="w26-mobile-ar"', false);
+        }
+        $this->get('/?lang=unexpected')->assertOk()
+            ->assertSee('value="en" checked', false)
+            ->assertSee('lang="en"', false);
+    }
+
     public function test_owner_landing_uses_approved_portrait_not_design_screenshot_as_an_image(): void
     {
         $this->get('/?lang=en')->assertOk()
