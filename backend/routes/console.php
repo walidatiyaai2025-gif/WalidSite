@@ -195,3 +195,46 @@ Artisan::command('legacy:import-content {file} {--apply}', function () {
 
     return $report['rejected_count'] === 0 ? 0 : 2;
 })->purpose('Dry-run or apply a bounded allowlist-only legacy content SQL export');
+
+
+/*
+ * MOBILE-05/06: explicit publisher-only reviewed runbook export.
+ * This is NOT a public HTTP endpoint and does not deploy a signed pack.
+ * The Ed25519 private key comes only from the publisher's process environment.
+ */
+Artisan::command('runbooks:prepare-signed {--id=*}', function () {
+    $ids = $this->option('id');
+    $secret = getenv('WALIDSITE_RUNBOOK_SIGNING_KEY_B64');
+    if (! is_array($ids) || $ids === [] || count($ids) > 20
+        || ! is_string($secret) || $secret === '') {
+        $this->error('Publisher signing unavailable; supply reviewed UUIDs and a private process key.');
+        return 1;
+    }
+
+    $root = storage_path('app/private');
+    $directory = $root.DIRECTORY_SEPARATOR.'runbook-publisher';
+    if (! is_dir($root) || is_link($root)
+        || (is_link($directory)
+            || (! is_dir($directory) && ! @mkdir($directory, 0700)))) {
+        $this->error('Secure private publisher destination unavailable.');
+        return 1;
+    }
+
+    try {
+        $publisher = app(\App\Support\Runbooks\SignedPublishedRunbookPublisher::class);
+        $candidate = $publisher->prepare($ids, $secret);
+        $receipt = $publisher->storePrivate($candidate, $directory);
+        $this->line('Private signed runbook candidate prepared; NOT published.');
+        $this->line('Filename: '.$receipt['file']);
+        $this->line('SHA-256: '.$receipt['sha256']);
+        return 0;
+    } catch (\Throwable $exception) {
+        \Illuminate\Support\Facades\Log::warning('runbooks.publisher.rejected', [
+            'type' => $exception::class,
+        ]);
+        // Never reveal key, reviewed private text, source URL or filesystem
+        // details even when invoked through shared-host terminal logging.
+        $this->error('Signed runbook candidate rejected; nothing was published.');
+        return 1;
+    }
+})->purpose('Prepare an immutable, private Ed25519-signed pack of already published runbook UUIDs');
