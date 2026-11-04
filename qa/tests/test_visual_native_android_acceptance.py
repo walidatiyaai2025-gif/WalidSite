@@ -307,7 +307,7 @@ class NativeAndroidAcceptanceTest(unittest.TestCase):
 
     def test_compiled_permission_inventory_accepts_only_reviewed_baseline(self):
         internal = self.args["expected_id"] + ".DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
-        reviewed = PERMISSIONS + "uses-permission: name='" + internal + "'\\n"
+        reviewed = PERMISSIONS + "uses-permission: name='" + internal + "'\n"
 
         def approved(argv):
             if argv[0] == "aapt" and argv[2] == "permissions":
@@ -337,7 +337,7 @@ class NativeAndroidAcceptanceTest(unittest.TestCase):
                     calls.append(argv[0])
                     if argv[0] == "aapt" and argv[2] == "permissions":
                         return CompletedProcess(argv, 0,
-                            PERMISSIONS + "uses-permission: name='" + unexpected + "'\\n", "")
+                            PERMISSIONS + "uses-permission: name='" + unexpected + "'\n", "")
                     return self.command(argv)
                 with patch("qa.native_android_acceptance._command", side_effect=tampered):
                     with self.assertRaisesRegex(ApkAcceptanceError, "unapproved Android permissions"):
