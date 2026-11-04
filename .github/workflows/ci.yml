@@ -96,6 +96,9 @@ jobs:
           composer validate --strict
           composer install --no-interaction --prefer-dist --no-progress
           php artisan test
+      - name: Verify missing-key real HTTP first boot
+        if: ${{ hashFiles('backend/composer.json') != '' }}
+        run: python3 qa/cpanel_first_run_http_probe.py --app-root backend
       - name: MariaDB migration and owner CV idempotency smoke
         if: ${{ hashFiles('backend/composer.json') != '' }}
         shell: bash
@@ -442,6 +445,7 @@ jobs:
           unzip -t dist/WalidSite-cPanel.zip
           (cd dist && sha256sum --check WalidSite-cPanel.zip.sha256)
           python3 -c 'from pathlib import Path; from qa.build_cpanel_package import verify_archive; import os; verify_archive(Path("dist/WalidSite-cPanel.zip"), os.environ["GITHUB_SHA"])'
+          python3 qa/cpanel_first_run_http_probe.py --cpanel-zip dist/WalidSite-cPanel.zip
       - uses: actions/upload-artifact@v4
         with:
           name: WalidSite-cPanel-installer
