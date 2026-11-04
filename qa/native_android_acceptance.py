@@ -10,6 +10,10 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
+import stat
+import tempfile
+from contextlib import contextmanager
 import re
 import subprocess
 import sys
@@ -93,6 +97,55 @@ def _inspect_zip(path: Path) -> str:
     return checksum.hexdigest()
 
 
+
+def _fingerprint(info: os.stat_result) -> tuple[int, int, int, int, int]:
+    return (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+
+
+@contextmanager
+def _frozen_apk(path: Path):
+    """Freeze one regular APK before invoking any Android SDK process.
+
+    Native tools only see the private snapshot, never a mutable input name.
+    Reject source replacement or mutation before returning verified metadata.
+    """
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+    try:
+        descriptor = os.open(path, flags)
+    except OSError as exc:
+        raise ApkAcceptanceError("Cannot pin a regular APK source") from exc
+    try:
+        before = os.fstat(descriptor)
+        if (path.is_symlink() or not stat.S_ISREG(before.st_mode)
+                or not 0 < before.st_size <= MAX_APK_BYTES):
+            raise ApkAcceptanceError("Unsafe or unbounded APK source")
+        with tempfile.TemporaryDirectory(prefix="walidsite-native-qa-") as directory:
+            frozen = Path(directory) / "frozen.apk"
+            total = 0
+            with frozen.open("xb") as dest:
+                os.chmod(frozen, 0o600)
+                while block := os.read(descriptor, 1024 * 1024):
+                    total += len(block)
+                    if total > MAX_APK_BYTES:
+                        raise ApkAcceptanceError("APK source exceeded bounded copy")
+                    dest.write(block)
+                dest.flush()
+                os.fsync(dest.fileno())
+            if total != before.st_size or _fingerprint(os.fstat(descriptor)) != _fingerprint(before):
+                raise ApkAcceptanceError("APK source changed while being frozen")
+            yield frozen
+            try:
+                after = os.stat(path, follow_symlinks=False)
+            except OSError as exc:
+                raise ApkAcceptanceError("APK source vanished during verification") from exc
+            if _fingerprint(after) != _fingerprint(before):
+                raise ApkAcceptanceError("APK source changed during native verification")
+            if _inspect_zip(path) != _inspect_zip(frozen):
+                raise ApkAcceptanceError("APK source bytes differ from verified snapshot")
+    finally:
+        os.close(descriptor)
+
+
 def inspect(apk: Path, *, kind: str, expected_id: str,
             expected_version: str, expected_code: int, source_sha: str,
             aapt: str = "aapt", apksigner: str = "apksigner") -> dict:
@@ -107,6 +160,17 @@ def inspect(apk: Path, *, kind: str, expected_id: str,
     if kind == "release-qa" and expected_id.lower().startswith(
             ("com.example.", "org.example.", "net.example.")):
         raise ApkAcceptanceError("Release QA requires a real non-placeholder Android package ID")
+    original = apk.absolute()
+    with _frozen_apk(original) as frozen:
+        return _inspect_frozen(frozen, kind=kind, expected_id=expected_id,
+                               expected_version=expected_version, expected_code=expected_code,
+                               source_sha=source_sha, aapt=aapt, apksigner=apksigner)
+
+
+def _inspect_frozen(apk: Path, *, kind: str, expected_id: str,
+                    expected_version: str, expected_code: int, source_sha: str,
+                    aapt: str, apksigner: str) -> dict:
+    """Every SDK invocation observes exactly the frozen, privately copied APK."""
     apk = apk.absolute()
     digest = _inspect_zip(apk)
     badging = _command([aapt, "dump", "badging", str(apk)])

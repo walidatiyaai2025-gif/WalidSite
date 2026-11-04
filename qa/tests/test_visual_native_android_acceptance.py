@@ -257,5 +257,53 @@ class NativeAndroidAcceptanceTest(unittest.TestCase):
         self.assertFalse(json.loads(output.getvalue())["production_ready"])
 
 
+    def test_native_tools_inspect_only_one_private_snapshot_and_clean_it(self):
+        inspected = []
+        def observe(argv):
+            source = Path(argv[-1])
+            inspected.append(source)
+            self.assertNotEqual(source, self.apk)
+            self.assertTrue(source.is_file())
+            self.assertEqual(source.stat().st_mode & 0o777, 0o600)
+            self.assertEqual(source.parent.stat().st_mode & 0o777, 0o700)
+            self.assertEqual(source.read_bytes(), self.apk.read_bytes())
+            return self.command(argv)
+
+        with patch("qa.native_android_acceptance._command", side_effect=observe):
+            receipt = inspect(self.apk, **self.args)
+        self.assertEqual(len(inspected), 3)
+        self.assertEqual(len(set(inspected)), 1)
+        self.assertFalse(inspected[0].exists(), "Private APK snapshot leaked after verification")
+        self.assertTrue(receipt["apk_integrity_verified"])
+
+    def test_source_swap_then_restore_between_native_tools_is_rejected(self):
+        initial = self.apk.read_bytes()
+        changed = False
+        snapshots = []
+        def swap_back(argv):
+            nonlocal changed
+            snapshot = Path(argv[-1])
+            snapshots.append(snapshot)
+            self.assertNotEqual(snapshot, self.apk)
+            self.assertEqual(snapshot.read_bytes(), initial)
+            if argv[0] == "aapt" and argv[2] == "badging":
+                with zipfile.ZipFile(self.apk, "w") as archive:
+                    archive.writestr("AndroidManifest.xml", b"unverified changed manifest")
+                    archive.writestr("classes.dex", b"unverified changed code")
+                changed = True
+            elif argv[0] == "apksigner":
+                self.apk.write_bytes(initial)
+            return self.command(argv)
+
+        with patch("qa.native_android_acceptance._command", side_effect=swap_back):
+            with self.assertRaisesRegex(ApkAcceptanceError, "source changed"):
+                inspect(self.apk, **self.args)
+        self.assertTrue(changed)
+        self.assertEqual(self.apk.read_bytes(), initial)
+        self.assertEqual(len(set(snapshots)), 1)
+        self.assertFalse(snapshots[0].exists())
+
+
+
 if __name__ == "__main__":
     unittest.main()
