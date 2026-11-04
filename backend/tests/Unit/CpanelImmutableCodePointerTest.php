@@ -13,6 +13,7 @@ final class CpanelImmutableCodePointerTest extends TestCase
     private string $candidate;
     private string $front;
     private string $sha;
+    private string $maintenanceToken;
 
     protected function setUp(): void
     {
@@ -46,6 +47,8 @@ final class CpanelImmutableCodePointerTest extends TestCase
         file_put_contents($this->candidate.'/public_html/assets/icons/new.svg', '<svg/>');
         file_put_contents($this->candidate.'/public_html/assets/technology-logos/LICENSE', 'MIT');
         file_put_contents($this->candidate.'/public_html/assets/technology-logos/ATTRIBUTION.md', 'Review');
+        $this->maintenanceToken = (new \App\Domain\Deployment\CpanelReleaseMaintenance())
+            ->begin($this->home, 'legacy', '0.1.1')['token'];
     }
 
     protected function tearDown(): void
@@ -71,6 +74,7 @@ final class CpanelImmutableCodePointerTest extends TestCase
         return [
             $this->home, $this->candidate, '0.1.2', $this->sha,
             $this->front,
+            $this->maintenanceToken,
             $maintenance ?? static fn (): bool => true,
             $recovery ?? static fn (): bool => true,
             $signed ?? static fn (): bool => true,
@@ -128,6 +132,25 @@ final class CpanelImmutableCodePointerTest extends TestCase
                 $this->assertFileDoesNotExist($this->home.'/.walidsite-active-release.json');
             }
         }
+    }
+
+    public function test_foreign_or_expired_maintenance_lease_cannot_switch_code(): void
+    {
+        $args = $this->args();
+        $args[5] = str_repeat('0', 64);
+        try {
+            (new CpanelImmutableCodePointer())->activate(...$args);
+            $this->fail('Foreign maintenance token accepted');
+        } catch (DomainException) {
+            $this->assertFileDoesNotExist($this->home.'/.walidsite-active-release.json');
+        }
+
+        $path = $this->home.'/.walidsite-update-maintenance.json';
+        $json = json_decode((string) file_get_contents($path), true);
+        $json['expires_at'] = time() - 1;
+        file_put_contents($path, json_encode($json));
+        $this->expectException(DomainException::class);
+        (new CpanelImmutableCodePointer())->activate(...$this->args());
     }
 
     public function test_untrusted_public_dispatcher_is_rejected(): void
