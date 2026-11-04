@@ -68,7 +68,7 @@ void main() {
     final decoded = jsonDecode(pageJson()) as Map<String, dynamic>;
     final rows = decoded['data'] as List<dynamic>;
     final entry = rows.single as Map<String, dynamic>;
-    for (final wrongId in ['', 'database-restore', '../admin', '0' * 36]) {
+    for (final wrongId in ['', 'database-restore', '../admin', '000000000000000000000000000000000000']) {
       entry['id'] = wrongId;
       expect(() => VerifiedArticlePage.parse(jsonEncode(decoded), 1),
           throwsFormatException, reason: 'unverified article UUID');
