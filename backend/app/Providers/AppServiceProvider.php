@@ -40,8 +40,21 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('site-setup-unlock', static fn (Request $request) =>
             Limit::perMinute(5)->by('site-setup-unlock|'.$request->ip())
         );
-        RateLimiter::for('site-setup-actions', static fn (Request $request) =>
-            Limit::perMinute(12)->by('site-setup-actions|'.$request->ip())
-        );
+        RateLimiter::for('site-setup-actions', static function (Request $request): Limit {
+            // Both first-run entrypoints share the same strict possession-
+            // token attempt budget. Fifteen ordinary wizard NEXT actions must
+            // not exhaust that budget after the token was validated.
+            if ($request->is('install/step/1')) {
+                return Limit::perMinute(5)->by('site-setup-unlock|'.$request->ip());
+            }
+            if ($request->hasSession()
+                && $request->session()->get('site_setup_authorized') === true) {
+                // A possession-verified owner can finish all fifteen stages
+                // without a spurious 429. The authenticated bucket is still
+                // rate-limited, and cannot be exhausted by anonymous traffic.
+                return Limit::perMinute(30)->by('site-setup-authorized|'.$request->ip());
+            }
+            return Limit::perMinute(12)->by('site-setup-actions|'.$request->ip());
+        });
     }
 }
