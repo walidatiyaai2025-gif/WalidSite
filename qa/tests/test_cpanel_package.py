@@ -30,6 +30,7 @@ class TestCpanelPackage(unittest.TestCase):
             "backend/artisan": "<?php",
             "backend/composer.json": "{}",
             "backend/composer.lock": '{"packages":[]}',
+            "backend/VERSION": "0.1.0\n",
             "backend/.env.example": "APP_KEY=",
             "backend/.env": "PRIVATE_SECRET=never-ship",
             "backend/database/dump.sql": "private schema",
@@ -54,7 +55,7 @@ class TestCpanelPackage(unittest.TestCase):
             names = set(zip.namelist())
             for name in (
                 "application/vendor/autoload.php", "application/composer.lock",
-                "application/.env.example", "contracts/owner-cv-baseline.json",
+                "application/.env.example", "application/VERSION", "contracts/owner-cv-baseline.json",
                 "public_html/index.php", "public_html/.htaccess",
                 "public_html/assets/portraits/portrait-light-derived.jpg",
                 "public_html/assets/icons/briefcase.svg",
@@ -76,6 +77,8 @@ class TestCpanelPackage(unittest.TestCase):
             self.assertIn("usePublicPath(__DIR__)", public_index)
             info = json.loads(zip.read("PACKAGE-MANIFEST.json"))
             self.assertEqual(info["source_sha"], "a" * 40)
+            self.assertEqual(info["version"], "0.1.0")
+            self.assertEqual(zip.read("application/VERSION"), b"0.1.0\n")
             self.assertFalse(info["secrets_included"])
             self.assertEqual(len(info["files"]), len(names)-1)
 
@@ -86,6 +89,18 @@ class TestCpanelPackage(unittest.TestCase):
         (self.root / "backend/composer.lock").unlink()
         with self.assertRaisesRegex(ValueError, "composer.lock"):
             build(self.root, self.output, "b" * 40)
+
+    def test_semver_is_validated_and_pinned_to_the_package_manifest(self):
+        build(self.root, self.output, "c" * 40)
+        version = self.root / "backend/VERSION"
+        for invalid in ("latest", "01.2.3", "1.0.0-beta", "1.0.0; rm -rf /"):
+            version.write_text(invalid + "\n", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "SemVer"):
+                build(self.root, self.output, "c" * 40)
+        version.write_text("0.1.0\n", encoding="ascii")
+        version.unlink()
+        with self.assertRaisesRegex(ValueError, "VERSION"):
+            build(self.root, self.output, "c" * 40)
 
     def test_checksum_sidecar_and_verified_manifest_match_every_payload(self):
         result = build(self.root, self.output, "e" * 40)
