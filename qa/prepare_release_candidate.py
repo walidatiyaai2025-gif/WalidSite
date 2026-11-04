@@ -50,6 +50,11 @@ def prepare(cpanel_zip: Path, output_dir: Path, version: str, sha: str) -> dict:
     # Verify every source file hash, required private guards and source SHA
     # BEFORE emitting artifacts. Valid ZIP CRC alone is not sufficient.
     original_manifest = verify_archive(cpanel_zip, sha)
+    # The release name must be the application's own attested SemVer, not
+    # arbitrary operator input. The cPanel verifier binds application/VERSION
+    # byte-for-byte to the manifest before we reach this check.
+    if original_manifest.get('version') != version:
+        raise ValueError('Candidate version does not match verified source VERSION')
     created: list[Path] = []
     try:
         with cpanel_zip.open('rb') as incoming, setup.open('xb') as outgoing:
