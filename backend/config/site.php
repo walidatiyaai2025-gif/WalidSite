@@ -15,4 +15,11 @@ return [
     'updates_enabled' => (bool) env('SITE_UPDATES_ENABLED', true),
     'auto_migrate' => (bool) env('SITE_AUTO_MIGRATE', false),
     'release_ref' => (string) env('SITE_RELEASE_REF', 'unidentified'),
+
+    // Pinned trust policy: the PUBLIC verification key and publisher origin
+    // are server-only configuration, never sourced from an HTTP parameter.
+    // Empty defaults disable discovery safely; they never authorize Apply.
+    'trusted_installed_version' => (string) env('SITE_TRUSTED_INSTALLED_VERSION', ''),
+    'trusted_release_origin' => (string) env('SITE_TRUSTED_RELEASE_ORIGIN', ''),
+    'trusted_release_public_key' => (string) env('SITE_TRUSTED_RELEASE_PUBLIC_KEY', ''),
 ];
