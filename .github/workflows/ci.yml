@@ -507,12 +507,27 @@ jobs:
           mkdir -p dist/unsigned-check
           python3 -m qa.build_trusted_update_release --cpanel-zip "$package" --output-dir dist/unsigned-check --version "$version" --sha "$source_sha" > dist/unsigned-check/receipt.json
           python3 -c 'import json; r=json.load(open("dist/unsigned-check/receipt.json")); assert r["update_artifact_prepared"] is True and r["publisher_signature_verified"] is False'
+          (cd dist/unsigned-check && sha256sum "WalidSite-update-v${version}.zip" > "WalidSite-update-v${version}.zip.sha256")
+          (cd dist/unsigned-check && sha256sum --check "WalidSite-update-v${version}.zip.sha256")
+          # NO SIGNATURE: this is an isolated inspection artifact, not an
+          # executable Admin update or a published release.
+          printf '%s\n' 'UNSIGNED INSPECTION ONLY — DO NOT INSTALL ON A LIVE SITE.' \
+            'The Super Admin Update ZIP endpoint requires an Ed25519 publisher-signed' \
+            'catalog and verified host recovery/cutover. This candidate cannot satisfy' \
+            'those security gates and cannot replace currently installed PHP code.' \
+            > dist/unsigned-check/DO-NOT-INSTALL.txt
       - uses: actions/upload-artifact@v4
         with:
           name: WalidSite-Setup-installer
           path: dist/WalidSite-Setup-v*.zip*
           if-no-files-found: error
           retention-days: 30
+      - uses: actions/upload-artifact@v4
+        with:
+          name: WalidSite-UNSIGNED-update-INSPECTION
+          path: dist/unsigned-check/*
+          if-no-files-found: error
+          retention-days: 14
 
   build-android-qa-apk:
     # Real native compilation, not the existing Flutter analyzer/widget suite.
