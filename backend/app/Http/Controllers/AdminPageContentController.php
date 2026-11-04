@@ -154,6 +154,50 @@ final class AdminPageContentController extends Controller
         return $this->backTo($entry, $request, 'Reviewed page copy published.');
     }
 
+    /**
+     * Withdraw a currently published text slot without resurrecting the
+     * original static first-install fallback. An empty published_text is a
+     * deliberate tombstone, distinct from a missing/unseeded NULL slot:
+     * PageContentRepository includes non-NULL texts and the existing public
+     * Blade templates use the null-coalescing operator for defaults.
+     *
+     * This does not change frozen public templates or publish a pending draft.
+     */
+    public function retract(Request $request, SitePageText $entry): RedirectResponse
+    {
+        $this->owner($request);
+        abort_unless(PageContentDefaults::isAllowed(
+            $entry->page_key, $entry->section_key, $entry->field_key, $entry->locale
+        ), 404);
+        $data = $request->validate([
+            'revision'=>['required','integer','min:0'],
+            'source_note'=>['required','string','min:12','max:240'],
+        ]);
+
+        DB::transaction(function () use ($entry, $data, $request): void {
+            $row = SitePageText::query()->whereKey($entry->id)->lockForUpdate()->firstOrFail();
+            abort_unless($row->revision === (int) $data['revision'], 409);
+            if ($row->published_at === null || $row->published_text === null
+                || $row->published_text === '') {
+                throw ValidationException::withMessages([
+                    'published_text'=>'No currently published page copy to retract.',
+                ]);
+            }
+
+            $before = $row->published_text;
+            $row->forceFill([
+                'published_text'=>'',
+                'published_at'=>null,
+                'published_by'=>null,
+                'revision'=>$row->revision+1,
+            ])->save();
+            // Audit records only the old public text's SHA-256, not the content.
+            $this->event($row, $request, 'retracted', $before, null, trim($data['source_note']));
+        }, 3);
+
+        return $this->backTo($entry, $request, 'Published page copy withdrawn. Drafts remain private.');
+    }
+
     private function event(
         SitePageText $row, Request $request, string $action,
         ?string $before, ?string $after, ?string $note
