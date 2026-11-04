@@ -27,8 +27,9 @@ class FakeResponse:
 
 
 class FakeOpener:
-    def __init__(self, override=None):
+    def __init__(self, override=None, redirect_location=None):
         self.override = override or {}
+        self.redirect_location = redirect_location or {}
         self.requested = []
         self.responses = []
 
@@ -40,6 +41,10 @@ class FakeOpener:
         if body is None:
             body = json.dumps({"data": {} if spec.data_type is dict else []}).encode()
         response = FakeResponse(code, "application/json" if kind == "json" else "text/html", body)
+        if spec.redirect_to is not None:
+            response.headers["Location"] = self.redirect_location.get(
+                path, "https://staging.example.com" + spec.redirect_to
+            )
         self.responses.append(response)
         if code >= 400:
             raise HTTPError(request.full_url, code, "blocked", response.headers, response)
@@ -68,10 +73,10 @@ class StagingSmokeTest(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     staging_origin(url)
 
-    def test_all_nine_live_endpoints_are_read_only_and_expected_responses_count(self):
+    def test_all_eleven_live_endpoints_are_read_only_and_expected_responses_count(self):
         fake = FakeOpener()
         receipt = permitted_run("https://staging.example.com", fake)
-        self.assertEqual(len(receipt["checks"]), 9)
+        self.assertEqual(len(receipt["checks"]), 11)
         self.assertTrue(receipt["http_smoke_passed"])
         self.assertFalse(receipt["production_ready"])
         self.assertFalse(receipt["deployment_release_sha_verified"])
@@ -88,6 +93,8 @@ class StagingSmokeTest(unittest.TestCase):
             ("/", (302, "html", None)),
             ("/admin/login", (404, "html", None)),
             ("/setup", (200, "html", None)),
+            ("/install", (200, "html", None)),
+            ("/admin/updates", (200, "html", None)),
             ("/api/v1/mobile/me", (200, "json", b'{"data": {}}')),
             ("/api/v1/admin/dashboard", (403, "json", b'{"message": "forbidden"}')),
         ]:
@@ -95,6 +102,34 @@ class StagingSmokeTest(unittest.TestCase):
                 report = permitted_run("https://staging.example.com", FakeOpener({path: override}))
                 self.assertFalse(report["http_smoke_passed"])
                 self.assertEqual([x["path"] for x in report["checks"] if not x["passed"]], [path])
+
+    def test_owner_updates_redirect_must_be_exact_same_origin_login(self):
+        """Guest Admin must not pass via a 302 to a remote or wrong target."""
+        for expected in ("/admin/login", "https://staging.example.com/admin/login"):
+            with self.subTest(valid=expected):
+                fake = FakeOpener(redirect_location={"/admin/updates": expected})
+                report = permitted_run("https://staging.example.com", fake)
+                self.assertTrue(report["http_smoke_passed"])
+                self.assertEqual(fake.requested[-1][0],
+                                 "https://staging.example.com/api/v1/admin/dashboard")
+
+        for unsafe in (
+            "", "//evil.example.com/admin/login",
+            "https://evil.example.com/admin/login",
+            "http://staging.example.com/admin/login",
+            "https://staging.example.com/admin/login?next=%2Fadmin%2Fupdates",
+            "/admin/login/../updates", "/admin/login?next=/admin/updates",
+        ):
+            with self.subTest(unsafe=unsafe):
+                report = permitted_run(
+                    "https://staging.example.com",
+                    FakeOpener(redirect_location={"/admin/updates": unsafe}),
+                )
+                failures = [x for x in report["checks"] if not x["passed"]]
+                self.assertEqual(len(failures), 1)
+                self.assertEqual(failures[0]["path"], "/admin/updates")
+                self.assertEqual(failures[0]["reason"], "unsafe_or_unexpected_redirect")
+                self.assertFalse(report["http_smoke_passed"])
 
     def test_public_json_payloads_must_have_matching_data_shape(self):
         for override in [
@@ -119,7 +154,7 @@ class StagingSmokeTest(unittest.TestCase):
 
         report = permitted_run("https://staging.example.com", Offline())
         self.assertFalse(report["http_smoke_passed"])
-        self.assertEqual(len(report["checks"]), 9)
+        self.assertEqual(len(report["checks"]), 11)
         self.assertNotIn("leak-this-host-auth-token", json.dumps(report))
         self.assertTrue(all(x["observed_status"] is None for x in report["checks"]))
 
