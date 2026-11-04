@@ -16,6 +16,11 @@
 .article-content{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.9;color:var(--wa-body)}
 .ed-form :is(input,select,button):focus-visible{outline:3px solid var(--wa-primary);outline-offset:3px}
 .ed-more{display:inline-flex;align-items:center;min-height:44px;margin-top:12px;font-weight:800;text-underline-offset:3px}.ed-preview-note{display:block;color:var(--wa-body);font-size:14px;margin-top:6px}
+.ed-search-pagination{display:flex;align-items:center;justify-content:center;gap:clamp(12px,3vw,24px);flex-wrap:wrap;margin-block:24px}
+.ed-search-pagination a{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:8px 18px;border-radius:10px;border:1px solid var(--wa-soft-border);font-weight:800;background:#fff;text-decoration:none}
+.ed-search-pagination a:focus-visible{outline:3px solid var(--wa-primary);outline-offset:3px}
+.ed-search-pagination [aria-current="page"]{font-weight:700;color:var(--wa-body)}
+
 </style>
 @endpush
 @section('content')
@@ -83,6 +88,17 @@
 <a class="ed-more" href="{{ route('public.projects', ['lang' => $locale, 'q' => $search]) }}">{{ $locale === 'ar' ? 'استعراض جميع المشاريع المطابقة' : 'Browse all matching projects' }}</a>
 </section>
 @endif
+@endif
+@if($search !== '' && $totalPages > 1)
+<nav class="ed-search-pagination" aria-label="{{ $locale === 'ar' ? 'صفحات نتائج البحث الموثقة' : 'Verified search result pages' }}" data-testid="verified-search-pagination">
+@if($page > 1)
+<a rel="prev" href="{{ route('public.search', ['lang' => $locale, 'q' => $search, 'type' => $type, 'page' => $page - 1]) }}">{{ $locale === 'ar' ? 'السابق' : 'Previous' }}</a>
+@endif
+<span aria-current="page">{{ $locale === 'ar' ? 'صفحة' : 'Page' }} {{ $page }} {{ $locale === 'ar' ? 'من' : 'of' }} {{ $totalPages }}</span>
+@if($page < $totalPages)
+<a rel="next" href="{{ route('public.search', ['lang' => $locale, 'q' => $search, 'type' => $type, 'page' => $page + 1]) }}">{{ $locale === 'ar' ? 'التالي' : 'Next' }}</a>
+@endif
+</nav>
 @endif
 </section>
 @endsection
