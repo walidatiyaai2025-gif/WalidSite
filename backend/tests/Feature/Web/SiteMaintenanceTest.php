@@ -114,6 +114,59 @@ class SiteMaintenanceTest extends TestCase
         $this->get('/')->assertOk();
     }
 
+    public function test_missing_install_marker_does_not_reopen_setup_for_suspended_owner_or_revoked_admin(): void
+    {
+        config([
+            'site.setup_enabled' => true,
+            'site.setup_token' => str_repeat('k', 40),
+            'site.install_lock_path' => storage_path('app/site-test-absent-'.bin2hex(random_bytes(8)).'.lock'),
+        ]);
+
+        $owner = User::create([
+            'email' => 'suspended-owner@example.test',
+            'password_hash' => Hash::make('An-existing-owner-password-123!'),
+            'status' => 'suspended',
+        ]);
+        $owner->roles()->attach(Role::firstOrCreate(['name' => 'owner'])->id);
+
+        $this->assertTrue(app(SiteInstaller::class)->isInstalled());
+        $this->get('/setup')->assertNotFound();
+        $this->get('/')->assertOk();
+        $this->post('/setup/unlock', ['token' => str_repeat('k', 40)])
+            ->assertNotFound();
+
+        // Revoking the role cannot unlock setup while an existing account
+        // still has a password. First-install credentials must never
+        // overwrite or reset an old/suspended user's database.
+        $owner->roles()->detach();
+        $this->assertTrue(app(SiteInstaller::class)->isInstalled());
+        $this->get('/setup?lang=ar')->assertNotFound();
+        $this->post('/setup/database')->assertNotFound();
+        $this->post('/setup/finish', [
+            'password' => 'Unexpected-new-owner-password-123!',
+            'password_confirmation' => 'Unexpected-new-owner-password-123!',
+        ])->assertNotFound();
+    }
+
+    public function test_unactivated_owner_placeholder_without_credentials_does_not_block_initial_setup(): void
+    {
+        config([
+            'site.setup_enabled' => true,
+            'site.setup_token' => str_repeat('p', 40),
+            'site.install_lock_path' => storage_path('app/site-test-absent-'.bin2hex(random_bytes(8)).'.lock'),
+        ]);
+        // The approved CV seeder may prepare a non-active identity without
+        // a password. The guard must not treat that draft as a prior install.
+        User::create([
+            'email' => 'placeholder@example.test',
+            'password_hash' => null,
+            'status' => 'pending',
+        ]);
+
+        $this->assertFalse(app(SiteInstaller::class)->isInstalled());
+        $this->get('/setup')->assertOk()->assertSee('Server setup token');
+    }
+
     public function test_update_center_is_owner_only_and_reports_real_migration_status(): void
     {
         $this->get('/admin/updates')->assertRedirect('/admin/login');

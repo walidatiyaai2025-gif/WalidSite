@@ -24,9 +24,20 @@ final class SiteInstaller
         }
 
         try {
-            // Refuse to re-bootstrap a database with an existing administrator
-            // even when a lock file was accidentally removed.
-            return Schema::hasTable('users') && Schema::hasTable('role_user')
+            // Match complete(): any credentialed account means this database
+            // was initialized already, even if the owner was later suspended,
+            // deleted from roles, or the filesystem install marker disappeared.
+            // A new, unactivated owner CV seed with NULL password is not an
+            // installed site; the existing active-admin guard remains as
+            // defense in depth for a partially configured account.
+            if (! Schema::hasTable('users')) {
+                return false;
+            }
+            if (User::query()->whereNotNull('password_hash')->exists()) {
+                return true;
+            }
+
+            return Schema::hasTable('role_user')
                 && User::query()->where('status', 'active')
                     ->whereHas('roles', static fn ($q) => $q->whereIn('name', ['owner', 'admin']))
                     ->exists();
