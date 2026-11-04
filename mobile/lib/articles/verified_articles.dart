@@ -418,12 +418,20 @@ class VerifiedArticleReader {
   }
 }
 
+typedef ArticleCategoryPageLoader = Future<VerifiedArticlePage> Function(
+    int page, String? category);
+typedef ArticleLoginAction = Future<String> Function(String email, String password);
+typedef ArticleSaveAction = Future<void> Function(String bearer, String articleId);
+
 class VerifiedArticleLibrary extends StatefulWidget {
   const VerifiedArticleLibrary({
     required this.arabic,
     this.loader,
     this.pageLoader,
+    this.categoryPageLoader,
     this.detailLoader,
+    this.loginAction,
+    this.saveAction,
     super.key,
   });
 
@@ -434,6 +442,10 @@ class VerifiedArticleLibrary extends StatefulWidget {
 
   // Injectable verified page source for deterministic pagination tests.
   final Future<VerifiedArticlePage> Function(int page)? pageLoader;
+  /// Must query the server using this selected category on EVERY page.
+  final ArticleCategoryPageLoader? categoryPageLoader;
+  final ArticleLoginAction? loginAction;
+  final ArticleSaveAction? saveAction;
 
   // Injected only by widget tests. Production always refetches the current
   // publication through the verified server detail endpoint.
@@ -447,6 +459,7 @@ class _VerifiedArticleLibraryState extends State<VerifiedArticleLibrary> {
   late Future<VerifiedArticlePage> _firstPage;
   List<VerifiedArticle> _additional = const [];
   String _query = '';
+  String? _category;
   String? _nextError;
   bool _loadingNext = false;
   bool _loadedAdditional = false;
@@ -465,8 +478,10 @@ class _VerifiedArticleLibraryState extends State<VerifiedArticleLibrary> {
     super.didUpdateWidget(oldWidget);
     if (widget.arabic != oldWidget.arabic ||
         widget.loader != oldWidget.loader ||
-        widget.pageLoader != oldWidget.pageLoader) {
+        widget.pageLoader != oldWidget.pageLoader ||
+        widget.categoryPageLoader != oldWidget.categoryPageLoader) {
       _query = '';
+      _category = null;
       _refresh();
     }
   }
@@ -480,7 +495,9 @@ class _VerifiedArticleLibraryState extends State<VerifiedArticleLibrary> {
     _hasMoreAfterAdditional = false;
     _nextPage = 2;
 
-    if (widget.pageLoader != null) {
+    if (widget.categoryPageLoader != null) {
+      _firstPage = widget.categoryPageLoader!(1, _category);
+    } else if (widget.pageLoader != null) {
       _firstPage = widget.pageLoader!(1);
     } else if (widget.loader != null) {
       _firstPage = widget.loader!().then(
@@ -491,7 +508,8 @@ class _VerifiedArticleLibraryState extends State<VerifiedArticleLibrary> {
         ),
       );
     } else if (VerifiedArticleReader.configuredOrigin() != null) {
-      _firstPage = const VerifiedArticleReader().loadPage(widget.arabic, 1);
+      _firstPage = const VerifiedArticleReader()
+          .loadPage(widget.arabic, 1, category: _category);
     } else {
       // The unavailable view is authoritative when no origin was provided.
       // Never start a failing Future during initState for an unconfigured app.
@@ -516,9 +534,12 @@ class _VerifiedArticleLibraryState extends State<VerifiedArticleLibrary> {
     try {
       final first = await _firstPage;
       final requested = _nextPage;
-      final next = await (widget.pageLoader != null
-          ? widget.pageLoader!(requested)
-          : const VerifiedArticleReader().loadPage(widget.arabic, requested));
+      final next = await (widget.categoryPageLoader != null
+          ? widget.categoryPageLoader!(requested, _category)
+          : widget.pageLoader != null
+              ? widget.pageLoader!(requested)
+              : const VerifiedArticleReader()
+                  .loadPage(widget.arabic, requested, category: _category));
       if (generation != _generation || !mounted) return;
       if (next.currentPage != requested ||
           (next.hasMorePages && next.articles.isEmpty)) {
@@ -586,7 +607,12 @@ class _VerifiedArticleLibraryState extends State<VerifiedArticleLibrary> {
     final ar = widget.arabic;
     final configured = widget.loader != null ||
         widget.pageLoader != null ||
+        widget.categoryPageLoader != null ||
         VerifiedArticleReader.configuredOrigin() != null;
+    final supportsCategories = widget.categoryPageLoader != null ||
+        (widget.loader == null &&
+            widget.pageLoader == null &&
+            VerifiedArticleReader.configuredOrigin() != null);
 
     return Scaffold(
       appBar: AppBar(title: Text(ar ? 'المقالات التقنية' : 'Technical articles')),
@@ -630,7 +656,8 @@ class _VerifiedArticleLibraryState extends State<VerifiedArticleLibrary> {
                   ...first.articles,
                   ..._additional,
                 ];
-                if (articles.isEmpty) {
+                if (articles.isEmpty && (_category == null ||
+                    !supportsCategories || first.categories.isEmpty)) {
                   return Center(child: Text(ar
                       ? 'لا توجد مقالات منشورة وموثقة حاليًا.'
                       : 'No source-verified articles have been published yet.'));
@@ -656,6 +683,40 @@ class _VerifiedArticleLibraryState extends State<VerifiedArticleLibrary> {
 
                 return Column(
                   children: [
+                    if (supportsCategories && first.categories.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                        child: DropdownButtonFormField<String>(
+                          key: const Key('article-category-filter'),
+                          value: first.categories.any((item) => item.slug == _category)
+                              ? _category : '',
+                          decoration: InputDecoration(
+                            labelText: ar ? 'تصنيف المقالات' : 'Article category',
+                            border: const OutlineInputBorder(),
+                          ),
+                          items: [
+                            DropdownMenuItem(
+                              value: '',
+                              child: Text(ar ? 'كل التصنيفات' : 'All categories'),
+                            ),
+                            for (final item in first.categories)
+                              DropdownMenuItem(
+                                value: item.slug,
+                                child: Text(item.name),
+                              ),
+                          ],
+                          onChanged: (value) {
+                            final selected = value == null || value.isEmpty
+                                ? null : value;
+                            if (selected == _category) return;
+                            setState(() {
+                              _category = selected;
+                              _query = '';
+                              _refresh();
+                            });
+                          },
+                        ),
+                      ),
                     Padding(
                       padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
                       child: TextField(
@@ -716,6 +777,8 @@ class _VerifiedArticleLibraryState extends State<VerifiedArticleLibrary> {
                                           slug: article.slug,
                                           arabic: ar,
                                           loader: widget.detailLoader,
+                                          loginAction: widget.loginAction,
+                                          saveAction: widget.saveAction,
                                         ),
                                       ),
                                     ),
