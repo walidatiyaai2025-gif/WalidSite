@@ -12,8 +12,10 @@ import datetime as dt
 import ipaddress
 import json
 import re
+import time
 import sys
 from dataclasses import dataclass
+from http.client import HTTPException
 from pathlib import Path
 from typing import Protocol
 from urllib.error import HTTPError, URLError
@@ -104,6 +106,42 @@ def staging_origin(value: str) -> str:
     return "https://" + host + (":443" if port == 443 else "")
 
 
+class JsonBodyDeadlineExceeded(TimeoutError):
+    """The staging response has exceeded its allowed JSON-body wall time."""
+
+
+def _read_bounded_json_body(response: object, timeout: int) -> bytes:
+    """Consume JSON without waiting for a fixed-size exact-byte socket read.
+
+    HTTPResponse.read(n) can wait for all n bytes and a slow-drip peer can
+    prolong that indefinitely under a per-socket inactivity timeout. read1()
+    performs at most one buffered read, permitting monotonic deadline checks
+    between fragments. This covers the JSON body only: opening the HTTPS
+    connection and parsing headers still use the opener's socket timeout.
+    """
+    deadline = time.monotonic() + timeout
+    body = bytearray()
+    read_once = getattr(response, "read1", None)
+    while len(body) <= MAX_JSON_BYTES:
+        if time.monotonic() >= deadline:
+            raise JsonBodyDeadlineExceeded()
+        remaining = MAX_JSON_BYTES + 1 - len(body)
+        if callable(read_once):
+            chunk = read_once(min(64 * 1024, remaining))
+        else:
+            # Custom/HTTPError wrappers may only support exact-length read().
+            # Request one byte, not MAX_JSON_BYTES, to avoid indefinite waits.
+            chunk = response.read(1)
+        if time.monotonic() >= deadline:
+            raise JsonBodyDeadlineExceeded()
+        if not isinstance(chunk, bytes):
+            raise ValueError("Non-byte staging response chunk")
+        if not chunk:
+            return bytes(body)
+        body.extend(chunk)
+    return bytes(body)
+
+
 def _check_one(origin: str, spec: Check, opener: Opener, timeout: int) -> dict:
     request = Request(
         origin + spec.path,
@@ -134,20 +172,24 @@ def _check_one(origin: str, spec: Check, opener: Opener, timeout: int) -> dict:
             if "application/json" not in response.headers.get("Content-Type", "").lower():
                 reason = "non_json_response"
             else:
-                payload = response.read(MAX_JSON_BYTES + 1)
-                if len(payload) > MAX_JSON_BYTES:
-                    reason = "oversized_json_response"
+                try:
+                    payload = _read_bounded_json_body(response, timeout)
+                except JsonBodyDeadlineExceeded:
+                    reason = "json_body_deadline_exceeded"
                 else:
-                    try:
-                        decoded = json.loads(payload)
-                    except (ValueError, UnicodeDecodeError):
-                        reason = "invalid_json_response"
+                    if len(payload) > MAX_JSON_BYTES:
+                        reason = "oversized_json_response"
                     else:
-                        if not isinstance(decoded, dict):
-                            reason = "invalid_json_envelope"
-                        elif spec.data_type is not None and not isinstance(decoded.get("data"), spec.data_type):
-                            reason = "invalid_public_data_shape"
-    except (URLError, OSError, TimeoutError, ValueError) as exc:
+                        try:
+                            decoded = json.loads(payload)
+                        except (ValueError, UnicodeDecodeError):
+                            reason = "invalid_json_response"
+                        else:
+                            if not isinstance(decoded, dict):
+                                reason = "invalid_json_envelope"
+                            elif spec.data_type is not None and not isinstance(decoded.get("data"), spec.data_type):
+                                reason = "invalid_public_data_shape"
+    except (URLError, OSError, TimeoutError, ValueError, HTTPException) as exc:
         # Raw error text may contain credentials or private host information.
         reason = "transport_or_tls_error_" + type(exc).__name__
     finally:
