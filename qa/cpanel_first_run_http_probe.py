@@ -62,7 +62,7 @@ def probe(app_root: Path, public_root: Path) -> None:
         port = s.getsockname()[1]
 
     server = subprocess.Popen(
-        ["php", "-S", f"127.0.0.1:{port}", "-t", str(public_root)],
+        ["php", "-S", f"127.0.0.1:{port}", "-t", str(public_root), str(public_root / "index.php")],
         cwd=app_root, env=env, stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
