@@ -2,6 +2,7 @@
 import hashlib
 import io
 import json
+import os
 import shutil
 import subprocess
 import tempfile
@@ -84,6 +85,115 @@ class T024ReadinessTest(unittest.TestCase):
             link = directory / "alias.json"
             link.symlink_to(file)
             self.assertFalse(proof_ok(root, {**entry, "path": "qa/t024-evidence/alias.json"}))
+
+    def test_evidence_descriptor_verification_rejects_path_and_inode_races(self):
+        """Adversarial local files must not turn a fake QA receipt into proof."""
+        if os.name != "posix" or not hasattr(os, "O_NOFOLLOW"):
+            self.skipTest("Requires POSIX descriptor-relative no-follow opens")
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            directory = root / "qa/t024-evidence"
+            directory.mkdir(parents=True)
+            fixture = directory / "proof.json"
+            original = b'{"fixture":"not-runtime-proof"}'
+            fixture.write_bytes(original)
+            entry = {
+                "path": "qa/t024-evidence/proof.json",
+                "sha256": hashlib.sha256(original).hexdigest(),
+                "source_sha": "a" * 40,
+                "command": "python3 -m unittest",
+            }
+            self.assertTrue(proof_ok(root, entry))
+            for bad_path in (
+                "qa/t024-evidence//proof.json",
+                "qa/t024-evidence/./proof.json",
+                "qa/t024-evidence/../t024-evidence/proof.json",
+                "qa/t024-evidence/proof.json/",
+            ):
+                with self.subTest(bad_path=bad_path):
+                    self.assertFalse(proof_ok(root, {**entry, "path": bad_path}))
+
+            outside = root / "outside.json"
+            outside.write_bytes(original)
+            (directory / "link.json").symlink_to(outside)
+            self.assertFalse(proof_ok(root, {**entry, "path": "qa/t024-evidence/link.json"}))
+            (directory / "elsewhere").symlink_to(root, target_is_directory=True)
+            self.assertFalse(proof_ok(root, {
+                **entry, "path": "qa/t024-evidence/elsewhere/outside.json",
+            }))
+
+            # Emulate a same-hash symlink replacing the proof just before
+            # open(): O_NOFOLLOW must refuse even though target bytes match.
+            real_open = os.open
+            saved = directory / "prior.json"
+            swapped = False
+
+            def replace_before_open(path, flags, *args, **kwargs):
+                nonlocal swapped
+                if path == "proof.json" and not swapped:
+                    swapped = True
+                    fixture.rename(saved)
+                    fixture.symlink_to(outside)
+                return real_open(path, flags, *args, **kwargs)
+
+            with patch("qa.t024_readiness.os.open", side_effect=replace_before_open):
+                self.assertFalse(proof_ok(root, entry))
+            self.assertTrue(swapped)
+            fixture.unlink()
+            saved.rename(fixture)
+            self.assertTrue(proof_ok(root, entry))
+
+            # The descriptor remains on the verified old inode. A pathname
+            # replacement with identical bytes must still fail the final
+            # inode check, not count as accepted runtime evidence.
+            real_read = os.read
+            replaced = False
+
+            def replace_after_read(fd, count):
+                nonlocal replaced
+                data = real_read(fd, count)
+                if data and not replaced:
+                    replaced = True
+                    fixture.unlink()
+                    fixture.write_bytes(original)
+                return data
+
+            with patch("qa.t024_readiness.os.read", side_effect=replace_after_read):
+                self.assertFalse(proof_ok(root, entry))
+            self.assertTrue(replaced)
+            self.assertTrue(proof_ok(root, entry))
+
+            # In-place edits while hashing invalidate the pinned file state,
+            # even if the bytes read first had the expected digest.
+            edited = False
+
+            def mutate_after_read(fd, count):
+                nonlocal edited
+                data = real_read(fd, count)
+                if data and not edited:
+                    edited = True
+                    fixture.write_bytes(b"X" * len(original))
+                    os.utime(fixture, ns=(1_000_000_000, 1_000_000_000))
+                return data
+
+            with patch("qa.t024_readiness.os.read", side_effect=mutate_after_read):
+                self.assertFalse(proof_ok(root, entry))
+            self.assertTrue(edited)
+
+            fixture.write_bytes(original)
+            oversized = directory / "huge.bin"
+            oversized.write_bytes(b"x" * (2 * 1024 * 1024 + 1))
+            self.assertFalse(proof_ok(root, {
+                **entry, "path": "qa/t024-evidence/huge.bin",
+                "sha256": hashlib.sha256(oversized.read_bytes()).hexdigest(),
+            }))
+            fifo = directory / "named-pipe"
+            os.mkfifo(fifo)
+            self.assertFalse(proof_ok(root, {
+                **entry, "path": "qa/t024-evidence/named-pipe",
+            }))
+            with patch("qa.t024_readiness.os.O_NOFOLLOW", 0):
+                self.assertFalse(proof_ok(root, entry))
 
     def test_wrong_gate_or_extra_action_cannot_be_reported_ready(self):
         with tempfile.TemporaryDirectory() as d:
