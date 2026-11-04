@@ -55,7 +55,7 @@ jobs:
           python3 qa/build_cpanel_package.py \
             --source . --output dist/WalidSite-cPanel.zip --sha "$SOURCE_SHA"
           (cd dist && sha256sum --check WalidSite-cPanel.zip.sha256)
-          python3 qa/prepare_release_candidate.py \
+          PYTHONPATH="$PWD" python3 qa/prepare_release_candidate.py \
             --cpanel-zip dist/WalidSite-cPanel.zip \
             --output-dir dist/candidates \
             --version "$CANDIDATE_VERSION" --sha "$SOURCE_SHA" \
