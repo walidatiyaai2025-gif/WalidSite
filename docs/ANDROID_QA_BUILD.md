@@ -14,7 +14,7 @@ The existing **PR CI** workflow now compiles an **actual debug-signed Android AP
 
 ## Known release restrictions
 
-- The current Android Gradle `applicationId` is `com.example.waleed_tech_companion`; **this is a placeholder**, not an approved Google Play production package identity. W3 must finalize a distinct owned ID and compatible native branding before store submission. The CI derives, never invents, the current version from `pubspec.yaml`.
+- The Android Gradle `applicationId` is now `com.walidatiya.walidsite`, the source-defined reverse-DNS **release candidate**. A non-placeholder ID does not prove Google Play package ownership, distribution approval, signing or device installation; these gates remain pending. The CI derives, never invents, the current version from `pubspec.yaml`.
 - The debug APK uses Android debug signing, suitable **only for QA install**. `distribution_ready=false`, `device_install_launch_verified=false`, `ios_build_verified=false`; no Play/App Store signing key, AAB/IPA, TestFlight, store listing, production entitlements, original 40-screen zero-RGBA acceptance, provider credentials, or staging URL is implied.
 - A passing Flutter `analyze`/`test` cannot substitute for a compiled Android APK. A passing native build cannot substitute for a **real device/emulator install + launch smoke**, bilingual app acceptance, or verified owner preview.
 - If Android SDK/Gradle/build tools cannot compile or `aapt`/`apksigner` rejects the binary, the native job fails and **no successful verified artifact** is published. Do not bypass the check to get a green badge.
