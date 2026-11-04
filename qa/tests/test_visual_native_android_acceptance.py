@@ -74,7 +74,7 @@ class NativeAndroidAcceptanceTest(unittest.TestCase):
         def debuggable(args):
             base = self.command(args)
             if args[0] == "aapt" and args[2] == "badging":
-                base.stdout += "application-debuggable\\n"
+                base.stdout += "application-debuggable\n"
             return base
 
         with patch("qa.native_android_acceptance._command", side_effect=debuggable):
@@ -83,10 +83,10 @@ class NativeAndroidAcceptanceTest(unittest.TestCase):
 
     def test_missing_duplicated_zero_and_inverted_sdk_levels_fail_closed(self):
         invalid = {
-            "missing_min": BADGING.replace("sdkVersion:'23'\\n", ""),
-            "missing_target": BADGING.replace("targetSdkVersion:'36'\\n", ""),
-            "duplicate_min": BADGING + "sdkVersion:'23'\\n",
-            "duplicate_target": BADGING + "targetSdkVersion:'36'\\n",
+            "missing_min": BADGING.replace("sdkVersion:'23'\n", ""),
+            "missing_target": BADGING.replace("targetSdkVersion:'36'\n", ""),
+            "duplicate_min": BADGING + "sdkVersion:'23'\n",
+            "duplicate_target": BADGING + "targetSdkVersion:'36'\n",
             "zero_min": BADGING.replace("sdkVersion:'23'", "sdkVersion:'0'"),
             "inverted": BADGING.replace("targetSdkVersion:'36'", "targetSdkVersion:'22'"),
             "overflow": BADGING.replace("targetSdkVersion:'36'", "targetSdkVersion:'1001'"),
