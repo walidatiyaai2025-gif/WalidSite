@@ -164,7 +164,7 @@ class MobileAccountClient {
     try {
       // One deadline covers headers, ALL response bytes and JSON decode.
       // A slow-drip peer must not retain a bearer or save action forever.
-      return await MobileAiClient.withinDeadline(() async {
+      return await (() async {
         final request = await client.openUrl(method, uri)
             .timeout(const Duration(seconds: 8));
       request.followRedirects = false;
@@ -188,7 +188,7 @@ class MobileAccountClient {
         bytes.add(chunk);
       }
         return utf8.decode(bytes.takeBytes(), allowMalformed: false);
-      });
+      })().timeout(const Duration(seconds: 12));
     } finally {
       client.close(force: true);
     }
