@@ -72,11 +72,21 @@ def post_publish_security(client: Client, guest: Client, application: Path,
         checks.append("post_publish_" + name)
 
     def denied(status: int, location: str) -> bool:
-        redirect = urlsplit(location)
-        return status in (401, 403, 419) or (
-            status == 302 and redirect.path == "/admin/login"
-            and (not redirect.netloc
-                 or redirect.netloc == urlsplit(client.origin).netloc)
+        if status in (401, 403, 419):
+            return True
+        if status != 302:
+            return False
+        redirect, origin = urlsplit(location), urlsplit(client.origin)
+        # Accept only canonical local login redirects: reject cross-scheme,
+        # protocol-relative, query/fragment and credential-bearing locations.
+        return (
+            redirect.path == "/admin/login"
+            and not redirect.query and not redirect.fragment
+            and (
+                (not redirect.scheme and not redirect.netloc)
+                or (redirect.scheme == origin.scheme
+                    and redirect.netloc == origin.netloc)
+            )
         )
 
     status, location, _ = guest.call("/admin/updates")
