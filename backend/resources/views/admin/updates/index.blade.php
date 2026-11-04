@@ -46,6 +46,8 @@ button:disabled{background:#718096;cursor:not-allowed}
     : 'This page distinguishes full application code releases from migrations already checked into the deployed server.' }}</p>
 
 <dl class="summary" aria-label="{{ $locale === 'ar' ? 'ملخص حالة الإصدار' : 'Release status summary' }}">
+<div><dt>{{ $locale === 'ar' ? 'الإصدار المثبّت فعليًا' : 'Current code version' }}</dt>
+<dd data-testid="installed-package-version"><code>{{ $installedVersion ?? ($locale === 'ar' ? 'غير معروف' : 'Unknown') }}</code></dd></div>
 <div><dt>{{ $locale === 'ar' ? 'معرّف الإصدار الموجود' : 'Configured deployed release' }}</dt>
 <dd><code>{{ $identifiedRelease ? $releaseRef : ($locale === 'ar' ? 'غير محدد' : 'Unidentified') }}</code></dd></div>
 <div><dt>{{ $locale === 'ar' ? 'الإصدار المتاح' : 'Available version' }}</dt>

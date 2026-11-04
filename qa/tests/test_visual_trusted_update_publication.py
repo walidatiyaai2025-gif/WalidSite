@@ -44,7 +44,7 @@ class TrustedUpdatePublicationTest(unittest.TestCase):
     def make_update(self):
         # Source package verification is tested by the original packager suite.
         # Here assert it is invoked with exact SHA, then inspect derived code.
-        with patch('qa.build_trusted_update_release.verify_archive') as verifier:
+        with patch('qa.build_trusted_update_release.verify_archive', return_value={'version': VERSION}) as verifier:
             result = build(self.source, self.root, VERSION, SHA)
         verifier.assert_called_once_with(self.source, SHA)
         return result
@@ -66,6 +66,11 @@ class TrustedUpdatePublicationTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.make_update()  # Immutable: never overwrite.
 
+    def test_update_rejects_a_different_version_from_setup_manifest(self):
+        with patch('qa.build_trusted_update_release.verify_archive', return_value={'version': '9.9.9'}):
+            with self.assertRaisesRegex(ValueError, 'version does not match'):
+                build(self.source, self.root, VERSION, SHA)
+
     def test_dangerous_paths_and_incomplete_archive_rejected(self):
         for name in ('application/.env', 'application/.env.local', 'application/storage/x',
                      'public_html/uploads/x', 'public_html/../escape.php',
@@ -74,7 +79,7 @@ class TrustedUpdatePublicationTest(unittest.TestCase):
             self.assertFalse(code_path(name), name)
         del self.entries['application/vendor/autoload.php']
         self.make_zip()
-        with patch('qa.build_trusted_update_release.verify_archive'):
+        with patch('qa.build_trusted_update_release.verify_archive', return_value={'version': VERSION}):
             with self.assertRaises(ValueError):
                 build(self.source, self.root, VERSION, SHA)
         for version in ('1.2', '01.2.3', '1.2.3-beta', '../../1.2.3'):

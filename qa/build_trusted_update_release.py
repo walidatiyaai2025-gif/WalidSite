@@ -49,7 +49,9 @@ def build(source_zip: Path, output_dir: Path, version: str, source_sha: str) -> 
         raise ValueError('Unsafe source archive or target directory')
     # Require the original packager's checked-in guard bytes, full byte inventory,
     # source SHA, clean contents and provenance before deriving an updater ZIP.
-    verify_archive(source_zip, source_sha)
+    manifest = verify_archive(source_zip, source_sha)
+    if manifest.get('version') != version:
+        raise ValueError('Update version does not match the verified Setup ZIP')
     files = {}
     total = 0
     with zipfile.ZipFile(source_zip) as package:

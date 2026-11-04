@@ -4,9 +4,11 @@
 
 ## تنزيل الحزمة والتحقق من سلامتها
 
-1. افتح صفحة **Actions → PR CI** في GitHub واختر تشغيل **main** الناجح الذي يحتوي على خطوة `build-cpanel-package` بعد نجاح `required-ci-gate` على نفس SHA. نزّل Artifact باسم `WalidSite-cPanel-installer` وفك ضغط ملف الـArtifact على جهازك؛ ستجد `WalidSite-cPanel.zip` و`WalidSite-cPanel.zip.sha256`.
+اسم الملف الإصدارى هو `WalidSite-Setup-vX.Y.Z.zip`؛ استبدل X.Y.Z بالإصدار الموجود في `application/VERSION` و`PACKAGE-MANIFEST.json` (الإصدار التجريبي الحالي 0.1.0). رفع ملف ZIP الداخلي واحد فقط إلى cPanel؛ وملف `.sha256` للتحقق قبل الرفع وليس خطوة رفع ثانية.
+
+1. افتح صفحة **Actions → PR CI** في GitHub واختر تشغيل **main** الناجح الذي يحتوي على خطوة `build-cpanel-package` بعد نجاح `required-ci-gate` على نفس SHA. نزّل Artifact باسم `WalidSite-Setup-installer` وفك ضغط ملف الـArtifact على جهازك؛ ستجد `WalidSite-Setup-vX.Y.Z.zip` و`WalidSite-Setup-vX.Y.Z.zip.sha256`.
 2. تأكد أن الـSHA الظاهر في `PACKAGE-MANIFEST.json` داخل الحزمة يساوي SHA تشغيل GitHub الناجح الذي قمت بتنزيله؛ وجود SHA في ملف بمفرده لا يثبت الهوية أو التوقيع الرقمي.
-3. من الطرفية، في نفس مجلد الملفين، نفّذ `sha256sum -c WalidSite-cPanel.zip.sha256` (على macOS: `shasum -a 256 -c WalidSite-cPanel.zip.sha256`)، ثم `unzip -t WalidSite-cPanel.zip` **قبل** استخراج ملفات الاستضافة. عند أي اختلاف أو فقدان لملف checksum لا تستخدم الملف.
+3. من الطرفية، في نفس مجلد الملفين، نفّذ `sha256sum -c WalidSite-Setup-vX.Y.Z.zip.sha256` (على macOS: `shasum -a 256 -c WalidSite-Setup-vX.Y.Z.zip.sha256`)، ثم `unzip -t WalidSite-Setup-vX.Y.Z.zip` **قبل** استخراج ملفات الاستضافة. عند أي اختلاف أو فقدان لملف checksum لا تستخدم الملف.
 4. سكربت البناء يراجع كل ملف داخل ZIP مقابل بصمة SHA256 وحجمه في الـManifest؛ هذه خطوة سلامة للمحتوى، وليست إثبات نشر أو توقيع رسمي. لا تضع ملفات المفاتيح أو `.env` داخل public_html.
 
 ## قبل الرفع

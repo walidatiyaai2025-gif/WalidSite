@@ -40,6 +40,36 @@ class NoTerminalInstallerTest extends TestCase
         }
     }
 
+    public function test_testing_cli_does_not_create_bootstrap_state_without_a_web_request(): void
+    {
+        $path = storage_path('app/console-first-run-'.bin2hex(random_bytes(8)).'.json');
+        $before = config('app.key');
+        config(['app.key' => null, 'site.bootstrap_path' => $path]);
+        try {
+            $this->assertTrue(app()->environment('testing'));
+            $this->assertTrue(app()->runningInConsole());
+            (new FirstRunBootstrap())->prepare();
+            $this->assertNull(config('app.key'));
+            $this->assertFileDoesNotExist($path);
+        } finally {
+            config(['app.key' => $before]);
+            @unlink($path);
+        }
+    }
+
+    public function test_remote_plaintext_setup_is_denied_even_if_host_inherits_testing_environment(): void
+    {
+        config([
+            'site.setup_enabled' => true,
+            'site.setup_token' => str_repeat('q', 64),
+        ]);
+        $this->get('http://walidatiya.com/setup')->assertForbidden();
+        $this->get('https://walidatiya.com/setup')->assertOk()
+            ->assertSee('name="token"', false)
+            ->assertDontSee(str_repeat('q', 64));
+        $this->get('http://127.0.0.1/setup')->assertOk();
+    }
+
     public function test_browser_wizard_accepts_database_settings_without_terminal_or_env_upload(): void
     {
         $path = storage_path('app/no-terminal-env-test');

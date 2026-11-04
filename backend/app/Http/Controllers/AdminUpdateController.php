@@ -26,7 +26,19 @@ final class AdminUpdateController extends Controller
         $this->authorizeOwner($request);
         $status = $updater->inspect();
 
-        return view('admin.updates.index', compact('status'));
+        // This displays the code artifact actually installed on disk.
+        // A configured source/ref string is not proof of the installed version.
+        $installedVersion = null;
+        $file = base_path('VERSION');
+        if (is_file($file) && ! is_link($file) && is_readable($file)
+            && filesize($file) !== false && filesize($file) <= 32) {
+            $value = trim((string) file_get_contents($file));
+            if (preg_match('/\\A(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)\\z/D', $value) === 1) {
+                $installedVersion = $value;
+            }
+        }
+
+        return view('admin.updates.index', compact('status', 'installedVersion'));
     }
 
     /**
