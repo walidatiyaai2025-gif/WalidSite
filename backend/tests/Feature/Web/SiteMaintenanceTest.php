@@ -342,6 +342,8 @@ class SiteMaintenanceTest extends TestCase
 
         $this->get('/admin/updates?lang=en')
             ->assertSee('Unidentified')
+            ->assertSee('data-testid="installed-package-version"', false)
+            ->assertSee('0.1.0')
             ->assertSee('Not verified')
             ->assertSee('Not available');
     }
