@@ -255,11 +255,18 @@ class MobileAccountClient {
     if (!_uuid.hasMatch(articleId)) {
       throw const FormatException('Invalid published article identity');
     }
-    final raw = await _request(
-      'POST', '/api/v1/mobile/saved', bearer,
-      body: {'resource_type': 'article', 'resource_id': articleId},
-    );
-    verifyArticleSaved(raw, articleId);
+    try {
+      final raw = await _request(
+        'POST', '/api/v1/mobile/saved', bearer,
+        body: {'resource_type': 'article', 'resource_id': articleId},
+      );
+      verifyArticleSaved(raw, articleId);
+    } on MobileAiHttpException catch (error) {
+      if (error.statusCode == 401 || error.statusCode == 403) {
+        throw const ArticleSaveAuthorizationException();
+      }
+      rethrow;
+    }
   }
 
   Future<void> remove(String bearer, MobileSavedResource item) async {
