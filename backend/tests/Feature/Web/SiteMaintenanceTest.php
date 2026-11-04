@@ -46,6 +46,56 @@ class SiteMaintenanceTest extends TestCase
     }
 
 
+    public function test_setup_wizard_exposes_exactly_one_current_step_in_arabic_and_english(): void
+    {
+        $token = str_repeat('p', 40);
+        config([
+            'site.setup_enabled' => true,
+            'site.setup_token' => $token,
+            'site.setup_database_ready' => false,
+        ]);
+
+        // Read real GET responses at every state rather than asserting against
+        // the source template or manufacturing visual evidence.
+        $assertStage = function (int $number, array $headings, array $labels): void {
+            foreach (['en' => 'ltr', 'ar' => 'rtl'] as $lang => $direction) {
+                $response = $this->get('/setup?lang='.$lang)->assertOk()
+                    ->assertSee('<html lang="'.$lang.'" dir="'.$direction.'">', false)
+                    ->assertSee($headings[$lang]);
+                $html = $response->getContent();
+                // Count only rendered step elements, not the CSS rule
+                // that styles [aria-current="step"] in the same response.
+                $matches = [];
+                preg_match_all('/<li[^>]*aria-current="step"[^>]*>(.*?)<\/li>/us', $html, $matches);
+                $this->assertCount(1, $matches[1]);
+                $this->assertSame([$number.' — '.$labels[$lang]],
+                    array_map('trim', $matches[1]));
+            }
+        };
+
+        $assertStage(1,
+            ['en' => 'Step 1: Server setup token', 'ar' => 'الخطوة 1: رمز الإعداد السري'],
+            ['en' => 'Verify', 'ar' => 'التحقق']);
+
+        $this->post('/setup/unlock', ['token' => $token])->assertRedirect('/setup');
+        $assertStage(2,
+            ['en' => 'Step 2: Configure database', 'ar' => 'الخطوة 2: إعداد قاعدة البيانات'],
+            ['en' => 'Database', 'ar' => 'قاعدة البيانات']);
+
+        // A configured database changes the page to its migration stage;
+        // it does not re-label the configuration form as another Step 2.
+        config(['site.setup_database_ready' => true]);
+        $assertStage(3,
+            ['en' => 'Step 3: Database migrations', 'ar' => 'الخطوة 3: ترحيلات قاعدة البيانات'],
+            ['en' => 'Migrations', 'ar' => 'الترحيلات']);
+
+        $this->post('/setup/database')->assertRedirect('/setup');
+        $assertStage(4,
+            ['en' => 'Step 4: Activate owner account', 'ar' => 'الخطوة 4: تفعيل حساب المالك'],
+            ['en' => 'Owner', 'ar' => 'المالك']);
+    }
+
+
     public function test_full_install_activates_only_canonical_cv_owner_and_permanently_locks_setup(): void
     {
         $token = str_repeat('s', 40);
