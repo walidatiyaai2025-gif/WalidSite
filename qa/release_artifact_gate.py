@@ -59,7 +59,11 @@ def _stable_reader(path: str | Path, *, dir_fd: int | None = None):
 
 
 def verify(folder: Path, manifest_path: Path, source_sha: str | None = None) -> dict:
-    """Verify a release inventory without reading outside the artifact directory."""
+    """Verify listed artifact bytes in one pinned directory, without following links.
+
+    A publisher manifest may be located outside that directory; it too is
+    read from a stable no-follow regular-file descriptor.
+    """
     # The release gate is intentionally Linux/POSIX-only: without no-follow
     # descriptor operations a racy symlink swap must never yield a PASS.
     if not all(hasattr(os, name) for name in ("O_NOFOLLOW", "O_NONBLOCK", "O_DIRECTORY")):
