@@ -33,7 +33,7 @@ PRIVATE_GUARD_PATHS = ("application/.htaccess", "contracts/.htaccess")
 
 DIRECTORIES = ("app", "bootstrap", "config", "database", "resources", "routes", "vendor")
 REQUIRED = (
-    "backend/vendor/autoload.php", "backend/composer.lock",
+    "backend/vendor/autoload.php", "backend/composer.lock", "backend/VERSION",
     "backend/public/.htaccess", "contracts/owner-cv-baseline.json",
     "assets/portraits/portrait-light-derived.jpg",
     "assets/icons/briefcase.svg",
@@ -98,6 +98,7 @@ def verify_archive(output, expected_sha=None):
             raise ValueError("Corrupt ZIP entry")
         mandatory = {
             "application/vendor/autoload.php", "application/composer.lock",
+            "application/VERSION",
             "application/.env.example", "public_html/index.php",
             "public_html/.htaccess",
             "public_html/assets/portraits/portrait-light-derived.jpg",
@@ -128,6 +129,9 @@ def verify_archive(output, expected_sha=None):
         if (manifest.get("schema") != "walidsite.cpanel-package.v1"
                 or manifest.get("production_vendor_included") is not True
                 or manifest.get("secrets_included") is not False
+                or not isinstance(manifest.get("version"), str)
+                or re.fullmatch(r"(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)", manifest["version"]) is None
+                or archive.read("application/VERSION") != (manifest["version"] + "\n").encode("ascii")
                 or not isinstance(manifest.get("source_sha"), str)
                 or not re.fullmatch("[0-9a-f]{40}", manifest["source_sha"])
                 or (expected_sha is not None and manifest["source_sha"] != expected_sha)):
@@ -152,11 +156,17 @@ def build(source, output, sha):
     for name in REQUIRED:
         if not (source / name).is_file() or (source / name).is_symlink():
             raise ValueError("Missing required runtime file: " + name)
-    entries = {}
     backend = source / "backend"
+    version_file = backend / "VERSION"
+    if version_file.is_symlink() or not version_file.is_file():
+        raise ValueError("Missing safe SemVer VERSION file")
+    version = version_file.read_text(encoding="ascii").strip()
+    if re.fullmatch(r"(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)", version) is None:
+        raise ValueError("Invalid SemVer VERSION file")
+    entries = {}
     for name in DIRECTORIES:
         add_folder(entries, backend / name, "application/" + name, source)
-    for name in ("artisan", "composer.json", "composer.lock", ".env.example"):
+    for name in ("artisan", "composer.json", "composer.lock", ".env.example", "VERSION"):
         file = backend / name
         if not safe(file, source):
             raise ValueError("Missing/unsafe application file: " + name)
@@ -189,6 +199,7 @@ def build(source, output, sha):
     proof = {
         "schema": "walidsite.cpanel-package.v1",
         "source_sha": sha,
+        "version": version,
         "production_vendor_included": True,
         "secrets_included": False,
         "files": {name: {"sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data)}
