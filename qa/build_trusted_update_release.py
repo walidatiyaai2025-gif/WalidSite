@@ -8,9 +8,12 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import stat
+import tempfile
 import zipfile
+from contextlib import contextmanager
 from pathlib import Path
 
 from qa.build_cpanel_package import verify_archive
@@ -42,41 +45,93 @@ def code_path(name: str) -> bool:
     return True
 
 
+@contextmanager
+def frozen_setup_archive(source_zip: Path):
+    """Pin source bytes before the verifier and Update ZIP builder use them.
+
+    A verified source pathname can otherwise be replaced before a later
+    ZipFile(path) read. A private, frozen copy is the single source for both
+    operations; cross-user access to its temporary directory is prohibited.
+    Linux/POSIX no-follow descriptors are mandatory for release packaging.
+    """
+    if (os.name != 'posix' or not getattr(os, 'O_NOFOLLOW', 0)
+            or not getattr(os, 'O_NONBLOCK', 0)):
+        raise ValueError('Secure source archive descriptors unavailable')
+    flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | getattr(os, 'O_CLOEXEC', 0)
+
+    def identity(s):
+        return (s.st_dev, s.st_ino, s.st_size, s.st_mtime_ns, s.st_ctime_ns)
+
+    with tempfile.TemporaryDirectory(prefix='walidsite-verified-setup-') as private:
+        frozen = Path(private) / 'source.zip'
+        with os.fdopen(os.open(source_zip, flags), 'rb') as original:
+            before = os.fstat(original.fileno())
+            named_before = os.stat(source_zip, follow_symlinks=False)
+            if (not stat.S_ISREG(before.st_mode)
+                    or not stat.S_ISREG(named_before.st_mode)
+                    or identity(before) != identity(named_before)
+                    or not 0 < before.st_size <= MAX_TOTAL):
+                raise ValueError('Unsafe, unstable or oversized Setup source')
+
+            copied = 0
+            with frozen.open('xb') as output:
+                while True:
+                    chunk = original.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    copied += len(chunk)
+                    if copied > MAX_TOTAL:
+                        raise ValueError('Setup source grew past release limit')
+                    output.write(chunk)
+                output.flush()
+            after = os.fstat(original.fileno())
+            named_after = os.stat(source_zip, follow_symlinks=False)
+            if (copied != before.st_size
+                    or identity(before) != identity(after)
+                    or identity(after) != identity(named_after)
+                    or not stat.S_ISREG(named_after.st_mode)):
+                raise ValueError('Setup source changed during release snapshot')
+        # Only our private (0700) temporary directory exposes this file.
+        # verify_archive and ZipFile now consume exactly these immutable bytes.
+        yield frozen
+
+
 def build(source_zip: Path, output_dir: Path, version: str, source_sha: str) -> dict:
     if not VERSION.fullmatch(version) or not re.fullmatch('[a-f0-9]{40}', source_sha):
         raise ValueError('Invalid immutable release version or source SHA')
     if source_zip.is_symlink() or not source_zip.is_file() or output_dir.is_symlink() or not output_dir.is_dir():
         raise ValueError('Unsafe source archive or target directory')
-    # Require the original packager's checked-in guard bytes, full byte inventory,
-    # source SHA, clean contents and provenance before deriving an updater ZIP.
-    manifest = verify_archive(source_zip, source_sha)
-    if manifest.get('version') != version:
-        raise ValueError('Update version does not match the verified Setup ZIP')
-    files = {}
-    total = 0
-    with zipfile.ZipFile(source_zip) as package:
-        if len(package.infolist()) > MAX_ENTRIES:
-            raise ValueError('Excessive cPanel source entry count')
-        for info in package.infolist():
-            name = info.filename
-            if name in ('PACKAGE-MANIFEST.json', 'INSTALL-CPANEL-AR.md'):
-                continue
-            if not name.startswith(('application/', 'public_html/', 'contracts/')):
-                raise ValueError('Unexpected cPanel package entry')
-            if not code_path(name):
-                # The installer has .env.example and storage scaffolding; these
-                # MUST NOT be carried into a code-only update.
-                continue
-            if info.is_dir() or info.file_size > MAX_FILE or info.compress_size == 0 and info.file_size != 0:
-                raise ValueError('Invalid code release entry')
-            if info.file_size > 1048576 and info.file_size > info.compress_size * MAX_RATIO:
-                raise ValueError('Excessive compression ratio')
-            if stat.S_IFMT(info.external_attr >> 16) == stat.S_IFLNK:
-                raise ValueError('Symbolic links are forbidden')
-            total += info.file_size
-            if total > MAX_TOTAL:
-                raise ValueError('Expanded release size exceeds limit')
-            files[name] = package.read(info)
+    with frozen_setup_archive(source_zip) as frozen:
+        # Require the original packager's checked-in guard bytes, full byte inventory,
+        # source SHA, clean contents and provenance before deriving an updater ZIP.
+        manifest = verify_archive(frozen, source_sha)
+        if manifest.get('version') != version:
+            raise ValueError('Update version does not match the verified Setup ZIP')
+        files = {}
+        total = 0
+        with zipfile.ZipFile(frozen) as package:
+            if len(package.infolist()) > MAX_ENTRIES:
+                raise ValueError('Excessive cPanel source entry count')
+            for info in package.infolist():
+                name = info.filename
+                if name in ('PACKAGE-MANIFEST.json', 'INSTALL-CPANEL-AR.md'):
+                    continue
+                if not name.startswith(('application/', 'public_html/', 'contracts/')):
+                    raise ValueError('Unexpected cPanel package entry')
+                if not code_path(name):
+                    # The installer has .env.example and storage scaffolding; these
+                    # MUST NOT be carried into a code-only update.
+                    continue
+                if info.is_dir() or info.file_size > MAX_FILE or info.compress_size == 0 and info.file_size != 0:
+                    raise ValueError('Invalid code release entry')
+                if info.file_size > 1048576 and info.file_size > info.compress_size * MAX_RATIO:
+                    raise ValueError('Excessive compression ratio')
+                if stat.S_IFMT(info.external_attr >> 16) == stat.S_IFLNK:
+                    raise ValueError('Symbolic links are forbidden')
+                total += info.file_size
+                if total > MAX_TOTAL:
+                    raise ValueError('Expanded release size exceeds limit')
+                files[name] = package.read(info)
     if not REQUIRED.issubset(files):
         raise ValueError('Incomplete update code payload')
     if len(files) > MAX_ENTRIES:
