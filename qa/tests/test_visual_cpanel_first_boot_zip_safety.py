@@ -1,5 +1,6 @@
 """W10 cPanel first-boot test: reject untrusted ZIP before any file extraction."""
 from pathlib import Path
+import os
 from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import patch
@@ -58,7 +59,8 @@ class CpanelFirstBootArchiveSafetyTest(unittest.TestCase):
         self.build(["application/vendor/autoload.php"])
         calls = []
         def verify(package):
-            self.assertEqual(package, self.package)
+            self.assertNotEqual(package, self.package)
+            self.assertEqual(Path(package).read_bytes(), self.package.read_bytes())
             calls.append("verified")
         def extract(archive, target, *args, **kwargs):
             self.assertEqual(Path(target), self.destination)
@@ -67,6 +69,34 @@ class CpanelFirstBootArchiveSafetyTest(unittest.TestCase):
              patch("qa.cpanel_first_run_http_probe.zipfile.ZipFile.extractall", new=extract):
             extract_verified_archive(self.package, self.destination)
         self.assertEqual(calls, ["verified", "extracted"])
+
+    def test_original_zip_swap_after_verification_cannot_change_extracted_bytes(self):
+        self.build(["application/pinned.txt"])
+        replacement = self.root / "replacement.zip"
+        with zipfile.ZipFile(replacement, "w", zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr("application/pinned.txt", b"attacker-replacement")
+        verified = []
+        def verify(snapshot):
+            with zipfile.ZipFile(snapshot) as archive:
+                verified.append(archive.read("application/pinned.txt"))
+            os.replace(replacement, self.package)
+        with patch("qa.cpanel_first_run_http_probe.verify_archive", side_effect=verify):
+            extract_verified_archive(self.package, self.destination)
+        self.assertEqual(verified, [b"unsafe-test-payload"])
+        self.assertEqual((self.destination / "application/pinned.txt").read_bytes(),
+                         b"unsafe-test-payload")
+        with zipfile.ZipFile(self.package) as archive:
+            self.assertEqual(archive.read("application/pinned.txt"), b"attacker-replacement")
+
+    def test_non_regular_fifo_is_rejected_without_extraction(self):
+        if not hasattr(os, "mkfifo"):
+            self.skipTest("FIFO support required")
+        fifo = self.root / "fifo.zip"
+        os.mkfifo(fifo)
+        with patch("qa.cpanel_first_run_http_probe.zipfile.ZipFile.extractall") as extract:
+            with self.assertRaises(ValueError):
+                extract_verified_archive(fifo, self.destination)
+            extract.assert_not_called()
 
     def test_failed_verification_never_starts_extraction(self):
         self.build(["application/vendor/autoload.php"])
