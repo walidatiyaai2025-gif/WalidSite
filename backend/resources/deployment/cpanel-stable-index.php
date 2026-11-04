@@ -14,8 +14,60 @@ $home = dirname(__DIR__);
 $original = $home.'/application';
 $root = $original;
 $pointer = $home.'/.walidsite-active-release.json';
+$maintenance = $home.'/.walidsite-update-maintenance.json';
+$forcedPrevious = null;
 
-if (file_exists($pointer) || is_link($pointer)) {
+if (file_exists($maintenance) || is_link($maintenance)) {
+    // An interrupted update must never expose unverified code to visitors.
+    // A lease expiring after a crashed PHP worker serves its known previous
+    // release; manual recovery removes the marker after inspecting the vault.
+    if (is_link($maintenance) || ! is_file($maintenance)
+        || filesize($maintenance) === false || filesize($maintenance) > 1024) {
+        http_response_code(503);
+        exit('Site update maintenance is unavailable.');
+    }
+    try {
+        $lease = json_decode((string) file_get_contents($maintenance), true, 8, JSON_THROW_ON_ERROR);
+    } catch (\Throwable) {
+        http_response_code(503);
+        exit('Site update maintenance is unavailable.');
+    }
+    if (! is_array($lease)
+        || array_keys($lease) !== ['schema', 'expires_at', 'previous_root', 'previous_version', 'probe_sha256']
+        || $lease['schema'] !== 1 || ! is_int($lease['expires_at'])
+        || ! is_string($lease['previous_root']) || ! is_string($lease['previous_version'])
+        || ! is_string($lease['probe_sha256'])
+        || ! preg_match('/\A[a-f0-9]{64}\z/D', $lease['probe_sha256'])
+        || ! preg_match('/\A(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\z/D', $lease['previous_version'])
+        || ($lease['previous_root'] !== 'legacy'
+            && (! preg_match('#\A\.walidsite-releases/v[0-9]+\.[0-9]+\.[0-9]+-[a-f0-9]{40}\z#D', $lease['previous_root'])
+                || ! str_starts_with($lease['previous_root'], '.walidsite-releases/v'.$lease['previous_version'].'-')))) {
+        http_response_code(503);
+        exit('Site update maintenance is unavailable.');
+    }
+    if ($lease['expires_at'] > time()) {
+        $probe = $_SERVER['HTTP_X_WALIDSITE_RELEASE_PROBE'] ?? null;
+        if (! is_string($probe) || ! preg_match('/\A[a-f0-9]{64}\z/D', $probe)
+            || ! hash_equals($lease['probe_sha256'], hash('sha256', $probe))) {
+            http_response_code(503);
+            header('Cache-Control: no-store');
+            header('Retry-After: 30');
+            exit('Site update maintenance in progress.');
+        }
+    } else {
+        // Safe crash fallback: ignore a possibly unverified active pointer.
+        $forcedPrevious = $lease;
+    }
+}
+
+if ($forcedPrevious !== null && $forcedPrevious['previous_root'] === 'legacy') {
+    $state = null;
+} elseif ($forcedPrevious !== null) {
+    $state = [
+        'schema' => 1, 'version' => $forcedPrevious['previous_version'],
+        'root' => $forcedPrevious['previous_root'],
+    ];
+} elseif (file_exists($pointer) || is_link($pointer)) {
     if (is_link($pointer) || ! is_file($pointer)
         || filesize($pointer) === false || filesize($pointer) > 512) {
         http_response_code(503);
@@ -27,6 +79,9 @@ if (file_exists($pointer) || is_link($pointer)) {
         http_response_code(503);
         exit('Site release pointer unavailable.');
     }
+}
+
+if (isset($state) && $state !== null) {
     if (! is_array($state) || array_keys($state) !== ['schema', 'version', 'root']
         || $state['schema'] !== 1 || ! is_string($state['version'])
         || ! preg_match('/\A(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\z/D', $state['version'])
