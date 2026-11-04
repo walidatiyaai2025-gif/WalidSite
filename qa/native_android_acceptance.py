@@ -83,6 +83,9 @@ def inspect(apk: Path, *, kind: str, expected_id: str,
             or type(expected_code) is not int or expected_code < 1
             or not HEX40.fullmatch(source_sha)):
         raise ApkAcceptanceError("Invalid expected native version or claimed source SHA")
+    if kind == "release-qa" and expected_id.lower().startswith(
+            ("com.example.", "org.example.", "net.example.")):
+        raise ApkAcceptanceError("Release QA requires a real non-placeholder Android package ID")
     apk = apk.absolute()
     digest = _inspect_zip(apk)
     badging = _command([aapt, "dump", "badging", str(apk)])
@@ -116,6 +119,12 @@ def inspect(apk: Path, *, kind: str, expected_id: str,
     if (sdks["sdkVersion"] < 1 or sdks["targetSdkVersion"] < sdks["sdkVersion"]
             or sdks["targetSdkVersion"] > 1000):
         raise ApkAcceptanceError("APK minimum/target SDK manifest is inconsistent")
+
+    # The bytes we report must be the very same bytes inspected by aapt and
+    # verified by apksigner. In particular, do not accept an APK overwritten
+    # by another process between the initial SHA and signature verification.
+    if _inspect_zip(apk) != digest:
+        raise ApkAcceptanceError("APK contents changed during native verification")
     return {
         "apk_integrity_verified": True,
         "apk_sha256": digest,
