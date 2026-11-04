@@ -9,7 +9,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from qa.cpanel_foodex_15_install_probe import post_publish_security, authenticated_session_csrf
+from qa.cpanel_foodex_15_install_probe import (post_publish_security,
+    post_publish_missing_lock_security, authenticated_session_csrf)
 from qa.cpanel_full_install_probe import SetupFailure
 
 
@@ -250,6 +251,107 @@ class PostPublishSecurityTest(unittest.TestCase):
             owner.origin, guest.origin = "http://staging.example.com", "http://staging.example.com"
             with self.assertRaisesRegex(SetupFailure, "loopback_only"):
                 post_publish_security(owner, guest, app, public)
+
+
+
+class DeletedInstallLockIntegrationOracleTest(unittest.TestCase):
+    """Defensive oracle: actual disposable ZIP/MariaDB runner calls this once."""
+
+    def fixture(self, root: Path):
+        app, public = PostPublishSecurityTest.fixture(root)
+        lock = app / "storage/app/site-installed.lock"
+        return app, public, lock, lock.read_bytes()
+
+    @staticmethod
+    def clients(*, guest_override=None, owner_override=None, on_guest=None):
+        anonymous = {"/install": (404, "", b""),
+                     "/setup": (404, "", b"")}
+        if guest_override:
+            anonymous.update(guest_override)
+        privileged = {
+            "/install": (404, "", b""),
+            "/setup": (404, "", b""),
+            "/install/step/1": (404, "", b""),
+            "/setup/finish": (404, "", b""),
+        }
+        if owner_override:
+            privileged.update(owner_override)
+        return (FakeClient(guest=False, overrides=privileged),
+                FakeClient(guest=True, overrides=anonymous, on_call=on_guest))
+
+    def test_disposable_owner_stays_installed_even_without_lock(self):
+        with tempfile.TemporaryDirectory(prefix="walidsite-ci-foodex-") as tmp:
+            app, public, lock, original = self.fixture(Path(tmp))
+            observed = []
+
+            def witness(path, form):
+                observed.append((path, lock.exists()))
+
+            owner, guest = self.clients(on_guest=witness)
+            checks = post_publish_missing_lock_security(owner, guest, app, public)
+            self.assertEqual(len(checks), 14)
+            self.assertIn("post_publish_missing_lock_anonymous_setup_remains_closed", checks)
+            self.assertIn("post_publish_missing_lock_original_install_lock_restored", checks)
+            self.assertEqual(lock.read_bytes(), original)
+            self.assertTrue(observed)
+            self.assertTrue(all(not existed for _, existed in observed))
+            self.assertFalse((app / "storage/app/.site-installed.lock.w10-withheld").exists())
+
+    def test_unexpected_reactivation_fails_and_restores_original_lock(self):
+        for unsafe in (
+            {"/install": (200, "", b"exposed wizard")},
+            {"/setup": (302, "/setup", b"re-enabled")},
+        ):
+            with self.subTest(unsafe=unsafe), tempfile.TemporaryDirectory(
+                prefix="walidsite-ci-foodex-"
+            ) as tmp:
+                app, public, lock, original = self.fixture(Path(tmp))
+                owner, guest = self.clients(guest_override=unsafe)
+                with self.assertRaisesRegex(SetupFailure, "missing_lock_"):
+                    post_publish_missing_lock_security(owner, guest, app, public)
+                self.assertEqual(lock.read_bytes(), original)
+                self.assertFalse(lock.with_name(".site-installed.lock.w10-withheld").exists())
+
+    def test_privileged_post_must_be_blocked_even_with_valid_session_csrf(self):
+        for route in ("/install/step/1", "/setup/finish"):
+            with self.subTest(route=route), tempfile.TemporaryDirectory(
+                prefix="walidsite-ci-foodex-"
+            ) as tmp:
+                app, public, lock, original = self.fixture(Path(tmp))
+                owner, guest = self.clients(owner_override={route: (302, "/install", b"")})
+                with self.assertRaisesRegex(SetupFailure, "missing_lock_"):
+                    post_publish_missing_lock_security(owner, guest, app, public)
+                self.assertEqual(lock.read_bytes(), original)
+
+    def test_regenerated_possession_bootstrap_is_rejected_and_lock_restored(self):
+        with tempfile.TemporaryDirectory(prefix="walidsite-ci-foodex-") as tmp:
+            app, public, lock, original = self.fixture(Path(tmp))
+
+            def resurrect(path, form):
+                if path == "/setup":
+                    (app / "storage/app/site-first-run.json").write_text('{"token":"regenerated"}')
+
+            owner, guest = self.clients(on_guest=resurrect)
+            with self.assertRaisesRegex(SetupFailure, "token_regenerated"):
+                post_publish_missing_lock_security(owner, guest, app, public)
+            self.assertEqual(lock.read_bytes(), original)
+
+    def test_existing_lock_marker_or_non_disposable_layout_cannot_be_mutated(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            app, public, lock, original = self.fixture(Path(tmp))
+            owner, guest = self.clients()
+            with self.assertRaisesRegex(SetupFailure, "disposable_loopback_only"):
+                post_publish_missing_lock_security(owner, guest, app, public)
+            self.assertEqual(lock.read_bytes(), original)
+
+        with tempfile.TemporaryDirectory(prefix="walidsite-ci-foodex-") as tmp:
+            app, public, lock, original = self.fixture(Path(tmp))
+            lock.with_name(".site-installed.lock.w10-withheld").write_text("collision")
+            owner, guest = self.clients()
+            with self.assertRaisesRegex(SetupFailure, "private_files_invalid"):
+                post_publish_missing_lock_security(owner, guest, app, public)
+            self.assertEqual(lock.read_bytes(), original)
+
 
 
 if __name__ == "__main__":
