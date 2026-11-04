@@ -14,6 +14,16 @@ import 'preferences/mobile_preferences.dart';
 import 'home/mobile_home_feed.dart';
 import 'bootstrap/mobile_bootstrap.dart';
 
+Future<String> _loginForArticleSave(String email, String password) async {
+  // No durable bearer cache: this token is used for one explicit Save action.
+  final session = await const MobileAiClient().login(email, password);
+  if (session.expiresAt != null &&
+      !session.expiresAt!.isAfter(DateTime.now().toUtc())) {
+    throw const FormatException('Expired article-save session');
+  }
+  return session.token;
+}
+
 void main() => runApp(const WaleedTechApp());
 
 /// Real bilingual navigation shell; no fabricated projects, AI output or metrics.
@@ -236,7 +246,11 @@ class CompanionHome extends StatelessWidget {
               arabic: arabic,
               onOpenArticles: () => Navigator.of(context).push(
                 MaterialPageRoute<void>(
-                  builder: (_) => VerifiedArticleLibrary(arabic: arabic),
+                  builder: (_) => VerifiedArticleLibrary(
+                      arabic: arabic,
+                      loginAction: _loginForArticleSave,
+                      saveAction: const MobileAccountClient().saveArticle,
+                    ),
                 ),
               ),
               onOpenRunbooks: () => Navigator.of(context).push(
@@ -359,7 +373,11 @@ class CompanionHome extends StatelessWidget {
                 trailing: Icon(arabic ? Icons.chevron_left : Icons.chevron_right),
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute<void>(
-                    builder: (_) => VerifiedArticleLibrary(arabic: arabic),
+                    builder: (_) => VerifiedArticleLibrary(
+                      arabic: arabic,
+                      loginAction: _loginForArticleSave,
+                      saveAction: const MobileAccountClient().saveArticle,
+                    ),
                   ),
                 ),
               ),

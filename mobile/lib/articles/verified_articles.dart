@@ -7,6 +7,40 @@ import 'package:flutter/material.dart';
 
 import '../runbooks/offline_guide_text_search.dart';
 
+/// Source-verified public category; never manufacture taxonomy for draft articles.
+class VerifiedArticleCategory {
+  const VerifiedArticleCategory({required this.slug, required this.name});
+  final String slug;
+  final String name;
+
+  static final RegExp validSlug = RegExp(r'^[a-z0-9]+(?:-[a-z0-9]+)*$');
+
+  static List<VerifiedArticleCategory> parse(Object? source) {
+    if (source == null) return const [];
+    if (source is! List || source.length > 30) {
+      throw const FormatException('Invalid article categories');
+    }
+    final seen = <String>{};
+    final categories = <VerifiedArticleCategory>[];
+    for (final item in source) {
+      if (item is! Map<String, dynamic> ||
+          item.length != 2 ||
+          item['slug'] is! String ||
+          item['name'] is! String) {
+        throw const FormatException('Invalid article category');
+      }
+      final slug = item['slug'] as String;
+      final name = item['name'] as String;
+      if (slug.length > 60 || !validSlug.hasMatch(slug) ||
+          !seen.add(slug) || name.trim().isEmpty || name.length > 160) {
+        throw const FormatException('Unsafe article category');
+      }
+      categories.add(VerifiedArticleCategory(slug: slug, name: name));
+    }
+    return List.unmodifiable(categories);
+  }
+}
+
 /// Reads ONLY published, evidence-checked articles from the existing public API.
 /// No AI diagnosis, authentication or remote caching is implied by this screen.
 class VerifiedArticle {
@@ -15,8 +49,14 @@ class VerifiedArticle {
     required this.title,
     required this.body,
     required this.citations,
+    this.id,
+    this.categories = const [],
   });
 
+  /// Only the published server-issued UUID may authorize an account Save.
+  /// Older fixtures without an ID cannot claim a resource was saved.
+  final String? id;
+  final List<VerifiedArticleCategory> categories;
   final String slug;
   final String title;
   final String body;
@@ -66,11 +106,16 @@ class VerifiedArticle {
       if (item is! Map<String, dynamic>) {
         throw const FormatException('Invalid article');
       }
+      final id = item['id'];
       final slug = item['slug'];
       final title = item['title'];
       final body = item['body_markdown'];
       final citations = item['citations'];
-      if (slug is! String ||
+      if ((id != null &&
+              (id is! String ||
+                  !RegExp(r'^[a-fA-F0-9]{8}(?:-[a-fA-F0-9]{4}){3}-[a-fA-F0-9]{12}$')
+                      .hasMatch(id))) ||
+          slug is! String ||
           !RegExp(r'^[a-zA-Z0-9-]{1,180}$').hasMatch(slug) ||
           !seen.add(slug) ||
           title is! String ||
@@ -120,10 +165,12 @@ class VerifiedArticle {
         validatedCitations.add(citation);
       }
       articles.add(VerifiedArticle(
+        id: id as String?,
         slug: slug,
         title: title,
         body: body,
         citations: List.unmodifiable(validatedCitations),
+        categories: VerifiedArticleCategory.parse(item['categories']),
       ));
     }
     return List.unmodifiable(articles);
@@ -159,8 +206,10 @@ class VerifiedArticlePage {
     required this.articles,
     required this.currentPage,
     required this.hasMorePages,
+    this.categories = const [],
   });
 
+  final List<VerifiedArticleCategory> categories;
   final List<VerifiedArticle> articles;
   final int currentPage;
   final bool hasMorePages;
@@ -189,6 +238,7 @@ class VerifiedArticlePage {
       articles: articles,
       currentPage: requestedPage,
       hasMorePages: hasMore,
+      categories: VerifiedArticleCategory.parse(meta['categories']),
     );
   }
 }
@@ -318,8 +368,10 @@ class VerifiedArticleReader {
     }
   }
 
-  Future<VerifiedArticlePage> loadPage(bool arabic, int page) async {
-    if (page < 1 || page > 10000) {
+  Future<VerifiedArticlePage> loadPage(bool arabic, int page, {String? category}) async {
+    if (page < 1 || page > 10000 ||
+        (category != null &&
+            (category.length > 60 || !VerifiedArticleCategory.validSlug.hasMatch(category)))) {
       throw const FormatException('Invalid article page');
     }
     final origin = _origin();
@@ -328,7 +380,11 @@ class VerifiedArticleReader {
     }
     final url = origin.replace(
       path: '/api/v1/public/articles',
-      queryParameters: {'lang': arabic ? 'ar' : 'en', 'page': '$page'},
+      queryParameters: {
+        'lang': arabic ? 'ar' : 'en',
+        'page': '$page',
+        if (category != null) 'category': category,
+      },
     );
 
     final client = _newClient();
@@ -362,12 +418,25 @@ class VerifiedArticleReader {
   }
 }
 
+typedef ArticleCategoryPageLoader = Future<VerifiedArticlePage> Function(
+    int page, String? category);
+typedef ArticleLoginAction = Future<String> Function(String email, String password);
+typedef ArticleSaveAction = Future<void> Function(String bearer, String articleId);
+
+/// Authorization loss should clear any temporary login intent on this screen.
+class ArticleSaveAuthorizationException implements Exception {
+  const ArticleSaveAuthorizationException();
+}
+
 class VerifiedArticleLibrary extends StatefulWidget {
   const VerifiedArticleLibrary({
     required this.arabic,
     this.loader,
     this.pageLoader,
+    this.categoryPageLoader,
     this.detailLoader,
+    this.loginAction,
+    this.saveAction,
     super.key,
   });
 
@@ -378,6 +447,10 @@ class VerifiedArticleLibrary extends StatefulWidget {
 
   // Injectable verified page source for deterministic pagination tests.
   final Future<VerifiedArticlePage> Function(int page)? pageLoader;
+  /// Must query the server using this selected category on EVERY page.
+  final ArticleCategoryPageLoader? categoryPageLoader;
+  final ArticleLoginAction? loginAction;
+  final ArticleSaveAction? saveAction;
 
   // Injected only by widget tests. Production always refetches the current
   // publication through the verified server detail endpoint.
@@ -391,6 +464,7 @@ class _VerifiedArticleLibraryState extends State<VerifiedArticleLibrary> {
   late Future<VerifiedArticlePage> _firstPage;
   List<VerifiedArticle> _additional = const [];
   String _query = '';
+  String? _category;
   String? _nextError;
   bool _loadingNext = false;
   bool _loadedAdditional = false;
@@ -409,8 +483,10 @@ class _VerifiedArticleLibraryState extends State<VerifiedArticleLibrary> {
     super.didUpdateWidget(oldWidget);
     if (widget.arabic != oldWidget.arabic ||
         widget.loader != oldWidget.loader ||
-        widget.pageLoader != oldWidget.pageLoader) {
+        widget.pageLoader != oldWidget.pageLoader ||
+        widget.categoryPageLoader != oldWidget.categoryPageLoader) {
       _query = '';
+      _category = null;
       _refresh();
     }
   }
@@ -424,7 +500,9 @@ class _VerifiedArticleLibraryState extends State<VerifiedArticleLibrary> {
     _hasMoreAfterAdditional = false;
     _nextPage = 2;
 
-    if (widget.pageLoader != null) {
+    if (widget.categoryPageLoader != null) {
+      _firstPage = widget.categoryPageLoader!(1, _category);
+    } else if (widget.pageLoader != null) {
       _firstPage = widget.pageLoader!(1);
     } else if (widget.loader != null) {
       _firstPage = widget.loader!().then(
@@ -435,7 +513,8 @@ class _VerifiedArticleLibraryState extends State<VerifiedArticleLibrary> {
         ),
       );
     } else if (VerifiedArticleReader.configuredOrigin() != null) {
-      _firstPage = const VerifiedArticleReader().loadPage(widget.arabic, 1);
+      _firstPage = const VerifiedArticleReader()
+          .loadPage(widget.arabic, 1, category: _category);
     } else {
       // The unavailable view is authoritative when no origin was provided.
       // Never start a failing Future during initState for an unconfigured app.
@@ -460,9 +539,12 @@ class _VerifiedArticleLibraryState extends State<VerifiedArticleLibrary> {
     try {
       final first = await _firstPage;
       final requested = _nextPage;
-      final next = await (widget.pageLoader != null
-          ? widget.pageLoader!(requested)
-          : const VerifiedArticleReader().loadPage(widget.arabic, requested));
+      final next = await (widget.categoryPageLoader != null
+          ? widget.categoryPageLoader!(requested, _category)
+          : widget.pageLoader != null
+              ? widget.pageLoader!(requested)
+              : const VerifiedArticleReader()
+                  .loadPage(widget.arabic, requested, category: _category));
       if (generation != _generation || !mounted) return;
       if (next.currentPage != requested ||
           (next.hasMorePages && next.articles.isEmpty)) {
@@ -530,7 +612,12 @@ class _VerifiedArticleLibraryState extends State<VerifiedArticleLibrary> {
     final ar = widget.arabic;
     final configured = widget.loader != null ||
         widget.pageLoader != null ||
+        widget.categoryPageLoader != null ||
         VerifiedArticleReader.configuredOrigin() != null;
+    final supportsCategories = widget.categoryPageLoader != null ||
+        (widget.loader == null &&
+            widget.pageLoader == null &&
+            VerifiedArticleReader.configuredOrigin() != null);
 
     return Scaffold(
       appBar: AppBar(title: Text(ar ? 'المقالات التقنية' : 'Technical articles')),
@@ -574,7 +661,8 @@ class _VerifiedArticleLibraryState extends State<VerifiedArticleLibrary> {
                   ...first.articles,
                   ..._additional,
                 ];
-                if (articles.isEmpty) {
+                if (articles.isEmpty && (_category == null ||
+                    !supportsCategories || first.categories.isEmpty)) {
                   return Center(child: Text(ar
                       ? 'لا توجد مقالات منشورة وموثقة حاليًا.'
                       : 'No source-verified articles have been published yet.'));
@@ -600,6 +688,40 @@ class _VerifiedArticleLibraryState extends State<VerifiedArticleLibrary> {
 
                 return Column(
                   children: [
+                    if (supportsCategories && first.categories.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                        child: DropdownButtonFormField<String>(
+                          key: const Key('article-category-filter'),
+                          initialValue: first.categories.any((item) => item.slug == _category)
+                              ? _category : '',
+                          decoration: InputDecoration(
+                            labelText: ar ? 'تصنيف المقالات' : 'Article category',
+                            border: const OutlineInputBorder(),
+                          ),
+                          items: [
+                            DropdownMenuItem(
+                              value: '',
+                              child: Text(ar ? 'كل التصنيفات' : 'All categories'),
+                            ),
+                            for (final item in first.categories)
+                              DropdownMenuItem(
+                                value: item.slug,
+                                child: Text(item.name),
+                              ),
+                          ],
+                          onChanged: (value) {
+                            final selected = value == null || value.isEmpty
+                                ? null : value;
+                            if (selected == _category) return;
+                            setState(() {
+                              _category = selected;
+                              _query = '';
+                              _refresh();
+                            });
+                          },
+                        ),
+                      ),
                     Padding(
                       padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
                       child: TextField(
@@ -660,6 +782,8 @@ class _VerifiedArticleLibraryState extends State<VerifiedArticleLibrary> {
                                           slug: article.slug,
                                           arabic: ar,
                                           loader: widget.detailLoader,
+                                          loginAction: widget.loginAction,
+                                          saveAction: widget.saveAction,
                                         ),
                                       ),
                                     ),
@@ -724,12 +848,16 @@ class VerifiedArticleFreshDetail extends StatefulWidget {
     required this.slug,
     required this.arabic,
     this.loader,
+    this.loginAction,
+    this.saveAction,
     super.key,
   });
 
   final String slug;
   final bool arabic;
   final Future<VerifiedArticle> Function(String slug)? loader;
+  final ArticleLoginAction? loginAction;
+  final ArticleSaveAction? saveAction;
 
   @override
   State<VerifiedArticleFreshDetail> createState() =>
@@ -738,6 +866,10 @@ class VerifiedArticleFreshDetail extends StatefulWidget {
 
 class _VerifiedArticleFreshDetailState extends State<VerifiedArticleFreshDetail> {
   late Future<VerifiedArticle> _detail;
+  bool _saving = false;
+  bool _saved = false;
+  String? _saveMessage;
+  int _saveEpoch = 0;
 
   @override
   void initState() {
@@ -750,7 +882,13 @@ class _VerifiedArticleFreshDetailState extends State<VerifiedArticleFreshDetail>
     super.didUpdateWidget(oldWidget);
     if (widget.slug != oldWidget.slug ||
         widget.arabic != oldWidget.arabic ||
-        widget.loader != oldWidget.loader) {
+        widget.loader != oldWidget.loader ||
+        widget.loginAction != oldWidget.loginAction ||
+        widget.saveAction != oldWidget.saveAction) {
+      _saveEpoch++;
+      _saving = false;
+      _saved = false;
+      _saveMessage = null;
       _refresh();
     }
   }
@@ -775,6 +913,57 @@ class _VerifiedArticleFreshDetailState extends State<VerifiedArticleFreshDetail>
     // observes this original request and displays its safe failure state.
     unawaited(request.then<void>((_) {}, onError: (Object _, StackTrace __) {}));
     _detail = request;
+  }
+
+  Future<void> _saveVerified(VerifiedArticle article) async {
+    final articleId = article.id;
+    if (_saving || _saved || articleId == null ||
+        widget.loginAction == null || widget.saveAction == null) return;
+    final epoch = _saveEpoch;
+    // Claim synchronously: two taps may not open two logins or send two POSTs.
+    setState(() {
+      _saving = true;
+      _saveMessage = null;
+    });
+    try {
+      final bearer = await showDialog<String>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => _ArticleSaveLoginDialog(
+          arabic: widget.arabic,
+          login: widget.loginAction!,
+        ),
+      );
+      if (!mounted || epoch != _saveEpoch || bearer == null) return;
+      // A current published detail, not a stale catalog row, supplies this ID.
+      await widget.saveAction!(bearer, articleId);
+      if (!mounted || epoch != _saveEpoch) return;
+      setState(() {
+        _saved = true;
+        _saveMessage = widget.arabic
+            ? 'تم حفظ المقال الموثق في حسابك.'
+            : 'Verified article saved to your account.';
+      });
+    } catch (error) {
+      if (!mounted || epoch != _saveEpoch) return;
+      setState(() {
+        _saveMessage = error is TimeoutException
+            ? (widget.arabic
+                ? 'لم يصل تأكيد الحفظ. افتح محفوظات حسابك للتحقق قبل إعادة المحاولة.'
+                : 'Save confirmation was not received. Check your account Saved list before retrying.')
+            : error is ArticleSaveAuthorizationException
+                ? (widget.arabic
+                    ? 'انتهت صلاحية الجلسة. سجّل الدخول مجددًا للحفظ.'
+                    : 'Session no longer authorized. Sign in again to save.')
+                : (widget.arabic
+                    ? 'تعذر تأكيد حفظ هذا المقال. لم يُعرض على أنه محفوظ.'
+                    : 'Article save could not be confirmed. It is not marked saved.');
+      });
+    } finally {
+      if (mounted && epoch == _saveEpoch) {
+        setState(() => _saving = false);
+      }
+    }
   }
 
   @override
@@ -822,6 +1011,25 @@ class _VerifiedArticleFreshDetailState extends State<VerifiedArticleFreshDetail>
               padding: const EdgeInsets.all(20),
               children: [
                 Text(article.title, style: Theme.of(context).textTheme.titleLarge),
+                if (article.id != null &&
+                    widget.loginAction != null && widget.saveAction != null) ...[
+                  const SizedBox(height: 12),
+                  FilledButton.icon(
+                    key: const Key('verified-article-save'),
+                    onPressed: _saving || _saved ? null : () => _saveVerified(article),
+                    icon: Icon(_saved ? Icons.bookmark_added : Icons.bookmark_add_outlined),
+                    label: Text(_saving
+                        ? (arabic ? 'جارٍ التحقق...' : 'Confirming...')
+                        : _saved
+                            ? (arabic ? 'محفوظ' : 'Saved')
+                            : (arabic ? 'احفظ في حسابي' : 'Save to my account')),
+                  ),
+                  if (_saveMessage != null)
+                    Semantics(
+                      liveRegion: true,
+                      child: Text(_saveMessage!, key: const Key('verified-article-save-status')),
+                    ),
+                ],
                 const SizedBox(height: 16),
                 Text(arabic
                     ? 'محتوى منشور موثق بمراجع؛ ليس تقرير اختبار عملي.'
@@ -841,6 +1049,107 @@ class _VerifiedArticleFreshDetailState extends State<VerifiedArticleFreshDetail>
           },
         ),
       ),
+    );
+  }
+}
+
+class _ArticleSaveLoginDialog extends StatefulWidget {
+  const _ArticleSaveLoginDialog({required this.arabic, required this.login});
+  final bool arabic;
+  final ArticleLoginAction login;
+
+  @override
+  State<_ArticleSaveLoginDialog> createState() => _ArticleSaveLoginDialogState();
+}
+
+class _ArticleSaveLoginDialogState extends State<_ArticleSaveLoginDialog> {
+  final _email = TextEditingController();
+  final _password = TextEditingController();
+  bool _busy = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _email.dispose();
+    _password.dispose();
+    super.dispose();
+  }
+
+  Future<void> _signIn() async {
+    if (_busy) return;
+    final email = _email.text.trim();
+    if (email.isEmpty || email.length > 254 ||
+        !_email.text.contains('@') || _password.text.isEmpty) {
+      setState(() => _error = widget.arabic
+          ? 'أدخل بريدًا إلكترونيًا وكلمة مرور صالحين.'
+          : 'Enter a valid email and password.');
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      final bearer = await widget.login(email, _password.text);
+      if (bearer.isEmpty || bearer.length > 8192) {
+        throw const FormatException('Invalid login response');
+      }
+      if (!mounted) return;
+      Navigator.of(context).pop(bearer);
+    } catch (_) {
+      if (mounted) {
+        setState(() => _error = widget.arabic
+            ? 'تعذر تسجيل الدخول. تحقق من البيانات أو الاتصال.'
+            : 'Could not sign in. Check your credentials or connection.');
+      }
+    } finally {
+      _password.clear();
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ar = widget.arabic;
+    return AlertDialog(
+      title: Text(ar ? 'تسجيل الدخول لحفظ المقال' : 'Sign in to save this article'),
+      content: SizedBox(
+        width: 360,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              key: const Key('article-save-login-email'),
+              controller: _email,
+              keyboardType: TextInputType.emailAddress,
+              autofillHints: const [AutofillHints.username],
+              decoration: InputDecoration(labelText: ar ? 'البريد الإلكتروني' : 'Email'),
+            ),
+            TextField(
+              key: const Key('article-save-login-password'),
+              controller: _password,
+              obscureText: true,
+              autofillHints: const [AutofillHints.password],
+              decoration: InputDecoration(labelText: ar ? 'كلمة المرور' : 'Password'),
+              onSubmitted: (_) => _signIn(),
+            ),
+            if (_error != null)
+              Text(_error!, key: const Key('article-save-login-error')),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          key: const Key('article-save-login-cancel'),
+          onPressed: _busy ? null : () => Navigator.of(context).pop(),
+          child: Text(ar ? 'إلغاء' : 'Cancel'),
+        ),
+        FilledButton(
+          key: const Key('article-save-login-submit'),
+          onPressed: _busy ? null : _signIn,
+          child: Text(ar ? 'تسجيل الدخول والحفظ' : 'Sign in & save'),
+        ),
+      ],
     );
   }
 }
