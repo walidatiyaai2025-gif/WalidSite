@@ -5,6 +5,9 @@ import tempfile
 import unittest
 import zipfile
 from pathlib import Path
+from unittest.mock import patch
+
+import qa.build_cpanel_package as package_module
 
 from qa.build_cpanel_package import PRIVATE_GUARD_PATHS, PRIVATE_TREE_DENY, build, verify_archive
 
@@ -144,6 +147,43 @@ class TestCpanelPackage(unittest.TestCase):
             zip.writestr("application/app/Test.php", "<?php malicious")
         with self.assertRaisesRegex(ValueError, "Duplicate ZIP entry"):
             verify_archive(self.output, "e" * 40)
+
+    def test_high_ratio_zip_bomb_rejected_before_reading_or_crc(self):
+        build(self.root, self.output, "e" * 40)
+        with zipfile.ZipFile(self.output, "a", zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr(
+                "application/app/zip-bomb.php", b"x" * (2 * 1024 * 1024),
+                compress_type=zipfile.ZIP_DEFLATED, compresslevel=9,
+            )
+        with patch.object(zipfile.ZipFile, "testzip",
+                          side_effect=AssertionError("decompressed before size check")):
+            with self.assertRaisesRegex(ValueError, "compression ratio"):
+                verify_archive(self.output, "e" * 40)
+
+    def test_entry_count_and_expanded_size_preflight_before_decompression(self):
+        build(self.root, self.output, "e" * 40)
+        for setting, cap, expected in (
+            ("MAX_ARCHIVE_ENTRIES", 1, "entry count"),
+            ("MAX_SINGLE_ENTRY_BYTES", 1, "Oversized ZIP entry"),
+            ("MAX_EXPANDED_ARCHIVE_BYTES", 20, "expanded size"),
+            ("MAX_MANIFEST_BYTES", 1, "package manifest"),
+            ("MAX_COMPRESSED_ARCHIVE_BYTES", 1, "oversized ZIP"),
+        ):
+            with self.subTest(setting=setting):
+                with patch.object(package_module, setting, cap):
+                    with patch.object(zipfile.ZipFile, "testzip",
+                                      side_effect=AssertionError("unbounded inflate")):
+                        with self.assertRaisesRegex(ValueError, expected):
+                            verify_archive(self.output, "e" * 40)
+
+    def test_directory_entry_rejected_before_any_archive_inflate(self):
+        build(self.root, self.output, "e" * 40)
+        with zipfile.ZipFile(self.output, "a") as archive:
+            archive.writestr("application/app/unexpected/", b"")
+        with patch.object(zipfile.ZipFile, "testzip",
+                          side_effect=AssertionError("decompressed directory archive")):
+            with self.assertRaisesRegex(ValueError, "directory entry"):
+                verify_archive(self.output, "e" * 40)
 
     def test_composer_cli_symlinks_are_not_exposed_in_zip(self):
         executable = self.root / "backend/vendor/bin/psysh"
