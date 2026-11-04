@@ -8,7 +8,7 @@ from unittest.mock import patch
 from contextlib import redirect_stdout, redirect_stderr
 import io
 
-from qa.release_artifact_gate import verify, main, artifact_name
+from qa.release_artifact_gate import verify, main, artifact_name, _stable_reader
 
 SHA = "a" * 40
 
@@ -90,6 +90,63 @@ class ReleaseArtifactGateTest(unittest.TestCase):
         alternative.symlink_to(self.manifest)
         with self.assertRaises(ValueError):
             verify(self.root, alternative, SHA)
+
+    def test_manifest_outside_artifact_directory_is_supported(self):
+        # Publication keeps the manifest beside (not necessarily inside)
+        # the directory containing the actual release artifacts.
+        release_dir = self.root / "artifacts"
+        release_dir.mkdir()
+        self.pkg.rename(release_dir / self.pkg.name)
+        report = verify(release_dir, self.manifest, SHA)
+        self.assertTrue(report["artifact_integrity_verified"])
+        self.assertFalse(report["production_ready"])
+
+    def test_artifact_directory_symlink_fails_closed(self):
+        directory_link = self.root / "alias-artifacts"
+        directory_link.symlink_to(self.root, target_is_directory=True)
+        with self.assertRaises(ValueError):
+            verify(directory_link, self.manifest, SHA)
+
+    def test_open_descriptor_detects_in_place_change_even_when_size_unchanged(self):
+        with self.assertRaisesRegex(ValueError, "changed during verification"):
+            with _stable_reader(self.pkg) as (stream, metadata):
+                self.assertEqual(stream.read(), self.pkg.read_bytes())
+                # Size is the same; a pre-read Path.stat() could not catch
+                # this write, and hashing a path after reopening is racy.
+                self.pkg.write_bytes(b"Z" * metadata.st_size)
+
+    def test_racy_path_stat_cannot_authorize_swapped_artifact(self):
+        # Before the fix Path.is_file() used Path.stat() and then reopened
+        # the path. A competitor could swap it to an outside symlink between
+        # those steps. The old verifier accepted matching outside bytes.
+        outside = self.root / "outside-secret.bin"
+        malicious = b"adversary-controlled-digest"
+        outside.write_bytes(malicious)
+        self.pkg.write_bytes(b"X" * len(malicious))
+        self.data["artifacts"] = [{
+            **self.entry,
+            "bytes": len(malicious),
+            "sha256": hashlib.sha256(malicious).hexdigest(),
+        }]
+        self.save()
+        original_stat = Path.stat
+        changed = False
+
+        def swap_during_path_stat(path, *args, **kwargs):
+            nonlocal changed
+            metadata = original_stat(path, *args, **kwargs)
+            if path == self.pkg and not changed:
+                changed = True
+                self.pkg.unlink()
+                self.pkg.symlink_to(outside)
+            return metadata
+
+        with patch.object(Path, "stat", autospec=True, side_effect=swap_during_path_stat):
+            with self.assertRaises(ValueError):
+                verify(self.root, self.manifest, SHA)
+        # The new verifier never calls the attackable Path.stat on the
+        # artifact; it hashes one opened, no-follow regular-file descriptor.
+        self.assertFalse(changed)
 
     def test_schema_unknown_fields_and_missing_artifacts_rejected(self):
         for mutation in (
