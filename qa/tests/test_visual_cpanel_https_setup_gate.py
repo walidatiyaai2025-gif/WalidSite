@@ -61,6 +61,17 @@ class FirstRunHttpGateTest(unittest.TestCase):
         with self.assertRaises(AcceptanceError):
             private_token(self.home)
 
+    def test_public_html_symlink_to_private_tree_is_rejected_before_http(self):
+        public = self.home / "public_html"
+        public.rmdir()
+        public.symlink_to(self.home / "application", target_is_directory=True)
+        # A symlink can make an application directory look like a valid
+        # public_html directory; never allow the HTTP acceptance to begin.
+        with patch("qa.cpanel_https_setup_gate.Client") as client:
+            with self.assertRaisesRegex(AcceptanceError, "distinct real"):
+                accept("https://localhost:18966", self.home, Path("ca.pem"))
+            client.assert_not_called()
+
     def test_csrf_must_be_exactly_one_valid_hidden_input(self):
         self.assertEqual(csrf_from_html(UNLOCK), CSRF)
         for bad in ('', '<input name="x" value="' + CSRF + '">',
@@ -69,7 +80,7 @@ class FirstRunHttpGateTest(unittest.TestCase):
                 with self.assertRaises(AcceptanceError):
                     csrf_from_html(bad)
 
-    def fake_client(self, *, failed_step=None, secret_leak=False):
+    def fake_client(self, *, failed_step=None, secret_leak=False, exposed_token_path=False):
         class Cookie:
             name = "walidsite-session"
             secure = True
@@ -90,6 +101,7 @@ class FirstRunHttpGateTest(unittest.TestCase):
                         "/vendor/autoload.php",
                         "/storage/logs/laravel.log",
                         "/site-first-run.json",
+                        "/storage/app/site-first-run.json",
                     )],
                     ("/up", 200, "", "healthy"),
                     ("/install", 200, "", UNLOCK),
@@ -107,8 +119,11 @@ class FirstRunHttpGateTest(unittest.TestCase):
                 assert path == expected
                 if failed_step == self.n:
                     status = 200 if status != 200 else 403
-                if secret_leak and self.n == 10:
+                if secret_leak and path == "/install":
                     body += TOKEN
+                if exposed_token_path and path == "/storage/app/site-first-run.json":
+                    status = 200
+                    body = TOKEN
                 return Response(status, self.origin + location if location else "", body)
         return Fake
 
@@ -129,6 +144,12 @@ class FirstRunHttpGateTest(unittest.TestCase):
                 with patch("qa.cpanel_https_setup_gate.Client", self.fake_client(**args)):
                     with self.assertRaises(AcceptanceError):
                         accept("https://localhost:18966", self.home, Path("ca.pem"))
+
+    def test_actual_private_token_http_path_cannot_be_public(self):
+        with patch("qa.cpanel_https_setup_gate.Client",
+                   self.fake_client(exposed_token_path=True)):
+            with self.assertRaisesRegex(AcceptanceError, "private_http_denied"):
+                accept("https://localhost:18966", self.home, Path("ca.pem"))
 
     def test_cli_error_redacts_private_files_and_token(self):
         with redirect_stderr(io.StringIO()) as error:
