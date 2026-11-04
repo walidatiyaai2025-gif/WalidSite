@@ -136,6 +136,12 @@ jobs:
           }
           echo "PASS: MariaDB migration and repeated owner CV seed are idempotent and fail-closed\n";
           '
+      - name: Verify actual cPanel private data and MariaDB disposable recovery
+        if: ${{ hashFiles('backend/composer.json') != '' }}
+        env:
+          CI_RECOVERY_HOST: 127.0.0.1
+          CI_RECOVERY_ROOT_PASSWORD: walidsite-root
+        run: php qa/cpanel_update_recovery_acceptance.php
       - name: Issue 481 real authenticated Admin runtime diagnostics
         if: ${{ github.event_name == 'pull_request' && (startsWith(github.head_ref, 'feat/481-') || startsWith(github.head_ref, 'fix/481-') || startsWith(github.head_ref, 'chore/481-')) }}
         shell: bash
