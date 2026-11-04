@@ -441,15 +441,20 @@ jobs:
           composer check-platform-reqs --no-dev
       - name: Package trusted checked-in code for cPanel
         run: |
-          python3 qa/build_cpanel_package.py --source . --output dist/WalidSite-cPanel.zip --sha "$GITHUB_SHA"
-          unzip -t dist/WalidSite-cPanel.zip
-          (cd dist && sha256sum --check WalidSite-cPanel.zip.sha256)
-          python3 -c 'from pathlib import Path; from qa.build_cpanel_package import verify_archive; import os; verify_archive(Path("dist/WalidSite-cPanel.zip"), os.environ["GITHUB_SHA"])'
-          python3 qa/cpanel_first_run_http_probe.py --cpanel-zip dist/WalidSite-cPanel.zip
+          version="$(cat backend/VERSION)"
+          if [[ ! "$version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "Invalid version"; exit 1
+          fi
+          package="dist/WalidSite-Setup-v${version}.zip"
+          python3 qa/build_cpanel_package.py --source . --output "$package" --sha "$GITHUB_SHA"
+          unzip -t "$package"
+          (cd dist && sha256sum --check "WalidSite-Setup-v${version}.zip.sha256")
+          PACKAGE="$package" python3 -c 'from pathlib import Path; from qa.build_cpanel_package import verify_archive; import os; verify_archive(Path(os.environ["PACKAGE"]), os.environ["GITHUB_SHA"])'
+          python3 qa/cpanel_first_run_http_probe.py --cpanel-zip "$package"
       - uses: actions/upload-artifact@v4
         with:
-          name: WalidSite-cPanel-installer
-          path: dist/WalidSite-cPanel.zip*
+          name: WalidSite-Setup-installer
+          path: dist/WalidSite-Setup-v*.zip*
           if-no-files-found: error
           retention-days: 30
 
