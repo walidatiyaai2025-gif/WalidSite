@@ -58,8 +58,18 @@ class DatabaseConfiguration
         $scheme = strtolower($parts['scheme']);
         $host = strtolower($parts['host']);
         $isLoopback = in_array($host, ['localhost', '127.0.0.1', '[::1]'], true);
+        // cPanel can inherit APP_ENV=testing/local on a public web SAPI.
+        // Development loopback exceptions require the real HTTP request to
+        // originate from a local Host too, not merely a permissive APP_ENV.
+        $requestHost = app()->bound('request')
+            ? strtolower(trim((string) request()->getHost(), '[]')) : 'localhost';
+        $localRequest = in_array($requestHost, ['localhost', '127.0.0.1', '::1'], true);
+        $localDevelopment = $localRequest && app()->environment(['local', 'testing']);
+        if ($isLoopback && ! $localDevelopment) {
+            return null;
+        }
         if ($scheme !== 'https' && ! ($scheme === 'http'
-            && app()->environment(['local', 'testing']) && $isLoopback)) {
+            && $localDevelopment && $isLoopback)) {
             return null;
         }
         // Reject ambiguous or invalid DNS names. IP literals are accepted
@@ -67,7 +77,7 @@ class DatabaseConfiguration
         $ip = trim($host, '[]');
         $isIp = filter_var($ip, FILTER_VALIDATE_IP) !== false;
         // Production canonical links must never point at private or reserved networks.
-        if ($isIp && app()->environment('production')
+        if ($isIp && ! $localDevelopment
             && filter_var($ip, FILTER_VALIDATE_IP,
                 FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false) {
             return null;
