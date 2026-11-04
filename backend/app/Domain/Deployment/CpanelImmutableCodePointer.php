@@ -64,6 +64,17 @@ final class CpanelImmutableCodePointer
         if (trim((string) file_get_contents($candidate.'/application/VERSION')) !== $version) {
             throw new DomainException('Candidate version differs from signed version.');
         }
+        // The active cPanel router and rewrite policy are deliberately stable.
+        // A release requiring changed webserver config needs a separate tested
+        // host transition; silently ignoring the signed .htaccess is unsafe.
+        if (! is_file($home.'/public_html/.htaccess')
+            || is_link($home.'/public_html/.htaccess')
+            || ! hash_equals((string) hash_file('sha256', $candidate.'/public_html/.htaccess'),
+                (string) hash_file('sha256', $home.'/public_html/.htaccess'))
+            || ! hash_equals((string) hash_file('sha256', $candidate.'/public_html/index.php'),
+                (string) hash_file('sha256', $home.'/public_html/index.php'))) {
+            throw new DomainException('Signed release changes the stable cPanel webserver entrypoint.');
+        }
 
         $pointer = $home.'/.walidsite-active-release.json';
         $lockPath = $home.'/.walidsite-active-release.lock';
