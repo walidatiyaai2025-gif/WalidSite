@@ -24,7 +24,10 @@ final class RequireInstallation
         }
 
         if ($request->isMethod('GET') || $request->isMethod('HEAD')) {
-            return redirect()->route('site.setup');
+            // A fresh one-extract cPanel visit must enter the canonical 15-stage
+            // installation journey. /setup stays directly addressable for
+            // guarded recovery of older interrupted first-run installations.
+            return redirect()->route('site.install');
         }
 
         abort(503, 'The site is awaiting first-run setup.');
