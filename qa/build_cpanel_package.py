@@ -7,20 +7,7 @@ import re
 import zipfile
 from pathlib import Path
 
-WEB_INDEX = """<?php
-use Illuminate\\Foundation\\Application;
-use Illuminate\\Http\\Request;
-define('LARAVEL_START', microtime(true));
-$root = dirname(__DIR__).'/application';
-if (is_file($maintenance = $root.'/storage/framework/maintenance.php')) {
-    require $maintenance;
-}
-require $root.'/vendor/autoload.php';
-/** @var Application $app */
-$app = require_once $root.'/bootstrap/app.php';
-$app->usePublicPath(__DIR__);
-$app->handleRequest(Request::capture());
-"""
+WEB_INDEX = (Path(__file__).resolve().parents[1] / "backend/resources/deployment/cpanel-stable-index.php").read_text(encoding="utf-8")
 PRIVATE_TREE_DENY = (b"# WalidSite private deployment tree: never serve over HTTP.\n"
     b"Options -Indexes\n"
     b"<IfModule mod_authz_core.c>\n"
@@ -211,7 +198,12 @@ def build(source, output, sha):
             raise ValueError("Missing/unsafe application file: " + name)
         entries["application/" + name] = file.read_bytes()
     add_folder(entries, backend / "public", "public_html", source)
-    entries["public_html/index.php"] = WEB_INDEX.encode()
+    # Exact checked-out immutable bootstrap; never substitute a runner-local
+    # template for a different source ZIP/commit.
+    index_file = backend / "resources/deployment/cpanel-stable-index.php"
+    if not safe(index_file, source):
+        raise ValueError("Missing or symlinked stable cPanel public index")
+    entries["public_html/index.php"] = index_file.read_bytes()
     entries["public_html/assets/portraits/portrait-light-derived.jpg"] = (
         source / "assets/portraits/portrait-light-derived.jpg"
     ).read_bytes()
