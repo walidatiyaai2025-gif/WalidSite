@@ -130,6 +130,87 @@ def post_publish_security(client: Client, guest: Client, application: Path,
     check("public_site_still_live", guest.call("/")[0] == 200)
     return checks
 
+def post_publish_missing_lock_security(owner: Client, guest: Client,
+                                       application: Path, public: Path) -> list[str]:
+    """Real ZIP/MariaDB anti-reinstall proof with the *private* lock withheld.
+
+    Only touch a disposable, isolated `walidsite-ci-foodex-*` account created
+    by run(); NEVER use this destructive test against live/staging files. The
+    approved owner account in MariaDB must independently forbid reinstall.
+    The original lock is atomically restored even when an HTTP check fails.
+    """
+    if (owner.origin != guest.origin
+            or urlsplit(owner.origin).hostname != "127.0.0.1"
+            or application.is_symlink() or public.is_symlink()
+            or application.name != "application" or public.name != "public_html"
+            or application.parent != public.parent
+            or not application.parent.name.startswith("walidsite-ci-foodex-")
+            or not application.is_dir() or not public.is_dir()):
+        raise SetupFailure("post_publish_missing_lock_disposable_loopback_only")
+
+    lock = application / "storage/app/site-installed.lock"
+    held = lock.with_name(".site-installed.lock.w10-withheld")
+    env_file = application / ".env"
+    version = application / "VERSION"
+    controller = public / "index.php"
+    if (not lock.is_file() or lock.is_symlink()
+            or held.exists() or held.is_symlink()
+            or any(not p.is_file() or p.is_symlink()
+                   for p in (env_file, version, controller))):
+        raise SetupFailure("post_publish_missing_lock_private_files_invalid")
+
+    protected = [lock, env_file, version, controller]
+    digests = {path: hashlib.sha256(path.read_bytes()).hexdigest()
+               for path in protected}
+    bootstrap = application / "storage/app/site-first-run.json"
+    if bootstrap.exists() or bootstrap.is_symlink():
+        raise SetupFailure("post_publish_missing_lock_token_not_revoked")
+
+    checks: list[str] = []
+
+    def check(name: str, passed: bool) -> None:
+        if not passed:
+            raise SetupFailure("post_publish_missing_lock_" + name)
+        checks.append("post_publish_missing_lock_" + name)
+
+    os.replace(lock, held)
+    try:
+        check("lock_actually_withheld", not lock.exists() and held.is_file())
+        check("anonymous_install_remains_closed", guest.call("/install")[0] == 404)
+        check("anonymous_setup_remains_closed", guest.call("/setup")[0] == 404)
+        check("owner_install_remains_closed", owner.call("/install")[0] == 404)
+        check("owner_setup_remains_closed", owner.call("/setup")[0] == 404)
+        owner_html = owner.call("/admin/updates")
+        check("owner_update_session_still_live", owner_html[0] == 200)
+        csrf_token = authenticated_session_csrf(owner_html[2])
+        check("owner_install_post_denied",
+              owner.call("/install/step/1", {
+                  "_token": csrf_token, "token": "invalid",
+              })[0] == 404)
+        check("owner_setup_post_denied",
+              owner.call("/setup/finish", {"_token": csrf_token})[0] == 404)
+        check("no_private_possession_token_regenerated",
+              not bootstrap.exists() and not bootstrap.is_symlink())
+        check("public_site_still_live", guest.call("/")[0] == 200)
+        check("owner_dashboard_still_live", owner.call("/admin")[0] == 200)
+        check("private_configuration_preserved",
+              all(hashlib.sha256(path.read_bytes()).hexdigest() == digests[path]
+                  for path in (env_file, version, controller)))
+        check("no_unexpected_install_lock_recreated",
+              not lock.exists() and held.is_file() and not held.is_symlink())
+    finally:
+        # Atomic same-directory restore preserves the original file inode,
+        # permissions and bytes. Never leave a disposable test half-unlocked.
+        if held.is_symlink() or not held.is_file():
+            raise SetupFailure("post_publish_missing_lock_original_lock_lost")
+        os.replace(held, lock)
+
+    check("original_install_lock_restored",
+          lock.is_file() and not lock.is_symlink() and not held.exists()
+          and hashlib.sha256(lock.read_bytes()).hexdigest() == digests[lock])
+    return checks
+
+
 def run(package: Path, sha: str, host: str, port: int, database: str,
         user: str, password: str) -> dict:
     if (host != "127.0.0.1" or port != 3307
@@ -294,6 +375,8 @@ def run(package: Path, sha: str, host: str, port: int, database: str,
                   private_env.is_file() and not private_env.is_symlink()
                   and stat.S_IMODE(private_env.stat().st_mode) & 0o077 == 0)
             checks.extend(post_publish_security(
+                client, Client(web_port), application, public))
+            checks.extend(post_publish_missing_lock_security(
                 client, Client(web_port), application, public))
         finally:
             server.terminate()
