@@ -740,6 +740,50 @@ void main() {
     expect(find.byKey(const Key('article-load-more-error')), findsNothing);
   });
 
+  testWidgets('a later page cannot reuse a published Save UUID with a new slug',
+      (tester) async {
+    const first = VerifiedArticle(
+      id: '12345678-1234-1234-1234-123456789abc',
+      slug: 'original-guide',
+      title: 'Original published guide',
+      body: 'Published first page',
+      citations: ['https://docs.example.org/first'],
+    );
+    const conflicting = VerifiedArticle(
+      id: '12345678-1234-1234-1234-123456789ABC',
+      slug: 'different-guide',
+      title: 'Conflicting identity',
+      body: 'Unsafe duplicate Save destination',
+      citations: ['https://docs.example.org/second'],
+    );
+    final calls = <int>[];
+    await tester.pumpWidget(MaterialApp(
+      home: VerifiedArticleLibrary(
+        arabic: false,
+        pageLoader: (page) {
+          calls.add(page);
+          return SynchronousFuture(VerifiedArticlePage(
+            articles: page == 1 ? [first] : [conflicting],
+            currentPage: page,
+            hasMorePages: page == 1,
+          ));
+        },
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('article-load-more')));
+    await tester.pumpAndSettle();
+    expect(calls, [1, 2]);
+    expect(find.byKey(const Key('article-load-more-error')), findsOneWidget);
+    expect(find.byKey(const Key('article-original-guide')), findsOneWidget);
+    expect(find.byKey(const Key('article-different-guide')), findsNothing);
+    expect(find.text('Conflicting identity'), findsNothing);
+    // No skipped page: the conflicting response can be safely retried.
+    await tester.tap(find.byKey(const Key('article-load-more')));
+    await tester.pumpAndSettle();
+    expect(calls, [1, 2, 2]);
+  });
+
   testWidgets('duplicate next-page article cannot overwrite verified content',
       (tester) async {
     const article = VerifiedArticle(
