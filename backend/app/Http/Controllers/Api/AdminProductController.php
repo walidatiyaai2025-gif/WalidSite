@@ -574,6 +574,33 @@ final class AdminProductController extends Controller
     {
         $this->authorizeAdmin($request);
 
+        // ADMIN-11 must report content that an anonymous visitor can actually
+        // open, not merely SQL rows marked published. Reuse the definitive
+        // public serializer and pinned editorial/rights gate used by the
+        // browser dashboard; each query is processed in bounded DB chunks.
+        $publicProjects = 0;
+        $portfolio = app(PublicPortfolioController::class);
+        foreach (Project::query()->publiclyVerified()
+            ->with(['evidence' => static fn ($evidence) => $evidence
+                ->where('visibility', 'public')
+                ->whereNotNull('verified_at')->where('verified_at', '<=', now('UTC'))
+                ->orderBy('id')->limit(50)])
+            ->orderBy('id')->lazy(100) as $project) {
+            if ($portfolio->publicProjectData($project, $request)['evidence_urls'] !== []) {
+                $publicProjects++;
+            }
+        }
+
+        $publicArticles = 0;
+        foreach (Article::query()->publiclyVisible()
+            ->orderBy('id')->lazy(100) as $article) {
+            if (is_string($article->slug)
+                && preg_match('/\\A[A-Za-z0-9-]+\\z/D', $article->slug) === 1
+                && $article->publicRevision() !== null) {
+                $publicArticles++;
+            }
+        }
+
         $jobCounts = DB::table('ai_jobs')
             ->select('status')->selectRaw('COUNT(*) AS total')
             ->groupBy('status')->orderBy('status')->get()
@@ -595,8 +622,8 @@ final class AdminProductController extends Controller
         return response()->json([
             'data' => [
                 'content' => [
-                    'public_articles' => Article::query()->publiclyVisible()->count(),
-                    'public_projects' => Project::query()->publiclyVerified()->count(),
+                    'public_articles' => $publicArticles,
+                    'public_projects' => $publicProjects,
                     'draft_articles' => Article::query()->where('status', 'draft')->count(),
                 ],
                 'ai_jobs' => $jobCounts,
