@@ -1,5 +1,6 @@
 """Unit tests for secure cPanel installation ZIP generation."""
 import hashlib
+import os
 import json
 import tempfile
 import unittest
@@ -243,6 +244,58 @@ class TestCpanelPackage(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "symbolic link"):
             build(self.root, self.output, "c" * 40)
 
+
+    def test_optional_vendor_hardlink_to_private_file_is_rejected(self):
+        # Optional dependency assets previously used Path.read_bytes() after
+        # is_file(), accepting hardlinked bytes from outside the checkout.
+        dependency = self.root / "backend/vendor/psr/logger.php"
+        dependency.unlink()
+        secret = Path(self.t.name) / "private-host-secret"
+        secret.write_bytes(b"PRIVATE HOST CREDENTIALS")
+        os.link(secret, dependency)
+        with self.assertRaisesRegex(ValueError, "Unsafe required package file identity"):
+            build(self.root, self.output, "a" * 40)
+        self.assertFalse(self.output.exists())
+
+    def test_optional_vendor_symlinked_parent_is_rejected(self):
+        original = self.root / "backend/vendor/psr"
+        moved = self.root / "backend/vendor/psr-safe"
+        original.rename(moved)
+        original.symlink_to(moved, target_is_directory=True)
+        try:
+            with self.assertRaisesRegex(ValueError, "Unsafe required file parent|symbolic link"):
+                build(self.root, self.output, "a" * 40)
+        finally:
+            original.unlink()
+            moved.rename(original)
+        self.assertFalse(self.output.exists())
+
+    def test_optional_source_changes_after_open_are_rejected(self):
+        # A swapped file pathname must never be accepted as a frozen release
+        # even if a descriptor still points at the original file's bytes.
+        dependency = self.root / "backend/vendor/psr/logger.php"
+        before = dependency.read_bytes()
+        real_fdopen = os.fdopen
+        swapped = False
+
+        def replace_after_open(fd, *args, **kwargs):
+            nonlocal swapped
+            stream = real_fdopen(fd, *args, **kwargs)
+            if not swapped and os.fstat(stream.fileno()).st_size == len(before):
+                # Only mutate when this descriptor actually names the tested
+                # dependency, not another similarly sized source.
+                if os.stat(dependency).st_ino == os.fstat(stream.fileno()).st_ino:
+                    swapped = True
+                    replacement = dependency.with_name("replacement.php")
+                    replacement.write_bytes(before)
+                    replacement.replace(dependency)
+            return stream
+
+        with patch.object(package_module.os, "fdopen", side_effect=replace_after_open):
+            with self.assertRaisesRegex(ValueError, "Unsafe required package file identity|changed during read"):
+                build(self.root, self.output, "a" * 40)
+        self.assertTrue(swapped)
+        self.assertFalse(self.output.exists())
 
     def test_explicit_required_inputs_never_follow_symlinks_outside_checkout(self):
         secret = Path(self.t.name) / "private-owner-secret"

@@ -90,18 +90,20 @@ def read_required(source, relative):
     with os.fdopen(os.open(file, flags), "rb") as stream:
         before = os.fstat(stream.fileno())
         named = os.stat(file, follow_symlinks=False)
+        def fingerprint(info):
+            return (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns, info.st_nlink)
         if (not stat.S_ISREG(before.st_mode) or not stat.S_ISREG(named.st_mode)
-                or before.st_dev != named.st_dev or before.st_ino != named.st_ino
-                or before.st_nlink != 1 or named.st_nlink != 1):
+                or fingerprint(before) != fingerprint(named) or before.st_nlink != 1
+                or before.st_size > MAX_SINGLE_ENTRY_BYTES):
             raise ValueError("Unsafe required package file identity: " + relative)
-        data = stream.read()
+        # The source inode and named path must remain identical throughout
+        # bounded reading; a later unlink/replacement cannot become ZIP data.
+        data = stream.read(before.st_size + 1)
         after = os.fstat(stream.fileno())
         named_after = os.stat(file, follow_symlinks=False)
-        if ((before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns, before.st_ctime_ns)
-            != (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns, after.st_ctime_ns)
-            or (after.st_dev, after.st_ino, after.st_size)
-            != (named_after.st_dev, named_after.st_ino, named_after.st_size)
-            or not stat.S_ISREG(named_after.st_mode)):
+        if (len(data) != before.st_size or fingerprint(before) != fingerprint(after)
+                or fingerprint(before) != fingerprint(named_after)
+                or not stat.S_ISREG(named_after.st_mode)):
             raise ValueError("Required package file changed during read: " + relative)
         return data
 
@@ -115,7 +117,7 @@ def add_folder(entries, folder, dest, root):
         target = dest + "/" + file.relative_to(folder).as_posix()
         if target in entries:
             raise ValueError("Duplicate destination: " + target)
-        entries[target] = file.read_bytes()
+        entries[target] = read_required(root, file.relative_to(root).as_posix())
 
 
 
@@ -240,14 +242,14 @@ def build(source, output, sha):
         file = backend / name
         if not safe(file, source):
             raise ValueError("Missing/unsafe application file: " + name)
-        entries["application/" + name] = file.read_bytes()
+        entries["application/" + name] = read_required(source, file.relative_to(source).as_posix())
     add_folder(entries, backend / "public", "public_html", source)
     # Exact checked-out immutable bootstrap; never substitute a runner-local
     # template for a different source ZIP/commit.
     index_file = backend / "resources/deployment/cpanel-stable-index.php"
     if not safe(index_file, source):
         raise ValueError("Missing or symlinked stable cPanel public index")
-    entries["public_html/index.php"] = index_file.read_bytes()
+    entries["public_html/index.php"] = read_required(source, index_file.relative_to(source).as_posix())
     entries["public_html/assets/portraits/portrait-light-derived.jpg"] = read_required(
         source, "assets/portraits/portrait-light-derived.jpg")
     # First-install About media fallbacks: copy local SVG icons and licensed
