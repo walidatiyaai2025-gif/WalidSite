@@ -325,7 +325,10 @@ void main() {
           ));
         }
         return SynchronousFuture(VerifiedArticlePage(
-          articles: [article(page == 1 ? articleSlug : 'database-backup')],
+          articles: [article(
+            page == 1 ? articleSlug : 'database-backup',
+            id: page == 1 ? articleId : '00000000-0000-4000-8000-000000000078',
+          )],
           currentPage: page,
           hasMorePages: page == 1,
           categories: categories,
