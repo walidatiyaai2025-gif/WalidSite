@@ -61,12 +61,14 @@ final class MariaDbRecoverySnapshot
                         throw new DomainException('Only InnoDB base tables with trusted schema are supported.');
                     }
                     $file = $partial.'/'.$table.'.jsonl';
-                    $out = fopen($file, 'xb');
+                    $out = fopen($file, 'x+b');
                     if ($out === false) {
                         throw new RuntimeException('Cannot create MariaDB data stream.');
                     }
                     $count = 0;
                     $hashes = [];
+                    $fileHasher = hash_init('sha256');
+                    $writtenBytes = 0;
                     try {
                         $stmt = $source->query('SELECT * FROM '.$quoted);
                         while (($row = $stmt->fetch(PDO::FETCH_ASSOC)) !== false) {
@@ -79,20 +81,29 @@ final class MariaDbRecoverySnapshot
                             if (fwrite($out, $line) !== strlen($line)) {
                                 throw new RuntimeException('MariaDB snapshot write incomplete.');
                             }
+                            $writtenBytes += strlen($line);
+                            hash_update($fileHasher, $line);
                             $hashes[] = hash('sha256', $this->canonical($encoded));
                         }
                         $stmt->closeCursor();
+                        if (! fflush($out) || ! chmod($file, 0600)) {
+                            throw new RuntimeException('Cannot finalize private database recovery bytes.');
+                        }
+                        // Do not re-open an attacker-swappable pathname to
+                        // hash a different inode than the one just written.
+                        $stats = $this->assertStableRowFile($out, $file);
+                        if ($stats['size'] !== $writtenBytes) {
+                            throw new DomainException('MariaDB snapshot changed during writing.');
+                        }
+                        $fileDigest = hash_final($fileHasher);
                     } finally {
                         fclose($out);
-                    }
-                    if (! chmod($file, 0600)) {
-                        throw new RuntimeException('Cannot make database recovery bytes private.');
                     }
                     sort($hashes, SORT_STRING);
                     $manifest[$table] = [
                         'ddl' => $ddl,
                         'rows' => $count,
-                        'file_sha256' => hash_file('sha256', $file),
+                        'file_sha256' => $fileDigest,
                         'data_sha256' => hash('sha256', implode("\n", $hashes)),
                     ];
                     $rows += $count;
