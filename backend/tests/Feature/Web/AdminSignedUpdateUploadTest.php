@@ -82,6 +82,12 @@ final class AdminSignedUpdateUploadTest extends TestCase
         ]);
 
         try {
+            // No signed ZIP receipt: the owner cannot run a host preflight,
+            // and the action may not manufacture a private inbox or proof.
+            $this->post('https://localhost/admin/updates/preflight')
+                ->assertRedirect()->assertSessionHasErrors('hosting');
+            $this->assertNull(session('owner_update_host_preflight'));
+
             $this->get('https://localhost/admin/updates')->assertOk()
                 ->assertSee('data-testid="trusted-zip-upload-form"', false)
                 ->assertSee('data-testid="verify-signed-update-zip"', false)
