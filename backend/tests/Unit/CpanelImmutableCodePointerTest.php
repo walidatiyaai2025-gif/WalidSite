@@ -413,6 +413,35 @@ final class CpanelImmutableCodePointerTest extends TestCase
         }
     }
 
+    public function test_health_callback_cannot_change_runtime_dependencies_and_keep_new_pointer(): void
+    {
+        $candidateLock = $this->candidate.'/application/composer.lock';
+        $health = function () use ($candidateLock): bool {
+            // The new code is selected only provisionally during the probe.
+            $this->assertFileExists($this->home.'/.walidsite-active-release.json');
+            file_put_contents($candidateLock, '{"packages":[{"name":"late/runtime"}]}');
+            return true;
+        };
+
+        try {
+            (new CpanelImmutableCodePointer())->activate(...$this->args(
+                health: $health,
+            ));
+            $this->fail('Post-switch Composer mutation was accepted.');
+        } catch (RuntimeException $failure) {
+            $this->assertStringContainsString(
+                'old code pointer restored', $failure->getMessage(),
+            );
+            $this->assertFileDoesNotExist($this->home.'/.walidsite-active-release.json');
+            $this->assertSame('KEEP_MY_PRIVATE_APP_KEY', file_get_contents(
+                $this->home.'/application/.env',
+            ));
+            $this->assertSame('PRIVATE_UPLOAD', file_get_contents(
+                $this->home.'/application/storage/app/photo.txt',
+            ));
+        }
+    }
+
     public function test_changed_public_router_or_htaccess_blocks_unsafe_cutover(): void
     {
         file_put_contents($this->candidate.'/public_html/.htaccess', 'RewriteEngine Off');
