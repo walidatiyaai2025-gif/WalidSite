@@ -418,11 +418,24 @@ final class AdminProductController extends Controller
         $this->authorizeAdmin($request);
         $this->onlyFields($request, []);
 
-        $configured = config('portfolio.github_public_repos', []);
-        foreach (is_array($configured) ? array_slice($configured, 0, 20) : [] as $slug) {
-            if (is_string($slug)) {
-                Cache::forget('public-github:'.hash('sha256', strtolower($slug)));
-            }
+        $configuredSlugs = $directory->configuredSlugs();
+        $configuredCount = count($configuredSlugs);
+        if ($configuredCount === 0) {
+            // A no-op without configured sources is not an external sync.
+            // Never fabricate provider availability or a verification time.
+            return response()->json([
+                'message' => 'No valid public GitHub repositories are configured.',
+                'data' => [],
+                'meta' => [
+                    'configured_count' => 0,
+                    'verified_count' => 0,
+                    'external_available' => false,
+                    'configuration_status' => 'not_configured',
+                ],
+            ])->header('Cache-Control', 'no-store');
+        }
+        foreach ($configuredSlugs as $slug) {
+            Cache::forget('public-github:'.hash('sha256', strtolower($slug)));
         }
 
         $repositories = $directory->repositories();
@@ -431,7 +444,7 @@ final class AdminProductController extends Controller
             static fn (array $repo): bool => ($repo['status'] ?? null) === 'verified'
                 && is_string($repo['full_name'] ?? null)
         ));
-        $configuredCount = $this->configuredGithubCount();
+
 
         if ($configuredCount > 0 && count($verified) === 0) {
             return response()->json([
@@ -896,21 +909,6 @@ final class AdminProductController extends Controller
 
     private function configuredGithubCount(): int
     {
-        $configured = config('portfolio.github_public_repos', []);
-        if (! is_array($configured)) {
-            return 0;
-        }
-
-        $seen = [];
-        foreach (array_slice($configured, 0, 20) as $slug) {
-            if (is_string($slug) && preg_match(
-                '/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?\/[A-Za-z0-9_][A-Za-z0-9_.-]{0,99}$/D',
-                $slug
-            ) === 1 && ! str_contains($slug, '..')) {
-                $seen[strtolower($slug)] = true;
-            }
-        }
-
-        return count($seen);
+        return count(app(PublicRepositoryDirectory::class)->configuredSlugs());
     }
 }
