@@ -17,6 +17,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / "backend/app/Http/Controllers/AdminUpdateController.php"
+READER_SOURCE = ROOT / "backend/app/Domain/Deployment/TrustedInstalledVersion.php"
 PHP = shutil.which("php")
 RUNNER = r"""
 namespace App\Http\Controllers { class Controller {} }
@@ -28,6 +29,9 @@ namespace {
         return $name === 'site.trusted_installed_version'
             ? getenv('WALIDSITE_IDENTITY_PIN') : null;
     }
+    // Mirror the source-level harness: explicitly load both real files,
+    // without requiring a Laravel bootstrap or Composer vendor autoload.
+    require getenv('WALIDSITE_IDENTITY_READER_SOURCE');
     require getenv('WALIDSITE_IDENTITY_SOURCE');
     $reader = new \ReflectionMethod(
         \App\Http\Controllers\AdminUpdateController::class,
@@ -41,7 +45,8 @@ namespace {
 """
 
 
-@unittest.skipUnless(PHP and SOURCE.is_file(), "PHP and source controller required")
+@unittest.skipUnless(PHP and SOURCE.is_file() and READER_SOURCE.is_file(),
+                     "PHP, controller and installed-version reader required")
 class InstalledVersionFailClosedTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="walidsite-version-pin-")
@@ -55,6 +60,7 @@ class InstalledVersionFailClosedTests(unittest.TestCase):
             "WALIDSITE_IDENTITY_ROOT": str(self.root),
             "WALIDSITE_IDENTITY_PIN": pinned,
             "WALIDSITE_IDENTITY_SOURCE": str(SOURCE),
+            "WALIDSITE_IDENTITY_READER_SOURCE": str(READER_SOURCE),
         })
         run = subprocess.run(
             [PHP, "-d", "display_errors=stderr", "-r", RUNNER],
