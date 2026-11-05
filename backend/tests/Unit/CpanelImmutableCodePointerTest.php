@@ -116,6 +116,48 @@ final class CpanelImmutableCodePointerTest extends TestCase
         }
     }
 
+    public function test_lease_expiring_during_successful_health_rolls_back_code_pointer(): void
+    {
+        $lease = $this->home.'/.walidsite-update-maintenance.json';
+        $health = function () use ($lease): bool {
+            // The new version was temporarily selected for this HTTP probe.
+            $this->assertFileExists($this->home.'/.walidsite-active-release.json');
+            $marker = json_decode(
+                (string) file_get_contents($lease), true, 8, JSON_THROW_ON_ERROR,
+            );
+            $marker['expires_at'] = time() - 1;
+            $this->assertNotFalse(file_put_contents(
+                $lease, json_encode($marker, JSON_THROW_ON_ERROR),
+            ));
+            return true; // Successful health alone cannot authorize cutover.
+        };
+
+        try {
+            (new CpanelImmutableCodePointer())->activate(...$this->args(
+                health: $health,
+            ));
+            $this->fail('Expired lease was accepted after health verification.');
+        } catch (RuntimeException $error) {
+            $this->assertStringContainsString(
+                'old code pointer restored', $error->getMessage(),
+            );
+        }
+
+        $this->assertFileDoesNotExist($this->home.'/.walidsite-active-release.json');
+        $this->assertSame('0.1.1', trim((string) file_get_contents(
+            $this->home.'/application/VERSION',
+        )));
+        $this->assertSame('KEEP_MY_PRIVATE_APP_KEY', file_get_contents(
+            $this->home.'/application/.env',
+        ));
+        $this->assertSame('PRIVATE_UPLOAD', file_get_contents(
+            $this->home.'/application/storage/app/photo.txt',
+        ));
+        // Keep the expired marker for supervised recovery; never silently
+        // clear it and expose an unverified release via the web dispatcher.
+        $this->assertFileExists($lease);
+    }
+
     public function test_unsigned_or_unbacked_or_non_quiesced_switch_is_forbidden(): void
     {
         foreach (['maintenance','recovery','signed'] as $rejected) {
