@@ -99,13 +99,66 @@ class CpanelPhysicalPreflightSecurity(unittest.TestCase):
         release = self.home / ".walidsite-releases" / ("v0.1.2-" + "a" * 40)
         (release / "application").mkdir(parents=True)
         (release / "application" / "VERSION").write_text("0.1.2\n")
-        (self.home / ".walidsite-active-release.json").write_text(json.dumps({
+        pointer = self.home / ".walidsite-active-release.json"
+        pointer.write_text(json.dumps({
             "schema": 1, "version": "0.1.2",
             "root": ".walidsite-releases/" + release.name,
         }))
+        pointer.chmod(0o600)
         self.assertTrue(self.verdict()["allowed"])
         (release / "application" / "VERSION").write_text("0.1.3\n")
         self.assertFalse(self.verdict()["allowed"])
+
+    def test_pointer_private_inode_mode_hardlink_and_symlink_fail_closed(self):
+        release = self.home / ".walidsite-releases" / ("v0.1.2-" + "a" * 40)
+        (release / "application").mkdir(parents=True)
+        (release / "application" / "VERSION").write_text("0.1.2\n")
+        pointer = self.home / ".walidsite-active-release.json"
+        pointer.write_text(json.dumps({
+            "schema": 1, "version": "0.1.2",
+            "root": ".walidsite-releases/" + release.name,
+        }))
+        # 0644 is not the private 0600 atomic writer contract.
+        self.assertFalse(self.verdict()["allowed"])
+        pointer.chmod(0o600)
+        self.assertTrue(self.verdict()["allowed"])
+        hardlink = self.home / "pointer-hardlink"
+        hardlink.hardlink_to(pointer)
+        try:
+            self.assertFalse(self.verdict()["allowed"])
+        finally:
+            hardlink.unlink()
+        self.assertTrue(self.verdict()["allowed"])
+        other = self.home / "original-pointer"
+        pointer.rename(other)
+        pointer.symlink_to(other)
+        self.assertFalse(self.verdict()["allowed"])
+
+    def test_installed_version_inode_hardlink_and_foreign_writes_fail_closed(self):
+        version = self.app / "VERSION"
+        self.assertTrue(self.verdict()["allowed"])
+        version.chmod(0o666)
+        self.assertFalse(self.verdict()["allowed"])
+        version.chmod(0o644)
+        hardlink = self.home / "version-hardlink"
+        hardlink.hardlink_to(version)
+        try:
+            self.assertFalse(self.verdict()["allowed"])
+        finally:
+            hardlink.unlink()
+        self.assertTrue(self.verdict()["allowed"])
+        other = self.home / "original-version"
+        version.rename(other)
+        version.symlink_to(other)
+        self.assertFalse(self.verdict()["allowed"])
+
+    def test_preflight_control_reads_are_descriptor_pinned_not_path_reopened(self):
+        source = SOURCE.read_text(encoding="utf-8")
+        self.assertIn("readPinnedIdentityFile($pointer, 512, true)", source)
+        self.assertIn("readPinnedIdentityFile($versionFile, 32, false)", source)
+        self.assertIn("stream_get_contents($stream, $maximum + 1)", source)
+        self.assertNotIn("file_get_contents($pointer)", source)
+        self.assertNotIn("file_get_contents($versionFile)", source)
 
     def test_stale_disk_version_rejected(self):
         (self.app / "VERSION").write_text("0.1.3\n")
