@@ -90,6 +90,26 @@ button:disabled{background:#718096;cursor:not-allowed}
 <p>{{ $locale === 'ar' ? 'Source SHA:' : 'Source SHA:' }} <code>{{ $verifiedUpload['source_sha'] }}</code></p>
 <p>{{ $locale === 'ar' ? 'SHA-256:' : 'SHA-256:' }} <code>{{ $verifiedUpload['artifact_sha256'] }}</code></p>
 </div>
+<form method="post" action="{{ route('admin.updates.preflight', ['lang' => $locale]) }}"
+    data-testid="owner-host-preflight-form">
+@csrf
+<button type="submit" data-testid="verify-physical-hosting">
+{{ $locale === 'ar' ? 'فحص توافق استضافة cPanel (قراءة فقط)' : 'Check cPanel hosting compatibility (read-only)' }}
+</button>
+</form>
+@endif
+@if($hostPreflight)
+<div class="success" role="status" data-testid="owner-host-preflight-verified">
+<strong>{{ $locale === 'ar' ? 'اجتاز تخطيط الاستضافة الفحص المبدئي.' : 'Physical hosting layout preflight passed.' }}</strong>
+<p>{{ $locale === 'ar'
+    ? 'لم يتم إنشاء نسخة احتياطية أو تنفيذ تجربة استعادة أو إيقاف الكتابة أو تثبيت التحديث. يظل التثبيت محجوبًا.'
+    : 'No backup, restore drill, queue isolation or code installation was performed. Install remains blocked.' }}</p>
+</div>
+@endif
+@if($errors->has('hosting'))
+<p class="error" role="alert" data-testid="owner-host-preflight-blocked">{{ $locale === 'ar'
+    ? 'لا يمكن اعتماد جاهزية استضافة cPanel للتحديث حتى الآن؛ لم يحدث أي تغيير للبيانات أو الكود.'
+    : $errors->first('hosting') }}</p>
 @endif
 <p class="blocked">{{ $locale === 'ar'
     ? 'Backup Now وInstall Update سيظلان متوقفين حتى يتوفر إثبات نسخ احتياطي قابل للاسترجاع وفحص توافق الاستضافة والتبديل الآمن وإيقاف الكتابة أثناء التحديث.'
