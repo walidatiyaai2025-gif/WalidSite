@@ -161,7 +161,29 @@ final class CpanelImmutableCodePointer
                 (new CpanelReleaseMaintenance())->assertActive(
                     $home, $maintenanceToken, $previousRoot,
                 );
+                // External callbacks are not entitled to replace our private
+                // pointer or lock. A successful health response alone is not
+                // proof that the proposed release remains selected.
+                $this->assertLockIdentity($lock, $lockPath);
+                if ($this->read($pointer, $home) !== $next) {
+                    throw new RuntimeException('Active release pointer changed during health verification.');
+                }
             } catch (Throwable $failure) {
+                // Rollback is safe only while the updater still owns both
+                // the original lock inode and its provisional pointer.
+                // Otherwise a blind replace/unlink could destroy another
+                // update. Preserve the evidence for supervised recovery.
+                try {
+                    $this->assertLockIdentity($lock, $lockPath);
+                    if ($this->read($pointer, $home) !== $next) {
+                        throw new DomainException('Active release pointer ownership was lost.');
+                    }
+                } catch (Throwable $ownershipFailure) {
+                    throw new RuntimeException(
+                        'Release ownership changed; manual recovery required before further updates.',
+                        0, $ownershipFailure,
+                    );
+                }
                 if ($previous === null) {
                     if (! @unlink($pointer)) {
                         throw new RuntimeException('Automatic code pointer rollback failed.', 0, $failure);
