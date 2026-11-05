@@ -94,6 +94,28 @@ final class TrustedReleaseDownloaderTest extends TestCase
         );
     }
 
+    public function test_publication_link_count_ctime_change_preserves_immutable_inode_guards(): void
+    {
+        $check = new \ReflectionMethod(TrustedReleaseDownloader::class, 'assertCoreArtifactIdentity');
+        $service = new TrustedReleaseDownloader();
+        $baseline = ['dev' => 1, 'ino' => 20, 'size' => 128, 'mtime' => 10, 'ctime' => 10];
+        // link()/unlink() legitimately adjust ctime without changing bytes
+        // or the inode; this must not reject an otherwise verified artifact.
+        $linked = $baseline;
+        $linked['ctime'] = 11;
+        $check->invoke($service, $baseline, $linked);
+        foreach (['dev', 'ino', 'size', 'mtime'] as $field) {
+            $tampered = $linked;
+            ++$tampered[$field];
+            try {
+                $check->invoke($service, $baseline, $tampered);
+                self::fail('Changed published artifact '.$field.' accepted.');
+            } catch (DomainException $error) {
+                self::assertStringContainsString('identity changed', $error->getMessage());
+            }
+        }
+    }
+
     public function test_signed_https_release_downloads_complete_real_zip_in_private_storage(): void
     {
         $called = 0;
