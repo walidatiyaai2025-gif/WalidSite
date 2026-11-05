@@ -148,12 +148,12 @@ final class MariaDbRecoverySnapshotTest extends TestCase
         self::assertIsResource($stream);
         $guard = new \ReflectionMethod(MariaDbRecoverySnapshot::class, 'assertStableRowFile');
         try {
-            self::assertSame(4, fwrite($stream, "abc\\n"));
+            self::assertSame(4, fwrite($stream, "abc\n"));
             self::assertTrue(fflush($stream));
             $guard->invoke(new MariaDbRecoverySnapshot(), $stream, $path);
             $orphan = $this->home.'/private/orphan-writer.jsonl';
             self::assertTrue(rename($path, $orphan));
-            self::assertSame(4, file_put_contents($path, "abc\\n"));
+            self::assertSame(4, file_put_contents($path, "abc\n"));
             try {
                 $guard->invoke(new MariaDbRecoverySnapshot(), $stream, $path);
                 self::fail('Replaced writer path must not be accepted.');
