@@ -600,6 +600,16 @@ class OfflineRunbookRepository {
     }
     final snapshot = await _trustedSnapshot();
     if (snapshot != null) {
+      // Legacy/global signed snapshot storage must enforce the same
+      // published-version rollback rule as per-UUID pins. A more recent
+      // signature timestamp does not authorize older reviewed content.
+      if (revision != null && snapshot.pack.items.any((item) =>
+          item.id == revision.id.toLowerCase() &&
+          item.publishedMarkdown != null &&
+          item.publishedVersion != null &&
+          item.publishedVersion! > revision.version)) {
+        throw const FormatException('Refusing published runbook version downgrade');
+      }
       final order = fresh.verifiedAt!.compareTo(snapshot.pack.verifiedAt!);
       if (order < 0) {
         throw const FormatException('Refusing older signed runbook update');
