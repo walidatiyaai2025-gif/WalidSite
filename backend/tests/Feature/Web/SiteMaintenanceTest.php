@@ -433,7 +433,7 @@ class SiteMaintenanceTest extends TestCase
         ));
         config([
             'site.updates_enabled' => true,
-            'site.trusted_installed_version' => '1.0.0',
+            'site.trusted_installed_version' => trim((string) file_get_contents(base_path('VERSION'))),
             'site.trusted_release_origin' => 'https://updates.example.test',
             'site.trusted_release_public_key' => $publicKey,
         ]);
@@ -498,6 +498,91 @@ class SiteMaintenanceTest extends TestCase
             ->assertSee('data-testid="trusted-release-not-configured"', false);
     }
 
+    public function test_mismatched_installed_version_blocks_catalog_network_and_false_signed_status(): void
+    {
+        $calls = 0;
+        $this->app->instance(TrustedReleaseCatalog::class, new TrustedReleaseCatalog(
+            static function () use (&$calls): int {
+                $calls++;
+                return 200;
+            },
+        ));
+        config([
+            'site.updates_enabled' => true,
+            'site.trusted_installed_version' => '9.9.9',
+            'site.trusted_release_origin' => 'https://updates.example.test',
+            'site.trusted_release_public_key' => base64_encode(str_repeat('x', 32)),
+        ]);
+        $owner = User::create([
+            'email' => 'mismatched-installed-release@example.test',
+            'password_hash' => 'unused',
+            'status' => 'active',
+        ]);
+        $owner->roles()->attach(Role::firstOrCreate(['name' => 'owner'])->id);
+        $this->actingAs($owner)->post('/admin/updates/check?lang=en')
+            ->assertRedirect('/admin/updates?lang=en')
+            ->assertSessionHas('trusted_release_check.state', 'not_configured');
+        $this->assertSame(0, $calls, 'Must not contact publisher for a fabricated installed version.');
+        $this->get('/admin/updates?lang=en')->assertOk()
+            ->assertSee('data-testid="trusted-release-not-configured"', false)
+            ->assertSee('0.1.2')
+            ->assertDontSee('data-testid="trusted-release-verified"', false);
+    }
+
+    public function test_old_signed_discovery_flash_is_invalidated_after_trust_or_version_change(): void
+    {
+        $installed = trim((string) file_get_contents(base_path('VERSION')));
+        $origin = 'https://updates.example.test';
+        $key = base64_encode(str_repeat('x', 32));
+        config([
+            'site.updates_enabled' => true,
+            'site.trusted_installed_version' => $installed,
+            'site.trusted_release_origin' => $origin,
+            'site.trusted_release_public_key' => $key,
+        ]);
+        $owner = User::create([
+            'email' => 'stale-release-check@example.test',
+            'password_hash' => 'unused',
+            'status' => 'active',
+        ]);
+        $owner->roles()->attach(Role::firstOrCreate(['name' => 'owner'])->id);
+        $this->actingAs($owner);
+
+        $result = [
+            'state' => 'signed_release_available',
+            'installed_version' => $installed,
+            'trust_fingerprint' => hash('sha256', $origin."\n".$key),
+            'checked_at' => time(),
+            'version' => '99.0.0',
+            'source_sha' => str_repeat('a', 40),
+            'artifact_sha256' => str_repeat('b', 64),
+        ];
+
+        // A previously authenticated result must NOT survive a publisher
+        // key change, code deployment, or expired discovery window.
+        foreach ([
+            ['site.trusted_release_public_key' => base64_encode(str_repeat('y', 32))],
+            ['site.trusted_installed_version' => '8.8.8'],
+            [],
+        ] as $i => $changed) {
+            config([
+                'site.trusted_installed_version' => $installed,
+                'site.trusted_release_origin' => $origin,
+                'site.trusted_release_public_key' => $key,
+            ]);
+            config($changed);
+            $flash = $result;
+            if ($i === 2) {
+                $flash['checked_at'] = time() - 301;
+            }
+            $this->withSession(['trusted_release_check' => $flash])
+                ->get('/admin/updates?lang=en')->assertOk()
+                ->assertDontSee('data-testid="trusted-release-verified"', false)
+                ->assertDontSee('99.0.0')
+                ->assertSee('Not verified');
+        }
+    }
+
     public function test_untrusted_catalog_fails_closed_and_hides_transport_error(): void
     {
         $calls = 0;
@@ -510,7 +595,7 @@ class SiteMaintenanceTest extends TestCase
         ));
         config([
             'site.updates_enabled' => true,
-            'site.trusted_installed_version' => '1.0.0',
+            'site.trusted_installed_version' => trim((string) file_get_contents(base_path('VERSION'))),
             'site.trusted_release_origin' => 'https://updates.example.test',
             'site.trusted_release_public_key' => base64_encode(str_repeat('x', 32)),
         ]);
