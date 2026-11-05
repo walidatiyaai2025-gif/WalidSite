@@ -140,6 +140,55 @@ final class Web13PaginatedSearchTest extends TestCase
         }
     }
 
+
+    public function test_search_page_two_article_open_back_and_locale_keep_exact_verified_page(): void
+    {
+        for ($i = 1; $i <= 15; $i++) {
+            $this->article('pagination-return-'.$i);
+        }
+
+        foreach (['en' => 'ar', 'ar' => 'en'] as $lang => $otherLang) {
+            $query = ['lang' => $lang, 'q' => 'PagerEvidence2026', 'type' => 'articles', 'page' => 2];
+            $listing = $this->get(route('public.search', $query))->assertOk();
+            $html = $listing->getContent();
+
+            // Three first-viewport results and two lower results must all
+            // carry the same validated search page to their article detail.
+            preg_match_all('/href="([^"]*\\/blog\\/pagination-return-[^"]*)"/', $html, $links);
+            $this->assertCount(5, $links[1], $lang.' five public article detail links');
+            foreach ($links[1] as $link) {
+                $this->assertStringContainsString('page=2', html_entity_decode($link, ENT_QUOTES), $lang.' lost page');
+            }
+
+            $listing->assertSee('href="'.e(route('public.search', [
+                'lang' => $otherLang, 'q' => 'PagerEvidence2026',
+                'type' => 'articles', 'page' => 2,
+            ])).'"', false);
+
+            $detailBase = [
+                'slug' => 'pagination-return-11', 'lang' => $lang,
+                'source' => 'search', 'q' => 'PagerEvidence2026', 'type' => 'articles',
+            ];
+            $detailUrl = route('public.article', $detailBase + ['page' => 2]);
+            $listing->assertSee('href="'.e($detailUrl).'"', false);
+            $this->get($detailUrl)->assertOk()
+                ->assertSee('href="'.e(route('public.search', $query)).'"', false)
+                ->assertSee($lang === 'ar' ? 'العودة إلى نتائج البحث' : 'Back to search results');
+
+            // A fresh first-page article must not acquire a synthetic page=1.
+            $this->get(route('public.article', $detailBase))->assertOk()
+                ->assertSee('href="'.e(route('public.search', [
+                    'lang' => $lang, 'q' => 'PagerEvidence2026', 'type' => 'articles',
+                ])).'"', false);
+            foreach (['page=10001', 'page=-1', 'page=2.5', 'page%5B%5D=2'] as $untrusted) {
+                $this->get(route('public.article', $detailBase).'&'.$untrusted)->assertOk()
+                    ->assertSee('href="'.e(route('public.search', [
+                        'lang' => $lang, 'q' => 'PagerEvidence2026', 'type' => 'articles',
+                    ])).'"', false);
+            }
+        }
+    }
+
     public function test_empty_results_and_invalid_pages_cannot_invent_pagination_or_leak_data(): void
     {
         $this->article('pagination-unpublished', false);
