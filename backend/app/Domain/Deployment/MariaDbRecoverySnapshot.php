@@ -161,7 +161,7 @@ final class MariaDbRecoverySnapshot
         }
         try {
             $metadata = json_decode($json, true, 16, JSON_THROW_ON_ERROR);
-        } catch (\\JsonException $error) {
+        } catch (\JsonException $error) {
             throw new DomainException('Invalid MariaDB recovery manifest encoding.', 0, $error);
         }
         if (! is_array($metadata) || ($metadata['format'] ?? null) !== 'walidsite-mariadb-1'
