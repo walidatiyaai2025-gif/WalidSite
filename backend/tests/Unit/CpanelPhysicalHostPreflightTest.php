@@ -75,10 +75,82 @@ final class CpanelPhysicalHostPreflightTest extends TestCase
         self::assertTrue(mkdir($release.'/application', 0700, true));
         file_put_contents($release.'/application/VERSION', "0.1.2\n");
         file_put_contents($this->home.'/application/VERSION', "0.1.1\n");
-        file_put_contents($this->home.'/.walidsite-active-release.json', json_encode([
+        $pointer = $this->home.'/.walidsite-active-release.json';
+        file_put_contents($pointer, json_encode([
             'schema' => 1, 'version' => '0.1.2',
             'root' => '.walidsite-releases/v0.1.2-'.$sha,
         ], JSON_THROW_ON_ERROR));
+        self::assertTrue(chmod($pointer, 0600));
+        self::assertSame('hosting_layout_verified', $this->inspect()['state']);
+    }
+
+    /** Legitimate private pointer and code VERSION must both be stable read-only identities. */
+    private function validReleasePointer(): string
+    {
+        $root = '.walidsite-releases/v0.1.2-'.str_repeat('a', 40);
+        self::assertTrue(mkdir($this->home.'/'.$root.'/application', 0700, true));
+        file_put_contents($this->home.'/'.$root.'/application/VERSION', "0.1.2\n");
+        $pointer = $this->home.'/.walidsite-active-release.json';
+        file_put_contents($pointer, json_encode([
+            'schema' => 1, 'version' => '0.1.2', 'root' => $root,
+        ], JSON_THROW_ON_ERROR));
+        self::assertTrue(chmod($pointer, 0600));
+
+        return $pointer;
+    }
+
+    public function test_exposed_or_hardlinked_private_pointer_fails_host_preflight(): void
+    {
+        $pointer = $this->validReleasePointer();
+        self::assertTrue(chmod($pointer, 0644));
+        try {
+            $this->inspect();
+            self::fail('An exposed code-switch pointer must never pass host preflight.');
+        } catch (DomainException) {
+            self::assertFileExists($pointer);
+        }
+
+        self::assertTrue(chmod($pointer, 0600));
+        $hardlink = $this->home.'/unsafe-pointer-hardlink';
+        if (! @link($pointer, $hardlink)) {
+            self::markTestSkipped('Host does not support hard links.');
+        }
+        try {
+            $this->inspect();
+            self::fail('A hardlinked code-switch pointer must never pass host preflight.');
+        } catch (DomainException) {
+            self::assertFileExists($pointer);
+        } finally {
+            unlink($hardlink);
+            clearstatcache(true, $pointer);
+        }
+        self::assertSame('hosting_layout_verified', $this->inspect()['state']);
+    }
+
+    public function test_hardlinked_or_foreign_writable_code_version_fails_preflight(): void
+    {
+        $version = $this->home.'/application/VERSION';
+        self::assertTrue(chmod($version, 0666));
+        try {
+            $this->inspect();
+            self::fail('Group/world writable code identity must fail closed.');
+        } catch (DomainException) {
+            self::assertFileExists($version);
+        }
+        self::assertTrue(chmod($version, 0644));
+        $hardlink = $this->home.'/version-hardlink';
+        if (! @link($version, $hardlink)) {
+            self::markTestSkipped('Host does not support hard links.');
+        }
+        try {
+            $this->inspect();
+            self::fail('A hardlinked installed VERSION must fail closed.');
+        } catch (DomainException) {
+            self::assertFileExists($version);
+        } finally {
+            unlink($hardlink);
+            clearstatcache(true, $version);
+        }
         self::assertSame('hosting_layout_verified', $this->inspect()['state']);
     }
 

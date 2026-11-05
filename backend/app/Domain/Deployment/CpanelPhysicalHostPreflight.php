@@ -92,12 +92,11 @@ final class CpanelPhysicalHostPreflight
         $codeRoot = $private;
         $pointer = $home.'/.walidsite-active-release.json';
         if (file_exists($pointer) || is_link($pointer)) {
-            if (is_link($pointer) || ! is_file($pointer)
-                || filesize($pointer) === false || filesize($pointer) > 512) {
-                throw new DomainException('Private release identity is unsafe.');
-            }
             try {
-                $state = json_decode((string) file_get_contents($pointer), true, 8, JSON_THROW_ON_ERROR);
+                $state = json_decode(
+                    $this->readPinnedIdentityFile($pointer, 512, true),
+                    true, 8, JSON_THROW_ON_ERROR,
+                );
             } catch (JsonException) {
                 throw new DomainException('Private release identity is malformed.');
             }
@@ -120,9 +119,10 @@ final class CpanelPhysicalHostPreflight
         }
 
         $versionFile = $codeRoot.'/VERSION';
-        if (is_link($versionFile) || ! is_file($versionFile)
-            || filesize($versionFile) === false || filesize($versionFile) > 32
-            || ! hash_equals($installedVersion, trim((string) file_get_contents($versionFile)))) {
+        if (! hash_equals(
+            $installedVersion,
+            trim($this->readPinnedIdentityFile($versionFile, 32, false)),
+        )) {
             throw new DomainException('Physical code version differs from the verified installed identity.');
         }
 
@@ -142,5 +142,70 @@ final class CpanelPhysicalHostPreflight
             'backup_verified' => false,
             'code_update_performed' => false,
         ];
+    }
+
+    /**
+     * Read a release identity from one held, bounded file descriptor. The
+     * owner-update read-only preflight must authenticate the SAME inode the
+     * cPanel dispatcher and update orchestrator will use later. Never stat
+     * one filename and then reopen a replaceable path with file_get_contents.
+     *
+     * The atomic writer requires a private 0600 pointer; versioned code files
+     * may be 0644 but must never be writable by a different host principal.
+     */
+    private function readPinnedIdentityFile(string $path, int $maximum, bool $private): string
+    {
+        clearstatcache(true, $path);
+        if (is_link($path) || realpath($path) !== $path) {
+            throw new DomainException('Unsafe physical release identity path.');
+        }
+        $stream = @fopen($path, 'rb');
+        if ($stream === false) {
+            throw new DomainException('Physical release identity is unavailable.');
+        }
+        try {
+            clearstatcache(true, $path);
+            $baseline = @fstat($stream);
+            if (! is_array($baseline)
+                || ($baseline['mode'] & 0170000) !== 0100000
+                || ($baseline['nlink'] ?? 0) !== 1
+                || $baseline['size'] < 1 || $baseline['size'] > $maximum
+                || ($private && ($baseline['mode'] & 0777) !== 0600)
+                || (! $private && ($baseline['mode'] & 0022) !== 0)) {
+                throw new DomainException('Unsafe physical release identity inode.');
+            }
+            $this->assertPinnedIdentity($stream, $path, $baseline);
+            $contents = @stream_get_contents($stream, $maximum + 1);
+            if (! is_string($contents) || strlen($contents) !== $baseline['size']) {
+                throw new DomainException('Physical release identity changed during read.');
+            }
+            $this->assertPinnedIdentity($stream, $path, $baseline);
+
+            return $contents;
+        } finally {
+            fclose($stream);
+        }
+    }
+
+    /**
+     * @param resource $stream
+     * @param array<string|int,mixed> $baseline
+     */
+    private function assertPinnedIdentity($stream, string $path, array $baseline): void
+    {
+        clearstatcache(true, $path);
+        $opened = @fstat($stream);
+        $named = @lstat($path);
+        if (! is_array($opened) || ! is_array($named)
+            || is_link($path) || realpath($path) !== $path
+            || ($opened['mode'] & 0170000) !== 0100000
+            || ($named['mode'] & 0170000) !== 0100000) {
+            throw new DomainException('Physical release identity pathname changed.');
+        }
+        foreach (['dev', 'ino', 'size', 'mode', 'nlink', 'mtime', 'ctime'] as $field) {
+            if ($opened[$field] !== $baseline[$field] || $named[$field] !== $baseline[$field]) {
+                throw new DomainException('Physical release identity replaced or changed.');
+            }
+        }
     }
 }
