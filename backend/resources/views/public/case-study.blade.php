@@ -77,27 +77,22 @@ body:has(.project-case-live) .site-header{display:none}
 {{-- A project opened from verified Search must return to that precise
      first-party result set. Preserve normal project-list filters otherwise.
      Never accept arbitrary return URLs or unsupported result types. --}}
-@php
-    // This is a separate compiled Blade PHP block; derive locale locally
-    // rather than assuming a directive evaluated in a different section.
-    $locale = request()->query('lang') === 'ar' ? 'ar' : 'en';
-    $searchSource = request()->query()['source'] ?? null;
-    $searchType = request()->query()['type'] ?? null;
-    $fromVerifiedSearch = $searchSource === 'search'
-        && is_string($returnQRaw)
-        && trim($returnQRaw) !== ''
-        && mb_strlen(trim($returnQRaw)) <= 80
-        && in_array($searchType, ['all', 'projects'], true);
-    if ($fromVerifiedSearch) {
-        $validSearchPage = (is_int($returnPageRaw) || is_string($returnPageRaw))
-            && ctype_digit((string) $returnPageRaw)
-            && $returnPage !== false && $returnPage > 1;
-        $returnToListing = route('public.search', array_merge(
-            ['lang' => $locale, 'q' => trim($returnQRaw), 'type' => $searchType],
-            $validSearchPage ? ['page' => $returnPage] : []
-        ));
-    }
-@endphp
+@php($searchSource = request()->query()['source'] ?? null)
+@php($searchType = request()->query()['type'] ?? null)
+@php($fromVerifiedSearch = $searchSource === 'search'
+    && is_string($returnQRaw)
+    && trim($returnQRaw) !== ''
+    && mb_strlen(trim($returnQRaw)) <= 80
+    && in_array($searchType, ['all', 'projects'], true))
+@php($validSearchPage = (is_int($returnPageRaw) || is_string($returnPageRaw))
+    && ctype_digit((string) $returnPageRaw)
+    && $returnPage !== false && $returnPage > 1)
+@php($returnToListing = $fromVerifiedSearch
+    ? route('public.search', array_merge(
+        ['lang' => $locale, 'q' => trim($returnQRaw), 'type' => $searchType],
+        $validSearchPage ? ['page' => $returnPage] : []
+      ))
+    : $returnToListing)
 @section('content')
 <div class="project-case-live" lang="{{ $locale }}" dir="{{ $isArabic ? 'rtl' : 'ltr' }}">
   <header class="pc-nav">
