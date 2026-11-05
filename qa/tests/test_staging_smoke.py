@@ -81,10 +81,10 @@ class StagingSmokeTest(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     staging_origin(url)
 
-    def test_all_eleven_live_endpoints_are_read_only_and_expected_responses_count(self):
+    def test_public_and_private_live_endpoints_are_read_only_and_expected_count(self):
         fake = FakeOpener()
         receipt = permitted_run("https://staging.example.com", fake)
-        self.assertEqual(len(receipt["checks"]), 11)
+        self.assertEqual(len(receipt["checks"]), 19)
         self.assertTrue(receipt["http_smoke_passed"])
         self.assertFalse(receipt["production_ready"])
         self.assertFalse(receipt["deployment_release_sha_verified"])
@@ -138,6 +138,60 @@ class StagingSmokeTest(unittest.TestCase):
                 self.assertEqual(failures[0]["path"], "/admin/updates")
                 self.assertEqual(failures[0]["reason"], "unsafe_or_unexpected_redirect")
                 self.assertFalse(report["http_smoke_passed"])
+
+    def test_private_laravel_paths_deny_without_reading_any_private_response_body(self):
+        private = [check for check in CHECKS if check.kind == "private_denied"]
+        self.assertEqual(len(private), 8)
+        self.assertEqual(len({check.path for check in private}), 8)
+        self.assertEqual(len({check.path for check in CHECKS}), len(CHECKS))
+
+        for spec in private:
+            for accepted_status in (403, 404):
+                with self.subTest(path=spec.path, status=accepted_status):
+                    class PrivateUnreadableOpener(FakeOpener):
+                        def open(self, request, timeout):
+                            response = super().open(request, timeout)
+                            return response
+
+                    fake = PrivateUnreadableOpener({
+                        spec.path: (accepted_status, "private_denied",
+                                    b"APP_KEY=DO_NOT_READ_THIS_PRIVATE_VALUE"),
+                    })
+                    report = permitted_run("https://staging.example.com", fake)
+                    self.assertTrue(report["http_smoke_passed"])
+                    self.assertNotIn("DO_NOT_READ_THIS_PRIVATE_VALUE", json.dumps(report))
+                    self.assertTrue(all(response.closed for response in fake.responses))
+                    # The underlying fake response still contains the private
+                    # fixture bytes, but no private response content was read.
+                    private_response = next(
+                        response for request, response in zip(fake.requested, fake.responses)
+                        if request[0].endswith(spec.path)
+                    )
+                    self.assertEqual(private_response.body.tell(), 0)
+
+    def test_any_exposed_private_file_redirect_or_server_error_blocks_staging(self):
+        private = [check for check in CHECKS if check.kind == "private_denied"]
+        for spec in private:
+            for status in (200, 204, 301, 302, 307, 500):
+                with self.subTest(path=spec.path, status=status):
+                    fake = FakeOpener({
+                        spec.path: (status, "private_denied",
+                                    b"APP_KEY=NEVER_EMIT_PRIVATE_CONTENT"),
+                    })
+                    report = permitted_run("https://staging.example.com", fake)
+                    failed = [row for row in report["checks"] if not row["passed"]]
+                    self.assertFalse(report["http_smoke_passed"])
+                    self.assertEqual(len(failed), 1)
+                    self.assertEqual(failed[0]["path"], spec.path)
+                    self.assertEqual(failed[0]["observed_status"], status)
+                    self.assertEqual(failed[0]["reason"], "private_resource_not_denied")
+                    self.assertNotIn("NEVER_EMIT_PRIVATE_CONTENT", json.dumps(report))
+                    self.assertTrue(all(response.closed for response in fake.responses))
+                    private_response = next(
+                        response for request, response in zip(fake.requested, fake.responses)
+                        if request[0].endswith(spec.path)
+                    )
+                    self.assertEqual(private_response.body.tell(), 0)
 
     def test_public_json_payloads_must_have_matching_data_shape(self):
         for override in [
@@ -350,7 +404,7 @@ class StagingSmokeTest(unittest.TestCase):
 
         report = permitted_run("https://staging.example.com", Offline())
         self.assertFalse(report["http_smoke_passed"])
-        self.assertEqual(len(report["checks"]), 11)
+        self.assertEqual(len(report["checks"]), 19)
         self.assertNotIn("leak-this-host-auth-token", json.dumps(report))
         self.assertTrue(all(x["observed_status"] is None for x in report["checks"]))
 
