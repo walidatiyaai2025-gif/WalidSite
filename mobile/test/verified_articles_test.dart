@@ -95,6 +95,30 @@ void main() {
         reason: 'A stream that yields before every idle timeout must still end');
   });
 
+  test('article feed rejects duplicate published UUID across different slugs', () {
+    const id = '12345678-1234-1234-1234-123456789abc';
+    final original = jsonDecode(safeJson) as Map<String, dynamic>;
+    final first = Map<String, dynamic>.from(
+        (original['data'] as List<dynamic>).single as Map<String, dynamic>);
+    first['id'] = id;
+    final second = Map<String, dynamic>.from(first)
+      ..['slug'] = 'different-published-article'
+      ..['id'] = id.toUpperCase();
+    final conflicting = jsonEncode({'data': [first, second]});
+    expect(() => VerifiedArticle.parseList(conflicting), throwsFormatException,
+        reason: 'A Save UUID cannot identify two different visible articles');
+
+    second['id'] = '87654321-4321-4321-4321-cba987654321';
+    final unique = VerifiedArticle.parseList(
+        jsonEncode({'data': [first, second]}));
+    expect(unique, hasLength(2));
+    expect(unique.first.id, id);
+    expect(unique.last.slug, 'different-published-article');
+
+    // Existing older reading-only fixtures without IDs remain supported.
+    expect(VerifiedArticle.parseList(safeJson).single.id, isNull);
+  });
+
   test('published article parser rejects unsupported or unsafe evidence', () {
     final items = VerifiedArticle.parseList(safeJson);
     expect(items, hasLength(1));
