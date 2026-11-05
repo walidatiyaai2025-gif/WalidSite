@@ -430,7 +430,8 @@ jobs:
       (github.event_name == 'pull_request' && github.event.action != 'closed' &&
        (github.head_ref == 'fix/732-cpanel-first-boot-missing-key' ||
         github.head_ref == 'fix/26-cpanel-full-install-ci-acceptance' ||
-        github.head_ref == 'fix/26-foodex15-zip-mariadb-acceptance') &&
+        github.head_ref == 'fix/26-foodex15-zip-mariadb-acceptance' ||
+        github.head_ref == 'feat/732-cpanel-immutable-code-pointer') &&
        github.event.pull_request.head.repo.full_name == github.repository)
     needs: required-ci-gate
     runs-on: ubuntu-latest
@@ -508,6 +509,7 @@ jobs:
             CI_FOODEX_DB_NAME=walidsite_ci_foodex CI_FOODEX_DB_USER=walidsite_ci \
             CI_FOODEX_DB_PASSWORD=walidsite-ci-password \
             python3 -m qa.cpanel_foodex_15_install_probe --cpanel-zip "$package" --sha "$source_sha"
+          python3 qa/cpanel_release_barrier_probe.py --cpanel-zip "$package"
           # A code-only candidate MUST bind to this exact source SHA and version,
           # but never publish it without a separate private Ed25519 publisher gate.
           mkdir -p dist/unsigned-check

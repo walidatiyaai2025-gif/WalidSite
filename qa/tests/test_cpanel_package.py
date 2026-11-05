@@ -24,6 +24,7 @@ class TestCpanelPackage(unittest.TestCase):
             "backend/config/site.php": "<?php",
             "backend/database/migrations/first.php": "<?php",
             "backend/resources/views/site.blade.php": "hello",
+            "backend/resources/deployment/cpanel-stable-index.php": package_module.WEB_INDEX,
             "backend/routes/web.php": "<?php",
             "backend/vendor/autoload.php": "<?php",
             "backend/vendor/psr/logger.php": "<?php",
@@ -76,7 +77,10 @@ class TestCpanelPackage(unittest.TestCase):
             ):
                 self.assertNotIn(name, names)
             public_index = zip.read("public_html/index.php").decode()
-            self.assertIn("dirname(__DIR__).'/application'", public_index)
+            self.assertIn("dirname(__DIR__)", public_index)
+            self.assertIn(".walidsite-active-release.json", public_index)
+            self.assertIn("useEnvironmentPath($original)", public_index)
+            self.assertIn("useStoragePath($original.'/storage')", public_index)
             self.assertIn("usePublicPath(__DIR__)", public_index)
             info = json.loads(zip.read("PACKAGE-MANIFEST.json"))
             self.assertEqual(info["source_sha"], "a" * 40)
