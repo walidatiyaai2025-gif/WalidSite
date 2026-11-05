@@ -74,5 +74,62 @@ class PublisherOriginReservedNetworkAcceptance(unittest.TestCase):
         self.assertEqual(self.verdicts(blocked), dict.fromkeys(blocked, "rejected"))
 
 
+    def test_authentic_signed_metadata_still_rejects_private_publisher_origin(self):
+        # Integration path: real Ed25519 signature, real metadata verifier,
+        # but no network, file installation, production keys or trusted releases.
+        runner = r"""
+require $argv[1];
+$keys = sodium_crypto_sign_keypair();
+$payload = json_encode([
+    'product' => 'walidsite',
+    'version' => '0.1.2',
+    'source_sha' => str_repeat('a', 40),
+    'artifact_sha256' => str_repeat('b', 64),
+    'artifact_size' => 128,
+    'min_php' => '8.3.0',
+    'artifact_file' => 'WalidSite-update-v0.1.2.zip',
+], JSON_THROW_ON_ERROR);
+$envelope = json_encode([
+    'payload' => base64_encode($payload),
+    'signature' => base64_encode(sodium_crypto_sign_detached(
+        $payload, sodium_crypto_sign_secretkey($keys)
+    )),
+], JSON_THROW_ON_ERROR);
+$key = base64_encode(sodium_crypto_sign_publickey($keys));
+foreach (json_decode($argv[2], true, 8, JSON_THROW_ON_ERROR) as $origin) {
+    try {
+        (new \App\Domain\Deployment\TrustedReleaseMetadata())->verify(
+            $envelope, $key, $origin, '0.1.1'
+        );
+        $outcome = 'accepted';
+    } catch (\DomainException $error) {
+        $outcome = 'rejected';
+    }
+    echo json_encode([$origin, $outcome], JSON_THROW_ON_ERROR), "\n";
+}
+"""
+        hosts = [
+            "https://updates.example.com",
+            "https://updates.localhost",
+            "https://updates.local",
+            "https://updates.internal",
+            "https://updates.home.arpa",
+        ]
+        proc = subprocess.run(
+            [PHP, "-d", "display_errors=stderr", "-r", runner,
+             str(VERIFIER), json.dumps(hosts)],
+            capture_output=True, text=True, timeout=15,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        outcomes = dict(json.loads(line) for line in proc.stdout.splitlines())
+        self.assertEqual(outcomes["https://updates.example.com"], "accepted")
+        for origin in hosts[1:]:
+            with self.subTest(origin=origin):
+                self.assertEqual(
+                    outcomes[origin], "rejected",
+                    "A valid publisher signature cannot override local origin rejection",
+                )
+
+
 if __name__ == "__main__":
     unittest.main()
