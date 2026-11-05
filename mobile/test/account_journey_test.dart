@@ -632,6 +632,7 @@ void main() {
   testWidgets('saved pagination rejects wrong page and case-folded duplicate',
       (tester) async {
     var attempts = 0;
+    const mixedId = 'abcdefab-1234-4000-8000-000000000001';
     await tester.pumpWidget(MaterialApp(
       home: MobileAccountJourney(
         arabic: false,
@@ -640,7 +641,8 @@ void main() {
         profileAction: (_) async => const MobileAccount(articleId, email),
         savedAction: (_, __, number) async {
           if (number == 1) {
-            return MobileSavedPage.parse(page(1, [article()], more: true), 1);
+            final first = article()..['resource_id'] = mixedId;
+            return MobileSavedPage.parse(page(1, [first], more: true), 1);
           }
           attempts++;
           if (attempts == 1) {
@@ -649,7 +651,7 @@ void main() {
           }
           if (attempts == 2) {
             // Same published UUID under a different text representation.
-            final duplicate = article()..['resource_id'] = articleId.toUpperCase();
+            final duplicate = article()..['resource_id'] = mixedId.toUpperCase();
             return MobileSavedPage.parse(page(2, [duplicate]), 2);
           }
           return MobileSavedPage.parse(page(2, [runbook()]), 2);
