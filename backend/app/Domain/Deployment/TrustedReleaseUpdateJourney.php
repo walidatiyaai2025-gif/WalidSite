@@ -42,10 +42,10 @@ final class TrustedReleaseUpdateJourney
         callable $writesQuiesced,
         callable $healthCheck,
     ): array {
-        return $this->withExclusiveUpdateLock($paths, fn (): array => $this->executeUnlocked(
+        return $this->withExclusiveUpdateLock($paths, fn (callable $lockCheck): array => $this->executeUnlocked(
             $liveDatabase, $disposableRestoreDatabase, $signedEnvelope,
             $publisherPublicKeyBase64, $pinnedHttpsOrigin, $installedVersion,
-            $paths, $writesQuiesced, $healthCheck,
+            $paths, $writesQuiesced, $healthCheck, $lockCheck,
         ));
     }
 
@@ -59,7 +59,11 @@ final class TrustedReleaseUpdateJourney
         array $paths,
         callable $writesQuiesced,
         callable $healthCheck,
+        callable $lockCheck,
     ): array {
+        $writesQuiesced = $this->guardCallback($writesQuiesced, $lockCheck);
+        $healthCheck = $this->guardCallback($healthCheck, $lockCheck);
+        $lockCheck();
         if ($writesQuiesced() !== true) {
             throw new DomainException('The site must be in verified read-only maintenance before updating.');
         }
@@ -87,14 +91,16 @@ final class TrustedReleaseUpdateJourney
             throw new DomainException('Signed release ZIP changed after code promotion.');
         }
 
-        $verified = function () use ($candidate, $paths, $seal, $schema, $migrationState): bool {
+        $verified = function () use ($candidate, $paths, $seal, $schema, $migrationState, $lockCheck): bool {
             try {
+                $lockCheck();
                 $archiveHash = hash_file('sha256', $paths['archive']);
                 $current = $schema->assertCompatible($paths['current'], $candidate['directory']);
                 return $current === $migrationState
                     && is_string($archiveHash)
                     && hash_equals($candidate['artifact_sha256'], $archiveHash)
-                    && hash_equals($seal, $this->seal($candidate['directory']));
+                    && hash_equals($seal, $this->seal($candidate['directory']))
+                    && $this->checkLock($lockCheck);
             } catch (\Throwable) {
                 return false;
             }
@@ -146,22 +152,23 @@ final class TrustedReleaseUpdateJourney
         ?TrustedReleaseCatalog $catalog = null,
         ?TrustedReleaseDownloader $downloader = null,
     ): array {
-        return $this->withExclusiveUpdateLock($paths, function () use (
+        return $this->withExclusiveUpdateLock($paths, function (callable $lockCheck) use (
             $liveDatabase, $disposableRestoreDatabase, $publisherPublicKeyBase64,
             $pinnedHttpsOrigin, $installedVersion, $paths, $writesQuiesced,
             $healthCheck, $catalog, $downloader,
         ): array {
-            if ($writesQuiesced() !== true) {
+            if ($this->guardCallback($writesQuiesced, $lockCheck)() !== true) {
                 throw new DomainException('The site must be read-only before checking for trusted updates.');
             }
             $available = ($catalog ?? new TrustedReleaseCatalog())->check(
                 $pinnedHttpsOrigin, $publisherPublicKeyBase64, $installedVersion,
             );
+            $lockCheck();
             return $this->downloadAndExecuteUnlocked(
                 $liveDatabase, $disposableRestoreDatabase,
                 $available['envelope'], $publisherPublicKeyBase64,
                 $pinnedHttpsOrigin, $installedVersion,
-                $paths, $writesQuiesced, $healthCheck, $downloader,
+                $paths, $writesQuiesced, $healthCheck, $downloader, $lockCheck,
             );
         });
     }
@@ -190,11 +197,11 @@ final class TrustedReleaseUpdateJourney
         callable $healthCheck,
         ?TrustedReleaseDownloader $downloader = null,
     ): array {
-        return $this->withExclusiveUpdateLock($paths, fn (): array => $this->downloadAndExecuteUnlocked(
+        return $this->withExclusiveUpdateLock($paths, fn (callable $lockCheck): array => $this->downloadAndExecuteUnlocked(
             $liveDatabase, $disposableRestoreDatabase, $signedEnvelope,
             $publisherPublicKeyBase64, $pinnedHttpsOrigin, $installedVersion,
             $paths, $writesQuiesced, $healthCheck,
-            $downloader,
+            $downloader, $lockCheck,
         ));
     }
 
@@ -208,9 +215,10 @@ final class TrustedReleaseUpdateJourney
         array $paths,
         callable $writesQuiesced,
         callable $healthCheck,
-        ?TrustedReleaseDownloader $downloader = null,
+        ?TrustedReleaseDownloader $downloader,
+        callable $lockCheck,
     ): array {
-        if ($writesQuiesced() !== true) {
+        if ($this->guardCallback($writesQuiesced, $lockCheck)() !== true) {
             throw new DomainException('The site must be read-only before fetching or applying a release.');
         }
 
@@ -232,6 +240,7 @@ final class TrustedReleaseUpdateJourney
             $pinnedHttpsOrigin, $installedVersion,
             $paths['incoming'], $paths['public'],
         );
+        $lockCheck();
         if ($received['path'] !== $paths['archive']
             || ! hash_equals($signed['artifact_sha256'], $received['artifact_sha256'])) {
             throw new DomainException('Downloaded artifact is not the approved signed release.');
@@ -243,7 +252,7 @@ final class TrustedReleaseUpdateJourney
         return $this->executeUnlocked(
             $liveDatabase, $disposableRestoreDatabase, $signedEnvelope,
             $publisherPublicKeyBase64, $pinnedHttpsOrigin, $installedVersion,
-            $paths, $writesQuiesced, $healthCheck,
+            $paths, $writesQuiesced, $healthCheck, $lockCheck,
         );
     }
 
@@ -279,22 +288,49 @@ final class TrustedReleaseUpdateJourney
         }
 
         try {
-            $stat = fstat($stream);
-            $disk = @lstat($lockPath);
-            if ($stat === false || $disk === false || ($stat['nlink'] ?? 0) !== 1
-                || $stat['ino'] !== $disk['ino'] || $stat['dev'] !== $disk['dev']
-                || ! is_file($lockPath) || is_link($lockPath)) {
-                throw new DomainException('Trusted update lock is not an exclusive regular file.');
-            }
+            $lockCheck = function () use ($stream, $lockPath): void {
+                clearstatcache(true, $lockPath);
+                $opened = @fstat($stream);
+                $named = @lstat($lockPath);
+                if (! is_array($opened) || ! is_array($named)
+                    || ($opened['mode'] & 0170000) !== 0100000
+                    || ($named['mode'] & 0170000) !== 0100000
+                    || ($opened['nlink'] ?? 0) !== 1 || ($named['nlink'] ?? 0) !== 1
+                    || $opened['ino'] !== $named['ino'] || $opened['dev'] !== $named['dev']
+                    || is_link($lockPath)) {
+                    throw new DomainException('Trusted update lock path or inode changed during operation.');
+                }
+            };
+            $lockCheck();
             if (! flock($stream, LOCK_EX | LOCK_NB)) {
                 throw new DomainException('Another trusted code update is already in progress.');
             }
+            $lockCheck();
 
-            return $operation();
+            $result = $operation($lockCheck);
+            $lockCheck();
+            return $result;
         } finally {
             @flock($stream, LOCK_UN);
             fclose($stream);
         }
+    }
+
+    /** Wrap external maintenance/health callbacks with lock identity checks. */
+    private function guardCallback(callable $callback, callable $lockCheck): \Closure
+    {
+        return static function () use ($callback, $lockCheck): bool {
+            $lockCheck();
+            $result = $callback();
+            $lockCheck();
+            return $result === true;
+        };
+    }
+
+    private function checkLock(callable $lockCheck): bool
+    {
+        $lockCheck();
+        return true;
     }
 
     /**
