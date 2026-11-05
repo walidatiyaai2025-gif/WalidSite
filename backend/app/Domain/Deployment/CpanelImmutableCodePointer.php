@@ -144,6 +144,10 @@ final class CpanelImmutableCodePointer
                     throw new RuntimeException('New release failed health validation.');
                 }
                 $this->assertLockIdentity($lock, $lockPath);
+                // The health probe is also an external callback. If it
+                // changes runtime dependencies, restore the old pointer
+                // rather than reporting the unverified code as installed.
+                $this->assertComposerParity($oldRoot, $candidate);
                 // The HTTP health probe may consume the last seconds of the
                 // private maintenance lease. Never return "switched" after
                 // its expiration: the stable dispatcher would serve old code
