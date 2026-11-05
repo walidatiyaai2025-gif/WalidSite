@@ -48,7 +48,9 @@ def prepare(cpanel_zip: Path, output_dir: Path, version: str, sha: str) -> dict:
     candidates = [setup, update, generated_update, manifest, notes,
                   build_info, build_info_checksum,
                   output_dir / (setup.name + '.sha256'),
-                  output_dir / (update.name + '.sha256')]
+                  output_dir / (update.name + '.sha256'),
+                  output_dir / (manifest.name + '.sha256'),
+                  output_dir / (notes.name + '.sha256')]
     if any(path.exists() or path.is_symlink() for path in candidates):
         raise ValueError('Immutable candidate output already exists')
 
@@ -190,6 +192,14 @@ def prepare(cpanel_zip: Path, output_dir: Path, version: str, sha: str) -> dict:
                 stream.write('Release blocked pending trusted publisher signing, compatible initial '
                              'cPanel layout, live browser install, Admin code apply, backup/restore '
                              'and HTTPS staging smoke. Do not deploy this Update ZIP as a trusted release.\n')
+            # The manifest and notes are immutable candidate evidence too.
+            # SHA-256 detects accidental/tampered bytes but does not establish
+            # publisher authenticity without a separate trusted signature.
+            for document in (manifest, notes):
+                sidecar = output_dir / (document.name + '.sha256')
+                with sidecar.open('x', encoding='ascii') as stream:
+                    created.append(sidecar)
+                    stream.write(f'{_sha256(document)}  {document.name}\n')
             return result
         except Exception:
             for path in reversed(created):
