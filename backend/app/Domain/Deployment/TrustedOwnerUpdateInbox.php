@@ -189,7 +189,7 @@ final class TrustedOwnerUpdateInbox
 
         try {
             $receipt = json_decode($raw, true, 16, JSON_THROW_ON_ERROR);
-        } catch (\\JsonException) {
+        } catch (\JsonException) {
             throw new DomainException('Trusted update receipt is malformed.');
         }
         if (! is_array($receipt)) {
