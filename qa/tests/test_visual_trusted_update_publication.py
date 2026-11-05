@@ -156,6 +156,48 @@ class TrustedUpdatePublicationTest(unittest.TestCase):
         alias.unlink()
         self.assertEqual(self.make_update()['version'], VERSION)
 
+    def test_update_is_private_until_complete_then_published_without_overwrite(self):
+        if os.name != 'posix':
+            self.skipTest('Immutable ZIP publishing requires POSIX hard links')
+        original_link = os.link
+        checks = []
+
+        def inspect_then_publish(staged, destination, **kwargs):
+            self.assertFalse(destination.exists())
+            self.assertTrue(staged.is_file())
+            self.assertEqual(staged.parent.stat().st_mode & 0o777, 0o700)
+            self.assertTrue(staged.parent.name.startswith('.walidsite-update-staging-'))
+            self.assertEqual(destination.name, f'WalidSite-update-v{VERSION}.zip')
+            with zipfile.ZipFile(staged) as archive:
+                self.assertIn('application/vendor/autoload.php', archive.namelist())
+            checks.append('sealed-before-publication')
+            return original_link(staged, destination, **kwargs)
+
+        with patch('qa.build_trusted_update_release.publish_no_replace', side_effect=inspect_then_publish):
+            receipt = self.make_update()
+        self.assertEqual(checks, ['sealed-before-publication'])
+        self.assertEqual(receipt['artifact_sha256'],
+                         hashlib.sha256((self.root / receipt['artifact_file']).read_bytes()).hexdigest())
+        self.assertEqual(list(self.root.glob('.walidsite-update-staging-*')), [])
+
+    def test_competing_update_publisher_wins_without_artifact_deletion(self):
+        if os.name != 'posix':
+            self.skipTest('Immutable ZIP publishing requires POSIX hard links')
+        output = self.root / f'WalidSite-update-v{VERSION}.zip'
+        marker = b'competing publisher must survive'
+
+        def compete(staged, destination, **kwargs):
+            self.assertTrue(staged.is_file())
+            self.assertEqual(destination, output)
+            output.write_bytes(marker)
+            raise FileExistsError('Another immutable publication already exists')
+
+        with patch('qa.build_trusted_update_release.publish_no_replace', side_effect=compete):
+            with self.assertRaises(FileExistsError):
+                self.make_update()
+        self.assertEqual(output.read_bytes(), marker)
+        self.assertEqual(list(self.root.glob('.walidsite-update-staging-*')), [])
+
     def test_missing_secure_nofollow_primitives_fail_closed(self):
         with patch('qa.build_trusted_update_release.os.O_NOFOLLOW', 0):
             with self.assertRaisesRegex(ValueError, 'Secure source archive descriptors unavailable'):

@@ -98,6 +98,17 @@ def frozen_setup_archive(source_zip: Path):
         yield frozen
 
 
+
+# Keep the original POSIX primitive separate from unrelated candidate-level
+# os.link test mocks, which patch the shared os module globally.
+_PUBLISH_LINK = os.link
+
+
+def publish_no_replace(staged: Path, target: Path) -> None:
+    """Link a complete private ZIP to a new immutable release pathname only."""
+    _PUBLISH_LINK(staged, target, follow_symlinks=False)
+
+
 def build(source_zip: Path, output_dir: Path, version: str, source_sha: str) -> dict:
     if not VERSION.fullmatch(version) or not re.fullmatch('[a-f0-9]{40}', source_sha):
         raise ValueError('Invalid immutable release version or source SHA')
@@ -142,22 +153,50 @@ def build(source_zip: Path, output_dir: Path, version: str, source_sha: str) -> 
     target = output_dir / filename
     if target.exists() or target.is_symlink():
         raise ValueError('Refusing to overwrite an existing immutable release')
-    with target.open('xb') as stream:
-        try:
+    # Do not expose a partially written final ZIP. A concurrent publisher can
+    # claim the final name during construction, and cleanup must NEVER unlink
+    # that publisher's artifact. Build and hash within an owned 0700 directory,
+    # then publish with POSIX hard-link no-replace semantics.
+    with tempfile.TemporaryDirectory(prefix='.walidsite-update-staging-', dir=output_dir) as private:
+        staged = Path(private) / filename
+        with staged.open('xb+') as stream:
             with zipfile.ZipFile(stream, 'w', zipfile.ZIP_DEFLATED, compresslevel=8) as archive:
                 for name in sorted(files):
                     entry = zipfile.ZipInfo(name, (2026, 11, 1, 0, 0, 0))
                     entry.compress_type = zipfile.ZIP_DEFLATED
                     entry.external_attr = 0o100644 << 16
                     archive.writestr(entry, files[name])
-        except Exception:
-            target.unlink(missing_ok=True)
-            raise
-    size = target.stat().st_size
-    if size > MAX_TOTAL:
-        target.unlink()
-        raise ValueError('Compressed update archive exceeds 1 GiB')
-    digest = hashlib.sha256(target.read_bytes()).hexdigest()
+            stream.flush()
+            os.fsync(stream.fileno())
+            sealed = os.fstat(stream.fileno())
+            size = sealed.st_size
+            if not stat.S_ISREG(sealed.st_mode) or sealed.st_nlink != 1 or size > MAX_TOTAL:
+                raise ValueError('Unsafe or oversized staged update archive')
+            stream.seek(0)
+            checksum = hashlib.sha256()
+            hashed = 0
+            for chunk in iter(lambda: stream.read(1024 * 1024), b''):
+                hashed += len(chunk)
+                checksum.update(chunk)
+            observed = os.fstat(stream.fileno())
+            if (hashed != size
+                    or (sealed.st_dev, sealed.st_ino, sealed.st_size, sealed.st_mtime_ns)
+                    != (observed.st_dev, observed.st_ino, observed.st_size, observed.st_mtime_ns)):
+                raise ValueError('Staged update changed during checksum validation')
+            digest = checksum.hexdigest()
+        named = os.stat(staged, follow_symlinks=False)
+        if (not stat.S_ISREG(named.st_mode) or named.st_nlink != 1
+                or (sealed.st_dev, sealed.st_ino, sealed.st_size, sealed.st_mtime_ns)
+                != (named.st_dev, named.st_ino, named.st_size, named.st_mtime_ns)):
+            raise ValueError('Staged update inode changed before publication')
+        # link() fails with FileExistsError if another publisher wins the name.
+        # TemporaryDirectory owns only staged bytes, never the shared target.
+        publish_no_replace(staged, target)
+        published = os.stat(target, follow_symlinks=False)
+        if (not stat.S_ISREG(published.st_mode) or published.st_nlink != 2
+                or (named.st_dev, named.st_ino, named.st_size, named.st_mtime_ns)
+                != (published.st_dev, published.st_ino, published.st_size, published.st_mtime_ns)):
+            raise ValueError('Published update identity changed during promotion')
     # EXACT signed payload schema of PHP TrustedReleaseMetadata::verify().
     # This JSON is UNSIGNED. Do not publish latest.json or enable Admin apply.
     return {'product': 'walidsite', 'version': version, 'source_sha': source_sha,
