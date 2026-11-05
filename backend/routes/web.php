@@ -2922,7 +2922,10 @@ Route::middleware('auth:web')->prefix('admin')->group(function (): void {
     })->whereUuid('project')->whereUuid('evidence')
         ->name('admin.operations.projects.evidence.discard')->middleware('throttle:10,1');
 
-    Route::get('/audience', function (Request $request) {
+    Route::get('/audience', function (
+        Request $request,
+        \App\Domain\Privacy\AudienceConsentPreview $preview,
+    ) {
         abort_unless($request->user()?->canAccessAdmin(), 403);
         $input = $request->validate([
             'lang' => ['sometimes', 'in:ar,en'],
@@ -2931,21 +2934,16 @@ Route::middleware('auth:web')->prefix('admin')->group(function (): void {
         ]);
         $purpose = $input['purpose'] ?? 'editorial_updates';
         $channel = $input['channel'] ?? 'push';
-        $consented = \Illuminate\Support\Facades\DB::table('notification_preferences as preference')
-            ->join('users', 'users.id', '=', 'preference.user_id')
-            ->where('users.status', 'active')->where('preference.purpose', $purpose)
-            ->where('preference.channel', $channel)->where('preference.enabled', true)
-            // A future-dated/imported grant is not affirmative consent yet.
-            // Match the API's fail-closed notification gate at UTC request time.
-            ->whereNotNull('preference.consented_at')
-            ->where('preference.consented_at', '<=', now('UTC'))
-            ->whereNull('preference.revoked_at')
-            ->distinct()->count('preference.user_id');
+        // One database snapshot with disjoint eligible / suppressed buckets.
+        // Source of truth remains each user's authenticated consent API;
+        // this owner/admin view never sends, opts in, or exposes identities.
+        $audience = $preview->forSegment($purpose, $channel);
         return response()->view('admin.operations', [
             'section' => 'audience',
             'purpose' => $purpose, 'channel' => $channel,
-            'consented' => $consented,
-            'activeAccounts' => \App\Models\User::query()->where('status', 'active')->count(),
+            'consented' => $audience['consented'],
+            'activeAccounts' => $audience['active_accounts'],
+            'audienceStates' => $audience,
         ])->header('Cache-Control', 'no-store, private');
     })->name('admin.operations.audience')->middleware('throttle:30,1');
 
