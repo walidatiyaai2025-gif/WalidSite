@@ -397,6 +397,163 @@ final class TrustedReleaseUpdateJourneyTest extends TestCase
         self::assertSame($bytes, file_get_contents($this->paths['archive']));
     }
 
+    /**
+     * A failed, signed attempt must leave a reusable archive/candidate without
+     * ever moving the live pointer. Stop after promotion but BEFORE backups.
+     */
+    private function leaveVerifiedRemoteReleaseAfterFailedMaintenance(): string
+    {
+        $signed = $this->signedZip();
+        $bytes = file_get_contents($this->paths['archive']);
+        self::assertIsString($bytes);
+        self::assertTrue(unlink($this->paths['archive']));
+        $downloads = 0;
+        $writes = 0;
+        $transport = new TrustedReleaseDownloader(
+            static function (string $url, \Closure $write) use ($bytes, &$downloads): int {
+                $downloads++;
+                self::assertSame(
+                    'https://updates.example.com/releases/WalidSite-update-v1.2.0.zip', $url,
+                );
+                self::assertSame(strlen($bytes), $write($bytes));
+                return 200;
+            },
+        );
+        try {
+            (new TrustedReleaseUpdateJourney())->downloadAndExecute(
+                $this->liveDb, $this->restoreDb, $signed,
+                $this->publicKey, 'https://updates.example.com', '1.0.0',
+                $this->paths,
+                static function () use (&$writes): bool {
+                    return ++$writes < 4;
+                },
+                static fn (): bool => true, $transport,
+            );
+            self::fail('Late writer activity must block the first cutover.');
+        } catch (DomainException $failure) {
+            self::assertStringContainsString('preconditions changed after locking', $failure->getMessage());
+        }
+        self::assertSame(4, $writes);
+        self::assertSame(1, $downloads);
+        self::assertSame($bytes, file_get_contents($this->paths['archive']));
+        self::assertDirectoryExists(
+            $this->paths['releases'].'/v1.2.0-'.str_repeat('a', 40),
+        );
+        self::assertSame('LIVE-vA', file_get_contents($this->paths['public'].'/index.php'));
+        self::assertSame('APP_KEY=keep-existing-secret', file_get_contents($this->paths['environment']));
+        self::assertSame("\x00\xffUPLOAD", file_get_contents($this->paths['uploads'].'/avatar.png'));
+        self::assertSame([], glob($this->paths['backup_vault'].'/mariadb-*') ?: []);
+
+        return $signed;
+    }
+
+    private function noRetryNetwork(): TrustedReleaseDownloader
+    {
+        return new TrustedReleaseDownloader(
+            static function (): int {
+                self::fail('Retained verified artifact must not trigger a second network transfer.');
+                return 500;
+            },
+        );
+    }
+
+    public function test_recovered_write_barrier_retries_same_signed_code_without_redownload_or_reinstall(): void
+    {
+        $signed = $this->leaveVerifiedRemoteReleaseAfterFailedMaintenance();
+        $result = (new TrustedReleaseUpdateJourney())->downloadAndExecute(
+            $this->liveDb, $this->restoreDb, $signed,
+            $this->publicKey, 'https://updates.example.com', '1.0.0',
+            $this->paths, static fn (): bool => true,
+            fn (): bool => file_get_contents($this->paths['public'].'/index.php') === 'NEW-vB',
+            $this->noRetryNetwork(),
+        );
+
+        self::assertSame('switched', $result['state']);
+        self::assertSame('1.2.0', $result['version']);
+        self::assertSame('NEW-vB', file_get_contents($this->paths['public'].'/index.php'));
+        self::assertSame('LIVE-vA', file_get_contents($this->paths['releases'].'/v1/public_html/index.php'));
+        self::assertSame('APP_KEY=keep-existing-secret', file_get_contents($this->paths['environment']));
+        self::assertSame('keep-private', file_get_contents($this->paths['private_data'].'/memo.txt'));
+        self::assertSame("\x00\xffUPLOAD", file_get_contents($this->paths['uploads'].'/avatar.png'));
+        self::assertSame('محتوى عربي',
+            $this->restoreDb->query('SELECT memo FROM billing WHERE id=1')->fetchColumn());
+        self::assertSame([], glob($this->paths['quarantine'].'/release-staging/candidate-*') ?: []);
+
+        // A caller holding a stale installedVersion cannot reinstall the now
+        // active version even if the same authenticated ZIP still exists.
+        try {
+            (new TrustedReleaseUpdateJourney())->downloadAndExecute(
+                $this->liveDb, $this->restoreDb, $signed,
+                $this->publicKey, 'https://updates.example.com', '1.0.0',
+                $this->paths, static fn (): bool => true,
+                static fn (): bool => true, $this->noRetryNetwork(),
+            );
+            self::fail('An active candidate must not be reinstalled.');
+        } catch (DomainException $failure) {
+            self::assertStringContainsString('cannot be reused', $failure->getMessage());
+        }
+        self::assertSame('NEW-vB', file_get_contents($this->paths['public'].'/index.php'));
+    }
+
+    public function test_changed_retained_code_is_never_trusted_by_signed_zip_retry(): void
+    {
+        $signed = $this->leaveVerifiedRemoteReleaseAfterFailedMaintenance();
+        $target = $this->paths['releases'].'/v1.2.0-'.str_repeat('a', 40);
+        self::assertNotFalse(file_put_contents($target.'/public_html/index.php', 'MALICIOUS CODE'));
+        try {
+            (new TrustedReleaseUpdateJourney())->downloadAndExecute(
+                $this->liveDb, $this->restoreDb, $signed,
+                $this->publicKey, 'https://updates.example.com', '1.0.0',
+                $this->paths, static fn (): bool => true,
+                static fn (): bool => true, $this->noRetryNetwork(),
+            );
+            self::fail('Changed code cannot be accepted as previously signed.');
+        } catch (DomainException $failure) {
+            self::assertStringContainsString('differs from signed code', $failure->getMessage());
+        }
+        self::assertSame('LIVE-vA', file_get_contents($this->paths['public'].'/index.php'));
+        self::assertSame('APP_KEY=keep-existing-secret', file_get_contents($this->paths['environment']));
+        self::assertSame([], glob($this->paths['quarantine'].'/release-staging/candidate-*') ?: []);
+        self::assertSame([], glob($this->paths['backup_vault'].'/mariadb-*') ?: []);
+    }
+
+    public function test_tampered_or_symlinked_retained_zip_blocks_retry_before_backups(): void
+    {
+        $signed = $this->leaveVerifiedRemoteReleaseAfterFailedMaintenance();
+        $archive = $this->paths['archive'];
+        $original = file_get_contents($archive);
+        self::assertIsString($original);
+        self::assertSame(strlen($original), file_put_contents($archive, str_repeat('X', strlen($original))));
+        try {
+            (new TrustedReleaseUpdateJourney())->downloadAndExecute(
+                $this->liveDb, $this->restoreDb, $signed,
+                $this->publicKey, 'https://updates.example.com', '1.0.0',
+                $this->paths, static fn (): bool => true,
+                static fn (): bool => true, $this->noRetryNetwork(),
+            );
+            self::fail('Corrupt retained ZIP cannot authorize an update.');
+        } catch (DomainException) {
+            self::assertSame('LIVE-vA', file_get_contents($this->paths['public'].'/index.php'));
+        }
+        self::assertSame(strlen($original), file_put_contents($archive, $original));
+        $outside = $this->home.'/outside-approved-archive.zip';
+        self::assertTrue(rename($archive, $outside));
+        self::assertTrue(symlink($outside, $archive));
+        try {
+            (new TrustedReleaseUpdateJourney())->downloadAndExecute(
+                $this->liveDb, $this->restoreDb, $signed,
+                $this->publicKey, 'https://updates.example.com', '1.0.0',
+                $this->paths, static fn (): bool => true,
+                static fn (): bool => true, $this->noRetryNetwork(),
+            );
+            self::fail('Symlinked retained ZIP cannot authorize an update.');
+        } catch (DomainException) {
+            self::assertSame('LIVE-vA', file_get_contents($this->paths['public'].'/index.php'));
+        }
+        self::assertSame([], glob($this->paths['backup_vault'].'/mariadb-*') ?: []);
+        self::assertSame('APP_KEY=keep-existing-secret', file_get_contents($this->paths['environment']));
+    }
+
     public function test_broken_remote_release_never_touches_live_code_or_starts_backup(): void
     {
         $signed = $this->signedZip();
