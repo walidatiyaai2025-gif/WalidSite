@@ -36,6 +36,31 @@ def _file_fingerprint(metadata: os.stat_result) -> tuple[int, int, int, int, int
             metadata.st_mtime_ns, metadata.st_ctime_ns)
 
 
+def _assert_named_file_identity(path: str | Path, opened: os.stat_result,
+                                *, dir_fd: int | None = None) -> None:
+    """Require the named path to still reference our single-link open inode."""
+    try:
+        named = os.stat(path, dir_fd=dir_fd, follow_symlinks=False)
+    except OSError as exc:
+        raise ValueError("Release input pathname changed during verification") from exc
+    if (not stat.S_ISREG(named.st_mode) or not stat.S_ISREG(opened.st_mode)
+            or named.st_nlink != 1 or opened.st_nlink != 1
+            or (named.st_dev, named.st_ino) != (opened.st_dev, opened.st_ino)):
+        raise ValueError("Release input pathname changed during verification")
+
+
+def _assert_named_directory_identity(directory: Path, descriptor: int) -> None:
+    """An opened directory FD is not sufficient after its path is exchanged."""
+    try:
+        opened = os.fstat(descriptor)
+        named = os.stat(directory, follow_symlinks=False)
+    except OSError as exc:
+        raise ValueError("Release artifact directory changed during verification") from exc
+    if (not stat.S_ISDIR(opened.st_mode) or not stat.S_ISDIR(named.st_mode)
+            or (opened.st_dev, opened.st_ino) != (named.st_dev, named.st_ino)):
+        raise ValueError("Release artifact directory changed during verification")
+
+
 @contextmanager
 def _stable_reader(path: str | Path, *, dir_fd: int | None = None):
     """Pin a regular file descriptor; never validate one path and read another.
@@ -50,12 +75,14 @@ def _stable_reader(path: str | Path, *, dir_fd: int | None = None):
         raise ValueError("Cannot securely open release file") from exc
     with os.fdopen(fd, "rb") as stream:
         before = os.fstat(stream.fileno())
-        if not stat.S_ISREG(before.st_mode):
-            raise ValueError("Release input is not a regular file")
+        _assert_named_file_identity(path, before, dir_fd=dir_fd)
         yield stream, before
         after = os.fstat(stream.fileno())
         if _file_fingerprint(after) != _file_fingerprint(before):
             raise ValueError("Release input changed during verification")
+        # A renamed/replaced pathname can reference different bytes even when
+        # the original descriptor was unchanged. Never attest the stale name.
+        _assert_named_file_identity(path, after, dir_fd=dir_fd)
 
 
 def verify(folder: Path, manifest_path: Path, source_sha: str | None = None) -> dict:
@@ -102,6 +129,7 @@ def verify(folder: Path, manifest_path: Path, source_sha: str | None = None) -> 
     except OSError as exc:
         raise ValueError("Cannot securely open artifact root") from exc
     try:
+        _assert_named_directory_identity(folder, root_fd)
         seen = set()
         results = []
         for item in items:
@@ -125,6 +153,9 @@ def verify(folder: Path, manifest_path: Path, source_sha: str | None = None) -> 
             if h.hexdigest() != digest:
                 raise ValueError("Release artifact checksum mismatch: " + name)
             results.append({"name": name, "kind": kind, "sha256": digest, "bytes": size})
+        # The open FD pins the directory for relative reads, but a swapped
+        # path would cause the next release consumer to see another directory.
+        _assert_named_directory_identity(folder, root_fd)
     finally:
         os.close(root_fd)
     return {
