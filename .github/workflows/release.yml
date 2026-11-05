@@ -111,6 +111,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           SOURCE_SHA: ${{ github.sha }}
+          CANDIDATE_VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
           # Only a completed, successful main push run on this exact SHA may
@@ -123,19 +124,27 @@ jobs:
           gh run download "$run_id" \
             --name "WalidSite-Android-debug-QA-${SOURCE_SHA}" \
             --dir dist/candidates/android-qa
+          # Rehash both real release ZIPs and the native APK together.
+          # Any source/version mismatch or altered SHA sidecar blocks upload.
           PYTHONPATH="$PWD" python3 qa/verify_release_android_qa.py \
             --dir dist/candidates/android-qa --checkout . --sha "$SOURCE_SHA" \
-            > dist/candidates/android-qa-release-receipt.json
+            --candidates dist/candidates \
+            > dist/candidates/unified-release-evidence.json
           python3 - <<'PY'
           import json, os
           from pathlib import Path
-          result = json.loads(Path('dist/candidates/android-qa-release-receipt.json').read_text())
-          assert result['schema'] == 'walidsite.android-release-attachment.v1'
+          result = json.loads(Path('dist/candidates/unified-release-evidence.json').read_text())
+          assert result['schema'] == 'walidsite.unpublished-full-release-candidate.v1'
           assert result['source_sha'] == os.environ['SOURCE_SHA']
-          assert result['android_qa_receipt_checked'] is True
-          assert result['production_signing_verified'] is False
+          assert result['version'] == os.environ['CANDIDATE_VERSION']
+          assert result['native_and_web_version_match'] is True
+          assert result['same_sha_assets_verified'] is True
+          assert result['php_zip_negative_rejections'] == 4
+          assert result['test_only_ephemeral_key'] is True
+          assert result['publisher_signature_verified'] is False
+          assert result['android_distribution_signing_verified'] is False
           assert result['device_launch_verified'] is False
-          assert result['ios_build_verified'] is False
+          assert result['code_update_performed'] is False
           assert result['production_ready'] is False
           PY
       - name: Retain unpublished inspection candidates only

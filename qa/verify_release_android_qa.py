@@ -28,6 +28,24 @@ CHECKSUM_NAME = APK_NAME + ".sha256"
 EXPECTED = {APK_NAME, PROOF_NAME, IDENTITY_NAME, CHECKSUM_NAME}
 MAX_APK_BYTES = 536870912
 MAX_JSON_BYTES = 65536
+MAX_RELEASE_ZIP_BYTES = 1073741824
+SEMVER = re.compile(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\Z")
+
+
+def site_release_version(checkout: Path) -> str:
+    """The exact checked-in Laravel release version, never an HTTP/env claim."""
+    version_file = checkout / "backend/VERSION"
+    if version_file.is_symlink() or not version_file.is_file():
+        raise ValueError("Laravel release version source unavailable")
+    if version_file.stat().st_size > 32:
+        raise ValueError("Laravel release version exceeds identity bound")
+    try:
+        version = version_file.read_text(encoding="ascii").strip()
+    except (UnicodeError, OSError) as exc:
+        raise ValueError("Laravel release version cannot be read") from exc
+    if not SEMVER.fullmatch(version):
+        raise ValueError("Laravel version is not stable SemVer")
+    return version
 
 
 @contextmanager
@@ -113,6 +131,9 @@ def verify(directory: Path, checkout: Path, source_sha: str) -> dict:
             raise ValueError("Actual APK bytes do not match sha256 sidecar")
 
         expected = metadata(checkout)
+        site_version = site_release_version(checkout)
+        if expected["version_name"] != site_version:
+            raise ValueError("Native QA version differs from installed site release")
         for field in ("package_id", "version_name", "version_code"):
             if (identity.get(field) != expected[field]
                     or proof.get(field) != expected[field]):
@@ -141,6 +162,7 @@ def verify(directory: Path, checkout: Path, source_sha: str) -> dict:
         "bytes": size,
         "package_id": expected["package_id"],
         "version_name": expected["version_name"],
+        "site_release_version": site_version,
         "version_code": expected["version_code"],
         "android_qa_receipt_checked": True,
         "production_signing_verified": False,
@@ -150,14 +172,95 @@ def verify(directory: Path, checkout: Path, source_sha: str) -> dict:
     }
 
 
+def verify_bundle(directory: Path, checkout: Path, source_sha: str,
+                  candidates: Path) -> dict:
+    """One receipt for the *actual* native, Setup and Update inspection bytes.
+
+    Only permits unpublished test-signed ZIP proof. Never promotes a catalog,
+    verifies a real publisher, installs code, or claims device acceptance.
+    """
+    android = verify(directory, checkout, source_sha)
+    version = android["site_release_version"]
+    with pinned_directory(candidates) as fd:
+        manifest_file = f"WalidSite-Release-Manifest-v{version}.json"
+        manifest_bytes, _, _ = read_verified(fd, manifest_file, MAX_JSON_BYTES)
+        php_bytes, _, _ = read_verified(fd, "signed-zip-acceptance.json", MAX_JSON_BYTES)
+        try:
+            manifest = json.loads(manifest_bytes.decode("utf-8"))
+            php = json.loads(php_bytes.decode("utf-8"))
+        except (ValueError, UnicodeError) as exc:
+            raise ValueError("Candidate release evidence must be valid JSON") from exc
+        if (not isinstance(manifest, dict) or not isinstance(php, dict)
+                or manifest.get("schema") != "walidsite.release-candidate.v1"
+                or manifest.get("product") != "walidsite"
+                or manifest.get("source_sha") != source_sha
+                or manifest.get("version") != version
+                or manifest.get("published") is not False
+                or manifest.get("production_ready") is not False
+                or manifest.get("publisher_signature_verified") is not False
+                or not isinstance(manifest.get("acceptance"), dict)
+                or not manifest["acceptance"]
+                or any(v is not False for v in manifest["acceptance"].values())):
+            raise ValueError("Release candidate identity or unpublished status rejected")
+        digests = {}
+        for kind in ("setup", "update"):
+            info = manifest.get(kind)
+            name = f"WalidSite-{kind.capitalize()}-v{version}.zip"
+            if (not isinstance(info, dict) or info.get("file") != name
+                    or not isinstance(info.get("sha256"), str)
+                    or not re.fullmatch(r"[a-f0-9]{64}", info["sha256"])
+                    or type(info.get("bytes")) is not int):
+                raise ValueError("Release archive manifest is incomplete")
+            _, digest, size = read_verified(fd, name, MAX_RELEASE_ZIP_BYTES, verify_zip=True)
+            checksum_bytes, _, _ = read_verified(fd, name + ".sha256", 256)
+            if (digest != info["sha256"] or size != info["bytes"]
+                    or checksum_bytes != f"{digest}  {name}\n".encode("ascii")):
+                raise ValueError("Release ZIP identity differs from manifest or sidecar")
+            digests[kind] = digest
+        if (php.get("schema") != "walidsite.signed-zip-ci-acceptance.v1"
+                or php.get("version") != version
+                or php.get("source_sha") != source_sha
+                or php.get("artifact_sha256") != digests["update"]
+                or type(php.get("verified_files")) is not int
+                or php["verified_files"] < 4
+                or php.get("negative_rejections") != 4
+                or php.get("test_only_ephemeral_key") is not True
+                or php.get("publisher_signature_verified") is not False
+                or php.get("code_update_performed") is not False
+                or php.get("production_ready") is not False):
+            raise ValueError("PHP ZIP/Ed25519 negative acceptance proof mismatch")
+    return {
+        "schema": "walidsite.unpublished-full-release-candidate.v1",
+        "source_sha": source_sha,
+        "version": version,
+        "android_package_id": android["package_id"],
+        "android_version_code": android["version_code"],
+        "android_apk_sha256": android["apk_sha256"],
+        "setup_sha256": digests["setup"],
+        "update_sha256": digests["update"],
+        "native_and_web_version_match": True,
+        "same_sha_assets_verified": True,
+        "php_zip_negative_rejections": 4,
+        "test_only_ephemeral_key": True,
+        "publisher_signature_verified": False,
+        "android_distribution_signing_verified": False,
+        "device_launch_verified": False,
+        "code_update_performed": False,
+        "production_ready": False,
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dir", required=True, type=Path)
     parser.add_argument("--checkout", required=True, type=Path)
     parser.add_argument("--sha", required=True)
+    parser.add_argument("--candidates", type=Path, help="Require unified actual Setup/Update/native proof")
     args = parser.parse_args(argv)
     try:
-        result = verify(args.dir, args.checkout, args.sha)
+        result = (verify_bundle(args.dir, args.checkout, args.sha, args.candidates)
+                  if args.candidates is not None
+                  else verify(args.dir, args.checkout, args.sha))
     except (ValueError, OSError, zipfile.LargeZipFile) as exc:
         print(json.dumps({"android_qa_receipt_checked": False,
                           "production_ready": False,

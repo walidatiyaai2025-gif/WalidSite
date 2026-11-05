@@ -728,6 +728,69 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+  verify-source-pinned-release-bundle:
+    # Fail closed if actual main Setup ZIP, Update ZIP and compiled APK
+    # disagree on source SHA, release SemVer or test-only trust boundaries.
+    # This is NOT a production release or a device smoke test.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [required-ci-gate, build-cpanel-package, build-android-qa-apk]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: WalidSite-UNPUBLISHED-release-train-${{ github.sha }}
+          path: dist/source-proof/release
+      - uses: actions/download-artifact@v4
+        with:
+          name: WalidSite-Android-debug-QA-${{ github.sha }}
+          path: dist/source-proof/android
+      - name: Verify one immutable web and native artifact train
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test -d dist/source-proof/release/release-train
+          test -s dist/source-proof/android/WalidSite-Android-debug-QA.apk
+          mkdir -p dist/source-proof/evidence
+          PYTHONPATH="$PWD" python3 qa/verify_release_android_qa.py \
+            --dir dist/source-proof/android --checkout . --sha "$SOURCE_SHA" \
+            --candidates dist/source-proof/release/release-train \
+            > dist/source-proof/evidence/unified-release-evidence.json
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          proof = json.loads(Path('dist/source-proof/evidence/unified-release-evidence.json').read_text())
+          version = Path('backend/VERSION').read_text().strip()
+          assert proof['schema'] == 'walidsite.unpublished-full-release-candidate.v1'
+          assert proof['source_sha'] == os.environ['SOURCE_SHA']
+          assert proof['version'] == version
+          assert proof['native_and_web_version_match'] is True
+          assert proof['same_sha_assets_verified'] is True
+          assert proof['php_zip_negative_rejections'] == 4
+          assert proof['test_only_ephemeral_key'] is True
+          assert proof['publisher_signature_verified'] is False
+          assert proof['android_distribution_signing_verified'] is False
+          assert proof['device_launch_verified'] is False
+          assert proof['code_update_performed'] is False
+          assert proof['production_ready'] is False
+          PY
+      - name: Retain non-production unified provenance receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: WalidSite-UNPUBLISHED-unified-build-proof-${{ github.sha }}
+          path: dist/source-proof/evidence/unified-release-evidence.json
+          if-no-files-found: error
+          retention-days: 14
+
   cleanup-merged-branch:
     # Runs only after an actual merge and only for a branch in this repository.
     # No checkout or execution of PR-provided code; never deletes a reused branch.
