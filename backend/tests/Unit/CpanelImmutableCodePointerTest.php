@@ -216,6 +216,32 @@ final class CpanelImmutableCodePointerTest extends TestCase
         }
     }
 
+    public function test_nested_public_asset_symlink_is_rejected_even_when_it_points_inside_web_root(): void
+    {
+        if (! function_exists('symlink') || PHP_OS_FAMILY === 'Windows') {
+            self::markTestSkipped('POSIX symlinks required for this regression.');
+        }
+
+        $alias = $this->home.'/public_html/alias';
+        mkdir($alias.'/icons', 0700, true);
+        if (! @symlink($alias, $this->home.'/public_html/assets')) {
+            self::markTestSkipped('This environment disallows creating symlinks.');
+        }
+
+        try {
+            (new CpanelImmutableCodePointer())->activate(...$this->args());
+            $this->fail('Symlinked public asset directory was accepted.');
+        } catch (DomainException $error) {
+            $this->assertStringContainsString('escapes web root', $error->getMessage());
+        }
+
+        $this->assertFileDoesNotExist($alias.'/icons/new.svg');
+        $this->assertFileDoesNotExist($this->home.'/.walidsite-active-release.json');
+        $this->assertSame('KEEP_MY_PRIVATE_APP_KEY', file_get_contents(
+            $this->home.'/application/.env',
+        ));
+    }
+
     public function test_changed_public_router_or_htaccess_blocks_unsafe_cutover(): void
     {
         file_put_contents($this->candidate.'/public_html/.htaccess', 'RewriteEngine Off');

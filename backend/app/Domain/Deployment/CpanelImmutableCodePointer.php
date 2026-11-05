@@ -202,11 +202,12 @@ final class CpanelImmutableCodePointer
             }
             $target = $publicRoot.'/'.$relative;
             $parent = dirname($target);
-            if (! is_dir($parent) && ! @mkdir($parent, 0755, true)) {
-                throw new RuntimeException('Cannot stage public asset directory.');
-            }
-            if (is_link($target) || is_link($parent) || realpath($parent) === false
-                || ! str_starts_with(realpath($parent).'/', $publicRoot.'/')) {
+            // Validate every ancestor BEFORE creating nested directories:
+            // recursive mkdir would otherwise follow an in-root symlink and
+            // write into a different location even when the final check fails.
+            $this->ensurePhysicalAssetParent($publicRoot, $parent);
+            clearstatcache(true, $parent);
+            if (is_link($target) || realpath($parent) !== $parent) {
                 throw new DomainException('Asset destination is linked or escapes web root.');
             }
             $sourceHash = hash_file('sha256', $entry->getPathname());
@@ -228,9 +229,45 @@ final class CpanelImmutableCodePointer
                 @unlink($temporary);
                 throw new RuntimeException('Failed staging immutable public asset.');
             }
-            if (! @rename($temporary, $target)) {
+            // rename() overwrites an existing target on POSIX. Publish
+            // atomically without replacement: another writer creating the
+            // path between the existence check and activation must not lose
+            // its file. cPanel/Linux supports same-directory hard links.
+            try {
+                if (! @link($temporary, $target)) {
+                    throw new RuntimeException('Unable to publish immutable asset without overwriting an existing file.');
+                }
+            } finally {
                 @unlink($temporary);
-                throw new RuntimeException('Failed activating immutable public asset.');
+            }
+        }
+    }
+
+    /**
+     * Create new public directories one segment at a time, rejecting links
+     * before following them. The web root is an already verified real path.
+     */
+    private function ensurePhysicalAssetParent(string $publicRoot, string $parent): void
+    {
+        if (! str_starts_with($parent.'/', $publicRoot.'/')) {
+            throw new DomainException('Asset destination escapes web root.');
+        }
+        $relative = substr($parent, strlen($publicRoot) + 1);
+        $current = $publicRoot;
+        foreach (explode('/', $relative) as $segment) {
+            if ($segment === '') {
+                continue;
+            }
+            $current .= '/'.$segment;
+            clearstatcache(true, $current);
+            if (is_link($current) || (file_exists($current) && ! is_dir($current))) {
+                throw new DomainException('Asset destination is linked or escapes web root.');
+            }
+            if (! is_dir($current) && ! @mkdir($current, 0755)) {
+                throw new RuntimeException('Cannot stage public asset directory.');
+            }
+            if (realpath($current) !== $current) {
+                throw new DomainException('Asset destination is linked or escapes web root.');
             }
         }
     }
