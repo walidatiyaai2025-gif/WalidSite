@@ -135,6 +135,41 @@ void main() {
     }
   });
 
+  test('pre-existing .part hardlinks never overwrite unrelated app data',
+      () async {
+    if (!Platform.isLinux) return;
+    final home = await Directory.systemTemp.createTemp('walidsite-hardlink-');
+    const id = '12345678-1234-4234-8234-123456789abc';
+    final store = AppSupportRunbookStore(supportDirectory: home);
+    final outside = File('${home.path}/private-unrelated');
+    final globalTemp = File('${home.path}/signed-runbook-pack-v1.json.part');
+    final pinTemp = File(
+        '${home.path}/signed-runbook-pins-v1/$id.json.part');
+    try {
+      await outside.writeAsString('keep private contents intact');
+      await store.write('previous global signed envelope');
+      final globalLink = await Process.run(
+          'ln', [outside.path, globalTemp.path]);
+      expect(globalLink.exitCode, 0);
+      await store.write('new global signed envelope');
+      expect(await store.read(), 'new global signed envelope');
+      expect(await outside.readAsString(), 'keep private contents intact');
+      expect(await FileSystemEntity.type(globalTemp.path, followLinks: false),
+          FileSystemEntityType.notFound);
+
+      await store.writePinned(id, 'previous signed publication');
+      final pinLink = await Process.run('ln', [outside.path, pinTemp.path]);
+      expect(pinLink.exitCode, 0);
+      await store.writePinned(id, 'new signed publication');
+      expect(await store.readPinned(id), 'new signed publication');
+      expect(await outside.readAsString(), 'keep private contents intact');
+      expect(await FileSystemEntity.type(pinTemp.path, followLinks: false),
+          FileSystemEntityType.notFound);
+    } finally {
+      await home.delete(recursive: true);
+    }
+  });
+
   test('unconfigured endpoint never invokes network and loads fallback', () async {
     var requests = 0;
     final repo = OfflineRunbookRepository(
