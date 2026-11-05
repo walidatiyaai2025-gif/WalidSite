@@ -557,7 +557,9 @@ final class AdminCanonicalProductApiTest extends TestCase
 
         // SQL publication flags alone overstate externally reachable content.
         $this->assertSame(3, Article::query()->publiclyVisible()->count());
-        $this->assertSame(3, Project::query()->publiclyVerified()->count());
+        // The SQL scope itself already excludes one invalid project; the
+        // remaining private-evidence row must still fail the public proof gate.
+        $this->assertSame(2, Project::query()->publiclyVerified()->count());
 
         $response = $this->withToken($token)->getJson('/api/v1/admin/analytics')
             ->assertOk()
