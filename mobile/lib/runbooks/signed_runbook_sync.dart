@@ -272,7 +272,8 @@ class OfflineRunbookRepository {
   // queue lets both validate the same stale disk state and then overwrite a
   // newer verified pack. Serialize all signed syncs within the app isolate;
   // every operation rechecks the stored signature after acquiring its slot.
-  static Future<void> _sharedSyncBarrier = Future<void>.value();
+  // Do not retain a completed Future across unrelated Flutter widget zones.
+  static Future<void>? _sharedSyncBarrier;
 
   // Retain the exact signed envelope alongside its verified payload.
   // A timestamp alone cannot establish an ordering between two different
@@ -310,14 +311,18 @@ class OfflineRunbookRepository {
   }
 
   Future<OfflineRunbookPack> _syncAfter(
-      Future<void> prior, Completer<void> completed,
+      Future<void>? prior, Completer<void> completed,
       [PublishedRunbookRevision? revision]) async {
     try {
-      await prior;
+      if (prior != null) await prior;
       return await _syncOnce(revision);
     } finally {
-      // Never strand queued updates if fetching, signature verification or
-      // persistence fails. The barrier itself must not complete with error.
+      // A newer queued update keeps its reservation; the last completed
+      // operation clears the slot so unrelated widget zones don't inherit
+      // an old asynchronous Future.
+      if (identical(_sharedSyncBarrier, completed.future)) {
+        _sharedSyncBarrier = null;
+      }
       completed.complete();
     }
   }
