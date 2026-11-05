@@ -197,12 +197,121 @@ abstract class RunbookSnapshotStore {
   Future<void> write(String envelope);
 }
 
-class AppSupportRunbookStore implements RunbookSnapshotStore {
+/// A second publisher-signed pack must not erase another downloaded UUID.
+/// Both the global and individually pinned envelopes are reauthenticated on
+/// each new repository instance; no parsed JSON is trusted directly.
+abstract class RunbookPinnedSnapshotStore implements RunbookSnapshotStore {
+  Future<List<String>> pinnedIds();
+  Future<String?> readPinned(String id);
+  Future<void> writePinned(String id, String envelope);
+}
+
+class AppSupportRunbookStore implements RunbookPinnedSnapshotStore {
   const AppSupportRunbookStore();
+
+  static final _uuid = RegExp(
+    r'^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$',
+  );
+  static const maxPins = 20;
 
   Future<File> _file() async {
     final dir = await getApplicationSupportDirectory();
     return File(dir.path + Platform.pathSeparator + 'signed-runbook-pack-v1.json');
+  }
+
+  Future<Directory> _pins({bool create = false}) async {
+    final home = await getApplicationSupportDirectory();
+    final directory = Directory(
+      home.path + Platform.pathSeparator + 'signed-runbook-pins-v1',
+    );
+    final kind = await FileSystemEntity.type(directory.path, followLinks: false);
+    if (kind == FileSystemEntityType.notFound && create) {
+      await directory.create();
+    } else if (kind != FileSystemEntityType.notFound &&
+        kind != FileSystemEntityType.directory) {
+      throw const FormatException('Unsafe signed runbook storage');
+    }
+    return directory;
+  }
+
+  File _pinned(Directory directory, String id) {
+    if (!_uuid.hasMatch(id)) {
+      throw const FormatException('Invalid published runbook UUID');
+    }
+    return File(directory.path + Platform.pathSeparator + '$id.json');
+  }
+
+  @override
+  Future<List<String>> pinnedIds() async {
+    final directory = await _pins();
+    if (!await directory.exists()) return const [];
+    final ids = <String>[];
+    var scanned = 0;
+    await for (final entity in directory.list(followLinks: false)) {
+      if (++scanned > 64) {
+        throw const FormatException('Unbounded signed runbook storage');
+      }
+      final name = entity.path.split(Platform.pathSeparator).last;
+      if (name.endsWith('.part')) continue;
+      if (!name.endsWith('.json')) {
+        throw const FormatException('Unexpected signed runbook storage entry');
+      }
+      final id = name.substring(0, name.length - 5);
+      if (!_uuid.hasMatch(id) ||
+          await FileSystemEntity.type(entity.path, followLinks: false) !=
+              FileSystemEntityType.file) {
+        throw const FormatException('Unsafe signed runbook storage entry');
+      }
+      ids.add(id);
+      if (ids.length > maxPins) {
+        throw const FormatException('Too many signed runbook downloads');
+      }
+    }
+    ids.sort();
+    return List.unmodifiable(ids);
+  }
+
+  @override
+  Future<String?> readPinned(String id) async {
+    final file = _pinned(await _pins(), id);
+    if (await FileSystemEntity.type(file.path, followLinks: false) !=
+        FileSystemEntityType.file) return null;
+    if (await file.length() > 800 * 1024) return null;
+    return file.readAsString();
+  }
+
+  @override
+  Future<void> writePinned(String id, String envelope) async {
+    if (envelope.isEmpty || utf8.encode(envelope).length > 800 * 1024) {
+      throw const FormatException('Signed runbook snapshot exceeds storage limit');
+    }
+    final directory = await _pins(create: true);
+    final target = _pinned(directory, id);
+    final current = await pinnedIds();
+    if (!current.contains(id) && current.length >= maxPins) {
+      throw const FormatException('Signed runbook storage capacity exceeded');
+    }
+    final kind = await FileSystemEntity.type(target.path, followLinks: false);
+    if (kind != FileSystemEntityType.notFound &&
+        kind != FileSystemEntityType.file) {
+      throw const FormatException('Unsafe signed snapshot destination');
+    }
+    final temp = File(target.path + '.part');
+    if (await FileSystemEntity.type(temp.path, followLinks: false) ==
+        FileSystemEntityType.link) {
+      throw const FormatException('Unsafe interrupted signed snapshot');
+    }
+    try {
+      // Atomic replacement on supported Android/iOS app-support filesystems.
+      // A partial write leaves the previous complete pin in place.
+      await temp.writeAsString(envelope, flush: true);
+      await temp.rename(target.path);
+    } finally {
+      if (await FileSystemEntity.type(temp.path, followLinks: false) ==
+          FileSystemEntityType.file) {
+        await temp.delete();
+      }
+    }
   }
 
   @override
@@ -213,12 +322,26 @@ class AppSupportRunbookStore implements RunbookSnapshotStore {
     return file.readAsString();
   }
 
-  /// Clear only the downloaded signed snapshot and its interrupted temp file.
-  /// The immutable bundled fallback and all server/account data stay intact.
+  /// Removes only the downloaded signed snapshots, never bundled guidance.
   Future<void> clearDownloadedSnapshot() async {
     final target = await _file();
     for (final file in [target, File(target.path + '.part')]) {
       if (await file.exists()) await file.delete();
+    }
+    final directory = await _pins();
+    if (!await directory.exists()) return;
+    await for (final entry in directory.list(followLinks: false)) {
+      final name = entry.path.split(Platform.pathSeparator).last;
+      final id = name.endsWith('.json.part')
+          ? name.substring(0, name.length - 10)
+          : name.endsWith('.json')
+              ? name.substring(0, name.length - 5)
+              : '';
+      if (_uuid.hasMatch(id) &&
+          await FileSystemEntity.type(entry.path, followLinks: false) !=
+              FileSystemEntityType.directory) {
+        await entry.delete();
+      }
     }
   }
 
@@ -291,8 +414,85 @@ class OfflineRunbookRepository {
     }
   }
 
-  Future<OfflineRunbookPack> load() async =>
-      (await _trustedSnapshot())?.pack ?? await bundled();
+  /// Reverify global and per-UUID signed envelopes on EVERY cold start.
+  /// Only published, hash-checked entries are combined. The OLDEST signed
+  /// timestamp controls staleness, not the newest downloaded publication.
+  Future<OfflineRunbookPack> load() async {
+    final global = await _trustedSnapshot();
+    if (store is! RunbookPinnedSnapshotStore || !source.configured) {
+      return global?.pack ?? await bundled();
+    }
+    final entries = <String, ({OfflineRunbook item, DateTime time, String envelope})>{};
+    final conflicts = <String>{};
+    void include(OfflineRunbookPack pack, String envelope, {String? only}) {
+      final time = pack.verifiedAt!;
+      for (final item in pack.items) {
+        if (item.publishedMarkdown == null ||
+            (only != null && item.id != only) ||
+            conflicts.contains(item.id)) continue;
+        final prior = entries[item.id];
+        if (prior == null || time.isAfter(prior.time)) {
+          entries[item.id] = (item: item, time: time, envelope: envelope);
+        } else if (time.isAtSameMomentAs(prior.time) &&
+            envelope != prior.envelope) {
+          // Ambiguous equal-time revisions cannot be ordered by guesswork.
+          entries.remove(item.id);
+          conflicts.add(item.id);
+        }
+      }
+    }
+
+    if (global != null) include(global.pack, global.envelope);
+    try {
+      final pinnedStore = store as RunbookPinnedSnapshotStore;
+      for (final id in await pinnedStore.pinnedIds()) {
+        try {
+          final text = await pinnedStore.readPinned(id);
+          if (text == null) continue;
+          final pack = await source.verify(text);
+          if (pack.items.where((item) =>
+              item.id == id && item.publishedMarkdown != null).length != 1) {
+            continue;
+          }
+          include(pack, text, only: id);
+        } catch (_) {
+          // Corrupted individual files are never treated as signed data.
+        }
+      }
+    } catch (_) {
+      // Corrupted index is not trusted. A valid global snapshot is unchanged.
+    }
+    if (entries.isEmpty) return global?.pack ?? await bundled();
+    final ids = entries.keys.toList()..sort();
+    final copies = ids.map((id) => entries[id]!).toList();
+    final oldest = copies.map((copy) => copy.time)
+        .reduce((a, b) => a.isBefore(b) ? a : b);
+    return OfflineRunbookPack(
+      version: 'verified-local-revisions',
+      source: 'Publisher-verified individual offline publications',
+      lastSynced: oldest,
+      verifiedAt: oldest,
+      items: List.unmodifiable(copies.map((copy) => copy.item)),
+      signedVerified: true,
+    );
+  }
+
+  Future<({OfflineRunbookPack pack, String envelope})?> _trustedPinned(
+      String id) async {
+    if (store is! RunbookPinnedSnapshotStore || !source.configured) return null;
+    try {
+      final text = await (store as RunbookPinnedSnapshotStore).readPinned(id);
+      if (text == null) return null;
+      final pack = await source.verify(text);
+      if (pack.items.where((item) =>
+          item.id == id && item.publishedMarkdown != null).length != 1) {
+        return null;
+      }
+      return (pack: pack, envelope: text);
+    } catch (_) {
+      return null;
+    }
+  }
 
   Future<OfflineRunbookPack> sync() {
     final prior = _sharedSyncBarrier;
@@ -347,6 +547,45 @@ class OfflineRunbookRepository {
         throw const FormatException('Published revision absent from signed pack');
       }
     }
+    if (revision != null && store is RunbookPinnedSnapshotStore) {
+      final id = revision.id.toLowerCase();
+      final pin = await _trustedPinned(id);
+      final global = await _trustedSnapshot();
+      // A different UUID's newer global pack must not block this download.
+      // Never roll this SAME UUID back to an older publisher snapshot.
+      final precedents = [
+        if (pin != null) pin,
+        if (global != null &&
+            global.pack.items.any((item) =>
+                item.id == id && item.publishedMarkdown != null))
+          global,
+      ];
+      for (final previous in precedents) {
+        final order = fresh.verifiedAt!.compareTo(previous.pack.verifiedAt!);
+        if (order < 0) {
+          throw const FormatException('Refusing older signed published revision');
+        }
+        if (order == 0 && received != previous.envelope) {
+          throw const FormatException('Conflicting signed publication timestamp');
+        }
+        if (order == 0 && received == previous.envelope) {
+          return load();
+        }
+      }
+      // Persist only the selected verified UUID; other signed copies survive.
+      await (store as RunbookPinnedSnapshotStore).writePinned(id, received);
+      final loaded = await load();
+      if (!loaded.signedVerified ||
+          !loaded.items.any((item) =>
+              item.id == id &&
+              item.publishedVersion == revision.version &&
+              item.publishedMarkdown == revision.markdown &&
+              item.publishedValidatedAt?.isAtSameMomentAs(
+                  revision.validatedAt) == true)) {
+        throw const FormatException('Signed published revision not recoverable');
+      }
+      return loaded;
+    }
     final snapshot = await _trustedSnapshot();
     if (snapshot != null) {
       final order = fresh.verifiedAt!.compareTo(snapshot.pack.verifiedAt!);
@@ -364,6 +603,6 @@ class OfflineRunbookRepository {
       }
     }
     await store.write(received);
-    return fresh;
+    return store is RunbookPinnedSnapshotStore ? await load() : fresh;
   }
 }
