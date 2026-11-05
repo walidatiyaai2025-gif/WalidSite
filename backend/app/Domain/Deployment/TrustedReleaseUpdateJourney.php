@@ -74,11 +74,14 @@ final class TrustedReleaseUpdateJourney
         );
         (new TrustedUpdateHostPreflight())->assertReady($paths, $signed['artifact_size']);
 
-        $candidate = (new TrustedCodeCandidatePromoter())->promote(
-            $signedEnvelope, $publisherPublicKeyBase64, $pinnedHttpsOrigin,
-            $installedVersion, $paths['quarantine'], $paths['incoming'],
-            $paths['archive'], $paths['releases'], $paths['public'],
+        // A corrected recovery precondition must not force a second
+        // download or an unsafe replacement of an already staged version.
+        // Reconstruct the signed code from the ZIP before reusing its target.
+        $candidate = $this->promoteOrReattestExisting(
+            $signed, $signedEnvelope, $publisherPublicKeyBase64,
+            $pinnedHttpsOrigin, $installedVersion, $paths,
         );
+        $lockCheck();
 
         $schema = new ReleaseSchemaCompatibility();
         $migrationState = $schema->assertCompatible($paths['current'], $candidate['directory']);
@@ -126,6 +129,98 @@ final class TrustedReleaseUpdateJourney
             'database_tables' => $result['database_tables'],
             'database_rows' => $result['database_rows'],
         ];
+    }
+
+    /**
+     * Retrying a stopped update must reattest both retained immutable objects.
+     * Never trust an existing release directory just because its name looks
+     * like the version/SHA from the signed manifest.
+     *
+     * @param array<string,int|string> $signed
+     * @param array<string,string> $paths
+     * @return array{directory:string,version:string,source_sha:string,artifact_sha256:string,files:int}
+     */
+    private function promoteOrReattestExisting(
+        array $signed,
+        string $signedEnvelope,
+        string $publisherPublicKeyBase64,
+        string $pinnedHttpsOrigin,
+        string $installedVersion,
+        array $paths,
+    ): array {
+        $target = $paths['releases'].'/v'.$signed['version'].'-'.$signed['source_sha'];
+        if (! file_exists($target) && ! is_link($target)) {
+            return (new TrustedCodeCandidatePromoter())->promote(
+                $signedEnvelope, $publisherPublicKeyBase64, $pinnedHttpsOrigin,
+                $installedVersion, $paths['quarantine'], $paths['incoming'],
+                $paths['archive'], $paths['releases'], $paths['public'],
+            );
+        }
+
+        // Never re-apply the currently running version or overwrite an
+        // unexpected file/symlink occupying an approved version pathname.
+        if (is_link($target) || ! is_dir($target) || realpath($target) !== $target
+            || realpath($paths['current']) === $target) {
+            throw new DomainException('Existing release cannot be reused without verified recovery.');
+        }
+
+        // The signature authenticates the complete ZIP. Materialize a NEW
+        // private copy so the full target inventory (paths + bytes) can be
+        // compared, including extra/changed PHP files, not just VERSION.
+        $copy = (new TrustedReleaseStager())->stage(
+            $signed, $paths['incoming'], $paths['archive'],
+            $paths['quarantine'], $paths['public'],
+        );
+        try {
+            $trustedSeal = $this->seal($copy['directory']);
+            if (! hash_equals($trustedSeal, $this->seal($target))) {
+                throw new DomainException('Retained release differs from signed code; manual recovery required.');
+            }
+        } finally {
+            $this->discardComparisonCopy($copy['directory'], $paths['quarantine']);
+        }
+
+        // No cutover or backup can start after an intervening pathname swap.
+        if (! hash_equals($trustedSeal, $this->seal($target))) {
+            throw new DomainException('Retained signed code changed during retry.');
+        }
+
+        return [
+            'directory' => $target,
+            'version' => $signed['version'],
+            'source_sha' => $signed['source_sha'],
+            'artifact_sha256' => $signed['artifact_sha256'],
+            'files' => $copy['files'],
+        ];
+    }
+
+    /**
+     * Erase ONLY the random, private comparison staging directory allocated
+     * by TrustedReleaseStager; never remove an existing release or user data.
+     */
+    private function discardComparisonCopy(string $directory, string $quarantine): void
+    {
+        $parent = realpath($quarantine.'/release-staging');
+        $resolved = realpath($directory);
+        if ($parent === false || $resolved === false || is_link($directory)
+            || dirname($resolved) !== $parent
+            || ! preg_match('/\\Acandidate-[0-9a-f]{32}\\z/D', basename($resolved))) {
+            throw new DomainException('Cannot safely remove temporary release comparison.');
+        }
+        $iterator = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($resolved, FilesystemIterator::SKIP_DOTS),
+            RecursiveIteratorIterator::CHILD_FIRST,
+        );
+        foreach ($iterator as $item) {
+            $removed = $item->isDir() && ! $item->isLink()
+                ? @rmdir($item->getPathname()) : @unlink($item->getPathname());
+            if (! $removed) {
+                throw new DomainException('Temporary release comparison cleanup failed.');
+            }
+        }
+        if (! @rmdir($resolved)) {
+            throw new DomainException('Temporary release comparison cleanup failed.');
+        }
     }
 
     /**
@@ -235,11 +330,24 @@ final class TrustedReleaseUpdateJourney
             throw new DomainException('Configured release location must match the exact signed artifact name.');
         }
 
-        $received = ($downloader ?? new TrustedReleaseDownloader())->download(
-            $signedEnvelope, $publisherPublicKeyBase64,
-            $pinnedHttpsOrigin, $installedVersion,
-            $paths['incoming'], $paths['public'],
-        );
+        // A download can finish before a later recovery/health gate fails.
+        // Reuse only an authenticated, byte-verified, structurally safe ZIP.
+        // Direct downloader behavior remains immutable/no-replace.
+        if (file_exists($paths['archive']) || is_link($paths['archive'])) {
+            (new TrustedReleaseArchive())->inspect(
+                $signed, $paths['incoming'], $paths['archive'],
+            );
+            $received = [
+                'path' => $paths['archive'],
+                'artifact_sha256' => $signed['artifact_sha256'],
+            ];
+        } else {
+            $received = ($downloader ?? new TrustedReleaseDownloader())->download(
+                $signedEnvelope, $publisherPublicKeyBase64,
+                $pinnedHttpsOrigin, $installedVersion,
+                $paths['incoming'], $paths['public'],
+            );
+        }
         $lockCheck();
         if ($received['path'] !== $paths['archive']
             || ! hash_equals($signed['artifact_sha256'], $received['artifact_sha256'])) {
@@ -363,7 +471,11 @@ final class TrustedReleaseUpdateJourney
                 throw new DomainException('Signed candidate contains an unsafe inventory path.');
             }
             if ($item->isDir()) {
-                if (realpath($full) !== $full || count($items) >= 50000) {
+                $directoryStat = @lstat($full);
+                if (realpath($full) !== $full || ! is_array($directoryStat)
+                    || ($directoryStat['mode'] & 0170000) !== 0040000
+                    || ($directoryStat['mode'] & 0022) !== 0
+                    || count($items) >= 50000) {
                     throw new DomainException('Signed candidate directory identity or count is unsafe.');
                 }
                 $items[] = 'd:'.$relative;
@@ -425,10 +537,11 @@ final class TrustedReleaseUpdateJourney
             || ($opened['mode'] & 0170000) !== 0100000
             || ($named['mode'] & 0170000) !== 0100000
             || ($opened['nlink'] ?? 0) !== 1 || ($named['nlink'] ?? 0) !== 1
+            || ($opened['mode'] & 0022) !== 0 || ($named['mode'] & 0022) !== 0
             || is_link($path) || realpath($path) !== $path) {
             throw new DomainException('Signed candidate file link or type changed during attestation.');
         }
-        foreach (['dev', 'ino', 'size', 'mtime', 'ctime'] as $field) {
+        foreach (['dev', 'ino', 'size', 'mode', 'mtime', 'ctime'] as $field) {
             if (! isset($opened[$field], $named[$field], $baseline[$field])
                 || $opened[$field] !== $baseline[$field]
                 || $named[$field] !== $baseline[$field]) {
