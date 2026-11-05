@@ -139,12 +139,17 @@ class StableDispatcherFailClosedHTTPTests(unittest.TestCase):
 
         # An accidentally exposed 0644 marker must not authorize an otherwise
         # correct private health token or fall through to Laravel.
-        self.assert_denied(b"maintenance is unavailable")
-        lease.chmod(0o600)
-        second_link = self.home / "maintenance-hardlink.json"
-        second_link.hardlink_to(lease)
-        self.assert_denied(b"maintenance is unavailable")
-        second_link.unlink()
+        for scenario in ("exposed_mode", "hardlink"):
+            if scenario == "hardlink":
+                lease.chmod(0o600)
+                second_link = self.home / "maintenance-hardlink.json"
+                second_link.hardlink_to(lease)
+            status, body = self.get(token)
+            self.assertEqual(503, status)
+            self.assertIn(b"maintenance is unavailable", body.lower())
+            self.assertNotIn(token.encode(), body)
+            if scenario == "hardlink":
+                second_link.unlink()
 
         # Restore the legitimate single-link 0600 control-file shape. Its
         # actual presence must be honored and block normal visitors.
