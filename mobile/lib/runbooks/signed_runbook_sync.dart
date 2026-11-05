@@ -561,6 +561,18 @@ class OfflineRunbookRepository {
           global,
       ];
       for (final previous in precedents) {
+        // A newly signed envelope can carry an older published content
+        // version. Signature time must never override a known newer
+        // revision of the SAME public UUID in the offline cache.
+        final previousVersion = previous.pack.items
+            .where((item) => item.id == id && item.publishedMarkdown != null)
+            .map((item) => item.publishedVersion)
+            .whereType<int>()
+            .fold<int>(0, (maxVersion, version) =>
+                version > maxVersion ? version : maxVersion);
+        if (revision.version < previousVersion) {
+          throw const FormatException('Refusing published runbook version downgrade');
+        }
         final order = fresh.verifiedAt!.compareTo(previous.pack.verifiedAt!);
         if (order < 0) {
           throw const FormatException('Refusing older signed published revision');
