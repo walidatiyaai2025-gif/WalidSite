@@ -140,7 +140,12 @@ final class SignedPublishedRunbookPublisher
     public function storePrivate(string $envelope, string $directory): array
     {
         $root = realpath($directory);
-        if ($root === false || ! is_dir($root) || is_link($directory)) {
+        $public = realpath(public_path());
+        if ($root === false || $root !== $directory
+            || ! is_dir($root) || ! is_writable($root) || is_link($directory)
+            || $public === false || $root === $public
+            || str_starts_with($root, rtrim($public, '/').'/')
+            || (fileperms($root) & 0077) !== 0) {
             throw new RuntimeException('Private publisher output directory unavailable.');
         }
         if (strlen($envelope) > 800 * 1024 || strlen($envelope) < 1) {
@@ -150,33 +155,109 @@ final class SignedPublishedRunbookPublisher
         $filename = 'reviewed-runbooks-'.$sha.'.json';
         $target = $root.DIRECTORY_SEPARATOR.$filename;
         $lockPath = $root.DIRECTORY_SEPARATOR.'.publisher.lock';
-        if (is_link($lockPath)) {
+        if (is_link($lockPath) || (file_exists($lockPath) && ! is_file($lockPath))) {
             throw new RuntimeException('Unsafe publisher output lock.');
         }
-        $lock = @fopen($lockPath, 'cb');
+        $lock = @fopen($lockPath, 'c+b');
         if ($lock === false) {
             throw new RuntimeException('Could not secure publisher output lock.');
         }
         $temp = null;
+        $stream = null;
         try {
-            if (! flock($lock, LOCK_EX) || ! chmod($lockPath, 0600)
-                || file_exists($target) || is_link($target)) {
-                throw new RuntimeException('Signed publication already exists or publisher locked.');
+            $this->assertPublicationFile($lock, $lockPath, 1);
+            if (! flock($lock, LOCK_EX | LOCK_NB) || ! @chmod($lockPath, 0600)) {
+                throw new RuntimeException('Signed publication publisher is locked.');
             }
-            $temp = tempnam($root, '.signed-runbook-');
-            if ($temp === false || is_link($temp) || ! chmod($temp, 0600)
-                || file_put_contents($temp, $envelope, LOCK_EX) !== strlen($envelope)
-                || ! rename($temp, $target)) {
-                throw new RuntimeException('Could not atomically write signed runbook candidate.');
+            $this->assertPublicationFile($lock, $lockPath, 1);
+            // This early check is an optimization, NEVER the publication gate.
+            // rename() is forbidden: it could replace an unrelated publisher
+            // after this check, even while the cooperating flock is held.
+            if (file_exists($target) || is_link($target)) {
+                throw new RuntimeException('Signed publication already exists.');
+            }
+            $temp = $root.DIRECTORY_SEPARATOR.'.signed-runbook-'
+                .bin2hex(random_bytes(16)).'.partial';
+            $stream = @fopen($temp, 'x+b');
+            if ($stream === false) {
+                throw new RuntimeException('Cannot create private signed candidate.');
+            }
+            if (! @chmod($temp, 0600)) {
+                throw new RuntimeException('Cannot protect private signed candidate.');
+            }
+            $length = strlen($envelope);
+            for ($offset = 0; $offset < $length;) {
+                $written = @fwrite($stream, substr($envelope, $offset));
+                if (! is_int($written) || $written < 1) {
+                    throw new RuntimeException('Cannot persist complete signed candidate.');
+                }
+                $offset += $written;
+            }
+            if (! @fflush($stream) || (function_exists('fsync') && ! @fsync($stream))) {
+                throw new RuntimeException('Cannot durably persist signed candidate.');
+            }
+            $this->assertPublicationFile($stream, $temp, 1, $length);
+            if (! @rewind($stream)) {
+                throw new RuntimeException('Cannot verify written signed candidate.');
+            }
+            $digest = hash_init('sha256');
+            $read = hash_update_stream($digest, $stream, $length + 1);
+            if ($read !== $length || ! hash_equals($sha, hash_final($digest))) {
+                throw new RuntimeException('Signed publisher candidate bytes changed.');
+            }
+            $this->assertPublicationFile($stream, $temp, 1, $length);
+            $this->assertPublicationFile($lock, $lockPath, 1);
+
+            // POSIX hard-link creation is atomic and never replaces an existing
+            // destination. A second writer winning the name must survive
+            // without this process deleting or modifying its artifact.
+            if (! @link($temp, $target)) {
+                throw new RuntimeException('Signed publication already exists or immutable promotion unsupported.');
+            }
+            $this->assertPublicationFile($stream, $temp, 2, $length);
+            $this->assertPublicationFile($stream, $target, 2, $length);
+            if (! @unlink($temp)) {
+                throw new RuntimeException('Cannot retire private signed candidate.');
             }
             $temp = null;
+            $this->assertPublicationFile($stream, $target, 1, $length);
             return ['file' => $filename, 'sha256' => $sha];
         } finally {
-            if (is_string($temp) && is_file($temp)) {
+            if (is_resource($stream)) {
+                fclose($stream);
+            }
+            // Only unlink the random private file that THIS process created.
+            // Never unlink the shared final name after any failure.
+            if (is_string($temp)) {
                 @unlink($temp);
             }
-            flock($lock, LOCK_UN);
+            @flock($lock, LOCK_UN);
             fclose($lock);
         }
     }
+
+    /**
+     * Attest the same regular inode via its open descriptor and named path.
+     * Link count is deliberately checked at 1 -> 2 -> 1 during publication;
+     * ctime changes caused by link/unlink must not be mistaken for tampering.
+     *
+     * @param resource $stream
+     */
+    private function assertPublicationFile($stream, string $path, int $links, ?int $length = null): void
+    {
+        clearstatcache(true, $path);
+        $opened = @fstat($stream);
+        $named = @lstat($path);
+        if (! is_array($opened) || ! is_array($named)
+            || ($opened['mode'] & 0170000) !== 0100000
+            || ($named['mode'] & 0170000) !== 0100000
+            || $opened['nlink'] !== $links || $named['nlink'] !== $links
+            || $opened['dev'] !== $named['dev'] || $opened['ino'] !== $named['ino']
+            || $opened['size'] !== $named['size']
+            || ($length !== null && $opened['size'] !== $length)
+            || is_link($path) || realpath($path) !== $path) {
+            throw new RuntimeException('Unsafe publisher output inode or pathname.');
+        }
+    }
+
 }
