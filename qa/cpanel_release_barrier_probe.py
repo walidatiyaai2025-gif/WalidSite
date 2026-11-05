@@ -11,6 +11,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import socket
 import subprocess
@@ -18,7 +19,14 @@ import tempfile
 import time
 import urllib.error
 import urllib.request
-import zipfile
+
+
+# Reuse the SAME descriptor-pinned, source-SHA-verifying extractor as the
+# real MariaDB HTTP installer. Never trust/reopen an input ZIP pathname.
+if __package__:
+    from qa.cpanel_first_run_http_probe import extract_verified_archive
+else:
+    from cpanel_first_run_http_probe import extract_verified_archive
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -44,15 +52,23 @@ def status(opener, port: int, probe: str | None = None) -> tuple[int, bytes]:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--cpanel-zip", required=True, type=Path)
+    parser.add_argument("--sha", required=True, help="Exact verified source Git SHA")
     args = parser.parse_args()
     with tempfile.TemporaryDirectory(prefix="walidsite-lease-http-") as tmp:
         home = Path(tmp)
-        with zipfile.ZipFile(args.cpanel_zip) as archive:
-            if archive.testzip() is not None:
-                raise RuntimeError("Release ZIP failed CRC")
-            archive.extractall(home)
+        # The source manifest and the PHP bytes executed by this HTTP test
+        # must be the same immutable snapshot, even if the ZIP path is swapped.
+        extract_verified_archive(args.cpanel_zip, home, expected_sha=args.sha)
         original = home / "application"
         public = home / "public_html"
+        installed_version_file = original / "VERSION"
+        if not installed_version_file.is_file() or installed_version_file.is_symlink():
+            raise RuntimeError("Verified installed release identity missing")
+        installed_version = installed_version_file.read_text(encoding="ascii").strip()
+        if not re.fullmatch(r"(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)", installed_version):
+            raise RuntimeError("Invalid installed release version")
+        major, minor, patch = map(int, installed_version.split("."))
+        candidate_version = f"{major}.{minor}.{patch + 1}"
         if (original / ".env").exists():
             raise RuntimeError("Refusing to test against an installed environment")
         if not (public / "index.php").is_file():
@@ -73,7 +89,7 @@ def main() -> None:
             "schema": 1,
             "expires_at": int(time.time()) + 120,
             "previous_root": "legacy",
-            "previous_version": "0.1.2",
+            "previous_version": installed_version,
             "probe_sha256": hashlib.sha256(token.encode("ascii")).hexdigest(),
         }
         marker_path.write_text(json.dumps(marker), encoding="ascii")
@@ -111,8 +127,8 @@ def main() -> None:
             # independent health verification. The lease has expired. The
             # private pointer now refers to an unavailable new release.
             pointer = {
-                "schema": 1, "version": "0.1.3",
-                "root": ".walidsite-releases/v0.1.3-" + "a" * 40,
+                "schema": 1, "version": candidate_version,
+                "root": ".walidsite-releases/v" + candidate_version + "-" + "a" * 40,
             }
             (home / ".walidsite-active-release.json").write_text(
                 json.dumps(pointer), encoding="ascii"
