@@ -52,7 +52,14 @@ void main() {
             pageCalls.add(category);
             expect(page, 1);
             return VerifiedArticlePage(
-              articles: category == 'backend' ? const [reviewed] : const [reviewed],
+              articles: category == 'backend'
+                  ? const [reviewed]
+                  : const [VerifiedArticle(
+                      slug: 'other-category',
+                      title: 'Different published topic',
+                      body: 'Not a backup guide',
+                      citations: ['https://docs.example.org/other'],
+                    )],
               currentPage: page,
               hasMorePages: false,
               categories: categories,
@@ -105,11 +112,14 @@ void main() {
         ),
       ));
       await tester.pumpAndSettle();
+      expect(find.byKey(const Key('article-verified-backup')), findsNothing);
+      expect(find.byKey(const Key('article-other-category')), findsOneWidget);
       await tester.tap(find.byKey(const Key('article-category-filter')));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Backend').last);
       await tester.pumpAndSettle();
       expect(pageCalls, [null, 'backend']);
+      expect(find.byKey(const Key('article-other-category')), findsNothing);
 
       await tester.tap(find.byKey(const Key('article-verified-backup')));
       await tester.pumpAndSettle();
