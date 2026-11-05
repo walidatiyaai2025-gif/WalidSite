@@ -84,7 +84,7 @@ class StagingSmokeTest(unittest.TestCase):
     def test_public_and_private_live_endpoints_are_read_only_and_expected_count(self):
         fake = FakeOpener()
         receipt = permitted_run("https://staging.example.com", fake)
-        self.assertEqual(len(receipt["checks"]), 19)
+        self.assertEqual(len(receipt["checks"]), 23)
         self.assertTrue(receipt["http_smoke_passed"])
         self.assertFalse(receipt["production_ready"])
         self.assertFalse(receipt["deployment_release_sha_verified"])
@@ -141,7 +141,7 @@ class StagingSmokeTest(unittest.TestCase):
 
     def test_private_laravel_paths_deny_without_reading_any_private_response_body(self):
         private = [check for check in CHECKS if check.kind == "private_denied"]
-        self.assertEqual(len(private), 8)
+        self.assertEqual(len(private), 12)
         self.assertEqual(len({check.path for check in private}), 8)
         self.assertEqual(len({check.path for check in CHECKS}), len(CHECKS))
 
@@ -168,6 +168,29 @@ class StagingSmokeTest(unittest.TestCase):
                         if request[0].split("staging.example.com", 1)[-1] == spec.path
                     )
                     self.assertEqual(private_response.body.tell(), 0)
+
+    def test_private_backup_and_cached_config_probes_are_never_read(self):
+        sensitive_paths = {
+            "/.env.bak", "/.env.backup",
+            "/application/database/database.sqlite",
+            "/application/bootstrap/cache/config.php",
+        }
+        self.assertTrue(sensitive_paths.issubset({spec.path for spec in CHECKS}))
+        for path in sorted(sensitive_paths):
+            with self.subTest(path=path):
+                secret = b"APP_KEY=NEVER_READ_OR_EMIT_THIS_VALUE"
+                fake = FakeOpener({path: (200, "private_denied", secret)})
+                report = permitted_run("https://staging.example.com", fake)
+                self.assertFalse(report["http_smoke_passed"])
+                failed = [item for item in report["checks"] if not item["passed"]]
+                self.assertEqual([(item["path"], item["reason"]) for item in failed],
+                                 [(path, "private_resource_not_denied")])
+                self.assertNotIn(secret.decode(), json.dumps(report))
+                self.assertTrue(all(response.closed for response in fake.responses))
+                exposed = next(response for request, response in
+                               zip(fake.requested, fake.responses)
+                               if request[0].endswith(path))
+                self.assertEqual(exposed.body.tell(), 0)
 
     def test_any_exposed_private_file_redirect_or_server_error_blocks_staging(self):
         private = [check for check in CHECKS if check.kind == "private_denied"]
@@ -404,7 +427,7 @@ class StagingSmokeTest(unittest.TestCase):
 
         report = permitted_run("https://staging.example.com", Offline())
         self.assertFalse(report["http_smoke_passed"])
-        self.assertEqual(len(report["checks"]), 19)
+        self.assertEqual(len(report["checks"]), 23)
         self.assertNotIn("leak-this-host-auth-token", json.dumps(report))
         self.assertTrue(all(x["observed_status"] is None for x in report["checks"]))
 
