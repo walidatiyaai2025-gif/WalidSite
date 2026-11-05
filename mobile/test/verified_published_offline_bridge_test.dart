@@ -244,6 +244,32 @@ void main() {
     expect((await restarted.load()).items.single.publishedVersion, 4);
   });
 
+  test('global signed snapshot rejects newer signed timestamp with older publication',
+      () async {
+    final keys = await _keys();
+    final now = DateTime.now().toUtc();
+    final latest = await _envelope(keys.pair, version: 4,
+        signedAt: now.subtract(const Duration(minutes: 2)));
+    final resignedOld = await _envelope(keys.pair, version: 3,
+        signedAt: now.subtract(const Duration(minutes: 1)));
+    var response = latest;
+    final store = _MemoryStore();
+    final source = SignedRunbookSource(
+      url: 'https://updates.example.org/reviewed-pack.json',
+      publicKeyBase64: keys.publicKey,
+      transport: (_) async => response,
+    );
+    final repo = OfflineRunbookRepository(source: source, store: store);
+    await repo.syncPublished(_current(version: 4));
+    response = resignedOld;
+    await expectLater(repo.syncPublished(_current(version: 3)),
+        throwsFormatException);
+    expect(store.writes, 1);
+    expect(store.snapshot, latest);
+    final restart = OfflineRunbookRepository(source: source, store: store);
+    expect((await restart.load()).items.single.publishedVersion, 4);
+  });
+
   test('reviewed UUID + exact revision saves signed copy and reopens offline after restart',
       () async {
     final keys = await _keys();
