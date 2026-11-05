@@ -7,6 +7,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Routing\Middleware\ThrottleRequests;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Artisan;
 use Tests\TestCase;
 
 final class AdminUpdateRevokedOwnerTest extends TestCase
@@ -37,6 +38,27 @@ final class AdminUpdateRevokedOwnerTest extends TestCase
         $this->post('/admin/updates/apply?lang=en')->assertRedirect(
             route('admin.updates.index', ['lang' => 'en'])
         );
+    }
+
+    public function test_owner_cannot_run_pending_migrations_without_verified_recovery(): void
+    {
+        config(['site.updates_enabled' => true]);
+        $this->actingAs($this->account(), 'web');
+        $migration = DB::table('migrations')->orderBy('migration')->value('migration');
+        self::assertIsString($migration);
+        DB::table('migrations')->where('migration', $migration)->delete();
+
+        $page = $this->get('/admin/updates?lang=en')->assertOk()
+            ->assertSee('data-testid="installed-migrations-recovery-required"', false)
+            ->assertSee('data-testid="installed-migration-apply-blocked"', false);
+        self::assertMatchesRegularExpression(
+            '/<button[^>]*\bdisabled\b[^>]*data-testid="installed-migration-apply-blocked"/',
+            $page->getContent(),
+        );
+        Artisan::shouldReceive('call')->never();
+        $this->post('/admin/updates/apply?lang=en')->assertRedirect()
+            ->assertSessionHasErrors('updates');
+        $this->assertDatabaseMissing('migrations', ['migration' => $migration]);
     }
 
     public function test_suspended_deleted_and_pending_owner_sessions_cannot_inspect_or_apply(): void

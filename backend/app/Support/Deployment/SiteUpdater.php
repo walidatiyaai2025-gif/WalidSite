@@ -61,12 +61,38 @@ final class SiteUpdater
      */
     public function apply(): array
     {
+        // Installed sites have no independently proven DB/file rollback
+        // receipt here. Even owner or cron callers cannot run pending schema.
+        return $this->applyWithPolicy(false);
+    }
+
+    /**
+     * Only possession-authorized first-install controllers should call this
+     * entrypoint. Recheck installation state while holding the migration
+     * lock, immediately before running any SQL.
+     *
+     * @return array{state: string, applied: int}
+     */
+    public function applyForFirstInstall(): array
+    {
+        return $this->applyWithPolicy(true);
+    }
+
+    /** @return array{state: string, applied: int} */
+    private function applyWithPolicy(bool $initialInstall): array
+    {
         $lock = Cache::lock('walidsite:trusted-migrations', 600);
         if (! $lock->get()) {
             return ['state' => 'busy', 'applied' => 0];
         }
 
         try {
+            // A caller flag alone cannot reopen setup; installed marker,
+            // existing credentials and revoked/suspended users must lock it.
+            if ($initialInstall && ! app(SiteInstaller::class)->allowed()) {
+                return ['state' => 'setup_closed', 'applied' => 0];
+            }
+
             $before = $this->inspect();
             if (! $before['ready']) {
                 return ['state' => $before['history_mismatch'] ? 'schema_mismatch' : 'database_unavailable',
@@ -74,6 +100,12 @@ final class SiteUpdater
             }
             if ($before['pending'] === []) {
                 return ['state' => 'current', 'applied' => 0];
+            }
+            // A warning is not verified DB+file recovery. Until there is
+            // an independent restore and proven write/queue isolation,
+            // installed-site migrations MUST NOT modify the database.
+            if (! $initialInstall) {
+                return ['state' => 'recovery_required', 'applied' => 0];
             }
 
             $exit = Artisan::call('migrate', [

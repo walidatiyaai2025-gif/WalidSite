@@ -386,9 +386,11 @@ class SiteMaintenanceTest extends TestCase
             $page->assertSee($lang === 'ar'
                 ? 'التحديث الآمن للكود غير متاح بعد.'
                 : 'Trusted code updates are not yet available.');
-            $page->assertSee($lang === 'ar'
-                ? 'تطبيق الترحيلات الموجودة فقط'
-                : 'Apply deployed migrations only');
+            $page->assertSee('data-testid="installed-migration-apply-blocked"', false)
+                ->assertSee('disabled', false)
+                ->assertSee($lang === 'ar'
+                    ? 'تطبيق الترحيلات محجوب — إثبات الاستعادة مطلوب'
+                    : 'Apply blocked — verified recovery required');
         }
 
         $this->get('/admin/updates?lang=en')
