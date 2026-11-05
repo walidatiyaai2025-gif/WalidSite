@@ -62,9 +62,17 @@ final class TrustedReleaseDownloader
             throw new DomainException('Release artifact already exists; refusing to overwrite it.');
         }
 
-        $temporary = $private.'/.release-'.bin2hex(random_bytes(16)).'.partial';
-        $stream = @fopen($temporary, 'xb');
+        // Keep the publisher-approved basename inside an owned, unguessable
+        // 0700 staging directory. Inspect that exact ZIP BEFORE publishing its
+        // final name; even a failed inspection never exposes a partial release.
+        $stageDirectory = $private.'/.release-'.bin2hex(random_bytes(16)).'.partial';
+        if (! @mkdir($stageDirectory, 0700)) {
+            throw new RuntimeException('Cannot create private release staging directory.');
+        }
+        $temporary = $stageDirectory.'/'.$name;
+        $stream = @fopen($temporary, 'x+b');
         if ($stream === false) {
+            @rmdir($stageDirectory);
             throw new RuntimeException('Cannot create private release download file.');
         }
 
@@ -105,29 +113,38 @@ final class TrustedReleaseDownloader
             if (! fflush($stream)) {
                 throw new RuntimeException('Cannot flush private release download.');
             }
-            fclose($stream);
-            $stream = null;
-
-            if ($written !== $limit || filesize($temporary) !== $limit) {
+            if ($written !== $limit) {
                 throw new DomainException('Downloaded release artifact length differs from signed metadata.');
             }
-
-            $digest = hash_file('sha256', $temporary);
-            if (! is_string($digest) || ! hash_equals($release['artifact_sha256'], $digest)) {
+            // Hash the exact opened inode that received cURL chunks. A second
+            // path-based fopen/hash would permit a byte-identical name swap.
+            $baseline = $this->assertStableFile($stream, $temporary, $limit, 1);
+            $digest = $this->hashStream($stream, $limit);
+            $this->assertStableFile($stream, $temporary, $limit, 1, $baseline);
+            if (! hash_equals($release['artifact_sha256'], $digest)) {
                 throw new DomainException('Downloaded release artifact SHA256 differs from publisher signature.');
             }
 
-            // The inspector requires the expected filename; retain a private
-            // temporary file until signature and byte checks have succeeded.
-            if (file_exists($final) || is_link($final) || ! @rename($temporary, $final)) {
-                throw new DomainException('Cannot publish verified private release archive.');
+            // Full signed metadata and ZIP inventory validation happen in the
+            // private staging directory with the exact canonical filename.
+            (new TrustedReleaseArchive())->inspect($release, $stageDirectory, $temporary);
+            $this->assertStableFile($stream, $temporary, $limit, 1, $baseline);
+            if (! hash_equals($release['artifact_sha256'], $this->hashStream($stream, $limit))) {
+                throw new DomainException('Staged archive changed during ZIP inspection.');
             }
-            try {
-                (new TrustedReleaseArchive())->inspect($release, $private, $final);
-            } catch (Throwable $failedInventory) {
-                @unlink($final);
-                throw $failedInventory;
+            $this->assertStableFile($stream, $temporary, $limit, 1, $baseline);
+
+            // No-replace hard-link publication: rename() could overwrite a ZIP
+            // created by another publisher after our initial exists() test.
+            if (! @link($temporary, $final)) {
+                throw new DomainException('Cannot publish verified private release archive without replacement.');
             }
+            $this->assertStableFile($stream, $temporary, $limit, 2, $baseline);
+            $this->assertStableFile($stream, $final, $limit, 2, $baseline);
+            if (! @unlink($temporary)) {
+                throw new RuntimeException('Unable to retire private release staging file.');
+            }
+            $this->assertStableFile($stream, $final, $limit, 1, $baseline);
 
             return [
                 'path' => $final,
@@ -135,13 +152,54 @@ final class TrustedReleaseDownloader
                 'artifact_sha256' => $digest,
                 'artifact_size' => $written,
             ];
-        } catch (Throwable $failure) {
+        } finally {
             if (is_resource($stream)) {
                 fclose($stream);
             }
+            // Only clean up the random private staging path we created.
+            // Never unlink the shared final path on failure: another writer
+            // may own it if a collision or pathname swap occurred.
             @unlink($temporary);
-            throw $failure;
+            @rmdir($stageDirectory);
         }
+    }
+
+    /** @param resource $stream @return array<string,int> */
+    private function assertStableFile($stream, string $path, int $bytes, int $links, ?array $baseline = null): array
+    {
+        clearstatcache(true, $path);
+        $opened = @fstat($stream);
+        $named = @lstat($path);
+        if (! is_array($opened) || ! is_array($named)
+            || ($opened['mode'] & 0170000) !== 0100000
+            || ($named['mode'] & 0170000) !== 0100000
+            || $opened['nlink'] !== $links || $named['nlink'] !== $links
+            || $opened['size'] !== $bytes || $named['size'] !== $bytes
+            || $opened['dev'] !== $named['dev'] || $opened['ino'] !== $named['ino']
+            || is_link($path) || realpath($path) !== $path) {
+            throw new DomainException('Private release artifact pathname or inode changed.');
+        }
+        foreach (['dev', 'ino', 'size', 'mtime', 'ctime'] as $field) {
+            if ($opened[$field] !== $named[$field]
+                || ($baseline !== null && $opened[$field] !== $baseline[$field])) {
+                throw new DomainException('Private release artifact identity changed.');
+            }
+        }
+        return $opened;
+    }
+
+    /** @param resource $stream */
+    private function hashStream($stream, int $expectedBytes): string
+    {
+        if (! @rewind($stream)) {
+            throw new DomainException('Cannot inspect private release download bytes.');
+        }
+        $context = hash_init('sha256');
+        $count = hash_update_stream($context, $stream, $expectedBytes + 1);
+        if ($count !== $expectedBytes) {
+            throw new DomainException('Incomplete private release download stream.');
+        }
+        return hash_final($context);
     }
 
     /** @param Closure(string):int $writer */

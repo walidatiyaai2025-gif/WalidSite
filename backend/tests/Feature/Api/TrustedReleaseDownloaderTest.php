@@ -240,6 +240,95 @@ final class TrustedReleaseDownloaderTest extends TestCase
         }
     }
 
+    public function test_signed_zip_is_inspected_in_private_directory_before_publication(): void
+    {
+        $bytes = $this->zipBytes;
+        $result = $this->download(function (string $url, \Closure $write) use ($bytes): int {
+            self::assertSame(strlen($bytes), $write($bytes));
+            $folders = glob($this->private.'/.release-*.partial', GLOB_ONLYDIR) ?: [];
+            self::assertCount(1, $folders);
+            self::assertSame(0700, fileperms($folders[0]) & 0777);
+            $source = $folders[0].'/WalidSite-update-v1.2.0.zip';
+            self::assertSame($bytes, file_get_contents($source));
+            self::assertFileDoesNotExist($this->private.'/WalidSite-update-v1.2.0.zip');
+            return 200;
+        });
+        self::assertSame($bytes, file_get_contents($result['path']));
+        self::assertSame([], glob($this->private.'/.release-*.partial') ?: []);
+    }
+
+    public function test_byte_identical_staging_inode_swap_is_rejected_without_publication(): void
+    {
+        $bytes = $this->zipBytes;
+        $moved = $this->private.'/original-moved.zip';
+        try {
+            $this->reject(function (string $url, \Closure $write) use ($bytes, $moved): int {
+                self::assertSame(strlen($bytes), $write($bytes));
+                $folders = glob($this->private.'/.release-*.partial', GLOB_ONLYDIR) ?: [];
+                self::assertCount(1, $folders);
+                $source = $folders[0].'/WalidSite-update-v1.2.0.zip';
+                self::assertTrue(rename($source, $moved));
+                self::assertSame(strlen($bytes), file_put_contents($source, $bytes));
+                return 200;
+            });
+        } finally {
+            @unlink($moved);
+        }
+    }
+
+    public function test_staging_hardlink_alias_is_rejected_before_publication(): void
+    {
+        if (PHP_OS_FAMILY === 'Windows') {
+            self::markTestSkipped('POSIX single-link artifact identity required.');
+        }
+        $alias = $this->private.'/injected-hardlink.zip';
+        $bytes = $this->zipBytes;
+        try {
+            $this->reject(function (string $url, \Closure $write) use ($bytes, $alias): int {
+                self::assertSame(strlen($bytes), $write($bytes));
+                $folders = glob($this->private.'/.release-*.partial', GLOB_ONLYDIR) ?: [];
+                self::assertCount(1, $folders);
+                $source = $folders[0].'/WalidSite-update-v1.2.0.zip';
+                if (! @link($source, $alias)) {
+                    self::markTestSkipped('Hardlink unsupported by this host.');
+                }
+                return 200;
+            });
+        } finally {
+            @unlink($alias);
+        }
+    }
+
+    public function test_concurrent_publisher_final_artifact_cannot_be_replaced_or_deleted(): void
+    {
+        $final = $this->private.'/WalidSite-update-v1.2.0.zip';
+        $marker = 'another publisher immutable artifact';
+        $bytes = $this->zipBytes;
+        try {
+            $this->download(function (string $url, \Closure $write) use ($bytes, $final, $marker): int {
+                self::assertSame(strlen($bytes), $write($bytes));
+                self::assertSame(strlen($marker), file_put_contents($final, $marker));
+                return 200;
+            });
+            self::fail('Concurrent publisher release was replaced.');
+        } catch (DomainException) {
+            self::assertSame($marker, file_get_contents($final));
+            self::assertSame([], glob($this->private.'/.release-*.partial') ?: []);
+        }
+    }
+
+    public function test_signed_non_zip_bytes_are_rejected_before_publication(): void
+    {
+        // A valid Ed25519 checksum is not enough: inspect ZIP structure
+        // inside quarantine before the final immutable name is published.
+        $this->zipBytes = 'signed-but-malformed-zip-data';
+        $bytes = $this->zipBytes;
+        $this->reject(static function (string $url, \Closure $write) use ($bytes): int {
+            $write($bytes);
+            return 200;
+        });
+    }
+
     private function reject(\Closure $transport): void
     {
         try {
