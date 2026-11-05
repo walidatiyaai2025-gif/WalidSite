@@ -25,7 +25,7 @@ from urllib.parse import urlencode, urlsplit
 from urllib.request import HTTPCookieProcessor, HTTPRedirectHandler, ProxyHandler, Request, build_opener
 import zipfile
 
-from qa.build_cpanel_package import verify_archive
+from qa.cpanel_first_run_http_probe import extract_verified_archive
 
 
 class SetupFailure(RuntimeError):
@@ -86,11 +86,11 @@ def run(package: Path, sha: str, host: str, port: int, database: str, user: str,
     if (host != '127.0.0.1' or port != 3306 or database != 'walidsite_ci_install'
             or user != 'walidsite_ci' or not password):
         raise SetupFailure('disposable_database_only')
-    verify_archive(package, sha)
     with tempfile.TemporaryDirectory(prefix='walidsite-ci-install-') as directory:
         home = Path(directory)
-        with zipfile.ZipFile(package) as archive:
-            archive.extractall(home)  # verify_archive rejects traversal/symlinks
+        # The original filename is untrusted and may be swapped after validation.
+        # Freeze once, validate exact SHA on that snapshot and extract those bytes.
+        extract_verified_archive(package, home, expected_sha=sha)
         app, public = home / 'application', home / 'public_html'
         if (app / '.env').exists() or not (app / 'vendor/autoload.php').is_file():
             raise SetupFailure('clean_install_payload')

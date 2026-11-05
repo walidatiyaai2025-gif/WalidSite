@@ -40,7 +40,7 @@ def status(opener, port: int, host: str) -> tuple[int, bytes]:
         return response.status, response.read(100_000)
 
 
-def extract_verified_archive(package: Path, target: Path) -> None:
+def extract_verified_archive(package: Path, target: Path, expected_sha: str | None = None) -> None:
     """Verify and extract one pinned private ZIP snapshot, never a reopened input."""
     if not all(hasattr(os, name) for name in ("O_NOFOLLOW", "O_NONBLOCK")):
         raise ValueError("Secure no-follow ZIP access is unavailable")
@@ -70,7 +70,13 @@ def extract_verified_archive(package: Path, target: Path) -> None:
                     != (after.st_dev, after.st_ino, after.st_size,
                         after.st_mtime_ns, after.st_ctime_ns)):
                 raise ValueError("cPanel ZIP changed during snapshot")
-            verify_archive(snapshot)
+            # Bind inspection and extraction to one frozen file descriptor.
+            # Real install CI supplies the immutable Git SHA; existing first-
+            # boot checks without it still inspect the complete ZIP manifest.
+            if expected_sha is None:
+                verify_archive(snapshot)
+            else:
+                verify_archive(snapshot, expected_sha)
             with zipfile.ZipFile(snapshot) as archive:
                 archive.extractall(target)
 

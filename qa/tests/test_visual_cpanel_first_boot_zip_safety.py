@@ -88,6 +88,82 @@ class CpanelFirstBootArchiveSafetyTest(unittest.TestCase):
         with zipfile.ZipFile(self.package) as archive:
             self.assertEqual(archive.read("application/pinned.txt"), b"attacker-replacement")
 
+    def test_full_and_foodex_installers_use_only_source_pinned_snapshot(self):
+        # Both real HTTP+MariaDB installers must share first-boot's
+        # no-follow descriptor and immutable source-SHA validation boundary.
+        # No post-verification reopen of the attacker-controlled input ZIP.
+        from qa import cpanel_full_install_probe, cpanel_foodex_15_install_probe
+        import inspect
+        for module in (cpanel_full_install_probe, cpanel_foodex_15_install_probe):
+            with self.subTest(module=module.__name__):
+                source = inspect.getsource(module.run)
+                self.assertIn(
+                    "extract_verified_archive(package, home, expected_sha=sha)", source
+                )
+                self.assertNotIn("ZipFile(package)", source)
+                self.assertNotIn("verify_archive(package, sha)", source)
+
+    def test_required_source_sha_is_checked_on_frozen_bytes_before_extraction(self):
+        self.build(["application/private.txt", "public_html/index.php"])
+        approved = "b" * 40
+        source_inspected = []
+        def verify(snapshot, expected_sha):
+            self.assertNotEqual(Path(snapshot), self.package)
+            self.assertEqual(expected_sha, approved)
+            with zipfile.ZipFile(snapshot) as archive:
+                source_inspected.append(archive.read("application/private.txt"))
+        with patch("qa.cpanel_first_run_http_probe.verify_archive",
+                   side_effect=verify):
+            extract_verified_archive(self.package, self.destination,
+                                     expected_sha=approved)
+        self.assertEqual(source_inspected, [b"unsafe-test-payload"])
+        self.assertEqual((self.destination / "application/private.txt").read_bytes(),
+                         b"unsafe-test-payload")
+
+    def test_source_sha_failure_refuses_extraction_in_both_installer_modes(self):
+        self.build(["application/private.txt"])
+        with patch("qa.cpanel_first_run_http_probe.verify_archive",
+                   side_effect=ValueError("Source SHA mismatch")) as verified, \
+             patch("qa.cpanel_first_run_http_probe.zipfile.ZipFile.extractall") as extract:
+            with self.assertRaisesRegex(ValueError, "Source SHA mismatch"):
+                extract_verified_archive(self.package, self.destination,
+                                         expected_sha="c" * 40)
+            self.assertEqual(verified.call_count, 1)
+            self.assertEqual(verified.call_args.args[1], "c" * 40)
+            extract.assert_not_called()
+        self.assertEqual(list(self.destination.iterdir()), [])
+
+    def test_replaced_input_after_sha_inspection_cannot_change_installed_zip_bytes(self):
+        self.build(["application/bootstrap/app.php", "public_html/index.php"])
+        replacement = self.root / "replaced.zip"
+        with zipfile.ZipFile(replacement, "w", zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr("application/bootstrap/app.php", b"ATTACKER-PHP")
+            archive.writestr("public_html/index.php", b"ATTACKER-INDEX")
+        inspected = []
+        pinned_sha = "d" * 40
+        def verify(snapshot, expected_sha):
+            self.assertEqual(expected_sha, pinned_sha)
+            with zipfile.ZipFile(snapshot) as archive:
+                inspected.append(archive.read("application/bootstrap/app.php"))
+            # Swap between the SHA+manifest inspection and extraction.
+            os.replace(replacement, self.package)
+        with patch("qa.cpanel_first_run_http_probe.verify_archive",
+                   side_effect=verify):
+            extract_verified_archive(self.package, self.destination,
+                                     expected_sha=pinned_sha)
+        self.assertEqual(inspected, [b"unsafe-test-payload"])
+        self.assertEqual(
+            (self.destination / "application/bootstrap/app.php").read_bytes(),
+            b"unsafe-test-payload",
+        )
+        self.assertEqual(
+            (self.destination / "public_html/index.php").read_bytes(),
+            b"unsafe-test-payload",
+        )
+        with zipfile.ZipFile(self.package) as archive:
+            self.assertEqual(archive.read("application/bootstrap/app.php"),
+                             b"ATTACKER-PHP")
+
     def test_non_regular_fifo_is_rejected_without_extraction(self):
         if not hasattr(os, "mkfifo"):
             self.skipTest("FIFO support required")
