@@ -106,6 +106,16 @@ final class AdminProductController extends Controller
                 $locked = Article::query()->whereKey($article->id)
                     ->lockForUpdate()->firstOrFail();
 
+                // An initial status read is not sufficient: a concurrent
+                // publisher may complete while this request waits for the
+                // article row lock. Never attribute a second publish event
+                // or re-pin a published revision on that stale observation.
+                if ($locked->status === 'published'
+                    || $locked->published_revision_no !== null
+                    || $locked->published_at !== null) {
+                    abort(409, 'Article publication state changed; reload the article.');
+                }
+
                 if (! $locked->isReadyToPublish()) {
                     throw ValidationException::withMessages([
                         'article' => 'Citation, technical or media-rights review is incomplete.',

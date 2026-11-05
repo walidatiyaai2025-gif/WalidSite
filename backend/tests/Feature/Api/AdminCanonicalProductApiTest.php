@@ -319,6 +319,51 @@ final class AdminCanonicalProductApiTest extends TestCase
         ]);
     }
 
+    public function test_api_publish_rejects_stale_publication_pins_without_fabricating_an_audit_event(): void
+    {
+        [, $adminToken] = $this->account('admin');
+        $article = $this->readyArticle('api-stale-published-pointer');
+        // A partial/stale public pin must not be silently overwritten by a
+        // new publish operation, even while the displayed status says draft.
+        $article->forceFill([
+            'status' => 'draft',
+            'published_revision_no' => 1,
+            'published_at' => null,
+        ])->save();
+
+        $this->withToken($adminToken)
+            ->postJson('/api/v1/admin/articles/'.$article->id.'/publish')
+            ->assertStatus(409);
+
+        $fresh = $article->fresh();
+        $this->assertSame('draft', $fresh->status);
+        $this->assertSame(1, $fresh->published_revision_no);
+        $this->assertNull($fresh->published_at);
+        $this->assertSame(0, DB::table('editorial_events')
+            ->where('article_id', $article->id)
+            ->where('action', 'manual_published')->count());
+    }
+
+    public function test_api_publish_repeat_does_not_create_a_second_publication_event(): void
+    {
+        [, $adminToken] = $this->account('admin');
+        $article = $this->readyArticle('api-repeat-publication');
+        $this->withToken($adminToken)
+            ->postJson('/api/v1/admin/articles/'.$article->id.'/publish')
+            ->assertOk();
+        $first = $article->fresh();
+        $this->withToken($adminToken)
+            ->postJson('/api/v1/admin/articles/'.$article->id.'/publish')
+            ->assertStatus(409);
+
+        $fresh = $article->fresh();
+        $this->assertSame($first->published_revision_no, $fresh->published_revision_no);
+        $this->assertSame($first->published_at?->toIso8601String(), $fresh->published_at?->toIso8601String());
+        $this->assertSame(1, DB::table('editorial_events')
+            ->where('article_id', $article->id)
+            ->where('action', 'manual_published')->count());
+    }
+
     public function test_rejection_is_persisted_without_destroying_or_publishing_revision(): void
     {
         [, $token] = $this->account('admin');
