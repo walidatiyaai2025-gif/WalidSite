@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:cryptography/cryptography.dart';
 import 'package:flutter/foundation.dart';
@@ -99,6 +100,40 @@ void main() {
       ),
     ],
   );
+
+  test('app-support global signed cache rejects symlink and oversized writes',
+      () async {
+    final root = await Directory.systemTemp.createTemp('walidsite-signed-');
+    final store = AppSupportRunbookStore(supportDirectory: root);
+    final snapshot = File('${root.path}/signed-runbook-pack-v1.json');
+    final temporary = File('${snapshot.path}.part');
+    final outside = File('${root.path}/protected-test-data');
+    try {
+      await outside.writeAsString('keep original');
+      await store.write('signed-v1');
+      expect(await store.read(), 'signed-v1');
+
+      await expectLater(store.write('x' * (800 * 1024 + 1)),
+          throwsFormatException);
+      expect(await store.read(), 'signed-v1');
+
+      await Link(temporary.path).create(outside.path);
+      await expectLater(store.write('signed-v2'), throwsFormatException);
+      expect(await outside.readAsString(), 'keep original');
+      expect(await store.read(), 'signed-v1');
+      expect(await FileSystemEntity.type(temporary.path, followLinks: false),
+          FileSystemEntityType.link);
+      await temporary.delete();
+
+      await snapshot.delete();
+      await Link(snapshot.path).create(outside.path);
+      await expectLater(store.read(), throwsFormatException);
+      await expectLater(store.write('signed-v3'), throwsFormatException);
+      expect(await outside.readAsString(), 'keep original');
+    } finally {
+      await root.delete(recursive: true);
+    }
+  });
 
   test('unconfigured endpoint never invokes network and loads fallback', () async {
     var requests = 0;
