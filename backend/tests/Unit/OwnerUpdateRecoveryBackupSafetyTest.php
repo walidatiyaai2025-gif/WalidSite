@@ -75,6 +75,73 @@ final class OwnerUpdateRecoveryBackupSafetyTest extends TestCase
         }
     }
 
+    public function test_hard_linked_owner_backup_lock_denies_snapshot_before_any_data_copy(): void
+    {
+        if (! function_exists('link')) {
+            self::markTestSkipped('Hard links unavailable on this host.');
+        }
+        $args = $this->args();
+        self::assertTrue(mkdir($args[7], 0700));
+        $external = $this->home.'/unrelated-lock-data';
+        file_put_contents($external, 'preserve owner data');
+        if (! @link($external, $args[7].'/.owner-update-backup.lock')) {
+            self::markTestSkipped('Cannot create hard-link fixture.');
+        }
+
+        $maintenanceCalls = 0;
+        try {
+            (new OwnerUpdateRecoveryBackup())->createAndProve(...[
+                ...$args, static function () use (&$maintenanceCalls): bool {
+                    ++$maintenanceCalls;
+                    return true;
+                },
+            ]);
+            self::fail('A hard-linked owner backup lock must be rejected.');
+        } catch (DomainException $error) {
+            self::assertStringContainsString('lock identity', $error->getMessage());
+        }
+
+        self::assertSame(1, $maintenanceCalls);
+        self::assertSame('preserve owner data', file_get_contents($external));
+        self::assertSame('private user data', file_get_contents($args[3].'/file.txt'));
+        self::assertSame([], glob($args[7].'/receipt-*.json'));
+        self::assertSame([], glob($args[7].'/recovery-*'));
+    }
+
+    public function test_owner_backup_lock_path_swapped_during_maintenance_is_rejected(): void
+    {
+        if (PHP_OS_FAMILY === 'Windows') {
+            self::markTestSkipped('cPanel POSIX lock pathname swap is unavailable on Windows.');
+        }
+        $args = $this->args();
+        $lockPath = $args[7].'/.owner-update-backup.lock';
+        $orphan = $args[7].'/.old-backup-lock';
+        $calls = 0;
+        try {
+            (new OwnerUpdateRecoveryBackup())->createAndProve(...[
+                ...$args, static function () use (&$calls, $lockPath, $orphan): bool {
+                    ++$calls;
+                    if ($calls === 2) {
+                        if (! rename($lockPath, $orphan)
+                            || file_put_contents($lockPath, 'replacement') === false) {
+                            throw new \RuntimeException('Could not simulate lock pathname replacement.');
+                        }
+                    }
+                    return true;
+                },
+            ]);
+            self::fail('A replaced owner backup lock must be rejected.');
+        } catch (DomainException $error) {
+            self::assertStringContainsString('lock identity', $error->getMessage());
+        }
+
+        self::assertSame(2, $calls);
+        self::assertSame('replacement', file_get_contents($lockPath));
+        self::assertSame('private user data', file_get_contents($args[3].'/file.txt'));
+        self::assertSame([], glob($args[7].'/receipt-*.json'));
+        self::assertSame([], glob($args[7].'/recovery-*'));
+    }
+
     public function test_public_symlink_or_exposed_backup_vault_is_rejected(): void
     {
         $args = $this->args();
