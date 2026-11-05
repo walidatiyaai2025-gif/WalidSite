@@ -166,7 +166,7 @@ class ReleaseArtifactGateTest(unittest.TestCase):
                 path = self.pkg if name == "artifact" else self.manifest
                 original = path.read_bytes()
                 relocated = path.with_name("relocated-" + path.name)
-                with self.assertRaisesRegex(ValueError, "pathname changed"):
+                with self.assertRaisesRegex(ValueError, "Release input (?:pathname )?changed during verification"):
                     with _stable_reader(path) as (stream, info):
                         self.assertEqual(stream.read(), original)
                         # Preserve all original bytes on the still-open inode:
@@ -183,7 +183,7 @@ class ReleaseArtifactGateTest(unittest.TestCase):
                 linked = path.with_name("linked-" + path.name)
                 os.link(path, linked)
                 try:
-                    with self.assertRaisesRegex(ValueError, "pathname changed"):
+                    with self.assertRaisesRegex(ValueError, "Release input (?:pathname )?changed during verification"):
                         verify(self.root, self.manifest, SHA)
                 finally:
                     linked.unlink()
