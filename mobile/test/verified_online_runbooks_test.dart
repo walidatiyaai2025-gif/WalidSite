@@ -341,11 +341,11 @@ void main() {
   for (final arabic in [false, true]) {
     testWidgets('MOBILE-05 server category pagination ' +
         (arabic ? 'Arabic' : 'English'), (tester) async {
-      const optionsEn = [
+      const optionsEn = <Map<String, dynamic>>[
         {'slug': 'database', 'name': 'Databases'},
         {'slug': 'security', 'name': 'Security'},
       ];
-      const optionsAr = [
+      const optionsAr = <Map<String, dynamic>>[
         {'slug': 'database', 'name': 'قواعد البيانات'},
         {'slug': 'security', 'name': 'الأمان'},
       ];
