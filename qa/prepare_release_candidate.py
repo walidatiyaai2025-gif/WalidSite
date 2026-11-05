@@ -42,7 +42,10 @@ def prepare(cpanel_zip: Path, output_dir: Path, version: str, sha: str) -> dict:
     generated_update = output_dir / f'WalidSite-update-v{version}.zip'
     manifest = output_dir / f'WalidSite-Release-Manifest-v{version}.json'
     notes = output_dir / f'WalidSite-Release-Notes-v{version}.md'
+    build_info = output_dir / f'WalidSite-Build-Info-v{version}.json'
+    build_info_checksum = output_dir / (build_info.name + '.sha256')
     candidates = [setup, update, generated_update, manifest, notes,
+                  build_info, build_info_checksum,
                   output_dir / (setup.name + '.sha256'),
                   output_dir / (update.name + '.sha256')]
     if any(path.exists() or path.is_symlink() for path in candidates):
@@ -60,6 +63,31 @@ def prepare(cpanel_zip: Path, output_dir: Path, version: str, sha: str) -> dict:
         # byte-for-byte to the manifest before we reach this check.
         if original_manifest.get('version') != version:
             raise ValueError('Candidate version does not match verified source VERSION')
+        inventory = original_manifest['files']
+        composer_lock = inventory['application/composer.lock']['sha256']
+        # The dependency graph and migration hashes come from the SAME frozen,
+        # fully verified Setup ZIP, never the mutable repository checkout.
+        with zipfile.ZipFile(frozen) as source_archive:
+            lock = json.loads(source_archive.read('application/composer.lock'))
+        if not isinstance(lock, dict) or not isinstance(lock.get('packages'), list):
+            raise ValueError('Invalid frozen production Composer lock')
+        dependencies = []
+        for package in lock['packages']:
+            if (not isinstance(package, dict)
+                    or not isinstance(package.get('name'), str)
+                    or not re.fullmatch(r'[a-z0-9_.-]+/[a-z0-9_.-]+', package['name'])
+                    or not isinstance(package.get('version'), str)
+                    or not package['version'] or len(package['version']) > 80):
+                raise ValueError('Invalid frozen Composer dependency identity')
+            dependencies.append({'name': package['name'], 'version': package['version']})
+        if len(dependencies) > 2000 or len({item['name'] for item in dependencies}) != len(dependencies):
+            raise ValueError('Unsafe frozen Composer dependency inventory')
+        dependencies.sort(key=lambda item: item['name'])
+        migrations = {
+            name.removeprefix('application/database/migrations/'): inventory[name]['sha256']
+            for name in sorted(inventory)
+            if name.startswith('application/database/migrations/') and name.endswith('.php')
+        }
         created: list[Path] = []
         try:
             with frozen.open('rb') as incoming, setup.open('xb') as outgoing:
@@ -86,11 +114,39 @@ def prepare(cpanel_zip: Path, output_dir: Path, version: str, sha: str) -> dict:
             if update_hash != update_receipt['artifact_sha256']:
                 raise ValueError('Update artifact digest mismatch')
 
+            build_details = {
+                'schema': 'walidsite.unpublished-build-info.v1',
+                'product': 'walidsite',
+                'version': version,
+                'source_sha': sha,
+                'setup_sha256': _sha256(setup),
+                'update_sha256': update_hash,
+                'composer_lock_sha256': composer_lock,
+                'production_dependencies': dependencies,
+                'migration_sha256': migrations,
+                'minimum_php': update_receipt['min_php'],
+                'publisher_signature_verified': False,
+                'upgrade_compatibility_verified': False,
+                'production_ready': False,
+            }
+            serialized_build = (json.dumps(build_details, indent=2, sort_keys=True) + '\n').encode('utf-8')
+            build_digest = hashlib.sha256(serialized_build).hexdigest()
+            with build_info.open('xb') as stream:
+                created.append(build_info)
+                stream.write(serialized_build)
+            with build_info_checksum.open('x', encoding='ascii') as stream:
+                created.append(build_info_checksum)
+                stream.write(f'{build_digest}  {build_info.name}\n')
+
             result = {
                 'schema': 'walidsite.release-candidate.v1',
                 'product': 'walidsite', 'version': version, 'source_sha': sha,
                 'published': False, 'production_ready': False,
                 'publisher_signature_verified': False,
+                'build_info': {'file': build_info.name, 'sha256': build_digest,
+                               'composer_lock_sha256': composer_lock,
+                               'production_dependencies': len(dependencies),
+                               'migration_files': len(migrations)},
                 'setup': {'file': setup.name, 'sha256': _sha256(setup),
                           'bytes': setup.stat().st_size,
                           'source_manifest_schema': original_manifest['schema']},
@@ -121,6 +177,9 @@ def prepare(cpanel_zip: Path, output_dir: Path, version: str, sha: str) -> dict:
                 stream.write(f'Exact source SHA: `{sha}`. This candidate is **not a production release**.\n\n')
                 stream.write('The Setup ZIP is byte-identical to the source-verified cPanel ZIP. '
                              'The Update ZIP is code-only; it has **no publisher signature or trusted latest.json**.\n\n')
+                stream.write('The checksummed Build Info binds production Composer dependency versions, '
+                             'Composer lock SHA-256 and migration SHA-256 inventory to both ZIP hashes. '
+                             'This metadata is **unsigned evidence**, not a successful upgrade test.\n\n')
                 stream.write('Release blocked pending trusted publisher signing, compatible initial '
                              'cPanel layout, live browser install, Admin code apply, backup/restore '
                              'and HTTPS staging smoke. Do not deploy this Update ZIP as a trusted release.\n')

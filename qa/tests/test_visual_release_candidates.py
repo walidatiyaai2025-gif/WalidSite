@@ -24,7 +24,8 @@ class ReleaseCandidateTest(unittest.TestCase):
         self.entries = {
             'application/bootstrap/app.php': b'<?php return 1;',
             'application/vendor/autoload.php': b'<?php return 2;',
-            'application/composer.lock': b'{"packages":[]}',
+            'application/composer.lock': b'{"packages":[{"name":"laravel/framework","version":"v12.1.0"}]}',
+            'application/database/migrations/2026_11_01_000001_create_tables.php': b'<?php // immutable test migration',
             'application/VERSION': b'1.2.3\n',
             'application/.env.example': b'APP_KEY=NEVER_COMMIT',
             'public_html/index.php': b'<?php echo "ok";',
@@ -58,9 +59,31 @@ class ReleaseCandidateTest(unittest.TestCase):
         self.assertFalse(any(proof['acceptance'].values()))
         self.assertEqual(proof['source_sha'], SHA)
         self.assertEqual(proof['update']['publisher_upload_name'], 'WalidSite-update-v1.2.3.zip')
+        self.assertEqual(proof['build_info']['production_dependencies'], 1)
+        self.assertEqual(proof['build_info']['migration_files'], 1)
+        build_file = self.out / proof['build_info']['file']
+        details = json.loads(build_file.read_text())
+        self.assertEqual(details['source_sha'], SHA)
+        self.assertFalse(details['publisher_signature_verified'])
+        self.assertFalse(details['production_ready'])
+        self.assertFalse(details['upgrade_compatibility_verified'])
+        self.assertEqual(details['production_dependencies'], [
+            {'name': 'laravel/framework', 'version': 'v12.1.0'},
+        ])
+        migration = '2026_11_01_000001_create_tables.php'
+        self.assertEqual(details['migration_sha256'][migration], hashlib.sha256(
+            self.entries['application/database/migrations/' + migration]).hexdigest())
+        self.assertEqual(details['composer_lock_sha256'], hashlib.sha256(
+            self.entries['application/composer.lock']).hexdigest())
+        build_digest = hashlib.sha256(build_file.read_bytes()).hexdigest()
+        self.assertEqual(build_digest, proof['build_info']['sha256'])
+        self.assertEqual((self.out / (build_file.name + '.sha256')).read_text(),
+                         f'{build_digest}  {build_file.name}\n')
         setup = self.out / 'WalidSite-Setup-v1.2.3.zip'
         update = self.out / 'WalidSite-Update-v1.2.3.zip'
         self.assertEqual(setup.read_bytes(), self.source.read_bytes())
+        self.assertEqual(details['setup_sha256'], hashlib.sha256(setup.read_bytes()).hexdigest())
+        self.assertEqual(details['update_sha256'], hashlib.sha256(update.read_bytes()).hexdigest())
         for name in (setup.name, update.name):
             digest = hashlib.sha256((self.out / name).read_bytes()).hexdigest()
             self.assertEqual((self.out / (name + '.sha256')).read_text(), f'{digest}  {name}\n')
@@ -108,6 +131,11 @@ class ReleaseCandidateTest(unittest.TestCase):
         with zipfile.ZipFile(self.source) as replaced:
             self.assertNotEqual(replaced.read('application/bootstrap/app.php'), approved_code)
         self.assertEqual(receipt['setup']['sha256'], hashlib.sha256(original).hexdigest())
+        build = json.loads((self.out / receipt['build_info']['file']).read_text())
+        self.assertEqual(build['source_sha'], SHA)
+        self.assertEqual(build['setup_sha256'], hashlib.sha256(original).hexdigest())
+        self.assertEqual(build['migration_sha256']['2026_11_01_000001_create_tables.php'],
+                         hashlib.sha256(self.entries['application/database/migrations/2026_11_01_000001_create_tables.php']).hexdigest())
         self.assertFalse(receipt['publisher_signature_verified'])
 
     def test_corrupt_archive_wrong_sha_invalid_version_and_symlinks_rejected(self):
@@ -130,6 +158,32 @@ class ReleaseCandidateTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             prepare(link, self.out, '1.2.3', SHA)
         self.assertEqual(list(self.out.iterdir()), [])
+
+    def test_invalid_frozen_composer_dependencies_fail_without_release_artifacts(self):
+        original = self.entries['application/composer.lock']
+        for payload in (
+            b'not valid JSON',
+            b'{"packages":{}}',
+            b'{"packages":[{"name":"bad/secret","version":""}]}',
+            b'{"packages":[{"name":"laravel/framework","version":"v1"},'
+            b'{"name":"laravel/framework","version":"v2"}]}',
+        ):
+            with self.subTest(payload=payload):
+                self.entries['application/composer.lock'] = payload
+                self.make_source()
+                with self.assertRaises(ValueError):
+                    prepare(self.source, self.out, '1.2.3', SHA)
+                self.assertEqual(list(self.out.iterdir()), [])
+        self.entries['application/composer.lock'] = original
+
+    def test_existing_build_info_is_immutable_and_never_overwritten(self):
+        existing = self.out / 'WalidSite-Build-Info-v1.2.3.json'
+        existing.write_bytes(b'previous publisher build evidence')
+        with self.assertRaisesRegex(ValueError, 'already exists'):
+            prepare(self.source, self.out, '1.2.3', SHA)
+        self.assertEqual(existing.read_bytes(), b'previous publisher build evidence')
+        self.assertEqual(sorted(item.name for item in self.out.iterdir()),
+                         [existing.name])
 
     def test_concurrent_update_output_is_never_overwritten(self):
         target = self.out / 'WalidSite-Update-v1.2.3.zip'
