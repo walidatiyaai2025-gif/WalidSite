@@ -95,6 +95,33 @@ void main() {
         reason: 'A stream that yields before every idle timeout must still end');
   });
 
+  test('article list and pages reject oversized JSON before decoding', () {
+    const limit = 2 * 1024 * 1024;
+    // A valid-looking envelope must not reach jsonDecode if it exceeds
+    // the trusted transport size, even when invoked outside HTTP.
+    final oversized = '{"data":[],"meta":{"current_page":1,'
+        '"has_more_pages":false},"padding":"' + ('a' * limit) + '"}';
+    expect(() => VerifiedArticle.parseList(oversized), throwsFormatException);
+    expect(() => VerifiedArticlePage.parse(oversized, 1),
+        throwsFormatException);
+
+    // UTF-8 may exceed the limit even when Dart's UTF-16 length does not.
+    final unicode = '{"data":[],"meta":{"current_page":1,'
+        '"has_more_pages":false},"padding":"' + ('é' * (limit ~/ 2)) + '"}';
+    expect(unicode.length, lessThan(limit + 256));
+    expect(() => VerifiedArticle.parseList(unicode), throwsFormatException);
+    expect(() => VerifiedArticlePage.parse(unicode, 1),
+        throwsFormatException);
+
+    // Normal bounded legacy lists and metadata still decode.
+    expect(VerifiedArticle.parseList(safeJson), hasLength(1));
+    final page = jsonEncode({
+      'data': (jsonDecode(safeJson) as Map<String, dynamic>)['data'],
+      'meta': {'current_page': 1, 'has_more_pages': false},
+    });
+    expect(VerifiedArticlePage.parse(page, 1).articles, hasLength(1));
+  });
+
   test('article feed rejects duplicate published UUID across different slugs', () {
     const id = '12345678-1234-1234-1234-123456789abc';
     final original = jsonDecode(safeJson) as Map<String, dynamic>;
