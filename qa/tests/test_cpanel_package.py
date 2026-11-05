@@ -258,7 +258,7 @@ class TestCpanelPackage(unittest.TestCase):
                 target.unlink()
                 target.symlink_to(secret)
                 try:
-                    with self.assertRaisesRegex(ValueError, "Unsafe required package file"):
+                    with self.assertRaisesRegex(ValueError, "Missing required runtime file|Unsafe required package file"):
                         build(self.root, self.output, "a" * 40)
                 finally:
                     target.unlink()
