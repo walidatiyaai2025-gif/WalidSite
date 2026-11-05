@@ -78,6 +78,9 @@ body:has(.project-case-live) .site-header{display:none}
      first-party result set. Preserve normal project-list filters otherwise.
      Never accept arbitrary return URLs or unsupported result types. --}}
 @php
+    // This is a separate compiled Blade PHP block; derive locale locally
+    // rather than assuming a directive evaluated in a different section.
+    $locale = request()->query('lang') === 'ar' ? 'ar' : 'en';
     $searchSource = request()->query()['source'] ?? null;
     $searchType = request()->query()['type'] ?? null;
     $fromVerifiedSearch = $searchSource === 'search'
