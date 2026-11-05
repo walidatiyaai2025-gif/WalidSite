@@ -556,7 +556,9 @@ final class AdminCanonicalProductApiTest extends TestCase
         $createProject('invalid_public_project', 'https://evidence.example.org/other');
 
         // SQL publication flags alone overstate externally reachable content.
-        $this->assertSame(3, Article::query()->publiclyVisible()->count());
+        // The SQL scope excludes the invalid-slug article before the final
+        // pinned-citation public gate is evaluated.
+        $this->assertSame(2, Article::query()->publiclyVisible()->count());
         // The SQL scope itself already excludes one invalid project; the
         // remaining private-evidence row must still fail the public proof gate.
         $this->assertSame(2, Project::query()->publiclyVerified()->count());
