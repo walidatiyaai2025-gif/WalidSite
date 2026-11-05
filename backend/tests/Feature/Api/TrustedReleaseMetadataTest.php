@@ -156,6 +156,19 @@ final class TrustedReleaseMetadataTest extends TestCase
             ]);
             $verified = $this->verify($this->signed($metadata));
             (new TrustedReleaseMetadata())->verifyStagedArchive($verified, $directory, $file);
+
+            // A second hard link can mutate the accepted ZIP after the
+            // pathname-based preflight, even if its signed bytes still match.
+            $alias = $directory.'/linked-release.zip';
+            self::assertTrue(link($file, $alias));
+            try {
+                $this->assertRejectedArchive($verified, $directory, $file);
+            } finally {
+                unlink($alias);
+                clearstatcache(true, $file);
+            }
+            (new TrustedReleaseMetadata())->verifyStagedArchive($verified, $directory, $file);
+
             file_put_contents($file, str_repeat('X', strlen($bytes)));
             $this->assertRejectedArchive($verified, $directory, $file);
             file_put_contents($file, 'short');
