@@ -119,6 +119,55 @@ final class MariaDbRecoverySnapshotTest extends TestCase
         self::assertSame(2, (int) $this->source->query('SELECT COUNT(*) FROM recovery_parent')->fetchColumn());
     }
 
+    public function test_hardlinked_manifest_is_rejected_without_creating_tables(): void
+    {
+        if (PHP_OS_FAMILY === 'Windows' || ! function_exists('link')) {
+            self::markTestSkipped('POSIX hard-link support required.');
+        }
+        $backup = $this->capture();
+        $manifest = $backup['directory'].'/manifest.json';
+        $alias = $this->home.'/private/manifest-alias.json';
+        if (! @link($manifest, $alias)) {
+            self::markTestSkipped('Hard links unavailable on this filesystem.');
+        }
+        try {
+            $this->reject(fn () => (new MariaDbRecoverySnapshot())->restoreAndVerify(
+                $this->target, $backup['directory'], $backup['manifest_sha256'],
+            ));
+            self::assertSame([], $this->target->query('SHOW TABLES')->fetchAll(PDO::FETCH_COLUMN));
+        } finally {
+            unlink($alias);
+        }
+        self::assertSame(['tables' => 2, 'rows' => 3],
+            (new MariaDbRecoverySnapshot())->restoreAndVerify(
+                $this->target, $backup['directory'], $backup['manifest_sha256'],
+            ));
+    }
+
+    public function test_manifest_symlink_and_oversize_fail_without_target_ddl(): void
+    {
+        $backup = $this->capture();
+        $manifest = $backup['directory'].'/manifest.json';
+        $original = file_get_contents($manifest);
+        self::assertIsString($original);
+        if (PHP_OS_FAMILY !== 'Windows') {
+            $external = $this->home.'/private/manifest-external.json';
+            self::assertSame(strlen($original), file_put_contents($external, $original));
+            self::assertTrue(unlink($manifest));
+            self::assertTrue(symlink($external, $manifest));
+            $this->reject(fn () => (new MariaDbRecoverySnapshot())->restoreAndVerify(
+                $this->target, $backup['directory'], $backup['manifest_sha256'],
+            ));
+            self::assertTrue(unlink($manifest));
+        }
+        $large = str_repeat('x', 8388609);
+        self::assertSame(strlen($large), file_put_contents($manifest, $large));
+        $this->reject(fn () => (new MariaDbRecoverySnapshot())->restoreAndVerify(
+            $this->target, $backup['directory'], $backup['manifest_sha256'],
+        ));
+        self::assertSame([], $this->target->query('SHOW TABLES')->fetchAll(PDO::FETCH_COLUMN));
+    }
+
     public function test_hardlinked_restore_row_rejects_before_any_ddl(): void
     {
         $backup = $this->capture();

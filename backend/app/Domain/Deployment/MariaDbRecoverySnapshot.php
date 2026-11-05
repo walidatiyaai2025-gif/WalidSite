@@ -136,14 +136,34 @@ final class MariaDbRecoverySnapshot
             throw new DomainException('Invalid MariaDB recovery source.');
         }
         $manifestFile = $directory.'/manifest.json';
-        if (! is_file($manifestFile) || is_link($manifestFile)) {
+        $input = @fopen($manifestFile, 'rb');
+        if ($input === false) {
             throw new DomainException('MariaDB recovery manifest is missing.');
         }
-        $json = file_get_contents($manifestFile);
-        if ($json === false || ! hash_equals($expectedManifestHash, hash('sha256', $json))) {
-            throw new DomainException('MariaDB recovery manifest checksum mismatch.');
+        try {
+            // Keep the verified manifest bytes and its no-follow named inode
+            // tied to the same descriptor. A checksum alone permits a
+            // hard-linked or replaced path to masquerade as our manifest.
+            $before = $this->assertStableRowFile($input, $manifestFile);
+            if ($before['size'] < 1 || $before['size'] > 8388608) {
+                throw new DomainException('MariaDB recovery manifest exceeds safe size.');
+            }
+            $json = stream_get_contents($input, $before['size'] + 1);
+            if (! is_string($json) || strlen($json) !== $before['size']) {
+                throw new DomainException('MariaDB recovery manifest changed during read.');
+            }
+            $this->assertStableRowFile($input, $manifestFile, $before);
+            if (! hash_equals($expectedManifestHash, hash('sha256', $json))) {
+                throw new DomainException('MariaDB recovery manifest checksum mismatch.');
+            }
+        } finally {
+            fclose($input);
         }
-        $metadata = json_decode($json, true, 16, JSON_THROW_ON_ERROR);
+        try {
+            $metadata = json_decode($json, true, 16, JSON_THROW_ON_ERROR);
+        } catch (\JsonException $error) {
+            throw new DomainException('Invalid MariaDB recovery manifest encoding.', 0, $error);
+        }
         if (! is_array($metadata) || ($metadata['format'] ?? null) !== 'walidsite-mariadb-1'
             || ! is_string($metadata['source'] ?? null)
             || ! is_array($metadata['tables'] ?? null) || $metadata['tables'] === []
