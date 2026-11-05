@@ -11,6 +11,7 @@ import 'package:waleed_tech_companion/runbooks/verified_online_runbooks.dart';
 
 const selectedId = '00000000-0000-4000-8000-000000000001';
 const selectedBody = '# Verify backup before restoring';
+const downloadActionKey = Key('online-runbook-download-00000000-0000-4000-8000-000000000001');
 const validated = '2026-10-31T12:30:00+00:00';
 
 class SnapshotMemory implements RunbookSnapshotStore {
@@ -200,7 +201,7 @@ void main() {
       offlineRepository: fixture.repository,
     )));
     await tester.pumpAndSettle();
-    final action = find.byKey(Key('online-runbook-download-' + selectedId));
+    final action = find.byKey(downloadActionKey);
     expect(action, findsOneWidget);
     expect(fixture.calls(), 0);
     await tester.ensureVisible(action);
@@ -239,7 +240,7 @@ void main() {
       offlineRepository: fixture.repository,
     )));
     await tester.pumpAndSettle();
-    final action = find.byKey(Key('online-runbook-download-' + selectedId));
+    final action = find.byKey(downloadActionKey);
     await tester.ensureVisible(action);
     await tester.tap(action);
     await tester.pumpAndSettle();
@@ -273,7 +274,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('online-runbook-download-unconfigured')),
         findsOneWidget);
-    final action = find.byKey(Key('online-runbook-download-' + selectedId));
+    final action = find.byKey(downloadActionKey);
     expect(tester.widget<OutlinedButton>(action).onPressed, isNull);
     expect(transportCalls, 0);
   });
@@ -293,7 +294,7 @@ void main() {
       offlineRepository: fixture.repository,
     )));
     await tester.pumpAndSettle();
-    final action = find.byKey(Key('online-runbook-download-' + selectedId));
+    final action = find.byKey(downloadActionKey);
     await tester.ensureVisible(action);
     await tester.tap(action);
     await tester.pump();
