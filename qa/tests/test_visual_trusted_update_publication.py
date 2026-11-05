@@ -259,6 +259,23 @@ class TrustedUpdatePublicationTest(unittest.TestCase):
         finally:
             self.root.chmod(original_root_mode)
 
+        # A named pipe can hang fopen() indefinitely if the publisher
+        # accepts the filename without a regular-file precheck.
+        saved = self.root / 'regular-update-held.zip'
+        archive.rename(saved)
+        os.mkfifo(archive)
+        try:
+            result = subprocess.run(
+                ['php', str(signer), str(self.root)],
+                input=json.dumps(meta).encode(), capture_output=True,
+                env=env, timeout=4,
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertFalse((self.root / 'latest.json').exists())
+        finally:
+            archive.unlink()
+            saved.rename(archive)
+
         # A clean legitimate source continues to sign successfully.
         result = attempt()
         self.assertEqual(result.returncode, 0, result.stderr)
