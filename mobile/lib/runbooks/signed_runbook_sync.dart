@@ -267,10 +267,13 @@ class OfflineRunbookRepository {
   final RunbookSnapshotStore store;
   final Future<OfflineRunbookPack> Function() bundled;
 
-  // Reserve an in-order slot synchronously before the first await. Otherwise
-  // two valid signed downloads may both inspect an obsolete cached snapshot
-  // and the slower, older write can replace the newer revision.
-  Future<void> _syncBarrier = Future<void>.value();
+  // Multiple repository instances (online library, offline library, or a
+  // recreated view) may share the same app-support snapshot. An instance-only
+  // queue lets both validate the same stale disk state and then overwrite a
+  // newer verified pack. Serialize all signed syncs within the app isolate;
+  // every operation rechecks the stored signature after acquiring its slot.
+  // Do not retain a completed Future across unrelated Flutter widget zones.
+  static Future<void>? _sharedSyncBarrier;
 
   // Retain the exact signed envelope alongside its verified payload.
   // A timestamp alone cannot establish an ordering between two different
@@ -292,30 +295,34 @@ class OfflineRunbookRepository {
       (await _trustedSnapshot())?.pack ?? await bundled();
 
   Future<OfflineRunbookPack> sync() {
-    final prior = _syncBarrier;
+    final prior = _sharedSyncBarrier;
     final completed = Completer<void>();
-    _syncBarrier = completed.future;
+    _sharedSyncBarrier = completed.future;
     return _syncAfter(prior, completed);
   }
 
   /// A signed envelope for a different UUID/revision must NEVER replace the
   /// last trusted copy as the result of a user-selected published download.
   Future<OfflineRunbookPack> syncPublished(PublishedRunbookRevision revision) {
-    final prior = _syncBarrier;
+    final prior = _sharedSyncBarrier;
     final completed = Completer<void>();
-    _syncBarrier = completed.future;
+    _sharedSyncBarrier = completed.future;
     return _syncAfter(prior, completed, revision);
   }
 
   Future<OfflineRunbookPack> _syncAfter(
-      Future<void> prior, Completer<void> completed,
+      Future<void>? prior, Completer<void> completed,
       [PublishedRunbookRevision? revision]) async {
     try {
-      await prior;
+      if (prior != null) await prior;
       return await _syncOnce(revision);
     } finally {
-      // Never strand queued updates if fetching, signature verification or
-      // persistence fails. The barrier itself must not complete with error.
+      // A newer queued update keeps its reservation; the last completed
+      // operation clears the slot so unrelated widget zones don't inherit
+      // an old asynchronous Future.
+      if (identical(_sharedSyncBarrier, completed.future)) {
+        _sharedSyncBarrier = null;
+      }
       completed.complete();
     }
   }
