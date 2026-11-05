@@ -44,6 +44,21 @@ final class PublicRunbookPublicationTest extends TestCase
         return $id;
     }
 
+    private function assignReviewedCategory(
+        string $runbookId,
+        string $slug,
+        string $nameEn,
+        string $nameAr
+    ): void {
+        // Test fixture models an explicit editorial version review; no
+        // migration guesses a category for old or unpublished content.
+        DB::table('runbook_versions')->where('runbook_id', $runbookId)->update([
+            'reviewed_category_slug' => $slug,
+            'reviewed_category_name_en' => $nameEn,
+            'reviewed_category_name_ar' => $nameAr,
+        ]);
+    }
+
     public function test_empty_contract_and_normalized_database_schema_have_no_fabricated_guides(): void
     {
         $this->assertTrue(Schema::hasTable('runbooks'));
@@ -334,5 +349,120 @@ final class PublicRunbookPublicationTest extends TestCase
             ->update(['title' => 'A new edit without review']);
         $this->getJson('/api/v1/mobile/solutions/'.$id)->assertNotFound();
     }
+
+    public function test_reviewed_categories_filter_all_pages_without_leaking_unapproved_data(): void
+    {
+        $this->assertTrue(Schema::hasColumn('runbook_versions', 'reviewed_category_slug'));
+        $this->assertTrue(Schema::hasColumn('runbook_versions', 'reviewed_category_name_en'));
+        $this->assertTrue(Schema::hasColumn('runbook_versions', 'reviewed_category_name_ar'));
+        $selectedIds = [];
+        for ($i = 1; $i <= 21; $i++) {
+            $id = $this->guide(sprintf('db-%02d', $i));
+            $this->assignReviewedCategory($id, 'database', 'Databases', 'قواعد البيانات');
+            $selectedIds[] = $id;
+        }
+        $security = $this->guide('security-published');
+        $this->assignReviewedCategory($security, 'security', 'Security', 'الأمان');
+        $uncategorized = $this->guide('legacy-uncategorized');
+        $draft = $this->guide('draft-with-secret-category', approved: false);
+        $this->assignReviewedCategory($draft, 'internal', 'INTERNAL DRAFT', 'مسودة خاصة');
+        $corrupted = $this->guide('invalid-category');
+        $this->assignReviewedCategory($corrupted, 'invalid/category', 'BAD', 'مرفوض');
+
+        $all = $this->getJson('/api/v1/mobile/runbooks?lang=en')->assertOk()
+            ->assertJsonCount(20, 'data')
+            ->assertJsonCount(2, 'meta.categories')
+            ->assertJsonPath('meta.categories.0.slug', 'database')
+            ->assertJsonPath('meta.categories.0.name', 'Databases')
+            ->assertJsonPath('meta.categories.1.slug', 'security')
+            ->assertDontSee('INTERNAL DRAFT')
+            ->assertDontSee('invalid-category');
+        $this->assertStringContainsString('no-store',
+            (string) $all->headers->get('Cache-Control'));
+        $all->assertJsonMissingPath('data.0.reviewed_category_slug')
+            ->assertJsonMissingPath('data.0.categories');
+
+        $arabic = $this->getJson('/api/v1/mobile/runbooks?lang=ar&category=database&page=1')
+            ->assertOk()->assertJsonCount(20, 'data')
+            ->assertJsonPath('meta.has_more_pages', true)
+            ->assertJsonPath('meta.categories.0.name', 'قواعد البيانات')
+            ->assertJsonPath('meta.categories.1.name', 'الأمان');
+        $next = $this->getJson('/api/v1/mobile/runbooks?lang=ar&category=database&page=2')
+            ->assertOk()->assertJsonCount(1, 'data')
+            ->assertJsonPath('meta.has_more_pages', false)
+            ->assertJsonCount(2, 'meta.categories');
+        $returned = array_merge(
+            array_column($arabic->json('data'), 'id'),
+            array_column($next->json('data'), 'id')
+        );
+        $this->assertEqualsCanonicalizing($selectedIds, $returned);
+        $this->getJson('/api/v1/mobile/runbooks?category=security')->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $security);
+        $this->getJson('/api/v1/mobile/runbooks?category=absent')->assertOk()
+            ->assertJsonCount(0, 'data')
+            ->assertJsonPath('meta.has_more_pages', false)
+            ->assertJsonCount(2, 'meta.categories');
+        $this->getJson('/api/v1/mobile/solutions/'.$uncategorized)->assertOk();
+        $this->getJson('/api/v1/mobile/solutions/'.$corrupted)->assertNotFound();
+        $this->getJson('/api/v1/mobile/solutions/'.$draft)->assertNotFound();
+
+        // A formerly public category must disappear when its only guide is
+        // withdrawn; options cannot reveal obsolete/private versions.
+        DB::table('runbook_versions')->where('runbook_id', $security)
+            ->update(['checksum' => str_repeat('0', 64)]);
+        $this->getJson('/api/v1/mobile/runbooks?category=security')->assertOk()
+            ->assertJsonCount(0, 'data')
+            ->assertJsonCount(1, 'meta.categories')
+            ->assertDontSee('Security');
+        $this->getJson('/api/v1/mobile/solutions/'.$security)->assertNotFound();
+    }
+
+    public function test_partial_or_edited_category_review_never_inherits_an_old_approval(): void
+    {
+        $id = $this->guide('category-integrity');
+        // Every category field must be explicitly reviewed together.
+        DB::table('runbook_versions')->where('runbook_id', $id)
+            ->update(['reviewed_category_slug' => 'database']);
+        $this->getJson('/api/v1/mobile/runbooks')->assertOk()
+            ->assertJsonCount(0, 'data');
+        $this->getJson('/api/v1/mobile/solutions/'.$id)->assertNotFound();
+
+        $this->assignReviewedCategory($id, 'database', 'Databases', 'قواعد البيانات');
+        $this->getJson('/api/v1/mobile/runbooks?category=database')->assertOk()
+            ->assertJsonPath('data.0.id', $id);
+        foreach ([
+            ['reviewed_category_name_en' => ''],
+            ['reviewed_category_slug' => 'database/../../drafts'],
+            ['reviewed_category_name_ar' => null],
+        ] as $mutation) {
+            DB::table('runbook_versions')->where('runbook_id', $id)->update($mutation);
+            $this->getJson('/api/v1/mobile/runbooks')->assertOk()->assertJsonCount(0, 'data');
+            $this->getJson('/api/v1/mobile/solutions/'.$id)->assertNotFound();
+            $this->assignReviewedCategory($id, 'database', 'Databases', 'قواعد البيانات');
+        }
+
+        // Changing to a new version never inherits v1 title/body/category.
+        DB::table('runbooks')->where('id', $id)->update(['version' => 2]);
+        $this->getJson('/api/v1/mobile/runbooks?category=database')->assertOk()
+            ->assertJsonCount(0, 'data')->assertJsonCount(0, 'meta.categories');
+        $this->getJson('/api/v1/mobile/solutions/'.$id)->assertNotFound();
+    }
+
+    public function test_category_query_validation_rejects_noncanonical_and_array_values(): void
+    {
+        foreach ([
+            '/api/v1/mobile/runbooks?category%5B%5D=database',
+            '/api/v1/mobile/runbooks?category=../../private',
+            '/api/v1/mobile/runbooks?category=draft%25',
+            '/api/v1/mobile/runbooks?category=database--backup',
+            '/api/v1/mobile/runbooks?category=UPPER',
+            '/api/v1/mobile/runbooks?lang=de',
+            '/api/v1/mobile/runbooks?lang%5B%5D=ar',
+        ] as $uri) {
+            $this->getJson($uri)->assertUnprocessable();
+        }
+    }
+
 
 }
