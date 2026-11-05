@@ -244,7 +244,7 @@ final class Web13PaginatedSearchTest extends TestCase
                             'lang' => $lang, 'q' => 'PagerEvidence2026', 'type' => $type,
                         ])).'"', false);
                 }
-                $this->get(route('public.project', $detailBase + ['type' => 'articles', 'page' => 2]))
+                $this->get(route('public.project', array_merge($detailBase, ['type' => 'articles', 'page' => 2])))
                     ->assertOk()
                     ->assertDontSee($lang === 'ar' ? 'العودة إلى نتائج البحث' : 'Back to search results');
             }
