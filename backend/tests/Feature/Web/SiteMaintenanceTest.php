@@ -47,6 +47,25 @@ class SiteMaintenanceTest extends TestCase
     }
 
 
+    public function test_legacy_setup_denies_migrations_if_database_is_filled_after_configuration(): void
+    {
+        config([
+            'site.setup_enabled' => true,
+            'site.setup_token' => str_repeat('r', 40),
+            'site.setup_database_ready' => true,
+            'site.install_lock_path' => storage_path('app/absent-setup-'.bin2hex(random_bytes(10))),
+        ]);
+        DB::table('migrations')->delete();
+        $this->withSession(['site_setup_authorized' => true]);
+        $this->post('/setup/database?lang=en')
+            ->assertRedirect()
+            ->assertSessionHasErrors([
+                'setup' => 'The selected database now contains existing tables without trusted migration history. Select an empty database or recover the interrupted install; no migrations were run.',
+            ]);
+        self::assertSame(0, DB::table('migrations')->count());
+        $this->assertFalse(session('site_setup_migrated') === true);
+    }
+
     public function test_setup_wizard_exposes_exactly_one_current_step_in_arabic_and_english(): void
     {
         $token = str_repeat('p', 40);

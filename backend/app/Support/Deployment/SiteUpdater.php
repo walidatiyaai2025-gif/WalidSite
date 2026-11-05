@@ -98,6 +98,13 @@ final class SiteUpdater
                 return ['state' => $before['history_mismatch'] ? 'schema_mismatch' : 'database_unavailable',
                     'applied' => 0];
             }
+            // The wizard checked the database at connection time, but its
+            // contents may change before Step 11. Reinspect under the
+            // migration lock so an existing/foreign database cannot be
+            // overwritten by a stale "empty database" probe.
+            if ($initialInstall && ! $this->safeFirstInstallSchema()) {
+                return ['state' => 'database_not_empty', 'applied' => 0];
+            }
             if ($before['pending'] === []) {
                 return ['state' => 'current', 'applied' => 0];
             }
@@ -130,6 +137,36 @@ final class SiteUpdater
             return ['state' => 'applied', 'applied' => count($before['pending'])];
         } finally {
             $lock->release();
+        }
+    }
+
+    /**
+     * Newly selected MySQL/MariaDB databases may contain no tables (or only
+     * Laravel's still-empty migration repository). If a trusted migration
+     * history has already started, preserve the interrupted first run and
+     * let inspect() enforce that every recorded migration belongs to the
+     * checked-in release. Foreign tables without a migration history are a
+     * hard stop: never assume they are safe to replace.
+     */
+    private function safeFirstInstallSchema(): bool
+    {
+        try {
+            if (Schema::hasTable('migrations')
+                && DB::table('migrations')->exists()) {
+                return true;
+            }
+            $tables = Schema::getTableListing();
+            $views = Schema::getViews();
+
+            // Do not use a broad count of only Laravel models: any custom
+            // table or view belongs to an existing database until proven
+            // otherwise. Even a partial unrecorded migration needs manual
+            // recovery, not speculative SQL on potentially valuable data.
+            return $views === [] && ($tables === []
+                || (count($tables) === 1 && $tables[0] === 'migrations'));
+        } catch (Throwable) {
+            // Schema-inventory failures cannot authorize destructive SQL.
+            return false;
         }
     }
 }
