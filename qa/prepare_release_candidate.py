@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import shutil
 import zipfile
@@ -74,9 +75,13 @@ def prepare(cpanel_zip: Path, output_dir: Path, version: str, sha: str) -> dict:
                 raise ValueError('Unexpected purported publisher signature')
             # Keep a user-facing Update candidate while recording the canonical
             # lowercase publisher ZIP name. No signed latest.json is emitted here.
-            generated_update.rename(update)
-            created.remove(generated_update)
+            # rename() can overwrite a competing immutable release created
+            # after our preflight. Same-directory link() is no-replace on POSIX:
+            # a competing publisher's output must never be replaced or removed.
+            os.link(generated_update, update)
             created.append(update)
+            generated_update.unlink()
+            created.remove(generated_update)
             update_hash = _sha256(update)
             if update_hash != update_receipt['artifact_sha256']:
                 raise ValueError('Update artifact digest mismatch')
@@ -123,7 +128,8 @@ def prepare(cpanel_zip: Path, output_dir: Path, version: str, sha: str) -> dict:
         except Exception:
             for path in reversed(created):
                 path.unlink(missing_ok=True)
-            generated_update.unlink(missing_ok=True)
+            # build_update() owns its own failed output cleanup. Never unlink
+            # a pathname we did not create: it may belong to a concurrent run.
             raise
 
 
