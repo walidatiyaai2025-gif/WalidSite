@@ -962,10 +962,22 @@ Route::middleware('auth:web')->group(function (): void {
         Request $request, \App\Models\Article $article
     ) {
         abort_unless($request->user()?->canAccessAdmin(), 403);
-        // Revocation invalidates the public revision pointer immediately.
+        $request->validate(['lang' => ['sometimes', 'in:ar,en']]);
+        if (array_diff(array_keys($request->request->all()), ['_token']) !== []) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'unpublish' => 'Unsupported article withdrawal fields.',
+            ]);
+        }
+        // Lock and recheck the ACTUAL published pointer before any audit write.
+        // A repeated submit or an inconsistent draft can never generate a
+        // second "manual_unpublished" event for a transition that did not occur.
         \Illuminate\Support\Facades\DB::transaction(function () use ($article, $request): void {
             $locked = \App\Models\Article::query()->whereKey($article->id)
                 ->lockForUpdate()->firstOrFail();
+            abort_unless($locked->status === 'published'
+                && $locked->published_at !== null
+                && $locked->published_revision_no !== null, 409,
+                'Article is not currently published.');
             $revisionNumber = $locked->published_revision_no;
             $locked->forceFill([
                 'status' => 'draft', 'published_at' => null,
@@ -980,7 +992,8 @@ Route::middleware('auth:web')->group(function (): void {
 
         return redirect()->route('admin.content.index', [
             'article' => $article->id, 'lang' => $request->query('lang') === 'ar' ? 'ar' : 'en',
-        ])->with('status', 'Article unpublished.');
+        ])->with('status', $request->query('lang') === 'ar'
+            ? 'تم إلغاء نشر المقال.' : 'Article unpublished.');
     })->middleware('throttle:10,1')->name('admin.content.unpublish');
 
     // ADMIN-12: explicit review queue. It exposes only bounded gate state;
