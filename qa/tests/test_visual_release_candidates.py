@@ -131,6 +131,36 @@ class ReleaseCandidateTest(unittest.TestCase):
             prepare(link, self.out, '1.2.3', SHA)
         self.assertEqual(list(self.out.iterdir()), [])
 
+    def test_concurrent_update_output_is_never_overwritten(self):
+        target = self.out / 'WalidSite-Update-v1.2.3.zip'
+        marker = b'competing immutable publisher release'
+
+        def competing_publisher(source, destination):
+            self.assertEqual(destination, target)
+            target.write_bytes(marker)
+            raise FileExistsError('concurrent output claimed')
+
+        with patch('qa.prepare_release_candidate.os.link', side_effect=competing_publisher):
+            with self.assertRaises(FileExistsError):
+                prepare(self.source, self.out, '1.2.3', SHA)
+        self.assertEqual(target.read_bytes(), marker)
+        self.assertEqual(sorted(p.name for p in self.out.iterdir()), [target.name])
+
+    def test_failed_builder_never_deletes_unowned_update_output(self):
+        generated = self.out / 'WalidSite-update-v1.2.3.zip'
+        marker = b'already claimed by a second publisher'
+
+        def another_build_claimed_path(*args):
+            generated.write_bytes(marker)
+            raise FileExistsError('concurrent publisher claimed update name')
+
+        with patch('qa.prepare_release_candidate.build_update',
+                   side_effect=another_build_claimed_path):
+            with self.assertRaises(FileExistsError):
+                prepare(self.source, self.out, '1.2.3', SHA)
+        self.assertEqual(generated.read_bytes(), marker)
+        self.assertEqual(sorted(p.name for p in self.out.iterdir()), [generated.name])
+
     def test_workflow_guards_tested_sha_and_blocks_release_promotion(self):
         workflow = (Path(__file__).resolve().parents[2] / '.github/workflows/release.yml').read_text()
         for item in ('workflow_dispatch:', 'required-ci-gate', 'build-cpanel-package',
