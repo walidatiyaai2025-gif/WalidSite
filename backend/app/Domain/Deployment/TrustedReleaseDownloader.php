@@ -139,12 +139,20 @@ final class TrustedReleaseDownloader
             if (! @link($temporary, $final)) {
                 throw new DomainException('Cannot publish verified private release archive without replacement.');
             }
-            $this->assertStableFile($stream, $temporary, $limit, 2, $baseline);
-            $this->assertStableFile($stream, $final, $limit, 2, $baseline);
+            // POSIX link()/unlink() legitimately change ctime on the
+            // SAME inode. Preserve dev/ino/size/mtime identity across these
+            // operations, while checking current ctime against both named
+            // paths on every step. The pre-publication checks above still
+            // enforce the full original ctime against the staged source.
+            $linked = $this->assertStableFile($stream, $temporary, $limit, 2);
+            $this->assertCoreArtifactIdentity($baseline, $linked);
+            $linkedFinal = $this->assertStableFile($stream, $final, $limit, 2, $linked);
+            $this->assertCoreArtifactIdentity($baseline, $linkedFinal);
             if (! @unlink($temporary)) {
                 throw new RuntimeException('Unable to retire private release staging file.');
             }
-            $this->assertStableFile($stream, $final, $limit, 1, $baseline);
+            $published = $this->assertStableFile($stream, $final, $limit, 1);
+            $this->assertCoreArtifactIdentity($baseline, $published);
 
             return [
                 'path' => $final,
@@ -186,6 +194,23 @@ final class TrustedReleaseDownloader
             }
         }
         return $opened;
+    }
+
+    /**
+     * ctime tracks link-count changes; it is not a stable content identity
+     * across intentional hard-link creation/removal. Check ctime in each
+     * same-instant opened/named comparison, while pinning all stable fields.
+     *
+     * @param array<string,int> $original
+     * @param array<string,int> $current
+     */
+    private function assertCoreArtifactIdentity(array $original, array $current): void
+    {
+        foreach (['dev', 'ino', 'size', 'mtime'] as $field) {
+            if ($original[$field] !== $current[$field]) {
+                throw new DomainException('Published release artifact identity changed.');
+            }
+        }
     }
 
     /** @param resource $stream */
