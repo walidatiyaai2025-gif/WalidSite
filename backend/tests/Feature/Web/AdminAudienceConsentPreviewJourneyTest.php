@@ -75,7 +75,7 @@ final class AdminAudienceConsentPreviewJourneyTest extends TestCase
             ->assertOk()
             ->assertHeader('Cache-Control', 'no-store, private')
             ->assertSee('dir="'.($lang === 'ar' ? 'rtl' : 'ltr').'"', false)
-            ->assertSee('Delivery is disabled', false, $lang === 'en')
+            ->assertSee($lang === 'en' ? 'Delivery is disabled' : 'الإرسال معطّل بأمان')
             ->assertDontSee('PRIVATE_DELIVERY_TOKEN');
         foreach ($expected as $bucket => $count) {
             $this->assertStringContainsString(
