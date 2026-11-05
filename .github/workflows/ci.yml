@@ -535,7 +535,37 @@ jobs:
             'catalog and verified host recovery/cutover. This candidate cannot satisfy' \
             'those security gates and cannot replace currently installed PHP code.' \
             > dist/unsigned-check/DO-NOT-INSTALL.txt
-          cp docs/releases/WalidSite-v0.1.1.md dist/unsigned-check/RELEASE-NOTES.md
+          # This is an inspection receipt only. Never copy old version-specific
+          # release notes into a newer candidate.
+          printf '# WalidSite v%s — UNSIGNED inspection only\\n\\nSource SHA: %s\\n\\nNot published, not signed, and not installable through Admin updates.\\n' \\
+            "$version" "$source_sha" > dist/unsigned-check/RELEASE-NOTES.md
+          # Produce one source-pinned, complete release train from the SAME
+          # already validated Setup ZIP. Both ZIPs, their checksums, release
+          # manifest and release notes remain explicitly unpublished.
+          mkdir -p dist/release-train
+          PYTHONPATH="$PWD" python3 -m qa.prepare_release_candidate \\
+            --cpanel-zip "$package" --output-dir dist/release-train \\
+            --version "$version" --sha "$source_sha" \\
+            > dist/release-train-receipt.json
+          (cd dist/release-train && sha256sum --check ./*.sha256)
+          SOURCE_SHA="$source_sha" VERSION="$version" python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          receipt = json.loads(Path("dist/release-train-receipt.json").read_text())
+          assert receipt["candidate_prepared"] is True
+          assert receipt["source_sha"] == os.environ["SOURCE_SHA"]
+          assert receipt["version"] == os.environ["VERSION"]
+          assert receipt["published"] is False
+          assert receipt["production_ready"] is False
+          assert receipt["publisher_signature_verified"] is False
+          assert all(value is False for value in receipt["acceptance"].values())
+          directory = Path("dist/release-train")
+          assert not (directory / "latest.json").exists()
+          manifest = json.loads(next(directory.glob("*Release-Manifest-*.json")).read_text())
+          assert manifest == {k: v for k, v in receipt.items() if k != "candidate_prepared"}
+          assert all((directory / receipt[k]["file"]).is_file() for k in ("setup", "update"))
+          PY
       - uses: actions/upload-artifact@v4
         with:
           name: WalidSite-Setup-installer
@@ -546,6 +576,15 @@ jobs:
         with:
           name: WalidSite-UNSIGNED-update-INSPECTION
           path: dist/unsigned-check/*
+          if-no-files-found: error
+          retention-days: 14
+      - name: Retain source-pinned UNPUBLISHED Setup and Update release train
+        uses: actions/upload-artifact@v4
+        with:
+          name: WalidSite-UNPUBLISHED-release-train-${{ github.sha }}
+          path: |
+            dist/release-train/*
+            dist/release-train-receipt.json
           if-no-files-found: error
           retention-days: 14
 
