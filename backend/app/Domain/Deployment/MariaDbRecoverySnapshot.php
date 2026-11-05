@@ -16,6 +16,7 @@ final class MariaDbRecoverySnapshot
     private const MAX_TABLES = 256;
     private const MAX_ROWS = 250000;
     private const MAX_BYTES = 1073741824;
+    private const MAX_MANIFEST_BYTES = 8388608;
 
     /**
      * @return array{directory:string,manifest_sha256:string,tables:int,rows:int}
@@ -104,6 +105,7 @@ final class MariaDbRecoverySnapshot
             $json = json_encode([
                 'format' => 'walidsite-mariadb-1', 'source' => $db, 'tables' => $manifest,
             ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+            $this->assertManifestCapacity($json);
             if (file_put_contents($partial.'/manifest.json', $json, LOCK_EX) !== strlen($json)
                 || ! chmod($partial.'/manifest.json', 0600)
                 || ! rename($partial, $finished)) {
@@ -145,7 +147,7 @@ final class MariaDbRecoverySnapshot
             // tied to the same descriptor. A checksum alone permits a
             // hard-linked or replaced path to masquerade as our manifest.
             $before = $this->assertStableRowFile($input, $manifestFile);
-            if ($before['size'] < 1 || $before['size'] > 8388608) {
+            if ($before['size'] < 1 || $before['size'] > self::MAX_MANIFEST_BYTES) {
                 throw new DomainException('MariaDB recovery manifest exceeds safe size.');
             }
             $json = stream_get_contents($input, $before['size'] + 1);
@@ -446,6 +448,15 @@ final class MariaDbRecoverySnapshot
             throw new DomainException('Unsupported MariaDB database identifier.');
         }
         return chr(96).$name.chr(96);
+    }
+
+    /** Reject snapshots that our own restore verifier would refuse to open. */
+    private function assertManifestCapacity(string $json): void
+    {
+        $length = strlen($json);
+        if ($length < 1 || $length > self::MAX_MANIFEST_BYTES) {
+            throw new DomainException('MariaDB recovery manifest exceeds safe size.');
+        }
     }
 
     private function validHash(mixed $hash): bool
