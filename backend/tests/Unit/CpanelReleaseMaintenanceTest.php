@@ -71,6 +71,32 @@ final class CpanelReleaseMaintenanceTest extends TestCase
         $maintenance->assertActive($this->home, $session['token'], 'legacy');
     }
 
+    public function test_expired_lease_cannot_be_cleared_to_expose_unverified_new_code(): void
+    {
+        $maintenance = new CpanelReleaseMaintenance();
+        $session = $maintenance->begin($this->home, 'legacy', '0.1.1');
+        $path = $this->home.'/.walidsite-update-maintenance.json';
+
+        // Simulate a pointer switched for a live health probe but its lease
+        // expiring before the updater could finalize the barrier.
+        file_put_contents(
+            $this->home.'/.walidsite-active-release.json',
+            '{"schema":1,"version":"0.1.2","root":".walidsite-releases/v0.1.2-'.str_repeat('a', 40).'"}',
+        );
+        $marker = json_decode((string) file_get_contents($path), true, 8, JSON_THROW_ON_ERROR);
+        $marker['expires_at'] = time() - 1;
+        file_put_contents($path, json_encode($marker, JSON_THROW_ON_ERROR));
+
+        try {
+            $maintenance->clear($this->home, $session['token']);
+            $this->fail('Expired maintenance marker was removed, exposing unverified new code.');
+        } catch (DomainException $error) {
+            $this->assertStringContainsString('recovery required', $error->getMessage());
+        }
+        $this->assertFileExists($path);
+        $this->assertFileExists($this->home.'/.walidsite-active-release.json');
+    }
+
     public function test_unknown_release_identity_and_untrusted_link_are_forbidden(): void
     {
         $maintenance = new CpanelReleaseMaintenance();
