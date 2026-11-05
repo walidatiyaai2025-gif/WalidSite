@@ -202,15 +202,12 @@ final class CpanelImmutableCodePointer
             }
             $target = $publicRoot.'/'.$relative;
             $parent = dirname($target);
-            if (! is_dir($parent) && ! @mkdir($parent, 0755, true)) {
-                throw new RuntimeException('Cannot stage public asset directory.');
-            }
-            // A symlink at ANY ancestor is unsafe, even if it currently
-            // resolves back inside public_html. Require the literal parent
-            // to be the resolved directory before writing a release asset.
+            // Validate every ancestor BEFORE creating nested directories:
+            // recursive mkdir would otherwise follow an in-root symlink and
+            // write into a different location even when the final check fails.
+            $this->ensurePhysicalAssetParent($publicRoot, $parent);
             clearstatcache(true, $parent);
-            if (is_link($target) || realpath($parent) !== $parent
-                || ! str_starts_with($parent.'/', $publicRoot.'/')) {
+            if (is_link($target) || realpath($parent) !== $parent) {
                 throw new DomainException('Asset destination is linked or escapes web root.');
             }
             $sourceHash = hash_file('sha256', $entry->getPathname());
@@ -242,6 +239,35 @@ final class CpanelImmutableCodePointer
                 }
             } finally {
                 @unlink($temporary);
+            }
+        }
+    }
+
+    /**
+     * Create new public directories one segment at a time, rejecting links
+     * before following them. The web root is an already verified real path.
+     */
+    private function ensurePhysicalAssetParent(string $publicRoot, string $parent): void
+    {
+        if (! str_starts_with($parent.'/', $publicRoot.'/')) {
+            throw new DomainException('Asset destination escapes web root.');
+        }
+        $relative = substr($parent, strlen($publicRoot) + 1);
+        $current = $publicRoot;
+        foreach (explode('/', $relative) as $segment) {
+            if ($segment === '') {
+                continue;
+            }
+            $current .= '/'.$segment;
+            clearstatcache(true, $current);
+            if (is_link($current) || (file_exists($current) && ! is_dir($current))) {
+                throw new DomainException('Asset destination is linked or escapes web root.');
+            }
+            if (! is_dir($current) && ! @mkdir($current, 0755)) {
+                throw new RuntimeException('Cannot stage public asset directory.');
+            }
+            if (realpath($current) !== $current) {
+                throw new DomainException('Asset destination is linked or escapes web root.');
             }
         }
     }
