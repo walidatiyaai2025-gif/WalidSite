@@ -20,6 +20,23 @@ use Throwable;
  */
 final class AdminTrustedUpdateController extends Controller
 {
+    /**
+     * Read deployed code identity, not an environment-only version claim.
+     * Match the signed owner Web controller's fail-closed VERSION gate.
+     */
+    private function installedVersion(): ?string
+    {
+        $file = base_path('VERSION');
+        if (! is_file($file) || is_link($file) || ! is_readable($file)
+            || filesize($file) === false || filesize($file) > 32) {
+            return null;
+        }
+
+        $version = trim((string) @file_get_contents($file));
+        return preg_match('/\\A(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)\\z/D', $version) === 1
+            ? $version : null;
+    }
+
     public function check(Request $request, TrustedReleaseCatalog $catalog): JsonResponse
     {
         $user = $request->user()?->fresh();
@@ -47,20 +64,23 @@ final class AdminTrustedUpdateController extends Controller
         }
         $lang = $query['lang'] ?? 'en';
 
-        $installed = config('site.trusted_installed_version');
+        $deployed = $this->installedVersion();
+        $pinned = config('site.trusted_installed_version');
         $origin = config('site.trusted_release_origin');
         $publisher = config('site.trusted_release_public_key');
         $enabled = config('site.updates_enabled') === true;
+        // A publisher-signed update may still target the WRONG installed
+        // release. Refuse all network discovery until disk and pin agree.
         $configured = $enabled
-            && is_string($installed) && preg_match('/\A(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\z/D', $installed) === 1
+            && $deployed !== null && is_string($pinned)
+            && hash_equals($deployed, $pinned)
             && is_string($origin) && $origin !== ''
             && is_string($publisher) && $publisher !== '';
 
         if (! $configured) {
             return response()->json([
                 'data' => [
-                    'current_version' => is_string($installed) && preg_match('/\A\d+\.\d+\.\d+\z/D', $installed)
-                        ? $installed : null,
+                    'current_version' => $deployed,
                     'available_version' => null,
                     'release_notes' => null,
                     'status' => $enabled ? 'not_configured' : 'disabled',
@@ -72,13 +92,13 @@ final class AdminTrustedUpdateController extends Controller
         }
 
         try {
-            $candidate = $catalog->check($origin, $publisher, $installed)['release'];
+            $candidate = $catalog->check($origin, $publisher, $deployed)['release'];
         } catch (Throwable $failure) {
             // Do not leak transport credentials, trust keys, internal exception
             // paths or catalog payloads to a caller, even an authorized owner.
             return response()->json([
                 'data' => [
-                    'current_version' => $installed,
+                    'current_version' => $deployed,
                     'available_version' => null,
                     'release_notes' => null,
                     'status' => 'publisher_unverified',
@@ -91,7 +111,7 @@ final class AdminTrustedUpdateController extends Controller
 
         return response()->json([
             'data' => [
-                'current_version' => $installed,
+                'current_version' => $deployed,
                 'available_version' => $candidate['version'],
                 'release_notes' => null,
                 'status' => 'signed_release_available',
