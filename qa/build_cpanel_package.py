@@ -3,6 +3,8 @@
 import argparse
 import hashlib
 import json
+import os
+import stat
 import re
 import zipfile
 from pathlib import Path
@@ -60,6 +62,48 @@ def safe(file, root):
     if file.name.startswith(".env") and file.name != ".env.example":
         return False
     return file.is_file()
+
+
+
+def read_required(source, relative):
+    """Reject symlinked required files and ancestor directories before packing.
+
+    Explicit package inputs do not pass through add_folder/safe, so a linked
+    owner contract, photograph or installation guide could otherwise cause a
+    private file outside the checkout to be embedded in the public release.
+    """
+    file = source / relative
+    current = source
+    if source.is_symlink() or not source.is_dir():
+        raise ValueError("Unsafe package source root")
+    for part in Path(relative).parts[:-1]:
+        current = current / part
+        if current.is_symlink() or not current.is_dir():
+            raise ValueError("Unsafe required file parent: " + relative)
+    if file.is_symlink() or not file.is_file():
+        raise ValueError("Unsafe required package file: " + relative)
+    # Avoid following a swapped leaf between validation and read. Packaging is
+    # run on a POSIX CI runner; fail closed if no-follow is unavailable.
+    if not getattr(os, "O_NOFOLLOW", 0):
+        raise ValueError("Secure required file descriptors unavailable")
+    flags = os.O_RDONLY | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0)
+    with os.fdopen(os.open(file, flags), "rb") as stream:
+        before = os.fstat(stream.fileno())
+        named = os.stat(file, follow_symlinks=False)
+        if (not stat.S_ISREG(before.st_mode) or not stat.S_ISREG(named.st_mode)
+                or before.st_dev != named.st_dev or before.st_ino != named.st_ino
+                or before.st_nlink != 1 or named.st_nlink != 1):
+            raise ValueError("Unsafe required package file identity: " + relative)
+        data = stream.read()
+        after = os.fstat(stream.fileno())
+        named_after = os.stat(file, follow_symlinks=False)
+        if ((before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns, before.st_ctime_ns)
+            != (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns, after.st_ctime_ns)
+            or (after.st_dev, after.st_ino, after.st_size)
+            != (named_after.st_dev, named_after.st_ino, named_after.st_size)
+            or not stat.S_ISREG(named_after.st_mode)):
+            raise ValueError("Required package file changed during read: " + relative)
+        return data
 
 
 def add_folder(entries, folder, dest, root):
@@ -204,18 +248,16 @@ def build(source, output, sha):
     if not safe(index_file, source):
         raise ValueError("Missing or symlinked stable cPanel public index")
     entries["public_html/index.php"] = index_file.read_bytes()
-    entries["public_html/assets/portraits/portrait-light-derived.jpg"] = (
-        source / "assets/portraits/portrait-light-derived.jpg"
-    ).read_bytes()
+    entries["public_html/assets/portraits/portrait-light-derived.jpg"] = read_required(
+        source, "assets/portraits/portrait-light-derived.jpg")
     # First-install About media fallbacks: copy local SVG icons and licensed
     # technology marks into the HTTP document root. Private image drafts stay
     # exclusively in application/storage and are NEVER packaged here.
     for folder in ("icons", "technology-logos"):
         add_folder(entries, source / "assets" / folder,
                    "public_html/assets/" + folder, source)
-    entries["contracts/owner-cv-baseline.json"] = (
-        source / "contracts/owner-cv-baseline.json"
-    ).read_bytes()
+    entries["contracts/owner-cv-baseline.json"] = read_required(
+        source, "contracts/owner-cv-baseline.json")
     # Defense in depth if the operator mistakenly extracts within public_html.
     # Private content MUST still reside outside DocumentRoot; .htaccess is
     # only interpreted when the hosting Apache/LiteSpeed honors overrides.
@@ -223,10 +265,8 @@ def build(source, output, sha):
         entries[path] = PRIVATE_TREE_DENY
     for folder in STORAGE:
         entries["application/" + folder + "/.gitignore"] = b"*\n!.gitignore\n"
-    doc = source / "docs/CPANEL_PACKAGE_AR.md"
-    if not doc.is_file():
-        raise ValueError("Installation guide not found")
-    entries["INSTALL-CPANEL-AR.md"] = doc.read_bytes()
+    entries["INSTALL-CPANEL-AR.md"] = read_required(
+        source, "docs/CPANEL_PACKAGE_AR.md")
     proof = {
         "schema": "walidsite.cpanel-package.v1",
         "source_sha": sha,
