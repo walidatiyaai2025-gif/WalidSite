@@ -133,8 +133,12 @@ final class CpanelImmutableCodePointer
             }
             $this->assertLockIdentity($lock, $lockPath);
             // Maintenance and candidate callbacks may have changed files
-            // after the first check. Never publish a different runtime graph.
+            // after the first check. Never publish a different runtime graph
+            // or a candidate with a different migration inventory.
             $this->assertComposerParity($oldRoot, $candidate);
+            if ($schema->inventory($oldRoot) !== $schema->inventory($candidate)) {
+                throw new DomainException('Migrations changed before code-only release cutover.');
+            }
 
             $next = ['schema' => 1, 'version' => $version,
                 'root' => '.walidsite-releases/v'.$version.'-'.$sourceSha];
@@ -148,6 +152,12 @@ final class CpanelImmutableCodePointer
                 // changes runtime dependencies, restore the old pointer
                 // rather than reporting the unverified code as installed.
                 $this->assertComposerParity($oldRoot, $candidate);
+                // The HTTP health callback can also change migration sources;
+                // never certify a code-only release against an obsolete
+                // pre-health inventory.
+                if ($schema->inventory($oldRoot) !== $schema->inventory($candidate)) {
+                    throw new RuntimeException('Migration inventory changed during health verification.');
+                }
                 // The HTTP health callback may have altered non-Composer PHP
                 // code while the new pointer was provisionally active. Recheck
                 // the complete signed candidate identity before accepting it.
