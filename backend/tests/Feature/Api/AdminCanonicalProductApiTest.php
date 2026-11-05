@@ -513,6 +513,74 @@ final class AdminCanonicalProductApiTest extends TestCase
         $this->assertStringNotContainsString($provider->base_url, $audit->getContent());
     }
 
+    public function test_admin_analytics_reports_only_actually_reachable_public_records(): void
+    {
+        [, $token] = $this->account('owner');
+
+        $published = $this->readyArticle('real-public-article');
+        $revoked = $this->readyArticle('revoked-public-article');
+        $invalidSlug = $this->readyArticle('invalid_public_article');
+        foreach ([$published, $revoked, $invalidSlug] as $article) {
+            $article->forceFill([
+                'status' => 'published',
+                'published_at' => now()->subMinute(),
+                'published_revision_no' => 1,
+            ])->save();
+        }
+        $revoked->revisions()->firstOrFail()->forceFill([
+            'citations_json' => [[
+                'source_url' => 'https://docs.example.org/revoked',
+                'verified' => false,
+            ]],
+        ])->save();
+
+        $createProject = function (string $slug, string $evidenceUrl): Project {
+            $project = Project::create([
+                'slug' => $slug, 'title' => 'Evidence-gated project',
+                'summary_en' => 'Verified English summary.',
+                'summary_ar' => 'ملخص عربي للمراجعة.',
+                'role_en' => 'Engineer', 'role_ar' => 'مهندس',
+                'status' => 'completed', 'visibility' => 'public',
+                'published_at' => now()->subMinute(),
+            ]);
+            $project->evidence()->create([
+                'evidence_type' => 'public',
+                'url' => $evidenceUrl,
+                'visibility' => 'public',
+                'verified_at' => now()->subMinute(),
+            ]);
+            return $project;
+        };
+        $createProject('real-public-project', 'https://evidence.example.org/proof');
+        $createProject('unreachable-private-evidence', 'https://internal.private/secret');
+        $createProject('invalid_public_project', 'https://evidence.example.org/other');
+
+        // SQL publication flags alone overstate externally reachable content.
+        $this->assertSame(3, Article::query()->publiclyVisible()->count());
+        $this->assertSame(3, Project::query()->publiclyVerified()->count());
+
+        $response = $this->withToken($token)->getJson('/api/v1/admin/analytics')
+            ->assertOk()
+            ->assertJsonPath('data.content.public_articles', 1)
+            ->assertJsonPath('data.content.public_projects', 1)
+            ->assertJsonPath('meta.database_counts_only', true)
+            ->assertJsonPath('meta.not_live_traffic_analytics', true);
+        $this->assertStringNotContainsString('internal.private', $response->getContent());
+        $this->assertStringNotContainsString('invalid_public_project', $response->getContent());
+        $this->assertStringNotContainsString('revoked-public-article', $response->getContent());
+
+        // A withdrawn citation cannot leave a phantom public article KPI.
+        $published->revisions()->firstOrFail()->forceFill([
+            'citations_json' => [[
+                'source_url' => 'https://docs.example.org/withdrawn',
+                'verified' => false,
+            ]],
+        ])->save();
+        $this->getJson('/api/v1/admin/analytics')->assertOk()
+            ->assertJsonPath('data.content.public_articles', 0)
+            ->assertJsonPath('data.content.public_projects', 1);
+    }
+
     public function test_github_settings_and_sync_use_only_configured_public_repository_metadata(): void
     {
         [, $token] = $this->account();
