@@ -203,6 +203,65 @@ class CpanelFirstBootArchiveSafetyTest(unittest.TestCase):
             )
             php_server.assert_not_called()
 
+    def test_first_boot_real_zip_cli_rejects_unpinned_identity_before_php(self):
+        from qa import cpanel_first_run_http_probe
+        from contextlib import redirect_stderr
+        import io
+        import sys
+
+        for options in (
+            ["--cpanel-zip", str(self.package)],
+            ["--cpanel-zip", str(self.package), "--sha", "short"],
+            ["--cpanel-zip", str(self.package), "--sha", "A" * 40],
+            ["--cpanel-zip", str(self.package), "--sha", "../" + "a" * 37],
+            ["--app-root", str(self.root), "--sha", "a" * 40],
+        ):
+            with self.subTest(options=options), \
+                 patch.object(sys, "argv", ["cpanel_first_run_http_probe.py", *options]), \
+                 patch("qa.cpanel_first_run_http_probe.extract_verified_archive") as extract, \
+                 patch("qa.cpanel_first_run_http_probe.probe") as php, \
+                 redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit) as rejected:
+                    cpanel_first_run_http_probe.main()
+                self.assertEqual(rejected.exception.code, 2)
+                extract.assert_not_called()
+                php.assert_not_called()
+
+    def test_first_boot_real_zip_cli_forwards_source_sha_to_frozen_snapshot(self):
+        from qa import cpanel_first_run_http_probe
+        import sys
+
+        sha = "a" * 40
+        with patch.object(sys, "argv", [
+            "cpanel_first_run_http_probe.py",
+            "--cpanel-zip", str(self.package), "--sha", sha,
+        ]), patch(
+            "qa.cpanel_first_run_http_probe.extract_verified_archive",
+        ) as extract, patch(
+            "qa.cpanel_first_run_http_probe.probe",
+        ) as php:
+            cpanel_first_run_http_probe.main()
+            extract.assert_called_once()
+            self.assertEqual(extract.call_args.args[0], self.package)
+            self.assertEqual(extract.call_args.kwargs, {"expected_sha": sha})
+            self.assertEqual(php.call_count, 1)
+            home = extract.call_args.args[1]
+            self.assertEqual(php.call_args.args, (
+                home / "application", home / "public_html",
+            ))
+
+    def test_first_boot_main_workflow_must_pin_same_source_sha(self):
+        workflow = (Path(__file__).resolve().parents[2] /
+                    ".github/workflows/ci.yml").read_text(encoding="utf-8")
+        self.assertIn(
+            'python3 qa/cpanel_first_run_http_probe.py --cpanel-zip "$package" --sha "$source_sha"',
+            workflow,
+        )
+        self.assertNotIn(
+            'python3 qa/cpanel_first_run_http_probe.py --cpanel-zip "$package"\n',
+            workflow,
+        )
+
     def test_non_regular_fifo_is_rejected_without_extraction(self):
         if not hasattr(os, "mkfifo"):
             self.skipTest("FIFO support required")
