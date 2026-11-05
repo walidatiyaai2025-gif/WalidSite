@@ -25,6 +25,35 @@ class _MemoryStore implements RunbookSnapshotStore {
   }
 }
 
+/// Exercises the production optional per-UUID contract without an actual
+/// phone filesystem. A newly constructed repository is a cold start.
+class _PinnedMemoryStore implements RunbookPinnedSnapshotStore {
+  String? global;
+  final Map<String, String> pins = {};
+  int writes = 0;
+
+  @override
+  Future<String?> read() async => global;
+
+  @override
+  Future<void> write(String envelope) async {
+    global = envelope;
+    writes++;
+  }
+
+  @override
+  Future<List<String>> pinnedIds() async => pins.keys.toList()..sort();
+
+  @override
+  Future<String?> readPinned(String id) async => pins[id];
+
+  @override
+  Future<void> writePinned(String id, String envelope) async {
+    pins[id] = envelope;
+    writes++;
+  }
+}
+
 Future<String> _envelope(
   SimpleKeyPair pair, {
   String id = publishedId,
@@ -33,6 +62,7 @@ Future<String> _envelope(
   DateTime? validatedAt,
   String? checksumOverride,
   bool published = true,
+  DateTime? signedAt,
 }) async {
   final checksum = (await Sha256().hash(utf8.encode(markdown)))
       .bytes.map((byte) => byte.toRadixString(16).padLeft(2, '0')).join();
@@ -50,8 +80,8 @@ Future<String> _envelope(
       'published_body_sha256': checksumOverride ?? checksum,
     },
   };
-  final timestamp = DateTime.now().toUtc()
-      .subtract(const Duration(minutes: 3)).toIso8601String();
+  final timestamp = (signedAt ?? DateTime.now().toUtc()
+      .subtract(const Duration(minutes: 3))).toIso8601String();
   final payload = utf8.encode(jsonEncode({
     'schema': 'walidsite.offline-runbook-pack.v1',
     'version': '3.0.0',
@@ -99,6 +129,90 @@ ReviewedRunbook _live({String id = publishedId,
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  test('MOBILE-05 sequential disjoint signed downloads survive cold restart', () async {
+    final keys = await _keys();
+    final packA = await _envelope(keys.pair, id: publishedId);
+    final packB = await _envelope(keys.pair, id: otherId,
+        markdown: '# Different reviewed database runbook');
+    var response = packA;
+    var requests = 0;
+    final source = SignedRunbookSource(
+      url: 'https://updates.example.org/reviewed-pack.json',
+      publicKeyBase64: keys.publicKey,
+      transport: (_) async { requests++; return response; },
+    );
+    final store = _PinnedMemoryStore();
+    final repository = OfflineRunbookRepository(source: source, store: store);
+    final first = await repository.syncPublished(_current());
+    expect(first.items.map((item) => item.id), [publishedId]);
+    response = packB;
+    final second = await repository.syncPublished(_current(
+        id: otherId, markdown: '# Different reviewed database runbook'));
+    expect(second.signedVerified, isTrue);
+    expect(second.items.map((item) => item.id), [otherId, publishedId]..sort());
+    expect(store.pins.keys.toSet(), {publishedId, otherId});
+    expect(store.global, isNull, reason: 'Selected downloads cannot overwrite global snapshot');
+
+    final restarted = OfflineRunbookRepository(source: source, store: store);
+    final offline = await restarted.load();
+    expect(offline.signedVerified, isTrue);
+    expect(offline.items.length, 2);
+    expect(offline.items.firstWhere((item) => item.id == publishedId)
+        .publishedMarkdown, publishedMarkdown);
+    expect(offline.items.firstWhere((item) => item.id == otherId)
+        .publishedMarkdown, '# Different reviewed database runbook');
+    expect(requests, 2, reason: 'Cold-start offline reopening does not fetch publisher');
+  });
+
+  test('revoked or mismatched second download never evicts an earlier signed UUID',
+      () async {
+    final keys = await _keys();
+    final original = await _envelope(keys.pair, id: publishedId);
+    final wrong = await _envelope(keys.pair, id: otherId,
+        checksumOverride: '0' * 64);
+    var response = original;
+    final store = _PinnedMemoryStore();
+    final repo = OfflineRunbookRepository(
+      source: SignedRunbookSource(
+        url: 'https://updates.example.org/reviewed-pack.json',
+        publicKeyBase64: keys.publicKey,
+        transport: (_) async => response,
+      ),
+      store: store,
+    );
+    await repo.syncPublished(_current());
+    response = wrong;
+    await expectLater(repo.syncPublished(_current(id: otherId)),
+        throwsFormatException);
+    expect(store.pins.keys.toList(), [publishedId]);
+    expect((await repo.load()).items.single.id, publishedId);
+  });
+
+  test('older signed revision of the SAME UUID cannot replace newer pinned data',
+      () async {
+    final keys = await _keys();
+    final moment = DateTime.now().toUtc();
+    final newRevision = await _envelope(keys.pair, version: 4,
+        signedAt: moment.subtract(const Duration(minutes: 1)));
+    final oldRevision = await _envelope(keys.pair, version: 3,
+        signedAt: moment.subtract(const Duration(minutes: 2)));
+    var response = newRevision;
+    final store = _PinnedMemoryStore();
+    final repo = OfflineRunbookRepository(
+      source: SignedRunbookSource(
+        url: 'https://updates.example.org/reviewed-pack.json',
+        publicKeyBase64: keys.publicKey,
+        transport: (_) async => response,
+      ), store: store,
+    );
+    await repo.syncPublished(_current(version: 4));
+    response = oldRevision;
+    await expectLater(repo.syncPublished(_current(version: 3)),
+        throwsFormatException);
+    expect(store.pins[publishedId], newRevision);
+    expect((await repo.load()).items.single.publishedVersion, 4);
+  });
 
   test('reviewed UUID + exact revision saves signed copy and reopens offline after restart',
       () async {
