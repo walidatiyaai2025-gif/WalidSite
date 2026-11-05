@@ -271,7 +271,7 @@ final class VerifiedRecoveryCutoverTest extends TestCase
         self::assertSame([], glob($this->vault.'/recovery-*') ?: []);
         self::assertSame($this->old, realpath($this->current));
         self::assertSame('APP_KEY=preserved', file_get_contents($this->runtime.'/.env'));
-        self::assertSame("\\x00\\xffDATA", file_get_contents($this->uploads.'/user.png'));
+        self::assertSame(chr(0).chr(255).'DATA', file_get_contents($this->uploads.'/user.png'));
         self::assertSame(0, (int) $this->recoveryDb
             ->query('SELECT COUNT(*) FROM information_schema.tables WHERE TABLE_SCHEMA=DATABASE()')->fetchColumn());
     }
