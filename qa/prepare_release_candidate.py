@@ -199,7 +199,7 @@ def prepare(cpanel_zip: Path, output_dir: Path, version: str, sha: str) -> dict:
                 sidecar = output_dir / (document.name + '.sha256')
                 with sidecar.open('x', encoding='ascii') as stream:
                     created.append(sidecar)
-                    stream.write(f'{_sha256(document)}  {document.name}\\n')
+                    stream.write(f'{_sha256(document)}  {document.name}\n')
             return result
         except Exception:
             for path in reversed(created):
