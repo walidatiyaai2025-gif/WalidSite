@@ -164,6 +164,45 @@ class CpanelFirstBootArchiveSafetyTest(unittest.TestCase):
             self.assertEqual(archive.read("application/bootstrap/app.php"),
                              b"ATTACKER-PHP")
 
+    def test_stable_dispatcher_http_probe_uses_same_source_sha_pinned_zip(self):
+        # This third real PHP HTTP acceptance path must not be weaker than
+        # the full MariaDB and FOODEX first-install ZIP checks.
+        from qa import cpanel_release_barrier_probe
+        import inspect
+        import sys
+        source = inspect.getsource(cpanel_release_barrier_probe.main)
+        self.assertIn(
+            "extract_verified_archive(args.cpanel_zip, home, expected_sha=args.sha)",
+            source,
+        )
+        self.assertNotIn("ZipFile(", source)
+        self.assertIn('"previous_version": installed_version', source)
+        workflow = (Path(__file__).resolve().parents[2] /
+                    ".github/workflows/ci.yml").read_text(encoding="utf-8")
+        self.assertIn(
+            'python3 qa/cpanel_release_barrier_probe.py --cpanel-zip "$package" --sha "$source_sha"',
+            workflow,
+        )
+
+        # A bad source manifest/SHA must abort before any PHP process starts.
+        approved_sha = "e" * 40
+        with patch.object(sys, "argv", [
+            "cpanel_release_barrier_probe.py", "--cpanel-zip",
+            str(self.package), "--sha", approved_sha,
+        ]), patch(
+            "qa.cpanel_release_barrier_probe.extract_verified_archive",
+            side_effect=ValueError("Source SHA mismatch"),
+        ) as verified, patch(
+            "qa.cpanel_release_barrier_probe.subprocess.Popen",
+        ) as php_server:
+            with self.assertRaisesRegex(ValueError, "Source SHA mismatch"):
+                cpanel_release_barrier_probe.main()
+            verified.assert_called_once()
+            self.assertEqual(
+                verified.call_args.kwargs["expected_sha"], approved_sha
+            )
+            php_server.assert_not_called()
+
     def test_non_regular_fifo_is_rejected_without_extraction(self):
         if not hasattr(os, "mkfifo"):
             self.skipTest("FIFO support required")
