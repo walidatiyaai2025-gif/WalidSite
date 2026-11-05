@@ -141,14 +141,54 @@ final class TrustedReleaseMetadata
             throw new DomainException('Untrusted staged release archive location.');
         }
 
-        $size = filesize($file);
-        if ($size === false || $size !== $verifiedRelease['artifact_size']) {
-            throw new DomainException('Release archive length mismatch.');
+        // Hash exactly the file descriptor whose identity was checked.
+        // Hashing the pathname again after realpath()/is_file() permits an
+        // intervening rename/hard-link swap of the proposed release bytes.
+        clearstatcache(true, $archiveFile);
+        $stream = @fopen($archiveFile, 'rb');
+        if ($stream === false) {
+            throw new DomainException('Release archive cannot be opened safely.');
         }
-
-        $digest = hash_file('sha256', $file);
-        if ($digest === false || ! hash_equals($verifiedRelease['artifact_sha256'], $digest)) {
+        try {
+            $baseline = @fstat($stream);
+            if (! is_array($baseline) || ($baseline['mode'] & 0170000) !== 0100000
+                || $baseline['nlink'] !== 1
+                || $baseline['size'] !== $verifiedRelease['artifact_size']) {
+                throw new DomainException('Release archive file identity is unsafe.');
+            }
+            $this->assertStagedArchiveIdentity($archiveFile, $stream, $baseline);
+            $hash = hash_init('sha256');
+            if (hash_update_stream($hash, $stream) !== $baseline['size']) {
+                throw new DomainException('Release archive length changed while hashing.');
+            }
+            $digest = hash_final($hash);
+            $this->assertStagedArchiveIdentity($archiveFile, $stream, $baseline);
+        } finally {
+            fclose($stream);
+        }
+        if (! hash_equals($verifiedRelease['artifact_sha256'], $digest)) {
             throw new DomainException('Release archive SHA256 mismatch.');
+        }
+    }
+
+    /**
+     * @param resource $stream
+     * @param array<string|int,mixed> $baseline
+     */
+    private function assertStagedArchiveIdentity(string $path, $stream, array $baseline): void
+    {
+        clearstatcache(true, $path);
+        $opened = @fstat($stream);
+        $named = @lstat($path);
+        if (! is_array($opened) || ! is_array($named) || is_link($path)
+            || ($named['mode'] & 0170000) !== 0100000) {
+            throw new DomainException('Release archive pathname changed.');
+        }
+        foreach (['dev', 'ino', 'size', 'mode', 'nlink', 'mtime', 'ctime'] as $field) {
+            if ($opened[$field] !== $baseline[$field]
+                || $named[$field] !== $baseline[$field]) {
+                throw new DomainException('Release archive identity changed.');
+            }
         }
     }
 
