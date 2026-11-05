@@ -89,7 +89,7 @@ final class TrustedReleaseDownloaderTest extends TestCase
     private function download(\Closure $transport, ?string $directory = null): array
     {
         return (new TrustedReleaseDownloader($transport))->download(
-            $this->signed(), $this->publicKey, 'https://updates.example.test',
+            $this->signed(), $this->publicKey, 'https://updates.example.com',
             '1.0.0', $directory ?? $this->private, $this->public,
         );
     }
@@ -101,7 +101,7 @@ final class TrustedReleaseDownloaderTest extends TestCase
         $result = $this->download(static function (string $url, \Closure $write) use (&$called, $bytes): int {
             $called++;
             self::assertSame(
-                'https://updates.example.test/releases/WalidSite-update-v1.2.0.zip',
+                'https://updates.example.com/releases/WalidSite-update-v1.2.0.zip',
                 $url,
             );
             for ($offset = 0; $offset < strlen($bytes); $offset += 11) {
@@ -126,9 +126,17 @@ final class TrustedReleaseDownloaderTest extends TestCase
             'https://127.0.0.1',
             'https://localhost',
             'https://internal',
-            'https://updates..example.test',
-            'https://updates.example.test.',
-            'https://updates.example.test:443',
+            'https://publisher.localhost',
+            'https://publisher.deep.localhost',
+            'https://publisher.local',
+            'https://publisher.internal',
+            'https://publisher.invalid',
+            'https://publisher.test',
+            'https://publisher.example',
+            'https://publisher.home.arpa',
+            'https://updates..example.com',
+            'https://updates.example.com.',
+            'https://updates.example.com:443',
         ] as $origin) {
             $called = false;
             try {
@@ -161,7 +169,7 @@ final class TrustedReleaseDownloaderTest extends TestCase
             }))->download(
                 $this->signed(),
                 base64_encode(sodium_crypto_sign_publickey($otherPair)),
-                'https://updates.example.test',
+                'https://updates.example.com',
                 '1.0.0', $this->private, $this->public,
             );
             self::fail('Unknown publisher cannot download a release.');

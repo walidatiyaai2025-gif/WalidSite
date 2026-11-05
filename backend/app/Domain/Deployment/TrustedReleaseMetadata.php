@@ -109,6 +109,18 @@ final class TrustedReleaseMetadata
             || filter_var($matches[1], FILTER_VALIDATE_IP) !== false) {
             throw new DomainException('Trusted release origin requires a pinned public HTTPS hostname.');
         }
+
+        // A syntactically valid FQDN is not necessarily a public publisher.
+        // Reject special-use/private DNS suffixes before catalog/download I/O.
+        // Match whole labels only: a real public suffix such as example.com
+        // remains valid, while deep.publisher.localhost cannot become trusted.
+        $host = strtolower($matches[1]);
+        foreach (['arpa', 'example', 'home', 'internal', 'invalid', 'lan', 'local',
+                  'localdomain', 'localhost', 'onion', 'test'] as $reservedSuffix) {
+            if ($host === $reservedSuffix || str_ends_with($host, '.'.$reservedSuffix)) {
+                throw new DomainException('Trusted release origin requires a pinned public HTTPS hostname.');
+            }
+        }
     }
 
     /**

@@ -46,33 +46,41 @@ final class TrustedReleaseCatalogTest extends TestCase
         $result = (new TrustedReleaseCatalog(
             static function (string $url, \Closure $write) use ($envelope, &$calls): int {
                 $calls++;
-                self::assertSame('https://updates.example.test/releases/latest.json', $url);
+                self::assertSame('https://updates.example.com/releases/latest.json', $url);
                 for ($offset = 0; $offset < strlen($envelope); $offset += 7) {
                     $chunk = substr($envelope, $offset, 7);
                     self::assertSame(strlen($chunk), $write($chunk));
                 }
                 return 200;
             },
-        ))->check('https://updates.example.test', $this->publisherPublicKey, '1.0.0');
+        ))->check('https://updates.example.com', $this->publisherPublicKey, '1.0.0');
 
         self::assertSame(1, $calls);
         self::assertSame($envelope, $result['envelope']);
         self::assertSame('1.2.0', $result['release']['version']);
-        self::assertSame('https://updates.example.test/releases/WalidSite-update-v1.2.0.zip',
+        self::assertSame('https://updates.example.com/releases/WalidSite-update-v1.2.0.zip',
             $result['release']['artifact_url']);
     }
 
     public function test_invalid_origin_cannot_call_transport(): void
     {
         foreach ([
-            'http://updates.example.test',
+            'http://updates.example.com',
             'https://127.0.0.1',
             'https://localhost',
-            'https://updates.example.test:8443',
-            'https://updates.example.test/anything',
-            'https://user:pass@updates.example.test',
-            'https://updates.example.test?redirect=1',
-            'https://updates..example.test',
+            'https://publisher.localhost',
+            'https://publisher.deep.localhost',
+            'https://publisher.local',
+            'https://publisher.internal',
+            'https://publisher.invalid',
+            'https://publisher.test',
+            'https://publisher.example',
+            'https://publisher.home.arpa',
+            'https://updates.example.com:8443',
+            'https://updates.example.com/anything',
+            'https://user:pass@updates.example.com',
+            'https://updates.example.com?redirect=1',
+            'https://updates..example.com',
         ] as $origin) {
             $calls = 0;
             try {
@@ -93,9 +101,9 @@ final class TrustedReleaseCatalogTest extends TestCase
         foreach ([
             'https://internal',
             'https://10.0.0.9',
-            'https://updates.example.test.',
-            'https://-updates.example.test',
-            'https://updates.example.test:443',
+            'https://updates.example.com.',
+            'https://-updates.example.com',
+            'https://updates.example.com:443',
         ] as $origin) {
             $called = false;
             try {
@@ -163,7 +171,7 @@ final class TrustedReleaseCatalogTest extends TestCase
     {
         try {
             (new TrustedReleaseCatalog($transport))->check(
-                'https://updates.example.test', $key, '1.0.0',
+                'https://updates.example.com', $key, '1.0.0',
             );
             self::fail('Invalid publisher release catalog was accepted.');
         } catch (DomainException) {

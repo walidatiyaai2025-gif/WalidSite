@@ -154,7 +154,7 @@ class SiteMaintenanceTest extends TestCase
     {
         config(['site.setup_enabled' => true, 'site.setup_token' => str_repeat('t', 40)]);
         $owner = User::create([
-            'email' => 'protected@example.test',
+            'email' => 'protected@example.com',
             'password_hash' => 'already-configured',
             'status' => 'active',
         ]);
@@ -174,7 +174,7 @@ class SiteMaintenanceTest extends TestCase
         ]);
 
         $owner = User::create([
-            'email' => 'suspended-owner@example.test',
+            'email' => 'suspended-owner@example.com',
             'password_hash' => Hash::make('An-existing-owner-password-123!'),
             'status' => 'suspended',
         ]);
@@ -209,7 +209,7 @@ class SiteMaintenanceTest extends TestCase
         // The approved CV seeder may prepare a non-active identity without
         // a password. The guard must not treat that draft as a prior install.
         User::create([
-            'email' => 'placeholder@example.test',
+            'email' => 'placeholder@example.com',
             'password_hash' => null,
             'status' => 'pending',
         ]);
@@ -222,7 +222,7 @@ class SiteMaintenanceTest extends TestCase
     {
         $this->get('/admin/updates')->assertRedirect('/admin/login');
         $user = User::create([
-            'email' => 'regular@example.test',
+            'email' => 'regular@example.com',
             'password_hash' => 'unused',
             'status' => 'active',
         ]);
@@ -311,7 +311,7 @@ class SiteMaintenanceTest extends TestCase
             // configuration toggle is accidentally left enabled.
             config(['site.setup_enabled' => true]);
             $owner = User::create([
-                'email' => 'setup-installed@example.test',
+                'email' => 'setup-installed@example.com',
                 'password_hash' => 'test-already-activated',
                 'status' => 'active',
             ]);
@@ -330,7 +330,7 @@ class SiteMaintenanceTest extends TestCase
     {
         config(['site.updates_enabled' => false]);
         $owner = User::create([
-            'email' => 'owner@example.test',
+            'email' => 'owner@example.com',
             'password_hash' => 'unused',
             'status' => 'active',
         ]);
@@ -365,7 +365,7 @@ class SiteMaintenanceTest extends TestCase
     {
         config(['site.release_ref' => 'unidentified']);
         $owner = User::create([
-            'email' => 'update-w2-owner@example.test',
+            'email' => 'update-w2-owner@example.com',
             'password_hash' => 'unused',
             'status' => 'active',
         ]);
@@ -425,7 +425,7 @@ class SiteMaintenanceTest extends TestCase
         $calls = 0;
         $this->app->instance(TrustedReleaseCatalog::class, new TrustedReleaseCatalog(
             static function (string $url, \Closure $write) use (&$calls, $envelope): int {
-                self::assertSame('https://updates.example.test/releases/latest.json', $url);
+                self::assertSame('https://updates.example.com/releases/latest.json', $url);
                 $calls++;
                 self::assertSame(strlen($envelope), $write($envelope));
                 return 200;
@@ -434,11 +434,11 @@ class SiteMaintenanceTest extends TestCase
         config([
             'site.updates_enabled' => true,
             'site.trusted_installed_version' => trim((string) file_get_contents(base_path('VERSION'))),
-            'site.trusted_release_origin' => 'https://updates.example.test',
+            'site.trusted_release_origin' => 'https://updates.example.com',
             'site.trusted_release_public_key' => $publicKey,
         ]);
         $owner = User::create([
-            'email' => 'signed-check-owner@example.test',
+            'email' => 'signed-check-owner@example.com',
             'password_hash' => 'unused',
             'status' => 'active',
         ]);
@@ -463,7 +463,7 @@ class SiteMaintenanceTest extends TestCase
             ->assertSee('1.2.0')
             ->assertSee(str_repeat('a', 40))
             ->assertSee(str_repeat('b', 64))
-            ->assertDontSee('https://updates.example.test')
+            ->assertDontSee('https://updates.example.com')
             ->assertDontSee($publicKey)
             ->assertDontSee($envelope)
             ->assertDontSee('name="release_url"', false);
@@ -485,7 +485,7 @@ class SiteMaintenanceTest extends TestCase
             'site.trusted_release_public_key' => '',
         ]);
         $owner = User::create([
-            'email' => 'signed-check-unconfigured@example.test',
+            'email' => 'signed-check-unconfigured@example.com',
             'password_hash' => 'unused',
             'status' => 'active',
         ]);
@@ -510,11 +510,11 @@ class SiteMaintenanceTest extends TestCase
         config([
             'site.updates_enabled' => true,
             'site.trusted_installed_version' => '9.9.9',
-            'site.trusted_release_origin' => 'https://updates.example.test',
+            'site.trusted_release_origin' => 'https://updates.example.com',
             'site.trusted_release_public_key' => base64_encode(str_repeat('x', 32)),
         ]);
         $owner = User::create([
-            'email' => 'mismatched-installed-release@example.test',
+            'email' => 'mismatched-installed-release@example.com',
             'password_hash' => 'unused',
             'status' => 'active',
         ]);
@@ -532,7 +532,7 @@ class SiteMaintenanceTest extends TestCase
     public function test_old_signed_discovery_flash_is_invalidated_after_trust_or_version_change(): void
     {
         $installed = trim((string) file_get_contents(base_path('VERSION')));
-        $origin = 'https://updates.example.test';
+        $origin = 'https://updates.example.com';
         $key = base64_encode(str_repeat('x', 32));
         config([
             'site.updates_enabled' => true,
@@ -541,7 +541,7 @@ class SiteMaintenanceTest extends TestCase
             'site.trusted_release_public_key' => $key,
         ]);
         $owner = User::create([
-            'email' => 'stale-release-check@example.test',
+            'email' => 'stale-release-check@example.com',
             'password_hash' => 'unused',
             'status' => 'active',
         ]);
@@ -596,11 +596,11 @@ class SiteMaintenanceTest extends TestCase
         config([
             'site.updates_enabled' => true,
             'site.trusted_installed_version' => trim((string) file_get_contents(base_path('VERSION'))),
-            'site.trusted_release_origin' => 'https://updates.example.test',
+            'site.trusted_release_origin' => 'https://updates.example.com',
             'site.trusted_release_public_key' => base64_encode(str_repeat('x', 32)),
         ]);
         $owner = User::create([
-            'email' => 'signed-check-untrusted@example.test',
+            'email' => 'signed-check-untrusted@example.com',
             'password_hash' => 'unused',
             'status' => 'active',
         ]);
@@ -612,7 +612,7 @@ class SiteMaintenanceTest extends TestCase
         $this->get('/admin/updates?lang=en')->assertOk()
             ->assertSee('data-testid="trusted-release-unverified"', false)
             ->assertDontSee('private-signature-error-do-not-display')
-            ->assertDontSee('updates.example.test')
+            ->assertDontSee('updates.example.com')
             ->assertDontSee(base64_encode(str_repeat('x', 32)));
     }
 
@@ -624,7 +624,7 @@ class SiteMaintenanceTest extends TestCase
         $this->withoutMiddleware(\Illuminate\Routing\Middleware\ThrottleRequests::class);
         $this->post('/admin/updates/check')->assertRedirect('/admin/login');
         $user = User::create([
-            'email' => 'release-check-admin@example.test',
+            'email' => 'release-check-admin@example.com',
             'password_hash' => 'unused',
             'status' => 'active',
         ]);
@@ -633,10 +633,10 @@ class SiteMaintenanceTest extends TestCase
 
         $user->roles()->attach(Role::firstOrCreate(['name' => 'owner'])->id);
         $this->post('/admin/updates/check?lang=en', [
-            'release_url' => 'https://attacker.example.test/release.zip',
+            'release_url' => 'https://attacker.example.com/release.zip',
             'publisher_public_key' => 'untrusted',
         ])->assertSessionHasErrors('updates');
-        $this->post('/admin/updates/check?origin=https://attacker.example.test')
+        $this->post('/admin/updates/check?origin=https://attacker.example.com')
             ->assertSessionHasErrors('updates');
         $user->forceFill(['status' => 'suspended'])->save();
         $this->post('/admin/updates/check?lang=ar')->assertForbidden();
