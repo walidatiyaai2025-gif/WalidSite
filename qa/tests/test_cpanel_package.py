@@ -244,6 +244,41 @@ class TestCpanelPackage(unittest.TestCase):
             build(self.root, self.output, "c" * 40)
 
 
+    def test_explicit_required_inputs_never_follow_symlinks_outside_checkout(self):
+        secret = Path(self.t.name) / "private-owner-secret"
+        secret.write_bytes(b"DO NOT SHIP EXTERNAL FILE")
+        for name in (
+            "assets/portraits/portrait-light-derived.jpg",
+            "contracts/owner-cv-baseline.json",
+            "docs/CPANEL_PACKAGE_AR.md",
+        ):
+            with self.subTest(name=name):
+                target = self.root / name
+                original = target.read_bytes()
+                target.unlink()
+                target.symlink_to(secret)
+                try:
+                    with self.assertRaisesRegex(ValueError, "Missing required runtime file|Unsafe required package file"):
+                        build(self.root, self.output, "a" * 40)
+                finally:
+                    target.unlink()
+                    target.write_bytes(original)
+        self.assertFalse(self.output.exists())
+        self.assertFalse(self.output.with_name(self.output.name + ".sha256").exists())
+
+    def test_explicit_required_inputs_reject_symlinked_parent_directory(self):
+        original = self.root / "assets/portraits"
+        moved = self.root / "assets/portraits-real"
+        original.rename(moved)
+        original.symlink_to(moved, target_is_directory=True)
+        try:
+            with self.assertRaisesRegex(ValueError, "Unsafe required file parent"):
+                build(self.root, self.output, "a" * 40)
+        finally:
+            original.unlink()
+            moved.rename(original)
+        self.assertFalse(self.output.exists())
+
     def test_one_extract_from_cpanel_home_keeps_private_code_outside_document_root(self):
         """Exercise actual ZIP extraction at the documented account-home location."""
         build(self.root, self.output, "1" * 40)
