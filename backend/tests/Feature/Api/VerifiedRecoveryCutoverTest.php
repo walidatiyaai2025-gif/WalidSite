@@ -238,6 +238,44 @@ final class VerifiedRecoveryCutoverTest extends TestCase
         self::assertSame(1, (int) $this->liveDb->query('SELECT COUNT(*) FROM orders')->fetchColumn());
     }
 
+    public function test_swapped_recovery_lock_during_maintenance_stops_before_any_backup(): void
+    {
+        if (PHP_OS_FAMILY === 'Windows') {
+            self::markTestSkipped('POSIX file rename required.');
+        }
+        $lockPath = $this->vault.'/.verified-cutover.lock';
+        $orphaned = $this->vault.'/.orphaned-verified-cutover.lock';
+        $calls = 0;
+        $quiescence = static function () use (&$calls, $lockPath, $orphaned): bool {
+            $calls++;
+            // The first call is the preflight before flock; the second is
+            // invoked under the lock immediately before private backups.
+            if ($calls === 2) {
+                if (! rename($lockPath, $orphaned)
+                    || file_put_contents($lockPath, 'replacement') === false) {
+                    throw new RuntimeException('Cannot arrange recovery lock swap.');
+                }
+            }
+            return true;
+        };
+
+        try {
+            $this->execute($quiescence);
+            self::fail('Recovery accepted the replaced lock pathname.');
+        } catch (DomainException $error) {
+            self::assertStringContainsString('lock identity', $error->getMessage());
+        }
+        self::assertSame(2, $calls);
+        self::assertSame('replacement', file_get_contents($lockPath));
+        self::assertSame([], glob($this->vault.'/mariadb-*') ?: []);
+        self::assertSame([], glob($this->vault.'/recovery-*') ?: []);
+        self::assertSame($this->old, realpath($this->current));
+        self::assertSame('APP_KEY=preserved', file_get_contents($this->runtime.'/.env'));
+        self::assertSame("\\x00\\xffDATA", file_get_contents($this->uploads.'/user.png'));
+        self::assertSame(0, (int) $this->recoveryDb
+            ->query('SELECT COUNT(*) FROM information_schema.tables WHERE TABLE_SCHEMA=DATABASE()')->fetchColumn());
+    }
+
     private function assertDenied(callable $quiesced, callable $approved): void
     {
         try {
