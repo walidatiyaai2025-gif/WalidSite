@@ -414,8 +414,85 @@ class OfflineRunbookRepository {
     }
   }
 
-  Future<OfflineRunbookPack> load() async =>
-      (await _trustedSnapshot())?.pack ?? await bundled();
+  /// Reverify global and per-UUID signed envelopes on EVERY cold start.
+  /// Only published, hash-checked entries are combined. The OLDEST signed
+  /// timestamp controls staleness, not the newest downloaded publication.
+  Future<OfflineRunbookPack> load() async {
+    final global = await _trustedSnapshot();
+    if (store is! RunbookPinnedSnapshotStore || !source.configured) {
+      return global?.pack ?? await bundled();
+    }
+    final entries = <String, ({OfflineRunbook item, DateTime time, String envelope})>{};
+    final conflicts = <String>{};
+    void include(OfflineRunbookPack pack, String envelope, {String? only}) {
+      final time = pack.verifiedAt!;
+      for (final item in pack.items) {
+        if (item.publishedMarkdown == null ||
+            (only != null && item.id != only) ||
+            conflicts.contains(item.id)) continue;
+        final prior = entries[item.id];
+        if (prior == null || time.isAfter(prior.time)) {
+          entries[item.id] = (item: item, time: time, envelope: envelope);
+        } else if (time.isAtSameMomentAs(prior.time) &&
+            envelope != prior.envelope) {
+          // Ambiguous equal-time revisions cannot be ordered by guesswork.
+          entries.remove(item.id);
+          conflicts.add(item.id);
+        }
+      }
+    }
+
+    if (global != null) include(global.pack, global.envelope);
+    try {
+      final pinnedStore = store as RunbookPinnedSnapshotStore;
+      for (final id in await pinnedStore.pinnedIds()) {
+        try {
+          final text = await pinnedStore.readPinned(id);
+          if (text == null) continue;
+          final pack = await source.verify(text);
+          if (pack.items.where((item) =>
+              item.id == id && item.publishedMarkdown != null).length != 1) {
+            continue;
+          }
+          include(pack, text, only: id);
+        } catch (_) {
+          // Corrupted individual files are never treated as signed data.
+        }
+      }
+    } catch (_) {
+      // Corrupted index is not trusted. A valid global snapshot is unchanged.
+    }
+    if (entries.isEmpty) return global?.pack ?? await bundled();
+    final ids = entries.keys.toList()..sort();
+    final copies = ids.map((id) => entries[id]!).toList();
+    final oldest = copies.map((copy) => copy.time)
+        .reduce((a, b) => a.isBefore(b) ? a : b);
+    return OfflineRunbookPack(
+      version: 'verified-local-revisions',
+      source: 'Publisher-verified individual offline publications',
+      lastSynced: oldest,
+      verifiedAt: oldest,
+      items: List.unmodifiable(copies.map((copy) => copy.item)),
+      signedVerified: true,
+    );
+  }
+
+  Future<({OfflineRunbookPack pack, String envelope})?> _trustedPinned(
+      String id) async {
+    if (store is! RunbookPinnedSnapshotStore || !source.configured) return null;
+    try {
+      final text = await (store as RunbookPinnedSnapshotStore).readPinned(id);
+      if (text == null) return null;
+      final pack = await source.verify(text);
+      if (pack.items.where((item) =>
+          item.id == id && item.publishedMarkdown != null).length != 1) {
+        return null;
+      }
+      return (pack: pack, envelope: text);
+    } catch (_) {
+      return null;
+    }
+  }
 
   Future<OfflineRunbookPack> sync() {
     final prior = _sharedSyncBarrier;
@@ -470,6 +547,45 @@ class OfflineRunbookRepository {
         throw const FormatException('Published revision absent from signed pack');
       }
     }
+    if (revision != null && store is RunbookPinnedSnapshotStore) {
+      final id = revision.id.toLowerCase();
+      final pin = await _trustedPinned(id);
+      final global = await _trustedSnapshot();
+      // A different UUID's newer global pack must not block this download.
+      // Never roll this SAME UUID back to an older publisher snapshot.
+      final precedents = [
+        if (pin != null) pin,
+        if (global != null &&
+            global.pack.items.any((item) =>
+                item.id == id && item.publishedMarkdown != null))
+          global,
+      ];
+      for (final previous in precedents) {
+        final order = fresh.verifiedAt!.compareTo(previous.pack.verifiedAt!);
+        if (order < 0) {
+          throw const FormatException('Refusing older signed published revision');
+        }
+        if (order == 0 && received != previous.envelope) {
+          throw const FormatException('Conflicting signed publication timestamp');
+        }
+        if (order == 0 && received == previous.envelope) {
+          return load();
+        }
+      }
+      // Persist only the selected verified UUID; other signed copies survive.
+      await (store as RunbookPinnedSnapshotStore).writePinned(id, received);
+      final loaded = await load();
+      if (!loaded.signedVerified ||
+          !loaded.items.any((item) =>
+              item.id == id &&
+              item.publishedVersion == revision.version &&
+              item.publishedMarkdown == revision.markdown &&
+              item.publishedValidatedAt?.isAtSameMomentAs(
+                  revision.validatedAt) == true)) {
+        throw const FormatException('Signed published revision not recoverable');
+      }
+      return loaded;
+    }
     final snapshot = await _trustedSnapshot();
     if (snapshot != null) {
       final order = fresh.verifiedAt!.compareTo(snapshot.pack.verifiedAt!);
@@ -487,6 +603,6 @@ class OfflineRunbookRepository {
       }
     }
     await store.write(received);
-    return fresh;
+    return store is RunbookPinnedSnapshotStore ? await load() : fresh;
   }
 }
