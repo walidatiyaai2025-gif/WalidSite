@@ -165,8 +165,22 @@ class ReviewedRunbookReader {
     Duration timeout = const Duration(seconds: 12),
   }) => Future<T>.sync(operation).timeout(timeout);
 
-  Future<String> _fetch(Uri url) async {
-    final client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
+  Future<String> _fetch(Uri url) => fetchHttp(url);
+
+  /// Exercise the exact production transport against disposable loopback
+  /// servers without weakening the build-time HTTPS origin validation used
+  /// by loadPage/loadDetail. The injected URL/client are test-only.
+  @visibleForTesting
+  static Future<String> fetchHttp(
+    Uri url, {
+    HttpClient Function()? clientFactory,
+    Duration timeout = const Duration(seconds: 12),
+  }) async {
+    if (timeout <= Duration.zero) {
+      throw const FormatException('Invalid reviewed runbook deadline');
+    }
+    final client = (clientFactory?.call() ?? HttpClient())
+      ..connectionTimeout = const Duration(seconds: 8);
     try {
       return await withinDeadline(() async {
         final request = await client.getUrl(url);
@@ -184,9 +198,10 @@ class ReviewedRunbookReader {
           bytes.add(chunk);
         }
         return utf8.decode(bytes.takeBytes(), allowMalformed: false);
-      });
+      }, timeout: timeout);
     } finally {
-      // Stop any ongoing response stream after a whole-request timeout.
+      // Stop any ongoing response stream after the single whole-request
+      // deadline; a drip-feed cannot reset it at the chunk boundary.
       client.close(force: true);
     }
   }
