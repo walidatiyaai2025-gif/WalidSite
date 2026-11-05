@@ -54,6 +54,10 @@ class PublisherConsumerAcceptanceTest(unittest.TestCase):
                                    capture_output=True, check=False)
         if extension.returncode:
             self.skipTest("PHP sodium is unavailable (no signing acceptance evidence)")
+        zip_support = subprocess.run([PHP, "-r", 'exit(extension_loaded("zip") ? 0 : 1);'],
+                                     capture_output=True, check=False)
+        if zip_support.returncode:
+            self.skipTest("PHP ZipArchive is required for trusted publisher acceptance")
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
@@ -62,6 +66,9 @@ class PublisherConsumerAcceptanceTest(unittest.TestCase):
             for name, data in {
                 "application/bootstrap/app.php": b"<?php return 1;",
                 "application/vendor/autoload.php": b"<?php return 2;",
+                "application/composer.json": b'{"require":{"php":"^8.3"}}',
+                "application/composer.lock": b'{"packages":[]}',
+                "application/VERSION": b"1.2.3\n",
                 "public_html/index.php": b"<?php echo 'ok';",
                 "public_html/.htaccess": b"Options -Indexes",
                 "contracts/owner-cv-baseline.json": b"{}",

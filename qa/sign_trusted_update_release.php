@@ -58,6 +58,100 @@ if (is_link($archive) || ! is_file($archive) || filesize($archive) !== $meta['ar
     || ! hash_equals($meta['artifact_sha256'], hash_file('sha256', $archive))) {
     failClosed();
 }
+// The publisher must independently reject structural ZIP hazards, even when
+// an operator supplied a recalculated SHA-256. The recipient applies its own
+// separate inspection; neither checksum nor signing alone makes code safe.
+if (! class_exists(ZipArchive::class)) {
+    failClosed();
+}
+$zip = new ZipArchive();
+if ($zip->open($archive, ZipArchive::RDONLY | ZipArchive::CHECKCONS) !== true) {
+    failClosed();
+}
+$required = [
+    'application/bootstrap/app.php',
+    'application/vendor/autoload.php',
+    'application/composer.json',
+    'application/composer.lock',
+    'application/VERSION',
+    'public_html/index.php',
+    'public_html/.htaccess',
+];
+$seen = [];
+$total = 0;
+$versionInZip = null;
+try {
+    if ($zip->numFiles < count($required) || $zip->numFiles > 20000) {
+        failClosed();
+    }
+    for ($i = 0; $i < $zip->numFiles; $i++) {
+        $stat = $zip->statIndex($i);
+        if (! is_array($stat) || ! is_string($stat['name'] ?? null)
+            || ! is_int($stat['size'] ?? null) || ! is_int($stat['comp_size'] ?? null)) {
+            failClosed();
+        }
+        $name = $stat['name'];
+        if (strlen($name) > 512 || isset($seen[$name])
+            || ! preg_match('#\\A(?:application|public_html|contracts)/(?:[A-Za-z0-9_.@+ -]+/)*[A-Za-z0-9_.@+ -]+\\z#D', $name)
+            || str_contains($name, chr(0)) || str_contains($name, chr(92))) {
+            failClosed();
+        }
+        foreach (explode('/', $name) as $part) {
+            if ($part === '' || $part === '.' || $part === '..'
+                || ($part[0] === '.' && $part !== '.htaccess')
+                || str_starts_with(strtolower($part), '.env')
+                || in_array(strtolower($part), ['site-installed.lock', 'site-first-run.json',
+                    'site-setup-token', 'id_rsa', 'id_ed25519'], true)) {
+                failClosed();
+            }
+        }
+        if (str_starts_with($name, 'application/storage/')
+            || str_starts_with($name, 'public_html/storage/')
+            || str_starts_with($name, 'public_html/uploads/')) {
+            failClosed();
+        }
+        $seen[$name] = true;
+        if (! $zip->getExternalAttributesIndex($i, $opsys, $attributes)) {
+            failClosed();
+        }
+        if ($opsys === ZipArchive::OPSYS_UNIX) {
+            $type = ($attributes >> 16) & 0170000;
+            if ($type !== 0 && $type !== 0100000) {
+                failClosed();
+            }
+        }
+        if ($stat['size'] < 0 || $stat['size'] > 134217728
+            || $stat['comp_size'] < 0
+            || ($stat['size'] !== 0 && $stat['comp_size'] === 0)
+            || ($stat['size'] > 1048576 && $stat['size'] > $stat['comp_size'] * 200)
+            || ($total += $stat['size']) > 1073741824) {
+            failClosed();
+        }
+        if ($name === 'application/VERSION') {
+            if ($stat['size'] < 5 || $stat['size'] > 32) {
+                failClosed();
+            }
+            $bytes = $zip->getFromIndex($i);
+            if (! is_string($bytes) || strlen($bytes) !== $stat['size']) {
+                failClosed();
+            }
+            $versionInZip = trim($bytes);
+        }
+    }
+} finally {
+    $zip->close();
+}
+foreach ($required as $path) {
+    if (! isset($seen[$path])) {
+        failClosed();
+    }
+}
+if ($versionInZip !== $meta['version']
+    || ! hash_equals($meta['artifact_sha256'], (string) hash_file('sha256', $archive))
+    || filesize($archive) !== $meta['artifact_size']) {
+    failClosed();
+}
+
 $catalog = $directory.'/latest.json';
 if (file_exists($catalog) || is_link($catalog)) {
     // Immutable publication: never replace an existing latest.json without an

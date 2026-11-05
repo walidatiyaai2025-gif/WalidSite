@@ -87,7 +87,18 @@ jobs:
         if: ${{ hashFiles('backend/composer.json') != '' }}
         with:
           php-version: '8.3'
-          extensions: mbstring, xml, pdo_sqlite, pdo_mysql
+          extensions: mbstring, xml, pdo_sqlite, pdo_mysql, zip, sodium
+      - name: Verify publisher ZIP signature and structural acceptance (mandatory)
+        if: ${{ hashFiles('backend/composer.json') != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -r 'exit(extension_loaded("zip") && extension_loaded("sodium") ? 0 : 1);'
+          php -l qa/sign_trusted_update_release.php
+          python3 -m unittest -v \
+            qa.tests.test_visual_trusted_update_publication \
+            qa.tests.test_visual_publisher_consumer_acceptance \
+            qa.tests.test_visual_signed_update_cross_language_acceptance
       - name: Laravel tests (mandatory once scaffold exists)
         if: ${{ hashFiles('backend/composer.json') != '' }}
         shell: bash
