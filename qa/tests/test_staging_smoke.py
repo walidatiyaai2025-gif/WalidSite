@@ -142,7 +142,7 @@ class StagingSmokeTest(unittest.TestCase):
     def test_private_laravel_paths_deny_without_reading_any_private_response_body(self):
         private = [check for check in CHECKS if check.kind == "private_denied"]
         self.assertEqual(len(private), 12)
-        self.assertEqual(len({check.path for check in private}), 8)
+        self.assertEqual(len({check.path for check in private}), 12)
         self.assertEqual(len({check.path for check in CHECKS}), len(CHECKS))
 
         for spec in private:
