@@ -131,5 +131,65 @@ foreach (json_decode($argv[2], true, 8, JSON_THROW_ON_ERROR) as $origin) {
                 )
 
 
+    def test_private_publisher_rejected_before_any_network_transport(self):
+        # Directly exercise the production discovery boundary. The injected
+        # transport counts calls but performs NO network I/O. A rejected
+        # reserved publisher must never reach cURL or even this callback.
+        catalog = ROOT / "backend/app/Domain/Deployment/TrustedReleaseCatalog.php"
+        self.assertTrue(catalog.is_file(), "Real catalog must be checked out")
+        runner = r"""
+require $argv[1];
+require $argv[2];
+foreach (json_decode($argv[3], true, 8, JSON_THROW_ON_ERROR) as $origin) {
+    $calls = 0;
+    $catalog = new \App\Domain\Deployment\TrustedReleaseCatalog(
+        static function (string $url, \Closure $write) use (&$calls): int {
+            ++$calls;
+            return 503;
+        }
+    );
+    try {
+        $catalog->check($origin, '', '0.1.1');
+        $status = 'unexpected_success';
+    } catch (\DomainException $exception) {
+        $status = 'blocked';
+    }
+    echo json_encode([$origin, $calls, $status], JSON_THROW_ON_ERROR), "\n";
+}
+"""
+        blocked = [
+            "https://publisher.localhost",
+            "https://publisher.deep.localhost",
+            "https://publisher.local",
+            "https://publisher.internal",
+            "https://publisher.home.arpa",
+        ]
+        allowed = ["https://updates.example.com"]
+        p = subprocess.run(
+            [PHP, "-d", "display_errors=stderr", "-r", runner,
+             str(VERIFIER), str(catalog), json.dumps(blocked + allowed)],
+            capture_output=True, text=True, timeout=15,
+        )
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertFalse(p.stderr, p.stderr)
+        decisions = {
+            domain: (calls, status)
+            for domain, calls, status in
+            (json.loads(line) for line in p.stdout.splitlines())
+        }
+        self.assertEqual(len(decisions), len(blocked + allowed))
+        for domain in blocked:
+            with self.subTest(origin=domain):
+                self.assertEqual(
+                    decisions[domain], (0, "blocked"),
+                    "Reserved publisher must fail BEFORE the HTTP transport",
+                )
+        self.assertEqual(
+            decisions[allowed[0]], (1, "blocked"),
+            "Public HTTPS origin must remain transport-reachable",
+        )
+
+
+
 if __name__ == "__main__":
     unittest.main()
