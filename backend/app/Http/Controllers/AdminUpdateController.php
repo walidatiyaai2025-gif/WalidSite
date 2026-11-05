@@ -25,18 +25,66 @@ final class AdminUpdateController extends Controller
             && $owner->hasRole('owner'), 403);
     }
 
-    /** Read the deployed code version, never an editable configured claim. */
+    /**
+     * Read the installed VERSION from one held regular inode, never from a
+     * pathname reopened after a separate is_file()/filesize() preflight.
+     * A forged or hardlinked identity must never enable Admin ZIP actions.
+     */
     private function installedVersion(): ?string
     {
         $file = base_path('VERSION');
-        if (! is_file($file) || is_link($file) || ! is_readable($file)
-            || filesize($file) === false || filesize($file) > 32) {
+        clearstatcache(true, $file);
+        if (is_link($file) || realpath($file) !== $file) {
             return null;
         }
+        $stream = @fopen($file, 'rb');
+        if ($stream === false) {
+            return null;
+        }
+        try {
+            $baseline = @fstat($stream);
+            if (! is_array($baseline)
+                || ($baseline['mode'] & 0170000) !== 0100000
+                || ($baseline['nlink'] ?? 0) !== 1
+                || $baseline['size'] < 1 || $baseline['size'] > 32
+                || ($baseline['mode'] & 0022) !== 0
+                || ! $this->sameInstalledVersionInode($stream, $file, $baseline)) {
+                return null;
+            }
+            $bytes = @stream_get_contents($stream, 33);
+            if (! is_string($bytes) || strlen($bytes) !== $baseline['size']
+                || ! $this->sameInstalledVersionInode($stream, $file, $baseline)) {
+                return null;
+            }
+            $version = trim($bytes);
+            return preg_match('/\A(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\z/D', $version) === 1
+                ? $version : null;
+        } finally {
+            fclose($stream);
+        }
+    }
 
-        $version = trim((string) @file_get_contents($file));
-        return preg_match('/\A(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\z/D', $version) === 1
-            ? $version : null;
+    /**
+     * @param resource $stream
+     * @param array<string|int,mixed> $baseline
+     */
+    private function sameInstalledVersionInode($stream, string $path, array $baseline): bool
+    {
+        clearstatcache(true, $path);
+        $named = @lstat($path);
+        $opened = @fstat($stream);
+        if (! is_array($named) || ! is_array($opened) || is_link($path)
+            || realpath($path) !== $path
+            || ($named['mode'] & 0170000) !== 0100000) {
+            return false;
+        }
+        foreach (['dev', 'ino', 'size', 'mode', 'nlink', 'mtime', 'ctime'] as $field) {
+            if ($named[$field] !== $baseline[$field]
+                || $opened[$field] !== $baseline[$field]) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private function pinnedInstalledVersion(): ?string
