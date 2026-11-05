@@ -165,7 +165,7 @@ class StagingSmokeTest(unittest.TestCase):
                     # fixture bytes, but no private response content was read.
                     private_response = next(
                         response for request, response in zip(fake.requested, fake.responses)
-                        if request[0].endswith(spec.path)
+                        if request[0].split("staging.example.com", 1)[-1] == spec.path
                     )
                     self.assertEqual(private_response.body.tell(), 0)
 
@@ -189,7 +189,7 @@ class StagingSmokeTest(unittest.TestCase):
                     self.assertTrue(all(response.closed for response in fake.responses))
                     private_response = next(
                         response for request, response in zip(fake.requested, fake.responses)
-                        if request[0].endswith(spec.path)
+                        if request[0].split("staging.example.com", 1)[-1] == spec.path
                     )
                     self.assertEqual(private_response.body.tell(), 0)
 
