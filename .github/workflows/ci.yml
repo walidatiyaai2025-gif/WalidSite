@@ -95,6 +95,7 @@ jobs:
           set -euo pipefail
           php -r 'exit(extension_loaded("zip") && extension_loaded("sodium") ? 0 : 1);'
           php -l qa/sign_trusted_update_release.php
+          php -l qa/cpanel_signed_update_artifact_probe.php
           python3 -m unittest -v \
             qa.tests.test_visual_trusted_update_publication \
             qa.tests.test_visual_publisher_consumer_acceptance \
@@ -107,6 +108,12 @@ jobs:
           composer validate --strict
           composer install --no-interaction --prefer-dist --no-progress
           php artisan test
+      - name: Verify generated Update ZIP with real PHP signed archive gate (mandatory)
+        if: ${{ hashFiles('backend/composer.json') != '' }}
+        shell: bash
+        run: |
+          python3 -m unittest -v \
+            qa.tests.test_visual_release_candidates.ReleaseCandidateTest.test_real_update_zip_matches_php_signed_release_archive_contract
       - name: MariaDB migration and owner CV idempotency smoke
         if: ${{ hashFiles('backend/composer.json') != '' }}
         shell: bash
