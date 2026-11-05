@@ -42,15 +42,14 @@ final class CpanelArchiveCodeOnlyPreflight
         }
 
         $installedVersionPath = $root.'/application/VERSION';
-        if (! is_file($installedVersionPath) || is_link($installedVersionPath)
-            || filesize($installedVersionPath) === false
-            || filesize($installedVersionPath) > 32
-            || trim((string) file_get_contents($installedVersionPath)) !== $installedVersion) {
+        if (trim($this->readPinned($installedVersionPath, 32)) !== $installedVersion) {
             throw new DomainException('Installed code identity is incompatible with this update.');
         }
 
-        $digest = hash_file('sha256', $archive);
-        if (! is_string($digest) || ! hash_equals($signedSha256, $digest)) {
+        // Hash the same open ZIP inode that passed path and permission checks.
+        // An archive hardlink, unsafe mode or altered bytes fails before
+        // ZipArchive inspects any executable entry (nothing is extracted).
+        if (! hash_equals($signedSha256, $this->hashPinned($archive, 1073741824))) {
             throw new DomainException('Signed update ZIP bytes changed before compatibility inspection.');
         }
 
@@ -62,25 +61,15 @@ final class CpanelArchiveCodeOnlyPreflight
         // separately tested full-runtime upgrade and recovery path.
         $installedComposer = [];
         foreach (['composer.json' => 1048576, 'composer.lock' => 8388608] as $entry => $limit) {
-            $path = $root.'/application/'.$entry;
-            $size = @filesize($path);
-            $stat = @stat($path);
-            if (! is_file($path) || is_link($path) || realpath($path) !== $path
-                || ! is_readable($path) || $size === false || $size < 1
-                || $size > $limit || $stat === false || ($stat['nlink'] ?? 0) !== 1) {
-                throw new DomainException('Installed Composer dependency identity is unsafe.');
-            }
-            $contents = @file_get_contents($path);
-            if (! is_string($contents) || strlen($contents) !== $size
-                || ! is_array(json_decode($contents, true))) {
+            $contents = $this->readPinned($root.'/application/'.$entry, $limit);
+            if (! is_array(json_decode($contents, true))) {
                 throw new DomainException('Installed Composer dependency metadata is invalid.');
             }
             $installedComposer[$entry] = hash('sha256', $contents);
         }
+        $installedWeb = [];
         foreach (['index.php', '.htaccess'] as $entry) {
-            if (! is_file($public.'/'.$entry) || is_link($public.'/'.$entry)) {
-                throw new DomainException('Stable installed web entrypoint is unavailable.');
-            }
+            $installedWeb[$entry] = $this->hashPinned($public.'/'.$entry, 2097152);
         }
 
         if (! class_exists(ZipArchive::class)) {
@@ -178,9 +167,17 @@ final class CpanelArchiveCodeOnlyPreflight
             $zip->close();
         }
 
-        $after = hash_file('sha256', $archive);
-        if (! is_string($after) || ! hash_equals($signedSha256, $after)) {
+        if (! hash_equals($signedSha256, $this->hashPinned($archive, 1073741824))) {
             throw new DomainException('Candidate ZIP changed during compatibility inspection.');
+        }
+        if (trim($this->readPinned($installedVersionPath, 32)) !== $installedVersion) {
+            throw new DomainException('Installed code identity changed during ZIP inspection.');
+        }
+        foreach (['composer.json' => 1048576, 'composer.lock' => 8388608] as $entry => $limit) {
+            if (! hash_equals($installedComposer[$entry],
+                hash('sha256', $this->readPinned($root.'/application/'.$entry, $limit)))) {
+                throw new DomainException('Installed Composer metadata changed during ZIP inspection.');
+            }
         }
         if ($candidateVersion !== $targetVersion || $oldMigrations !== $this->sorted($migrations)) {
             throw new DomainException('Changed database migrations require a separately verified upgrade and recovery.');
@@ -189,14 +186,105 @@ final class CpanelArchiveCodeOnlyPreflight
             throw new DomainException('Changed Composer dependencies require a separately verified runtime upgrade.');
         }
         foreach (['index.php', '.htaccess'] as $entry) {
-            $onDisk = hash_file('sha256', $public.'/'.$entry);
-            if (! isset($stableWeb[$entry]) || ! is_string($onDisk)
+            $onDisk = $this->hashPinned($public.'/'.$entry, 2097152);
+            if (! isset($stableWeb[$entry])
+                || ! hash_equals($installedWeb[$entry], $onDisk)
                 || ! hash_equals($stableWeb[$entry], $onDisk)) {
                 throw new DomainException('Candidate changes the immutable cPanel web entrypoint.');
             }
         }
 
         return ['state' => 'code_only_compatible', 'migrations' => count($migrations)];
+    }
+
+    /**
+     * Read signed/installed identity bytes only through a held, bounded,
+     * regular, singly-linked and non-group/world-writable file descriptor.
+     * Pathname prechecks alone can race a file replacement after stat().
+     */
+    private function readPinned(string $path, int $maximum): string
+    {
+        return $this->withPinned($path, $maximum, static function ($stream, int $size) use ($maximum): string {
+            $bytes = @stream_get_contents($stream, $maximum + 1);
+            if (! is_string($bytes) || strlen($bytes) !== $size) {
+                throw new DomainException('Pinned update identity changed during read.');
+            }
+            return $bytes;
+        });
+    }
+
+    private function hashPinned(string $path, int $maximum): string
+    {
+        return $this->withPinned($path, $maximum, static function ($stream, int $size): string {
+            $context = hash_init('sha256');
+            if (hash_update_stream($context, $stream, $size + 1) !== $size) {
+                throw new DomainException('Pinned update archive or installed file changed during hashing.');
+            }
+            return hash_final($context);
+        });
+    }
+
+    /** @param callable(resource,int):string $reader */
+    private function withPinned(string $path, int $maximum, callable $reader): string
+    {
+        clearstatcache(true, $path);
+        $namedBeforeOpen = @lstat($path);
+        // Do not open a FIFO or device before checking its type: a blocking
+        // fopen() of a malicious named pipe could hang the owner preflight.
+        if (! is_array($namedBeforeOpen)
+            || ($namedBeforeOpen['mode'] & 0170000) !== 0100000
+            || ($namedBeforeOpen['nlink'] ?? 0) !== 1
+            || ($namedBeforeOpen['mode'] & 0022) !== 0
+            || ! is_int($namedBeforeOpen['size'])
+            || $namedBeforeOpen['size'] < 1 || $namedBeforeOpen['size'] > $maximum
+            || is_link($path) || realpath($path) !== $path) {
+            throw new DomainException('Untrusted update file pathname or type.');
+        }
+        $stream = @fopen($path, 'rb');
+        if ($stream === false) {
+            throw new DomainException('Update identity file is unavailable.');
+        }
+        try {
+            $original = @fstat($stream);
+            if (! is_array($original)
+                || ($original['mode'] & 0170000) !== 0100000
+                || ($original['nlink'] ?? 0) !== 1
+                || ($original['mode'] & 0022) !== 0
+                || ! is_int($original['size']) || $original['size'] < 1
+                || $original['size'] > $maximum) {
+                throw new DomainException('Update identity file has an unsafe inode, mode or size.');
+            }
+            $this->assertPinned($stream, $path, $original);
+            $value = $reader($stream, $original['size']);
+            $this->assertPinned($stream, $path, $original);
+            return $value;
+        } finally {
+            fclose($stream);
+        }
+    }
+
+    /**
+     * @param resource $stream
+     * @param array<string|int,mixed> $original
+     */
+    private function assertPinned($stream, string $path, array $original): void
+    {
+        clearstatcache(true, $path);
+        $named = @lstat($path);
+        $opened = @fstat($stream);
+        if (! is_array($named) || ! is_array($opened)
+            || is_link($path) || realpath($path) !== $path
+            || ($named['mode'] & 0170000) !== 0100000
+            || ($named['nlink'] ?? 0) !== 1) {
+            throw new DomainException('Update identity path changed while pinned.');
+        }
+        foreach (['dev', 'ino', 'size', 'mode', 'nlink', 'mtime', 'ctime'] as $field) {
+            if (! isset($named[$field], $opened[$field], $original[$field])
+                || $named[$field] !== $original[$field]
+                || $opened[$field] !== $original[$field]) {
+                throw new DomainException('Update identity inode changed while pinned.');
+            }
+        }
     }
 
     /**

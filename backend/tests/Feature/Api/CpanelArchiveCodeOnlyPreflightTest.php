@@ -224,6 +224,82 @@ final class CpanelArchiveCodeOnlyPreflightTest extends TestCase
         }
     }
 
+    public function test_hardlinked_installed_identity_and_archive_are_rejected_without_side_effects(): void
+    {
+        $sha = $this->makeZip($this->entries());
+        foreach ([
+            'application/VERSION',
+            'application/composer.json',
+            'application/composer.lock',
+            'public_html/index.php',
+            'public_html/.htaccess',
+            'WalidSite-update-v0.1.3.zip',
+        ] as $path) {
+            $source = $this->root.'/'.$path;
+            $alias = $this->root.'/pinned-identity-alias';
+            if (! @link($source, $alias)) {
+                self::markTestSkipped('POSIX hardlink fixtures are unavailable.');
+            }
+            try {
+                $this->reject($sha, 'Hardlinked '.$path.' must not pass compatibility preflight.');
+            } finally {
+                unlink($alias);
+            }
+            self::assertSame(
+                ['state' => 'code_only_compatible', 'migrations' => 1],
+                $this->check($sha),
+                'Removing the unsafe hardlink must restore a valid read-only preflight.',
+            );
+        }
+    }
+
+    public function test_group_writable_installed_identity_and_archive_fail_closed(): void
+    {
+        $sha = $this->makeZip($this->entries());
+        foreach ([
+            'application/VERSION',
+            'application/composer.json',
+            'application/composer.lock',
+            'public_html/index.php',
+            'public_html/.htaccess',
+            'WalidSite-update-v0.1.3.zip',
+        ] as $path) {
+            $source = $this->root.'/'.$path;
+            $originalMode = fileperms($source) & 0777;
+            self::assertTrue(chmod($source, 0666));
+            try {
+                $this->reject($sha, 'A different hosting principal must not alter '.$path.' during attestation.');
+            } finally {
+                chmod($source, $originalMode);
+            }
+            self::assertSame(
+                ['state' => 'code_only_compatible', 'migrations' => 1],
+                $this->check($sha),
+            );
+        }
+    }
+
+    public function test_installed_version_and_public_dispatcher_symlink_fail_closed(): void
+    {
+        $sha = $this->makeZip($this->entries());
+        foreach (['application/VERSION', 'public_html/index.php'] as $path) {
+            $source = $this->root.'/'.$path;
+            $safe = $source.'.safe';
+            self::assertTrue(rename($source, $safe));
+            self::assertTrue(symlink($safe, $source));
+            try {
+                $this->reject($sha, 'A linked installed identity must not pass signed ZIP preflight.');
+            } finally {
+                unlink($source);
+                rename($safe, $source);
+            }
+            self::assertSame(
+                ['state' => 'code_only_compatible', 'migrations' => 1],
+                $this->check($sha),
+            );
+        }
+    }
+
     public function test_candidate_migrations_cannot_be_streamed_outside_safe_bounds(): void
     {
         $entries = $this->entries();
