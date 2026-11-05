@@ -21,6 +21,12 @@ import urllib.error
 import urllib.request
 import zipfile
 
+# Support both `python qa/...py` in CI and `python -m qa...` in QA tests.
+if __package__:
+    from qa.build_cpanel_package import MAX_COMPRESSED_ARCHIVE_BYTES, verify_archive
+else:
+    from build_cpanel_package import MAX_COMPRESSED_ARCHIVE_BYTES, verify_archive
+
 
 def status(opener, port: int, host: str) -> tuple[int, bytes]:
     request = urllib.request.Request(
@@ -32,6 +38,41 @@ def status(opener, port: int, host: str) -> tuple[int, bytes]:
         response = error
     with response:
         return response.status, response.read(100_000)
+
+
+def extract_verified_archive(package: Path, target: Path) -> None:
+    """Verify and extract one pinned private ZIP snapshot, never a reopened input."""
+    if not all(hasattr(os, name) for name in ("O_NOFOLLOW", "O_NONBLOCK")):
+        raise ValueError("Secure no-follow ZIP access is unavailable")
+    try:
+        fd = os.open(package, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except OSError as exc:
+        raise ValueError("Unsafe cPanel ZIP input") from exc
+    with os.fdopen(fd, "rb") as source:
+        before = os.fstat(source.fileno())
+        if (not stat.S_ISREG(before.st_mode)
+                or before.st_size <= 0
+                or before.st_size > MAX_COMPRESSED_ARCHIVE_BYTES):
+            raise ValueError("Unsafe or oversized cPanel ZIP input")
+        with tempfile.TemporaryDirectory(prefix="walidsite-verified-cpanel-") as directory:
+            snapshot = Path(directory) / "pinned.zip"
+            with snapshot.open("xb") as output:
+                copied = 0
+                while chunk := source.read(1024 * 1024):
+                    copied += len(chunk)
+                    if copied > MAX_COMPRESSED_ARCHIVE_BYTES:
+                        raise ValueError("cPanel ZIP changed or exceeded safety budget")
+                    output.write(chunk)
+            after = os.fstat(source.fileno())
+            if (copied != before.st_size
+                    or (before.st_dev, before.st_ino, before.st_size,
+                        before.st_mtime_ns, before.st_ctime_ns)
+                    != (after.st_dev, after.st_ino, after.st_size,
+                        after.st_mtime_ns, after.st_ctime_ns)):
+                raise ValueError("cPanel ZIP changed during snapshot")
+            verify_archive(snapshot)
+            with zipfile.ZipFile(snapshot) as archive:
+                archive.extractall(target)
 
 
 def probe(app_root: Path, public_root: Path) -> None:
@@ -122,10 +163,7 @@ def main() -> None:
         probe(root, root / "public")
     else:
         with tempfile.TemporaryDirectory(prefix="walidsite-bootstrap-probe-") as tmp:
-            with zipfile.ZipFile(args.cpanel_zip) as archive:
-                if archive.testzip() is not None:
-                    raise RuntimeError("Damaged cPanel artifact")
-                archive.extractall(tmp)
+            extract_verified_archive(args.cpanel_zip, Path(tmp))
             home = Path(tmp)
             probe(home / "application", home / "public_html")
 

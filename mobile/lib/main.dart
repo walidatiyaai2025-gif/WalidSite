@@ -24,6 +24,21 @@ Future<String> _loginForArticleSave(String email, String password) async {
   return session.token;
 }
 
+/// Continue an acknowledged article Save into the private Saved account
+/// without requesting a second password or persisting a bearer token.
+Future<void> _openSavedAfterArticleSave(
+  BuildContext context, String bearer, bool arabic,
+) async {
+  if (bearer.isEmpty || bearer.length > 8192) return;
+  await Navigator.of(context).push<void>(MaterialPageRoute<void>(
+    builder: (_) => MobileAccountJourney(
+      arabic: arabic,
+      initialSection: MobileAccountSection.saved,
+      initialSession: MobileAiSession(token: bearer, expiresAt: null),
+    ),
+  ));
+}
+
 void main() => runApp(const WaleedTechApp());
 
 /// Real bilingual navigation shell; no fabricated projects, AI output or metrics.
@@ -250,6 +265,8 @@ class CompanionHome extends StatelessWidget {
                       arabic: arabic,
                       loginAction: _loginForArticleSave,
                       saveAction: const MobileAccountClient().saveArticle,
+                      onViewSaved: (viewContext, bearer) =>
+                          _openSavedAfterArticleSave(viewContext, bearer, arabic),
                     ),
                 ),
               ),
@@ -377,6 +394,8 @@ class CompanionHome extends StatelessWidget {
                       arabic: arabic,
                       loginAction: _loginForArticleSave,
                       saveAction: const MobileAccountClient().saveArticle,
+                      onViewSaved: (viewContext, bearer) =>
+                          _openSavedAfterArticleSave(viewContext, bearer, arabic),
                     ),
                   ),
                 ),
