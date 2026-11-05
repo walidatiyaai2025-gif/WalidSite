@@ -2327,7 +2327,7 @@ Route::middleware('auth:web')->prefix('admin')->group(function (): void {
             'section' => 'github',
             'repos' => $repos,
             'selectedRepo' => $selectedRepo,
-            'configuredCount' => min(20, count(config('portfolio.github_public_repos', []))),
+            'configuredCount' => count($directory->configuredSlugs()),
         ])->header('Cache-Control', 'no-store, private');
     })->name('admin.operations.github')->middleware('throttle:30,1');
 
@@ -2371,18 +2371,25 @@ Route::middleware('auth:web')->prefix('admin')->group(function (): void {
                     ? 'Selected repository is no longer publicly verified.'
                     : 'Selected public repository verified from GitHub.');
         }
-        foreach (array_slice(config('portfolio.github_public_repos', []), 0, 20) as $slug) {
-            if (is_string($slug)) {
-                \Illuminate\Support\Facades\Cache::forget('public-github:'.hash('sha256', strtolower($slug)));
-            }
+        $configuredSlugs = $directory->configuredSlugs();
+        $configured = count($configuredSlugs);
+        $lang = ($input['lang'] ?? 'en') === 'ar' ? 'ar' : 'en';
+        if ($configured === 0) {
+            // An empty/invalid allowlist must not claim a provider refresh.
+            return redirect()->route('admin.operations.github', ['lang' => $lang])
+                ->with('warning', $lang === 'ar'
+                    ? 'لا توجد مستودعات عامة صالحة مهيأة للتحقق.'
+                    : 'No valid public GitHub repositories are configured.');
+        }
+        foreach ($configuredSlugs as $slug) {
+            \Illuminate\Support\Facades\Cache::forget('public-github:'.hash('sha256', strtolower($slug)));
         }
         $repos = collect($directory->repositories());
         $verified = $repos->filter(static fn (array $item): bool => $item['status'] === 'verified')->count();
-        $configured = min(20, count(config('portfolio.github_public_repos', [])));
-        // A failed verification is not a successful synchronization.
-        return redirect()->route('admin.operations.github', ['lang' => ($input['lang'] ?? 'en') === 'ar' ? 'ar' : 'en'])
-            ->with($configured && !$verified ? 'warning' : 'status',
-                $configured && !$verified ? 'No configured public repository could be verified.' :
+        // Verification is successful only when GitHub confirms public metadata.
+        return redirect()->route('admin.operations.github', ['lang' => $lang])
+            ->with($verified === 0 ? 'warning' : 'status',
+                $verified === 0 ? 'No configured public repository could be verified.' :
                 'Verified public repositories: '.$verified);
     })->name('admin.operations.github.refresh')->middleware('throttle:5,1');
 
