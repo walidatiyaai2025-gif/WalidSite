@@ -112,6 +112,33 @@ void main() {
     );
   });
 
+  test('offline parser rejects multibyte JSON beyond 512 KiB before decoding', () {
+    const limit = 512 * 1024;
+    // Dart String.length counts UTF-16 units, not serialized UTF-8 bytes.
+    // The oversized, untrusted envelope must fail at the transport boundary
+    // even though its code-unit count remains below the nominal limit.
+    final raw = jsonEncode({
+      'schema': 'walidsite.offline-runbook-pack.v1',
+      'version': 'fixture',
+      'source': 'educational',
+      'items': [],
+      'ignored_padding': 'é' * (limit ~/ 2),
+    });
+    expect(raw.length, lessThan(limit));
+    expect(utf8.encode(raw).length, greaterThan(limit));
+    expect(() => OfflineRunbookPack.parse(raw), throwsA(isA<FormatException>()
+        .having((error) => error.message, 'message',
+            'Offline runbook package is too large')));
+
+    final bounded = jsonEncode({
+      'schema': 'walidsite.offline-runbook-pack.v1',
+      'version': 'fixture',
+      'source': 'تعليمات موثقة',
+      'items': [],
+    });
+    expect(OfflineRunbookPack.parse(bounded).version, 'fixture');
+  });
+
   test('future verification timestamps remain visibly unverified', () {
     final pack = OfflineRunbookPack(
       version: '0.1.0',
