@@ -203,6 +203,39 @@ class ReleaseCandidateTest(unittest.TestCase):
             [{'name': 'vendor/library', 'version': 'dev-feature/topic'}],
         )
 
+    def test_manifest_and_notes_have_immutable_independently_verifiable_checksums(self):
+        proof = prepare(self.source, self.out, '1.2.3', SHA)
+        for filename in ('WalidSite-Release-Manifest-v1.2.3.json',
+                         'WalidSite-Release-Notes-v1.2.3.md'):
+            with self.subTest(filename=filename):
+                document = self.out / filename
+                sidecar = self.out / (filename + '.sha256')
+                self.assertTrue(sidecar.is_file())
+                self.assertEqual(sidecar.read_text('ascii'),
+                                 f'{hashlib.sha256(document.read_bytes()).hexdigest()}  {filename}\n')
+                # A modification invalidates the recorded digest; the
+                # release remains UNSIGNED and never approved for deployment.
+                recorded = sidecar.read_text('ascii').split('  ', 1)[0]
+                with document.open('ab') as stream:
+                    stream.write(b'UNAPPROVED CHANGE')
+                self.assertNotEqual(hashlib.sha256(document.read_bytes()).hexdigest(),
+                                    recorded)
+        self.assertFalse(proof['production_ready'])
+
+    def test_existing_manifest_or_notes_sidecar_is_not_overwritten(self):
+        for filename in ('WalidSite-Release-Manifest-v1.2.3.json.sha256',
+                         'WalidSite-Release-Notes-v1.2.3.md.sha256'):
+            with self.subTest(filename=filename):
+                existing = self.out / filename
+                marker = b'prior independent checksum evidence'
+                existing.write_bytes(marker)
+                with self.assertRaisesRegex(ValueError, 'already exists'):
+                    prepare(self.source, self.out, '1.2.3', SHA)
+                self.assertEqual(existing.read_bytes(), marker)
+                self.assertEqual(sorted(item.name for item in self.out.iterdir()),
+                                 [filename])
+                existing.unlink()
+
     def test_existing_build_info_is_immutable_and_never_overwritten(self):
         existing = self.out / 'WalidSite-Build-Info-v1.2.3.json'
         existing.write_bytes(b'previous publisher build evidence')
