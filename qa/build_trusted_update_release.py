@@ -71,6 +71,11 @@ def frozen_setup_archive(source_zip: Path):
                     or not stat.S_ISREG(named_before.st_mode)
                     or identity(before) != identity(named_before)
                     or before.st_nlink != 1 or named_before.st_nlink != 1
+                    # An immutable publisher input must not be writable by
+                    # another group member or any local user. Inspect BOTH
+                    # the opened inode and the named entry before copying.
+                    or (before.st_mode & 0o022) != 0
+                    or (named_before.st_mode & 0o022) != 0
                     or not 0 < before.st_size <= MAX_TOTAL):
                 raise ValueError('Unsafe, unstable or oversized Setup source')
 
@@ -91,6 +96,8 @@ def frozen_setup_archive(source_zip: Path):
                     or identity(before) != identity(after)
                     or identity(after) != identity(named_after)
                     or after.st_nlink != 1 or named_after.st_nlink != 1
+                    or (after.st_mode & 0o022) != 0
+                    or (named_after.st_mode & 0o022) != 0
                     or not stat.S_ISREG(named_after.st_mode)):
                 raise ValueError('Setup source changed during release snapshot')
         # Only our private (0700) temporary directory exposes this file.
