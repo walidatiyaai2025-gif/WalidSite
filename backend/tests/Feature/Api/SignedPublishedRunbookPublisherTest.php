@@ -188,6 +188,79 @@ final class SignedPublishedRunbookPublisherTest extends TestCase
         }
     }
 
+    public function test_public_web_root_is_never_accepted_as_a_private_signed_publisher_destination(): void
+    {
+        $id = $this->guide();
+        $envelope = $this->publisher()->prepare([$id], $this->secret);
+        $expected = public_path('reviewed-runbooks-'.hash('sha256', $envelope).'.json');
+        $this->assertFileDoesNotExist($expected);
+        try {
+            $this->publisher()->storePrivate($envelope, public_path());
+            $this->fail('Signed private publisher output was written into public_html.');
+        } catch (RuntimeException $error) {
+            $this->assertStringContainsString('Private publisher output directory', $error->getMessage());
+        }
+        $this->assertFileDoesNotExist($expected);
+    }
+
+    public function test_hardlinked_publisher_lock_is_rejected_without_changing_unrelated_file(): void
+    {
+        $id = $this->guide();
+        $envelope = $this->publisher()->prepare([$id], $this->secret);
+        $dir = storage_path('framework/testing/runbook-publisher-'.Str::random(12));
+        $this->assertTrue(mkdir($dir, 0700, true));
+        $unrelated = $dir.'/unrelated-data';
+        $lock = $dir.'/.publisher.lock';
+        $this->assertSame(strlen('untouched-private-data'),
+            file_put_contents($unrelated, 'untouched-private-data'));
+        if (! @link($unrelated, $lock)) {
+            @unlink($unrelated);
+            @rmdir($dir);
+            $this->markTestSkipped('Host does not support hardlinks.');
+        }
+        try {
+            $this->expectException(RuntimeException::class);
+            $this->expectExceptionMessage('Unsafe publisher output inode');
+            $this->publisher()->storePrivate($envelope, $dir);
+        } finally {
+            $this->assertSame('untouched-private-data', file_get_contents($unrelated));
+            $this->assertSame([], glob($dir.'/reviewed-runbooks-*') ?: []);
+            @unlink($lock);
+            @unlink($unrelated);
+            @rmdir($dir);
+        }
+    }
+
+    public function test_existing_symlink_destination_preserves_original_data_and_cannot_be_published(): void
+    {
+        $id = $this->guide();
+        $envelope = $this->publisher()->prepare([$id], $this->secret);
+        $dir = storage_path('framework/testing/runbook-publisher-'.Str::random(12));
+        $this->assertTrue(mkdir($dir, 0700, true));
+        $outside = $dir.'/unrelated-data';
+        $this->assertSame(11, file_put_contents($outside, 'do not touch'));
+        $target = $dir.'/reviewed-runbooks-'.hash('sha256', $envelope).'.json';
+        if (! @symlink($outside, $target)) {
+            @unlink($outside);
+            @rmdir($dir);
+            $this->markTestSkipped('Host does not support symlinks.');
+        }
+        try {
+            $this->publisher()->storePrivate($envelope, $dir);
+            $this->fail('A signed publisher must never overwrite a symlink target.');
+        } catch (RuntimeException $error) {
+            $this->assertStringContainsString('already exists', $error->getMessage());
+        } finally {
+            $this->assertSame('do not touch', file_get_contents($outside));
+            $this->assertTrue(is_link($target));
+            $this->assertSame([], glob($dir.'/.signed-runbook-*') ?: []);
+            @unlink($target);
+            @unlink($outside);
+            @unlink($dir.'/.publisher.lock');
+            @rmdir($dir);
+        }
+    }
+
     public function test_no_network_publication_or_production_signer_is_synthesized(): void
     {
         $id = $this->guide();
