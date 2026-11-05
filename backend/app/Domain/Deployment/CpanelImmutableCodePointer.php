@@ -133,6 +133,13 @@ final class CpanelImmutableCodePointer
                 if ($healthCheck() !== true || $maintenanceReady() !== true) {
                     throw new RuntimeException('New release failed health validation.');
                 }
+                // The HTTP health probe may consume the last seconds of the
+                // private maintenance lease. Never return "switched" after
+                // its expiration: the stable dispatcher would serve old code
+                // until the marker is cleared, exposing unverified new code.
+                (new CpanelReleaseMaintenance())->assertActive(
+                    $home, $maintenanceToken, $previousRoot,
+                );
             } catch (Throwable $failure) {
                 if ($previous === null) {
                     if (! @unlink($pointer)) {
