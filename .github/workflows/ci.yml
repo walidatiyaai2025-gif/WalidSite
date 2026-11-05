@@ -537,15 +537,15 @@ jobs:
             > dist/unsigned-check/DO-NOT-INSTALL.txt
           # This is an inspection receipt only. Never copy old version-specific
           # release notes into a newer candidate.
-          printf '# WalidSite v%s — UNSIGNED inspection only\\n\\nSource SHA: %s\\n\\nNot published, not signed, and not installable through Admin updates.\\n' \\
+          printf '# WalidSite v%s — UNSIGNED inspection only\n\nSource SHA: %s\n\nNot published, not signed, and not installable through Admin updates.\n' \
             "$version" "$source_sha" > dist/unsigned-check/RELEASE-NOTES.md
           # Produce one source-pinned, complete release train from the SAME
           # already validated Setup ZIP. Both ZIPs, their checksums, release
           # manifest and release notes remain explicitly unpublished.
           mkdir -p dist/release-train
-          PYTHONPATH="$PWD" python3 -m qa.prepare_release_candidate \\
-            --cpanel-zip "$package" --output-dir dist/release-train \\
-            --version "$version" --sha "$source_sha" \\
+          PYTHONPATH="$PWD" python3 -m qa.prepare_release_candidate \
+            --cpanel-zip "$package" --output-dir dist/release-train \
+            --version "$version" --sha "$source_sha" \
             > dist/release-train-receipt.json
           (cd dist/release-train && sha256sum --check ./*.sha256)
           SOURCE_SHA="$source_sha" VERSION="$version" python3 - <<'PY'
