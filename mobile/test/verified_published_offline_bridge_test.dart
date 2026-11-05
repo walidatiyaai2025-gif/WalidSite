@@ -244,6 +244,36 @@ void main() {
     expect((await restarted.load()).items.single.publishedVersion, 4);
   });
 
+  test('cold start prefers higher published version over later signed timestamp',
+      () async {
+    final keys = await _keys();
+    final now = DateTime.now().toUtc();
+    final newerPublished = await _envelope(keys.pair, version: 4,
+        signedAt: now.subtract(const Duration(minutes: 3)));
+    final laterResignedOld = await _envelope(keys.pair, version: 3,
+        signedAt: now.subtract(const Duration(minutes: 1)));
+    final store = _PinnedMemoryStore()
+      ..global = laterResignedOld
+      ..pins[publishedId] = newerPublished;
+    var fetches = 0;
+    final source = SignedRunbookSource(
+      url: 'https://updates.example.org/reviewed-pack.json',
+      publicKeyBase64: keys.publicKey,
+      transport: (_) async {
+        fetches++;
+        return laterResignedOld;
+      },
+    );
+    final offline = await OfflineRunbookRepository(
+        source: source, store: store).load();
+    expect(offline.signedVerified, isTrue);
+    expect(offline.items.single.id, publishedId);
+    expect(offline.items.single.publishedVersion, 4);
+    expect(store.pins[publishedId], newerPublished);
+    expect(store.global, laterResignedOld);
+    expect(fetches, 0, reason: 'Offline reopen must not contact publisher');
+  });
+
   test('global signed snapshot rejects newer signed timestamp with older publication',
       () async {
     final keys = await _keys();
