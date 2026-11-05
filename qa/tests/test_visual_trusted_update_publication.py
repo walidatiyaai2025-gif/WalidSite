@@ -156,6 +156,24 @@ class TrustedUpdatePublicationTest(unittest.TestCase):
         alias.unlink()
         self.assertEqual(self.make_update()['version'], VERSION)
 
+    def test_source_zip_rejects_group_and_world_write_before_candidate_build(self):
+        if os.name != 'posix':
+            self.skipTest('Source file mode verification requires POSIX')
+        source_mode = self.source.stat().st_mode & 0o777
+        try:
+            for unsafe_mode in (0o664, 0o666, 0o626):
+                with self.subTest(mode=oct(unsafe_mode)):
+                    self.source.chmod(unsafe_mode)
+                    with self.assertRaisesRegex(
+                            ValueError, 'Unsafe, unstable or oversized Setup source'):
+                        self.make_update()
+                    self.assertFalse(
+                        (self.root / f'WalidSite-update-v{VERSION}.zip').exists())
+            self.source.chmod(0o644)
+            self.assertEqual(self.make_update()['version'], VERSION)
+        finally:
+            self.source.chmod(source_mode)
+
     def test_update_is_private_until_complete_then_published_without_overwrite(self):
         if os.name != 'posix':
             self.skipTest('Immutable ZIP publishing requires POSIX hard links')
