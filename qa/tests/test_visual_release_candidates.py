@@ -161,6 +161,53 @@ class ReleaseCandidateTest(unittest.TestCase):
         self.assertEqual(generated.read_bytes(), marker)
         self.assertEqual(sorted(p.name for p in self.out.iterdir()), [generated.name])
 
+    def test_real_update_zip_matches_php_signed_release_archive_contract(self):
+        """The exact built candidate must pass Laravel's real ZIP validator,
+        not just Python's manifest and CRC inspection. A throwaway Ed25519
+        signer exercises signatures without approving a production release.
+        """
+        import os
+        import shutil
+        import subprocess
+        php = shutil.which('php')
+        root = Path(__file__).resolve().parents[2]
+        if not php or not (root / 'backend/vendor/autoload.php').is_file():
+            self.skipTest('PHP and Composer are required for the cross-language gate')
+        candidate = prepare(self.source, self.out, '1.2.3', SHA)
+        script = root / 'qa/cpanel_signed_update_artifact_probe.php'
+        env = os.environ.copy()
+        env['GITHUB_ACTIONS'] = 'true'
+        result = subprocess.run(
+            [php, str(script), str(self.out.resolve()), '1.2.3', SHA],
+            cwd=root, env=env, text=True, capture_output=True, check=True,
+        )
+        receipt = json.loads(result.stdout)
+        self.assertEqual(receipt['schema'], 'walidsite.signed-zip-ci-acceptance.v1')
+        self.assertEqual(receipt['source_sha'], SHA)
+        self.assertEqual(receipt['version'], '1.2.3')
+        self.assertEqual(receipt['artifact_sha256'], candidate['update']['sha256'])
+        self.assertGreaterEqual(receipt['verified_files'], 4)
+        self.assertEqual(receipt['negative_rejections'], 4)
+        self.assertTrue(receipt['test_only_ephemeral_key'])
+        self.assertFalse(receipt['publisher_signature_verified'])
+        self.assertFalse(receipt['code_update_performed'])
+        self.assertFalse(receipt['production_ready'])
+        self.assertNotIn('PRIVATE KEY', result.stdout)
+        self.assertNotIn('signature', result.stdout.lower().replace(
+            'publisher_signature_verified', ''))
+
+        # A post-build artifact modification must be rejected BEFORE a valid
+        # synthetic signature could be used to inspect its contents.
+        with (self.out / candidate['update']['file']).open('ab') as out:
+            out.write(b'candidate has changed')
+        failed = subprocess.run(
+            [php, str(script), str(self.out.resolve()), '1.2.3', SHA],
+            cwd=root, env=env, text=True, capture_output=True,
+        )
+        self.assertEqual(failed.returncode, 1)
+        self.assertNotIn('PRIVATE KEY', failed.stderr)
+        self.assertEqual(failed.stdout, '')
+
     def test_main_ci_generates_complete_unpublished_release_train_from_same_setup_zip(self):
         workflow = (Path(__file__).resolve().parents[2] /
                     '.github/workflows/ci.yml').read_text()
@@ -171,6 +218,10 @@ class ReleaseCandidateTest(unittest.TestCase):
             'sha256sum --check ./*.sha256',
             'WalidSite-UNPUBLISHED-release-train-',
             'dist/release-train-receipt.json',
+            'php qa/cpanel_signed_update_artifact_probe.php',
+            'dist/release-train/signed-zip-acceptance.json',
+            'proof["test_only_ephemeral_key"] is True',
+            'proof["publisher_signature_verified"] is False',
             'receipt["publisher_signature_verified"] is False',
             'receipt["production_ready"] is False',
             'assert all(value is False for value in receipt["acceptance"].values())',
