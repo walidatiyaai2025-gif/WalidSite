@@ -185,7 +185,15 @@ final class MariaDbRecoverySnapshot
                 $fileHash = hash_init('sha256');
                 while (($line = fgets($input)) !== false) {
                     hash_update($fileHash, $line);
-                    $encoded = json_decode($line, true, 16, JSON_THROW_ON_ERROR);
+                    try {
+                        try {
+                            $encoded = json_decode($line, true, 16, JSON_THROW_ON_ERROR);
+                        } catch (\JsonException $error) {
+                            throw new DomainException('Malformed MariaDB recovery row; restore rejected.', 0, $error);
+                        }
+                    } catch (\JsonException $error) {
+                        throw new DomainException('Malformed MariaDB recovery row; restore rejected.', 0, $error);
+                    }
                     $decoded = $this->decode($encoded);
                     if (++$count > self::MAX_ROWS) {
                         throw new DomainException('MariaDB recovery row limit exceeded.');
