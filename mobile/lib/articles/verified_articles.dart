@@ -102,6 +102,7 @@ class VerifiedArticle {
 
     final articles = <VerifiedArticle>[];
     final seen = <String>{};
+    final seenIds = <String>{};
     for (final item in raw) {
       if (item is! Map<String, dynamic>) {
         throw const FormatException('Invalid article');
@@ -111,6 +112,11 @@ class VerifiedArticle {
       final title = item['title'];
       final body = item['body_markdown'];
       final citations = item['citations'];
+      // One published UUID must never resolve to two different slugs in
+      // a single feed. Save uses the UUID, not the visible article slug.
+      if (id is String && !seenIds.add(id.toLowerCase())) {
+        throw const FormatException('Duplicate published article identity');
+      }
       if ((id != null &&
               (id is! String ||
                   !RegExp(r'^[a-fA-F0-9]{8}(?:-[a-fA-F0-9]{4}){3}-[a-fA-F0-9]{12}$')
