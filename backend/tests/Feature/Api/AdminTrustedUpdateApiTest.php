@@ -101,6 +101,9 @@ final class AdminTrustedUpdateApiTest extends TestCase
 
     public function test_stale_or_foreign_configured_version_never_checks_publisher_or_claims_installed_code(): void
     {
+        // This test makes four requests in one minute; isolate the trust
+        // boundary from the unrelated production throttle:3,1 policy.
+        $this->withoutMiddleware(\Illuminate\Routing\Middleware\ThrottleRequests::class);
         // Signature verification alone cannot repair a false source-version
         // identity, even if the configured publisher key is legitimate.
         $calls = 0;
