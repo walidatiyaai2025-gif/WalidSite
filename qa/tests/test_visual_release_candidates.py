@@ -180,6 +180,48 @@ class ReleaseCandidateTest(unittest.TestCase):
         self.assertNotIn('cp docs/releases/WalidSite-v0.1.1.md', workflow)
         self.assertNotIn('name: WalidSite-Production-release-train', workflow)
 
+    def test_release_candidate_shell_command_is_one_invocation_with_proper_notes(self):
+        """The main-only build job is not exercised by ordinary PR CI.
+        Execute its command layout with harmless printf in a real Bash shell;
+        double-backslash YAML edits previously broke physical line joining.
+        """
+        import shutil
+        import subprocess
+        if not shutil.which('bash'):
+            self.skipTest('Bash acceptance is required on the Ubuntu runner')
+        lines = (Path(__file__).resolve().parents[2] /
+                 '.github/workflows/ci.yml').read_text().splitlines()
+        start = next(i for i, line in enumerate(lines)
+                     if 'PYTHONPATH="$PWD" python3 -m qa.prepare_release_candidate' in line)
+        command_lines = [line.strip() for line in lines[start:start + 4]]
+        for part in command_lines[:3]:
+            self.assertTrue(part.endswith('\\'), part)
+            self.assertFalse(part.endswith('\\\\'),
+                             'Bash uses two backslashes as an escaped literal, not continuation')
+        self.assertEqual(command_lines[3], '> dist/release-train-receipt.json')
+
+        script = '\n'.join(command_lines)
+        script = script.replace('PYTHONPATH="$PWD" python3 -m qa.prepare_release_candidate',
+                                r"printf '%s\n'")
+        script = script.replace('> dist/release-train-receipt.json', '')
+        script = ('package=setup.zip; version=1.2.3; source_sha=' + SHA +
+                  '\n' + script)
+        executed = subprocess.run(['bash', '-e', '-c', script], capture_output=True,
+                                  text=True, check=True)
+        self.assertEqual(executed.stdout.splitlines(), [
+            '--cpanel-zip', 'setup.zip',
+            '--output-dir', 'dist/release-train',
+            '--version', '1.2.3',
+            '--sha', SHA,
+        ])
+
+        note = next(line for line in lines
+                    if line.strip().startswith("printf '# WalidSite v%s"))
+        self.assertIn(r'only\n\nSource SHA: %s\n\nNot published', note)
+        self.assertNotIn(r'only\\n', note)
+        self.assertTrue(note.endswith('\\'))
+        self.assertFalse(note.endswith('\\\\'))
+
     def test_workflow_guards_tested_sha_and_blocks_release_promotion(self):
         workflow = (Path(__file__).resolve().parents[2] / '.github/workflows/release.yml').read_text()
         for item in ('workflow_dispatch:', 'required-ci-gate', 'build-cpanel-package',
