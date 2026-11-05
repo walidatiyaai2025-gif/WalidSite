@@ -99,9 +99,14 @@ def frozen_setup_archive(source_zip: Path):
 
 
 
+# Keep the original POSIX primitive separate from unrelated candidate-level
+# os.link test mocks, which patch the shared os module globally.
+_PUBLISH_LINK = os.link
+
+
 def publish_no_replace(staged: Path, target: Path) -> None:
     """Link a complete private ZIP to a new immutable release pathname only."""
-    os.link(staged, target, follow_symlinks=False)
+    _PUBLISH_LINK(staged, target, follow_symlinks=False)
 
 
 def build(source_zip: Path, output_dir: Path, version: str, source_sha: str) -> dict:
