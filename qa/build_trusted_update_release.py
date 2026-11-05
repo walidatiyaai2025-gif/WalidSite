@@ -98,6 +98,12 @@ def frozen_setup_archive(source_zip: Path):
         yield frozen
 
 
+
+def publish_no_replace(staged: Path, target: Path) -> None:
+    """Link a complete private ZIP to a new immutable release pathname only."""
+    os.link(staged, target, follow_symlinks=False)
+
+
 def build(source_zip: Path, output_dir: Path, version: str, source_sha: str) -> dict:
     if not VERSION.fullmatch(version) or not re.fullmatch('[a-f0-9]{40}', source_sha):
         raise ValueError('Invalid immutable release version or source SHA')
@@ -180,7 +186,7 @@ def build(source_zip: Path, output_dir: Path, version: str, source_sha: str) -> 
             raise ValueError('Staged update inode changed before publication')
         # link() fails with FileExistsError if another publisher wins the name.
         # TemporaryDirectory owns only staged bytes, never the shared target.
-        os.link(staged, target, follow_symlinks=False)
+        publish_no_replace(staged, target)
         published = os.stat(target, follow_symlinks=False)
         if (not stat.S_ISREG(published.st_mode) or published.st_nlink != 2
                 or (named.st_dev, named.st_ino, named.st_size, named.st_mtime_ns)
