@@ -85,6 +85,25 @@ class InstalledVersionFailClosedTests(unittest.TestCase):
         self.version.write_bytes(b"0.1.2" + b" " * 100)
         self.assertIsNone(self.evaluate())
 
+    def test_hardlinked_disk_identity_denied_and_recovered(self):
+        self.version.write_text("0.1.2\n", encoding="ascii")
+        self.assertEqual("0.1.2", self.evaluate())
+        alias = self.root / "version-alias"
+        try:
+            os.link(self.version, alias)
+        except (OSError, NotImplementedError):
+            self.skipTest("Hard links unavailable")
+        self.assertIsNone(self.evaluate())
+        alias.unlink()
+        self.assertEqual("0.1.2", self.evaluate())
+
+    def test_group_or_world_writable_disk_identity_denied(self):
+        self.version.write_text("0.1.2\n", encoding="ascii")
+        self.version.chmod(0o666)
+        self.assertIsNone(self.evaluate())
+        self.version.chmod(0o644)
+        self.assertEqual("0.1.2", self.evaluate())
+
     def test_symlink_disk_identity_denied(self):
         destination = self.root / "external-version"
         destination.write_text("0.1.2\n", encoding="ascii")
