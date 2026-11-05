@@ -5,9 +5,11 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
-from contextlib import redirect_stdout, redirect_stderr
+from contextlib import contextmanager, redirect_stdout, redirect_stderr
 import io
+import os
 
+from qa import release_artifact_gate as gate
 from qa.release_artifact_gate import verify, main, artifact_name, _stable_reader
 
 SHA = "a" * 40
@@ -157,6 +159,62 @@ class ReleaseArtifactGateTest(unittest.TestCase):
         # The new verifier never calls the attackable Path.stat on the
         # artifact; it hashes one opened, no-follow regular-file descriptor.
         self.assertFalse(changed)
+
+    def test_named_artifact_and_manifest_swaps_fail_even_if_original_fd_is_stable(self):
+        for name in ("artifact", "manifest"):
+            with self.subTest(name=name):
+                path = self.pkg if name == "artifact" else self.manifest
+                original = path.read_bytes()
+                relocated = path.with_name("relocated-" + path.name)
+                with self.assertRaisesRegex(ValueError, "Release input (?:pathname )?changed during verification"):
+                    with _stable_reader(path) as (stream, info):
+                        self.assertEqual(stream.read(), original)
+                        # Preserve all original bytes on the still-open inode:
+                        # descriptor-only fstat checks would incorrectly pass.
+                        path.rename(relocated)
+                        path.write_bytes(original)
+                        self.assertNotEqual(os.stat(path).st_ino, info.st_ino)
+                path.unlink()
+                relocated.rename(path)
+
+    def test_hardlinked_manifest_and_artifact_never_receive_attestation(self):
+        for path in (self.manifest, self.pkg):
+            with self.subTest(path=path.name):
+                linked = path.with_name("linked-" + path.name)
+                os.link(path, linked)
+                try:
+                    with self.assertRaisesRegex(ValueError, "Release input (?:pathname )?changed during verification"):
+                        verify(self.root, self.manifest, SHA)
+                finally:
+                    linked.unlink()
+
+    def test_directory_path_swapped_mid_artifact_read_fails_even_with_pinned_fd(self):
+        release_dir = self.root / "artifacts"
+        release_dir.mkdir()
+        self.pkg.rename(release_dir / self.pkg.name)
+        original_reader = gate._stable_reader
+        retired = self.root / "retired-artifacts"
+        swapped = False
+
+        @contextmanager
+        def swap_after_artifact_read(path, *, dir_fd=None):
+            nonlocal swapped
+            with original_reader(path, dir_fd=dir_fd) as result:
+                yield result
+                if dir_fd is not None and not swapped:
+                    # Relative file reads remain securely pinned to the old
+                    # directory FD. The pathname now resolves to new bytes.
+                    release_dir.rename(retired)
+                    release_dir.mkdir()
+                    (release_dir / self.pkg.name).write_bytes(b"unsafe replacement")
+                    swapped = True
+
+        with patch.object(gate, "_stable_reader", swap_after_artifact_read):
+            with self.assertRaisesRegex(ValueError, "directory changed"):
+                gate.verify(release_dir, self.manifest, SHA)
+        self.assertTrue(swapped)
+        self.assertEqual((retired / self.pkg.name).read_bytes(),
+                         b"test fixture, not a production release")
 
     def test_schema_unknown_fields_and_missing_artifacts_rejected(self):
         for mutation in (
