@@ -7,7 +7,7 @@ import unittest
 from contextlib import redirect_stderr
 from pathlib import Path
 from unittest.mock import patch
-from urllib.request import ProxyHandler
+from urllib.request import ProxyHandler, build_opener
 
 from qa.cpanel_https_setup_gate import (
     AcceptanceError, Client, Response, accept, csrf_from_html,
@@ -130,8 +130,15 @@ class FirstRunHttpGateTest(unittest.TestCase):
         context.assert_called_once_with(cafile=str(ca))
         handlers = [handler for handler in client.opener.handlers
                     if isinstance(handler, ProxyHandler)]
-        self.assertEqual(len(handlers), 1)
-        self.assertEqual(handlers[0].proxies, {})
+        # Python's OpenerDirector omits the deliberately empty
+        # ProxyHandler({}) instance from its handler list. Passing it to
+        # build_opener still suppresses the implicit ENV-based handler.
+        self.assertEqual(handlers, [])
+        default_handlers = [handler for handler in build_opener().handlers
+                            if isinstance(handler, ProxyHandler)]
+        self.assertEqual(len(default_handlers), 1)
+        self.assertEqual(default_handlers[0].proxies.get("https"),
+                         environment["HTTPS_PROXY"])
         self.assertEqual(client.origin, "https://localhost:18966")
         self.assertEqual(private_token(self.home), TOKEN)
 
