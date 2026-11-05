@@ -161,6 +161,25 @@ class ReleaseCandidateTest(unittest.TestCase):
         self.assertEqual(generated.read_bytes(), marker)
         self.assertEqual(sorted(p.name for p in self.out.iterdir()), [generated.name])
 
+    def test_main_ci_generates_complete_unpublished_release_train_from_same_setup_zip(self):
+        workflow = (Path(__file__).resolve().parents[2] /
+                    '.github/workflows/ci.yml').read_text()
+        for expected in (
+            'python3 -m qa.prepare_release_candidate',
+            '--cpanel-zip "$package"',
+            '--version "$version" --sha "$source_sha"',
+            'sha256sum --check ./*.sha256',
+            'WalidSite-UNPUBLISHED-release-train-',
+            'dist/release-train-receipt.json',
+            'receipt["publisher_signature_verified"] is False',
+            'receipt["production_ready"] is False',
+            'assert all(value is False for value in receipt["acceptance"].values())',
+            'assert not (directory / "latest.json").exists()',
+        ):
+            self.assertIn(expected, workflow)
+        self.assertNotIn('cp docs/releases/WalidSite-v0.1.1.md', workflow)
+        self.assertNotIn('name: WalidSite-Production-release-train', workflow)
+
     def test_workflow_guards_tested_sha_and_blocks_release_promotion(self):
         workflow = (Path(__file__).resolve().parents[2] / '.github/workflows/release.yml').read_text()
         for item in ('workflow_dispatch:', 'required-ci-gate', 'build-cpanel-package',
