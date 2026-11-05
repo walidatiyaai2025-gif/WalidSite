@@ -51,7 +51,8 @@ class OfflineRunbookPack {
     // The offline fallback is bundled with the app, not a streaming trust
     // boundary. Bound input before JSON decoding so a corrupt pack cannot
     // exhaust memory or lock the reader on a low-end device.
-    if (jsonText.length > 512 * 1024) {
+    if (jsonText.length > 512 * 1024 ||
+        utf8.encode(jsonText).length > 512 * 1024) {
       throw const FormatException('Offline runbook package is too large');
     }
     final decoded = jsonDecode(jsonText);
