@@ -73,7 +73,7 @@ class SearchEmptyGroupsTest extends TestCase
         }
 
         $this->get('/search?lang=ar&q=DualSearchKeyword')->assertOk()
-            ->assertSee('نتائج موثقة: 2 مقالان، 0 مشاريع.');
+            ->assertSee('نتائج موثقة: مقالان، 0 مشاريع.');
         $this->get('/search?lang=en&q=DualSearchKeyword')->assertOk()
             ->assertSee('Verified results: 2 articles, 0 projects.');
     }
