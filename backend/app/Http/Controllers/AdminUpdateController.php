@@ -23,6 +23,35 @@ final class AdminUpdateController extends Controller
             && $owner->hasRole('owner'), 403);
     }
 
+    /** Read the deployed code version, never an editable configured claim. */
+    private function installedVersion(): ?string
+    {
+        $file = base_path('VERSION');
+        if (! is_file($file) || is_link($file) || ! is_readable($file)
+            || filesize($file) === false || filesize($file) > 32) {
+            return null;
+        }
+
+        $version = trim((string) @file_get_contents($file));
+        return preg_match('/\A(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\z/D', $version) === 1
+            ? $version : null;
+    }
+
+    private function pinnedInstalledVersion(): ?string
+    {
+        $disk = $this->installedVersion();
+        $configured = config('site.trusted_installed_version');
+        return $disk !== null && is_string($configured) && hash_equals($disk, $configured)
+            ? $disk : null;
+    }
+
+    /** Non-secret fingerprint to invalidate a previously verified flash result. */
+    private function releaseTrustFingerprint(): string
+    {
+        return hash('sha256', (string) config('site.trusted_release_origin')
+            ."\n".(string) config('site.trusted_release_public_key'));
+    }
+
     public function index(Request $request, SiteUpdater $updater): View
     {
         $this->authorizeOwner($request);
@@ -30,20 +59,27 @@ final class AdminUpdateController extends Controller
 
         // This displays the code artifact actually installed on disk.
         // A configured source/ref string is not proof of the installed version.
-        $installedVersion = null;
-        $file = base_path('VERSION');
-        if (is_file($file) && ! is_link($file) && is_readable($file)
-            && filesize($file) !== false && filesize($file) <= 32) {
-            $value = trim((string) file_get_contents($file));
-            if (preg_match('/\\A(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)\\z/D', $value) === 1) {
-                $installedVersion = $value;
+        $installedVersion = $this->installedVersion();
+
+        // Signed discovery is bound to the exact installed code and pinned
+        // publisher settings. A changed release, key or stale browser flash
+        // must not be presented as a currently verified update.
+        $checked = $request->session()->get('trusted_release_check');
+        if (is_array($checked) && ($checked['state'] ?? null) === 'signed_release_available') {
+            $pinned = $this->pinnedInstalledVersion();
+            $at = $checked['checked_at'] ?? null;
+            if ($pinned === null
+                || ! hash_equals($pinned, (string) ($checked['installed_version'] ?? ''))
+                || ! hash_equals($this->releaseTrustFingerprint(), (string) ($checked['trust_fingerprint'] ?? ''))
+                || ! is_int($at) || $at > time() || time() - $at > 300
+                || config('site.updates_enabled') !== true) {
+                $request->session()->forget('trusted_release_check');
             }
         }
 
         $verifiedUpload = null;
         $inboxId = $request->session()->get('verified_owner_update_inbox');
-        if (is_string($inboxId) && $installedVersion !== null
-            && hash_equals($installedVersion, (string) config('site.trusted_installed_version'))
+        if (is_string($inboxId) && $this->pinnedInstalledVersion() !== null
             && filled(config('site.trusted_release_origin'))
             && filled(config('site.trusted_release_public_key'))) {
             try {
@@ -84,11 +120,11 @@ final class AdminUpdateController extends Controller
         if (config('site.updates_enabled') !== true) {
             $state = ['state' => 'disabled'];
         } else {
-            $installed = config('site.trusted_installed_version');
+            $installed = $this->pinnedInstalledVersion();
             $origin = config('site.trusted_release_origin');
             $publisher = config('site.trusted_release_public_key');
 
-            if (is_string($installed) && preg_match('/\A(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\z/D', $installed) === 1
+            if ($installed !== null
                 && is_string($origin) && $origin !== ''
                 && is_string($publisher) && $publisher !== '') {
                 try {
@@ -98,6 +134,8 @@ final class AdminUpdateController extends Controller
                     $state = [
                         'state' => 'signed_release_available',
                         'installed_version' => $installed,
+                        'trust_fingerprint' => $this->releaseTrustFingerprint(),
+                        'checked_at' => time(),
                         'version' => $release['version'],
                         'source_sha' => $release['source_sha'],
                         'artifact_sha256' => $release['artifact_sha256'],
@@ -135,9 +173,8 @@ final class AdminUpdateController extends Controller
             abort(422);
         }
 
-        $installed = trim((string) @file_get_contents(base_path('VERSION')));
-        if (! preg_match('/\A(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\z/D', $installed)
-            || ! hash_equals($installed, (string) config('site.trusted_installed_version'))
+        $installed = $this->pinnedInstalledVersion();
+        if ($installed === null
             || ! filled(config('site.trusted_release_origin'))
             || ! filled(config('site.trusted_release_public_key'))) {
             return back()->withErrors(['upload' => 'The installed release and trusted publisher are not configured.']);
