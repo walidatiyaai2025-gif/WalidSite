@@ -120,7 +120,7 @@ final class Web13SearchStageJourneyTest extends TestCase
                 'lang' => $lang, 'q' => 'screenneedle', 'type' => 'all',
             ]))->assertOk()
                 ->assertSee('name="type" value="all"', false)
-                ->assertSee($lang === 'ar' ? 'نتائج موثقة: 3 مقالات، 2 مشروعان.' : 'Verified results: 3 articles, 2 projects.');
+                ->assertSee($lang === 'ar' ? 'نتائج موثقة: 3 مقالات، مشروعان.' : 'Verified results: 3 articles, 2 projects.');
             $html = $page->getContent();
             $this->assertSame(3, substr_count($html, 'class="t012-search-card"'));
             $this->assertSame(3, substr_count($html, 'class="t012-search-badge"'));
