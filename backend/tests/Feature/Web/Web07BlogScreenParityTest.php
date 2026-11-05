@@ -74,9 +74,18 @@ final class Web07BlogScreenParityTest extends TestCase
                 ->assertDontSee('web07-private-paged-draft');
 
             // Page two has two verified cards in BOTH the reference viewport
-            // and the lower functional grid. Neither may silently drop the
-            // filters when linking to the article's already implemented Back.
-            foreach (['web07-paged-guide-10', 'web07-paged-guide-11'] as $slug) {
+            // and the lower functional grid. The records are UUID keyed;
+            // derive the actual page-two slugs instead of assuming SQL UUID
+            // ordering corresponds to their insertion sequence.
+            preg_match_all('/class="t012-card-link" href="([^"]+)"/',
+                $listing->getContent(), $viewportLinks);
+            self::assertCount(2, $viewportLinks[1]);
+            $slugs = [];
+            foreach ($viewportLinks[1] as $encodedUrl) {
+                $href = html_entity_decode($encodedUrl, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                $slug = basename((string) parse_url($href, PHP_URL_PATH));
+                self::assertMatchesRegularExpression('/\Aweb07-paged-guide-\d+\z/D', $slug);
+                $slugs[] = $slug;
                 $articleUrl = route('public.article', [
                     'slug' => $slug,
                     'lang' => $locale,
@@ -85,10 +94,7 @@ final class Web07BlogScreenParityTest extends TestCase
                     'category' => $category->slug,
                     'page' => 2,
                 ]);
-                $listing->assertSee(
-                    'class="t012-card-link" href="'.e($articleUrl).'"',
-                    false,
-                );
+                self::assertSame($articleUrl, $href);
                 self::assertSame(2, substr_count(
                     $listing->getContent(), 'href="'.e($articleUrl).'"',
                 ), 'Both article links must preserve validated blog context');
@@ -101,17 +107,23 @@ final class Web07BlogScreenParityTest extends TestCase
                 $detail->assertDontSee('WEB07 PRIVATE PAGED DRAFT');
                 $this->get(route('public.blog', $filters))->assertOk();
             }
+            self::assertCount(2, array_unique($slugs));
         }
 
-        // No filter => no stateful query added to otherwise public article
-        // URLs. Canonical links remain clean and crawler-safe.
+        // No filter => no source, q, category or page on otherwise public
+        // article links. Canonical SEO URLs remain clean and direct.
         $plain = $this->get(route('public.blog', ['lang' => 'en']))->assertOk();
-        $plain->assertSee(
-            'class="t012-card-link" href="'.e(route('public.article', [
-                'slug' => 'web07-paged-guide-1', 'lang' => 'en',
-            ])).'"',
-            false,
-        );
+        preg_match('/class="t012-card-link" href="([^"]+)"/',
+            $plain->getContent(), $plainLink);
+        self::assertNotEmpty($plainLink[1] ?? null);
+        $plainUrl = html_entity_decode($plainLink[1], ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $plainQuery = [];
+        parse_str((string) parse_url($plainUrl, PHP_URL_QUERY), $plainQuery);
+        self::assertSame(['lang' => 'en'], $plainQuery);
+        self::assertStringNotContainsString('source=', $plainUrl);
+        self::assertStringNotContainsString('category=', $plainUrl);
+        self::assertStringNotContainsString('page=', $plainUrl);
+        self::assertStringNotContainsString('q=', $plainUrl);
     }
 
     public function test_empty_reference_viewport_is_explained_and_recoverable_in_both_languages(): void
