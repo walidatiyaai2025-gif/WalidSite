@@ -73,6 +73,38 @@ jobs:
           assert all(value is False for value in data['acceptance'].values())
           assert not (Path('dist/candidates') / 'latest.json').exists()
           PY
+      - name: Verify real Update ZIP with PHP Ed25519 and archive safety boundary
+        shell: bash
+        env:
+          CANDIDATE_VERSION: ${{ inputs.version }}
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          test "${GITHUB_ACTIONS}" = "true"
+          php qa/cpanel_signed_update_artifact_probe.php \
+            dist/candidates "${CANDIDATE_VERSION}" "${SOURCE_SHA}" \
+            > dist/candidates/signed-zip-acceptance.json
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          directory = Path('dist/candidates')
+          version, sha = os.environ['CANDIDATE_VERSION'], os.environ['SOURCE_SHA']
+          manifest = json.loads((directory / f'WalidSite-Release-Manifest-v{version}.json').read_text())
+          proof = json.loads((directory / 'signed-zip-acceptance.json').read_text())
+          assert proof['schema'] == 'walidsite.signed-zip-ci-acceptance.v1'
+          assert proof['source_sha'] == manifest['source_sha'] == sha
+          assert proof['version'] == manifest['version'] == version
+          assert proof['artifact_sha256'] == manifest['update']['sha256']
+          assert proof['verified_files'] >= 4
+          assert proof['negative_rejections'] == 4
+          assert proof['test_only_ephemeral_key'] is True
+          assert proof['publisher_signature_verified'] is False
+          assert proof['code_update_performed'] is False
+          assert proof['production_ready'] is False
+          assert manifest['published'] is False
+          assert manifest['publisher_signature_verified'] is False
+          assert not (directory / 'latest.json').exists()
+          PY
       - name: Retain unpublished inspection candidates only
         uses: actions/upload-artifact@v4
         with:
