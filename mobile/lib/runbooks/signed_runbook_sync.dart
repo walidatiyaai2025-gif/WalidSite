@@ -289,6 +289,20 @@ class AppSupportRunbookStore implements RunbookPinnedSnapshotStore {
     return file.readAsString();
   }
 
+  /// Never truncate a pre-existing .part inode: it might be a hardlink to
+  /// unrelated app-support data. Remove only the temporary directory entry,
+  /// then reserve a new file exclusively before writing any signed bytes.
+  /// Symlinks and special-file leftovers are rejected without following them.
+  Future<void> _prepareTemporary(File temp) async {
+    final kind = await FileSystemEntity.type(temp.path, followLinks: false);
+    if (kind == FileSystemEntityType.file) {
+      await temp.delete();
+    } else if (kind != FileSystemEntityType.notFound) {
+      throw const FormatException('Unsafe signed runbook temporary file');
+    }
+    await temp.create(exclusive: true);
+  }
+
   @override
   Future<void> writePinned(String id, String envelope) async {
     if (envelope.isEmpty || utf8.encode(envelope).length > 800 * 1024) {
@@ -306,10 +320,7 @@ class AppSupportRunbookStore implements RunbookPinnedSnapshotStore {
       throw const FormatException('Unsafe signed snapshot destination');
     }
     final temp = File(target.path + '.part');
-    if (await FileSystemEntity.type(temp.path, followLinks: false) ==
-        FileSystemEntityType.link) {
-      throw const FormatException('Unsafe interrupted signed snapshot');
-    }
+    await _prepareTemporary(temp);
     try {
       // Atomic replacement on supported Android/iOS app-support filesystems.
       // A partial write leaves the previous complete pin in place.
@@ -367,13 +378,11 @@ class AppSupportRunbookStore implements RunbookPinnedSnapshotStore {
     final temp = File(target.path + '.part');
     final targetKind = await FileSystemEntity.type(
         target.path, followLinks: false);
-    final tempKind = await FileSystemEntity.type(temp.path, followLinks: false);
-    if ((targetKind != FileSystemEntityType.notFound &&
-            targetKind != FileSystemEntityType.file) ||
-        (tempKind != FileSystemEntityType.notFound &&
-            tempKind != FileSystemEntityType.file)) {
+    if (targetKind != FileSystemEntityType.notFound &&
+        targetKind != FileSystemEntityType.file) {
       throw const FormatException('Unsafe signed runbook snapshot destination');
     }
+    await _prepareTemporary(temp);
     try {
       await temp.writeAsString(envelope, flush: true);
       await temp.rename(target.path);
