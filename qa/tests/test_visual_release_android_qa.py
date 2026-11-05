@@ -151,7 +151,7 @@ class ReleaseAndroidQaAttachmentTest(unittest.TestCase):
                 archive.writestr("public_html/index.php", b"<?php echo 1;")
             digest = hashlib.sha256(target.read_bytes()).hexdigest()
             (directory / (name + ".sha256")).write_text(
-                digest + "  " + name + "\\n", encoding="ascii"
+                digest + "  " + name + "\n", encoding="ascii"
             )
             archives[kind.lower()] = {
                 "file": name, "sha256": digest, "bytes": target.stat().st_size,
@@ -206,10 +206,10 @@ class ReleaseAndroidQaAttachmentTest(unittest.TestCase):
         self.make_candidate()
         self.verify_candidate()
         version = self.checkout / "backend/VERSION"
-        version.write_text("1.2.4\\n", encoding="ascii")
+        version.write_text("1.2.4\n", encoding="ascii")
         with self.assertRaises(ValueError):
             self.verify_candidate()
-        version.write_text("1.2.3\\n", encoding="ascii")
+        version.write_text("1.2.3\n", encoding="ascii")
         for key, value in (
             ("source_sha", "f" * 40),
             ("version", "1.2.4"),
