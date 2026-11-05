@@ -17,7 +17,7 @@ final class AdminTrustedUpdateApiTest extends TestCase
     private function user(string $role = 'owner', string $status = 'active'): User
     {
         $user = User::create([
-            'email' => Str::random(16).'@example.com',
+            'email' => Str::random(16).'@example.test',
             'status' => $status,
         ]);
         $user->roles()->attach(Role::firstOrCreate(['name' => $role])->id);

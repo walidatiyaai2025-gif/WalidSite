@@ -154,7 +154,7 @@ class SiteMaintenanceTest extends TestCase
     {
         config(['site.setup_enabled' => true, 'site.setup_token' => str_repeat('t', 40)]);
         $owner = User::create([
-            'email' => 'protected@example.com',
+            'email' => 'protected@example.test',
             'password_hash' => 'already-configured',
             'status' => 'active',
         ]);
@@ -174,7 +174,7 @@ class SiteMaintenanceTest extends TestCase
         ]);
 
         $owner = User::create([
-            'email' => 'suspended-owner@example.com',
+            'email' => 'suspended-owner@example.test',
             'password_hash' => Hash::make('An-existing-owner-password-123!'),
             'status' => 'suspended',
         ]);
@@ -209,7 +209,7 @@ class SiteMaintenanceTest extends TestCase
         // The approved CV seeder may prepare a non-active identity without
         // a password. The guard must not treat that draft as a prior install.
         User::create([
-            'email' => 'placeholder@example.com',
+            'email' => 'placeholder@example.test',
             'password_hash' => null,
             'status' => 'pending',
         ]);
@@ -222,7 +222,7 @@ class SiteMaintenanceTest extends TestCase
     {
         $this->get('/admin/updates')->assertRedirect('/admin/login');
         $user = User::create([
-            'email' => 'regular@example.com',
+            'email' => 'regular@example.test',
             'password_hash' => 'unused',
             'status' => 'active',
         ]);
@@ -311,7 +311,7 @@ class SiteMaintenanceTest extends TestCase
             // configuration toggle is accidentally left enabled.
             config(['site.setup_enabled' => true]);
             $owner = User::create([
-                'email' => 'setup-installed@example.com',
+                'email' => 'setup-installed@example.test',
                 'password_hash' => 'test-already-activated',
                 'status' => 'active',
             ]);
@@ -330,7 +330,7 @@ class SiteMaintenanceTest extends TestCase
     {
         config(['site.updates_enabled' => false]);
         $owner = User::create([
-            'email' => 'owner@example.com',
+            'email' => 'owner@example.test',
             'password_hash' => 'unused',
             'status' => 'active',
         ]);
@@ -365,7 +365,7 @@ class SiteMaintenanceTest extends TestCase
     {
         config(['site.release_ref' => 'unidentified']);
         $owner = User::create([
-            'email' => 'update-w2-owner@example.com',
+            'email' => 'update-w2-owner@example.test',
             'password_hash' => 'unused',
             'status' => 'active',
         ]);
@@ -438,7 +438,7 @@ class SiteMaintenanceTest extends TestCase
             'site.trusted_release_public_key' => $publicKey,
         ]);
         $owner = User::create([
-            'email' => 'signed-check-owner@example.com',
+            'email' => 'signed-check-owner@example.test',
             'password_hash' => 'unused',
             'status' => 'active',
         ]);
@@ -485,7 +485,7 @@ class SiteMaintenanceTest extends TestCase
             'site.trusted_release_public_key' => '',
         ]);
         $owner = User::create([
-            'email' => 'signed-check-unconfigured@example.com',
+            'email' => 'signed-check-unconfigured@example.test',
             'password_hash' => 'unused',
             'status' => 'active',
         ]);
@@ -514,7 +514,7 @@ class SiteMaintenanceTest extends TestCase
             'site.trusted_release_public_key' => base64_encode(str_repeat('x', 32)),
         ]);
         $owner = User::create([
-            'email' => 'mismatched-installed-release@example.com',
+            'email' => 'mismatched-installed-release@example.test',
             'password_hash' => 'unused',
             'status' => 'active',
         ]);
@@ -541,7 +541,7 @@ class SiteMaintenanceTest extends TestCase
             'site.trusted_release_public_key' => $key,
         ]);
         $owner = User::create([
-            'email' => 'stale-release-check@example.com',
+            'email' => 'stale-release-check@example.test',
             'password_hash' => 'unused',
             'status' => 'active',
         ]);
@@ -600,7 +600,7 @@ class SiteMaintenanceTest extends TestCase
             'site.trusted_release_public_key' => base64_encode(str_repeat('x', 32)),
         ]);
         $owner = User::create([
-            'email' => 'signed-check-untrusted@example.com',
+            'email' => 'signed-check-untrusted@example.test',
             'password_hash' => 'unused',
             'status' => 'active',
         ]);
@@ -624,7 +624,7 @@ class SiteMaintenanceTest extends TestCase
         $this->withoutMiddleware(\Illuminate\Routing\Middleware\ThrottleRequests::class);
         $this->post('/admin/updates/check')->assertRedirect('/admin/login');
         $user = User::create([
-            'email' => 'release-check-admin@example.com',
+            'email' => 'release-check-admin@example.test',
             'password_hash' => 'unused',
             'status' => 'active',
         ]);
