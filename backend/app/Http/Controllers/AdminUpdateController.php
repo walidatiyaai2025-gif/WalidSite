@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Domain\Deployment\CpanelPhysicalHostPreflight;
 use App\Domain\Deployment\TrustedReleaseCatalog;
 use App\Domain\Deployment\TrustedOwnerUpdateInbox;
 use Illuminate\Http\UploadedFile;
@@ -107,7 +108,26 @@ final class AdminUpdateController extends Controller
             }
         }
 
-        return view('admin.updates.index', compact('status', 'installedVersion', 'verifiedUpload'));
+        // A read-only hosting check is informational, never authorization
+        // to execute an update. Re-bind the result to the ZIP whose bytes
+        // were reverified above, the installed version and a short TTL.
+        $hostPreflight = null;
+        $proof = $request->session()->get('owner_update_host_preflight');
+        if ($verifiedUpload !== null && is_string($inboxId) && is_array($proof)
+            && ($proof['id'] ?? null) === $inboxId
+            && ($proof['version'] ?? null) === $verifiedUpload['version']
+            && ($proof['artifact_sha256'] ?? null) === $verifiedUpload['artifact_sha256']
+            && ($proof['installed_version'] ?? null) === $installedVersion
+            && is_int($proof['checked_at'] ?? null)
+            && $proof['checked_at'] <= time()
+            && time() - $proof['checked_at'] <= 300
+            && config('site.updates_enabled') === true) {
+            $hostPreflight = $proof;
+        } else {
+            $request->session()->forget('owner_update_host_preflight');
+        }
+
+        return view('admin.updates.index', compact('status', 'installedVersion', 'verifiedUpload', 'hostPreflight'));
     }
 
     /**
@@ -181,6 +201,7 @@ final class AdminUpdateController extends Controller
         $request->session()->forget([
             'verified_owner_update_inbox',
             'trusted_release_check',
+            'owner_update_host_preflight',
         ]);
         abort_unless(config('site.updates_enabled') === true, 403);
         $data = $request->validate([
@@ -221,6 +242,76 @@ final class AdminUpdateController extends Controller
         return redirect()->route('admin.updates.index', [
             'lang' => $request->query('lang') === 'ar' ? 'ar' : 'en',
         ])->with('status', 'Signed update package verified. No code was installed or changed.');
+    }
+
+    /**
+     * Authenticated, READ-ONLY physical cPanel readiness check for the owner
+     * verified ZIP. Does not create a backup, touch maintenance, stage code or
+     * enable Install. Unsupported hosting fails closed with redacted details.
+     */
+    public function preflight(
+        Request $request,
+        TrustedOwnerUpdateInbox $inbox,
+        CpanelPhysicalHostPreflight $hosting,
+    ): RedirectResponse {
+        $this->authorizeOwner($request);
+        $request->session()->forget('owner_update_host_preflight');
+        abort_unless(config('site.updates_enabled') === true, 403);
+        $input = $request->validate(['lang' => ['sometimes', 'in:en,ar']]);
+        if (array_diff(array_keys($request->query()), ['lang']) !== []
+            || array_diff(array_keys($request->request->all()), ['_token']) !== []) {
+            return back()->withErrors(['hosting' => 'Unexpected hosting preflight parameter.']);
+        }
+
+        $installed = $this->pinnedInstalledVersion();
+        $inboxId = $request->session()->get('verified_owner_update_inbox');
+        if ($installed === null || ! is_string($inboxId)
+            || ! filled(config('site.trusted_release_origin'))
+            || ! filled(config('site.trusted_release_public_key'))) {
+            return back()->withErrors(['hosting' => 'Verify a trusted update ZIP and installed version first.']);
+        }
+
+        try {
+            // Recheck owner, release signature, source-version binding, ZIP
+            // integrity and file safety on EVERY request.
+            $verified = $inbox->getVerified(
+                $inboxId,
+                (string) $request->user()->getKey(),
+                storage_path('app/private/verified-updates'),
+                public_path(),
+                (string) config('site.trusted_release_origin'),
+                (string) config('site.trusted_release_public_key'),
+                $installed,
+            );
+            $size = filesize($verified['archive']);
+            if ($size === false) {
+                throw new \DomainException('Cannot inspect verified archive size.');
+            }
+            $hosting->assertReady(
+                dirname(public_path()),
+                base_path('resources/deployment/cpanel-stable-index.php'),
+                $installed,
+                $size,
+            );
+        } catch (Throwable $error) {
+            \Illuminate\Support\Facades\Log::warning('admin.updates.host_preflight_blocked', [
+                'type' => $error::class,
+            ]);
+            return back()->withErrors([
+                'hosting' => 'Physical cPanel hosting is not yet compatible with verified code updates. No backup or installation occurred.',
+            ]);
+        }
+
+        $request->session()->put('owner_update_host_preflight', [
+            'id' => $inboxId,
+            'installed_version' => $installed,
+            'version' => $verified['version'],
+            'artifact_sha256' => $verified['artifact_sha256'],
+            'checked_at' => time(),
+        ]);
+        return redirect()->route('admin.updates.index', [
+            'lang' => ($input['lang'] ?? 'en') === 'ar' ? 'ar' : 'en',
+        ])->with('status', 'Hosting layout checked. Backups, write isolation and code installation are NOT verified.');
     }
 
     public function apply(Request $request, SiteUpdater $updater): RedirectResponse
