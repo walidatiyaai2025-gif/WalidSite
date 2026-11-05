@@ -207,7 +207,15 @@ abstract class RunbookPinnedSnapshotStore implements RunbookSnapshotStore {
 }
 
 class AppSupportRunbookStore implements RunbookPinnedSnapshotStore {
-  const AppSupportRunbookStore();
+  const AppSupportRunbookStore({Directory? supportDirectory})
+      : _supportDirectory = supportDirectory;
+
+  // Optional injected app-support directory permits real filesystem tests
+  // without overriding the platform's production storage location.
+  final Directory? _supportDirectory;
+
+  Future<Directory> _home() async =>
+      _supportDirectory ?? await getApplicationSupportDirectory();
 
   static final _uuid = RegExp(
     r'^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$',
@@ -215,12 +223,12 @@ class AppSupportRunbookStore implements RunbookPinnedSnapshotStore {
   static const maxPins = 20;
 
   Future<File> _file() async {
-    final dir = await getApplicationSupportDirectory();
+    final dir = await _home();
     return File(dir.path + Platform.pathSeparator + 'signed-runbook-pack-v1.json');
   }
 
   Future<Directory> _pins({bool create = false}) async {
-    final home = await getApplicationSupportDirectory();
+    final home = await _home();
     final directory = Directory(
       home.path + Platform.pathSeparator + 'signed-runbook-pins-v1',
     );
@@ -317,7 +325,11 @@ class AppSupportRunbookStore implements RunbookPinnedSnapshotStore {
   @override
   Future<String?> read() async {
     final file = await _file();
-    if (!await file.exists()) return null;
+    final kind = await FileSystemEntity.type(file.path, followLinks: false);
+    if (kind == FileSystemEntityType.notFound) return null;
+    if (kind != FileSystemEntityType.file) {
+      throw const FormatException('Unsafe signed runbook snapshot');
+    }
     if (await file.length() > 800 * 1024) return null;
     return file.readAsString();
   }
@@ -347,13 +359,28 @@ class AppSupportRunbookStore implements RunbookPinnedSnapshotStore {
 
   @override
   Future<void> write(String envelope) async {
+    if (envelope.isEmpty || utf8.encode(envelope).length > 800 * 1024) {
+      throw const FormatException('Signed runbook snapshot exceeds storage limit');
+    }
     final target = await _file();
     final temp = File(target.path + '.part');
+    final targetKind = await FileSystemEntity.type(
+        target.path, followLinks: false);
+    final tempKind = await FileSystemEntity.type(temp.path, followLinks: false);
+    if ((targetKind != FileSystemEntityType.notFound &&
+            targetKind != FileSystemEntityType.file) ||
+        (tempKind != FileSystemEntityType.notFound &&
+            tempKind != FileSystemEntityType.file)) {
+      throw const FormatException('Unsafe signed runbook snapshot destination');
+    }
     try {
       await temp.writeAsString(envelope, flush: true);
       await temp.rename(target.path);
     } finally {
-      if (await temp.exists()) await temp.delete();
+      if (await FileSystemEntity.type(temp.path, followLinks: false) ==
+          FileSystemEntityType.file) {
+        await temp.delete();
+      }
     }
   }
 }
