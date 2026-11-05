@@ -100,6 +100,11 @@ final class TrustedReleaseStagerTest extends TestCase
             $signed, $this->incoming, $file, $this->private, $this->public,
         );
         self::assertNotSame($result['directory'], $again['directory']);
+        self::assertSame([], glob($this->private.'/release-staging/verified-archive-*') ?: [],
+            'Verified ZIP snapshots must be erased after extraction.');
+        self::assertSame([], glob($result['directory'].'/*.zip') ?: [],
+            'The signed ZIP must never be included in the staged application.');
+
     }
 
     public function test_stage_rejects_untrusted_archive_without_creating_candidate(): void
@@ -112,6 +117,18 @@ final class TrustedReleaseStagerTest extends TestCase
         [$file, $signed] = $this->release(true);
         $this->reject($signed, $file, $this->private, $this->public);
         self::assertSame([], glob($this->private.'/release-staging/candidate-*') ?: []);
+    }
+
+    public function test_failed_freeze_never_leaves_private_zip_or_live_mutations(): void
+    {
+        [$file, $signed] = $this->release();
+        // Preserve a real valid ZIP structure but invalidate its signed bytes.
+        $signed['artifact_sha256'] = str_repeat('f', 64);
+        $this->reject($signed, $file, $this->private, $this->public);
+        self::assertSame([], glob($this->private.'/release-staging/verified-archive-*') ?: []);
+        self::assertSame([], glob($this->private.'/release-staging/candidate-*') ?: []);
+        self::assertSame('LIVE-SITE-UNTOUCHED', file_get_contents($this->public.'/index.php'));
+        self::assertSame('LIVE-APP-KEY-UNTOUCHED', file_get_contents($this->private.'/.env'));
     }
 
     public function test_stage_rejects_public_or_nested_public_private_roots(): void
