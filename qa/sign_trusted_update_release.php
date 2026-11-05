@@ -61,7 +61,16 @@ $archive = $directory.'/'.$meta['artifact_file'];
 // local publisher workspace rename (including a hard-link or in-place edit).
 // Pin the source descriptor, copy it into a private new directory and scan
 // only those frozen bytes; reject identity drift before publishing a catalog.
+clearstatcache(true, $archive);
+$namedBeforeOpen = @lstat($archive);
+// Reject FIFO/device/socket/directory before fopen() can block on them.
+// The private publisher directory must prevent unrelated local writers
+// from swapping a regular file between this check and the held descriptor.
 if (is_link($archive) || realpath($archive) !== $archive
+    || ! is_array($namedBeforeOpen)
+    || ($namedBeforeOpen['mode'] & 0170000) !== 0100000
+    || ($namedBeforeOpen['nlink'] ?? 0) !== 1
+    || ($namedBeforeOpen['mode'] & 0022) !== 0
     || (fileperms($directory) & 0022) !== 0) {
     failClosed();
 }
