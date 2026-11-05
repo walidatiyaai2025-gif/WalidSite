@@ -619,6 +619,57 @@ void main() {
     expect(find.byKey(const Key('account-load-more')), findsNothing);
   });
 
+  test('saved page rejects UTF-8 payloads larger than its byte budget', () {
+    const limit = 512 * 1024;
+    // UTF-16 length can be below the limit while encoded bytes exceed it.
+    final raw = page(1, []) + ('é' * (limit ~/ 2));
+    expect(raw.length, lessThan(limit));
+    expect(utf8.encode(raw).length, greaterThan(limit));
+    expect(() => MobileSavedPage.parse(raw, 1), throwsFormatException);
+    expect(MobileSavedPage.parse(page(1, [article()]), 1).items, hasLength(1));
+  });
+
+  testWidgets('saved pagination rejects wrong page and case-folded duplicate',
+      (tester) async {
+    var attempts = 0;
+    await tester.pumpWidget(MaterialApp(
+      home: MobileAccountJourney(
+        arabic: false,
+        loginAction: (_, __) async =>
+            const MobileAiSession(token: bearer, expiresAt: null),
+        profileAction: (_) async => const MobileAccount(articleId, email),
+        savedAction: (_, __, number) async {
+          if (number == 1) {
+            return MobileSavedPage.parse(page(1, [article()], more: true), 1);
+          }
+          attempts++;
+          if (attempts == 1) {
+            // An injected loader returning the wrong page must fail closed.
+            return MobileSavedPage.parse(page(3, [runbook()]), 3);
+          }
+          if (attempts == 2) {
+            // Same published UUID under a different text representation.
+            final duplicate = article()..['resource_id'] = articleId.toUpperCase();
+            return MobileSavedPage.parse(page(2, [duplicate]), 2);
+          }
+          return MobileSavedPage.parse(page(2, [runbook()]), 2);
+        },
+      ),
+    ));
+    await login(tester);
+    for (var failure = 1; failure <= 2; failure++) {
+      await tester.tap(find.byKey(const Key('account-load-more')));
+      await tester.pumpAndSettle();
+      expect(find.text('Could not load more saved items.'), findsOneWidget);
+      expect(find.text('Source-verified Laravel guide'), findsOneWidget);
+      expect(find.text('Reviewed recovery runbook'), findsNothing);
+    }
+    await tester.tap(find.byKey(const Key('account-load-more')));
+    await tester.pumpAndSettle();
+    expect(attempts, 3);
+    expect(find.text('Reviewed recovery runbook'), findsOneWidget);
+  });
+
   testWidgets('expired login is rejected before any private account fetch',
       (tester) async {
     var protectedCalls = 0;
