@@ -69,7 +69,7 @@ Future<String> publisherEnvelope(SimpleKeyPair signingKey, {
       'published_version': version,
       'published_markdown': markdown,
       'published_validated_at': validated,
-      'published_body_sha256': wrongBodyHash ? 'a' * 64 : checksum,
+      'published_body_sha256': wrongBodyHash ? List.filled(64, 'a').join() : checksum,
     }],
   }));
   final signature = await Ed25519().sign(bytes, keyPair: signingKey);
