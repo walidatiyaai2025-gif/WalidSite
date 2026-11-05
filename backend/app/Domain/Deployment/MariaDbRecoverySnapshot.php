@@ -152,10 +152,12 @@ final class MariaDbRecoverySnapshot
             throw new DomainException('Target must be a distinct empty disposable MariaDB database.');
         }
 
-        // Validate the ENTIRE snapshot before a single DDL statement. An
-        // alphabetical child table could otherwise be created before a later
-        // parent table's corrupt file is discovered, leaving a dirty target.
+        // Inspect and hash the SAME opened inode as the verified row bytes.
+        // A separate hash_file(path) followed by fopen(path) permits an
+        // atomic pathname replacement after checksum validation. Keep each
+        // preflight inode identity for the later DDL/restore phase.
         $preflightBytes = 0;
+        $verifiedInodes = [];
         foreach ($metadata['tables'] as $table => $info) {
             $this->ident($table);
             if (! is_array($info) || ! is_string($info['ddl'] ?? null)
@@ -167,36 +169,62 @@ final class MariaDbRecoverySnapshot
                 throw new DomainException('Untrusted MariaDB recovery table metadata.');
             }
             $file = $directory.'/'.$table.'.jsonl';
-            if (! is_file($file) || is_link($file)
-                || ! hash_equals($info['file_sha256'], hash_file('sha256', $file))) {
-                throw new DomainException('MariaDB recovery file checksum mismatch before restore.');
-            }
-            $preflightBytes += filesize($file);
-            if ($preflightBytes > self::MAX_BYTES) {
-                throw new DomainException('MariaDB recovery archive exceeds safe byte limits.');
-            }
-            $input = fopen($file, 'rb');
+            $input = @fopen($file, 'rb');
             if ($input === false) {
                 throw new DomainException('Cannot open MariaDB recovery rows.');
             }
-            $count = 0;
-            $digests = [];
             try {
+                $before = $this->assertStableRowFile($input, $file);
+                $preflightBytes += $before['size'];
+                if ($preflightBytes > self::MAX_BYTES) {
+                    throw new DomainException('MariaDB recovery archive exceeds safe byte limits.');
+                }
+
+                // Validate the raw byte checksum on this SAME open descriptor
+                // before parsing any JSON. A tampered stream must report the
+                // integrity failure rather than leak parsing/encoding details.
+                $preflightHash = hash_init('sha256');
+                $hashedBytes = hash_update_stream($preflightHash, $input, $before['size'] + 1);
+                $this->assertStableRowFile($input, $file, $before);
+                if ($hashedBytes !== $before['size']
+                    || ! hash_equals($info['file_sha256'], hash_final($preflightHash))) {
+                    throw new DomainException('MariaDB recovery file checksum mismatch before restore.');
+                }
+                if (! rewind($input)) {
+                    throw new DomainException('Unable to rewind verified MariaDB recovery row source.');
+                }
+
+                $count = 0;
+                $digests = [];
+                $fileHash = hash_init('sha256');
                 while (($line = fgets($input)) !== false) {
-                    $encoded = json_decode($line, true, 16, JSON_THROW_ON_ERROR);
+                    hash_update($fileHash, $line);
+                    try {
+                        $encoded = json_decode($line, true, 16, JSON_THROW_ON_ERROR);
+                    } catch (\JsonException $error) {
+                        throw new DomainException('Malformed MariaDB recovery row; restore rejected.', 0, $error);
+                    }
                     $decoded = $this->decode($encoded);
                     if (++$count > self::MAX_ROWS) {
                         throw new DomainException('MariaDB recovery row limit exceeded.');
                     }
                     $digests[] = hash('sha256', $this->canonical($this->encode($decoded)));
                 }
+                if (! feof($input)) {
+                    throw new DomainException('MariaDB row stream read was interrupted.');
+                }
+                $this->assertStableRowFile($input, $file, $before);
+                if (! hash_equals($info['file_sha256'], hash_final($fileHash))) {
+                    throw new DomainException('MariaDB recovery file checksum mismatch before restore.');
+                }
+                sort($digests, SORT_STRING);
+                if ($count !== $info['rows']
+                    || ! hash_equals($info['data_sha256'], hash('sha256', implode("\n", $digests)))) {
+                    throw new DomainException('MariaDB recovery row contents mismatched before restore.');
+                }
+                $verifiedInodes[$table] = $before;
             } finally {
                 fclose($input);
-            }
-            sort($digests, SORT_STRING);
-            if ($count !== $info['rows']
-                || ! hash_equals($info['data_sha256'], hash('sha256', implode("\n", $digests)))) {
-                throw new DomainException('MariaDB recovery row contents mismatched before restore.');
             }
         }
 
@@ -205,28 +233,26 @@ final class MariaDbRecoverySnapshot
             $rows = 0;
             foreach ($metadata['tables'] as $table => $info) {
                 $quoted = $this->ident($table);
-                if (! is_array($info) || ! is_string($info['ddl'] ?? null)
-                    || ! str_starts_with($info['ddl'], 'CREATE TABLE ')
-                    || ! is_int($info['rows'] ?? null) || $info['rows'] < 0
-                    || $info['rows'] > self::MAX_ROWS
-                    || ! $this->validHash($info['file_sha256'] ?? null)
-                    || ! $this->validHash($info['data_sha256'] ?? null)) {
-                    throw new DomainException('Untrusted database recovery table descriptor.');
-                }
                 $file = $directory.'/'.$table.'.jsonl';
-                if (! is_file($file) || is_link($file)
-                    || ! hash_equals($info['file_sha256'], hash_file('sha256', $file))) {
-                    throw new DomainException('MariaDB backup row file was modified.');
-                }
-                $target->exec($info['ddl']);
-                $input = fopen($file, 'rb');
+                $input = @fopen($file, 'rb');
                 if ($input === false) {
-                    throw new RuntimeException('Cannot read database recovery rows.');
+                    throw new DomainException('Cannot open verified MariaDB recovery rows.');
                 }
-                $count = 0;
                 try {
+                    // Verify the SAME source inode seen during all-table
+                    // preflight BEFORE any CREATE TABLE; do not rely on a
+                    // second, unrelated hash_file() of its current pathname.
+                    $this->assertStableRowFile($input, $file, $verifiedInodes[$table]);
+                    $target->exec($info['ddl']);
+                    $count = 0;
+                    $fileHash = hash_init('sha256');
                     while (($line = fgets($input)) !== false) {
-                        $encoded = json_decode($line, true, 16, JSON_THROW_ON_ERROR);
+                        hash_update($fileHash, $line);
+                        try {
+                            $encoded = json_decode($line, true, 16, JSON_THROW_ON_ERROR);
+                        } catch (\JsonException $error) {
+                            throw new DomainException('Malformed MariaDB recovery row; restore rejected.', 0, $error);
+                        }
                         $row = $this->decode($encoded);
                         if (++$count > self::MAX_ROWS) {
                             throw new DomainException('MariaDB recovery row budget exceeded.');
@@ -239,9 +265,17 @@ final class MariaDbRecoverySnapshot
                             throw new RuntimeException('MariaDB restore insert failed.');
                         }
                     }
+                    if (! feof($input)) {
+                        throw new DomainException('MariaDB restore stream read was interrupted.');
+                    }
+                    $this->assertStableRowFile($input, $file, $verifiedInodes[$table]);
+                    if (! hash_equals($info['file_sha256'], hash_final($fileHash))) {
+                        throw new DomainException('MariaDB recovery file changed during restore.');
+                    }
                 } finally {
                     fclose($input);
                 }
+
                 if ($count !== $info['rows']) {
                     throw new DomainException('MariaDB restore row count mismatched.');
                 }
@@ -268,6 +302,41 @@ final class MariaDbRecoverySnapshot
         } finally {
             $target->exec('SET FOREIGN_KEY_CHECKS=1');
         }
+    }
+
+    /**
+     * Bind a MariaDB recovery stream to a single, non-linked regular inode
+     * and its named path, including stable size and modification metadata.
+     * This also rejects byte-identical pathname swaps between preflight and
+     * DDL. Caller never receives private row contents in exception messages.
+     *
+     * @param resource $stream
+     * @param ?array<string|int,mixed> $baseline
+     * @return array<string|int,mixed>
+     */
+    private function assertStableRowFile($stream, string $path, ?array $baseline = null): array
+    {
+        clearstatcache(true, $path);
+        $opened = @fstat($stream);
+        $named = @lstat($path);
+        if (! is_array($opened) || ! is_array($named)
+            || ($opened['mode'] & 0170000) !== 0100000
+            || ($named['mode'] & 0170000) !== 0100000
+            || ($opened['nlink'] ?? 0) !== 1 || ($named['nlink'] ?? 0) !== 1
+            || is_link($path) || realpath($path) !== $path
+            || $opened['dev'] !== $named['dev'] || $opened['ino'] !== $named['ino']
+            || ! is_int($opened['size']) || $opened['size'] < 0
+            || $opened['size'] > self::MAX_BYTES) {
+            throw new DomainException('MariaDB backup row pathname or inode changed during verification.');
+        }
+        foreach (['dev', 'ino', 'size', 'mtime', 'ctime'] as $field) {
+            if ($opened[$field] !== $named[$field]
+                || ($baseline !== null && $opened[$field] !== $baseline[$field])) {
+                throw new DomainException('MariaDB backup row identity changed during verification.');
+            }
+        }
+
+        return $opened;
     }
 
     /** @param array<string,mixed> $row @return array<string,string|null> */
