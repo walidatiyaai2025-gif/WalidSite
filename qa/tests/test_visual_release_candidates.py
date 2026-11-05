@@ -82,20 +82,22 @@ class ReleaseCandidateTest(unittest.TestCase):
         from qa.build_cpanel_package import verify_archive as real_verify
 
         def replace_original_after_verified(frozen, sha):
-            self.assertNotEqual(frozen, self.source)
-            self.assertTrue(frozen.exists())
             manifest = real_verify(frozen, sha)
-            verified_paths.append(frozen)
-            # An operator-controlled pathname is replaced after the trusted
-            # verifier finishes, before either published artifact is copied.
-            self.entries['application/bootstrap/app.php'] = b'<?php exit("INJECTED");'
-            self.make_source()
+            if frozen.name == 'source.zip':
+                self.assertNotEqual(frozen, self.source)
+                self.assertTrue(frozen.exists())
+                verified_paths.append(frozen)
+                # An operator-controlled pathname is replaced after the trusted
+                # verifier finishes, before either artifact is copied.
+                self.entries['application/bootstrap/app.php'] = b'<?php exit("INJECTED");'
+                self.make_source()
             return manifest
 
         with patch('qa.prepare_release_candidate.verify_archive',
                    side_effect=replace_original_after_verified) as verifier:
             receipt = prepare(self.source, self.out, '1.2.3', SHA)
-        verifier.assert_called_once()
+        self.assertEqual(verifier.call_count, 2,
+                         'Verify the frozen source and the emitted Setup ZIP')
         self.assertFalse(verified_paths[0].exists())
         setup = self.out / receipt['setup']['file']
         update = self.out / receipt['update']['file']
