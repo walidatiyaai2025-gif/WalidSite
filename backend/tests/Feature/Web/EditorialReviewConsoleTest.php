@@ -131,6 +131,57 @@ class EditorialReviewConsoleTest extends TestCase
         $this->get('/blog/'.$article->slug)->assertNotFound();
     }
 
+    public function test_unpublish_requires_real_published_transition_and_never_fabricates_a_second_audit_event(): void
+    {
+        $owner = $this->userWithRole('owner');
+        $this->actingAs($owner, 'web');
+        $article = $this->article();
+        $url = '/admin/content/'.$article->id.'/unpublish';
+        $unpublishedEvents = static fn () => DB::table('editorial_events')
+            ->where('article_id', $article->id)
+            ->where('action', 'manual_unpublished')->count();
+
+        // A draft never carried a published revision to revoke.
+        $this->post($url)->assertStatus(409);
+        $this->assertSame('draft', $article->fresh()->status);
+        $this->assertSame(0, $unpublishedEvents());
+        $this->post($url, ['force' => 'true'])
+            ->assertRedirect()->assertSessionHasErrors('unpublish');
+        $this->assertSame(0, $unpublishedEvents());
+
+        // The independent reviewer really publishes this reviewed revision.
+        $this->post('/admin/content/'.$article->id.'/publish')->assertRedirect();
+        $this->assertSame('published', $article->fresh()->status);
+        $this->assertSame(1, $article->fresh()->published_revision_no);
+        $this->get('/blog/'.$article->slug)->assertOk();
+
+        // A reader cannot revoke an already published public article.
+        $this->actingAs($this->userWithRole('reader'), 'web');
+        $this->post($url)->assertForbidden();
+        $this->assertSame('published', $article->fresh()->status);
+        $this->assertSame(0, $unpublishedEvents());
+
+        $this->actingAs($owner, 'web');
+        $this->post($url.'?lang=ar')->assertRedirect()
+            ->assertSessionHas('status', 'تم إلغاء نشر المقال.');
+        $this->assertSame('draft', $article->fresh()->status);
+        $this->assertNull($article->fresh()->published_revision_no);
+        $this->assertNull($article->fresh()->published_at);
+        $this->get('/blog/'.$article->slug)->assertNotFound();
+        $this->assertSame(1, $unpublishedEvents());
+
+        // The second submit must be a conflict, not a success/audit fiction.
+        $this->post($url.'?lang=en')->assertStatus(409);
+        $this->assertSame(1, $unpublishedEvents());
+        $this->assertSame('draft', $article->fresh()->status);
+        $this->assertDatabaseHas('editorial_events', [
+            'article_id' => $article->id,
+            'revision_no' => 1,
+            'action' => 'manual_unpublished',
+            'reason' => 'owner_or_admin_revoked',
+        ]);
+    }
+
     public function test_unvalidated_draft_cannot_publish_even_when_posted_directly(): void
     {
         $this->actingAs($this->userWithRole('admin'), 'web');
