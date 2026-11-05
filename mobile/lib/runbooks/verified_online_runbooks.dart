@@ -193,6 +193,43 @@ class ReviewedRunbookReader {
   }
 }
 
+/// Download only the selected still-published revision from an Ed25519
+/// publisher pack. Revalidate the exact UUID, version, body and review time
+/// before the repository is allowed to replace trusted offline bytes.
+@visibleForTesting
+Future<({OfflineRunbookPack pack, OfflineRunbook item})> downloadReviewedPublication({
+  required ReviewedRunbook listed,
+  required Future<ReviewedRunbook> Function(String) reload,
+  required OfflineRunbookRepository repository,
+}) async {
+  if (!repository.source.configured) {
+    throw const FormatException('Signed publisher is not configured');
+  }
+  final current = await reload(listed.id);
+  if (current.id.toLowerCase() != listed.id.toLowerCase() ||
+      current.version != listed.version ||
+      current.markdown != listed.markdown ||
+      !current.validatedAt.isAtSameMomentAs(listed.validatedAt)) {
+    throw const FormatException('Published runbook changed since listing');
+  }
+  final pack = await repository.syncPublished(PublishedRunbookRevision(
+    id: current.id,
+    version: current.version,
+    markdown: current.markdown,
+    validatedAt: current.validatedAt,
+  ));
+  final matches = pack.items.where((offline) =>
+      offline.id == current.id.toLowerCase() &&
+      offline.publishedVersion == current.version &&
+      offline.publishedMarkdown == current.markdown &&
+      offline.publishedValidatedAt?.isAtSameMomentAs(current.validatedAt) ==
+          true).toList();
+  if (!pack.signedVerified || matches.length != 1) {
+    throw const FormatException('Published revision absent from signed pack');
+  }
+  return (pack: pack, item: matches.single);
+}
+
 /// MOBILE-05: live reviewed catalog with deterministic load-more and local
 /// search. Never silently substitute an unsigned offline draft after failure.
 class ReviewedRunbookLibrary extends StatefulWidget {
@@ -200,12 +237,14 @@ class ReviewedRunbookLibrary extends StatefulWidget {
     required this.arabic,
     this.pageLoader,
     this.detailLoader,
+    this.offlineRepository,
     super.key,
   });
 
   final bool arabic;
   final Future<ReviewedRunbookPage> Function(int page)? pageLoader;
   final Future<ReviewedRunbook> Function(String id)? detailLoader;
+  final OfflineRunbookRepository? offlineRepository;
 
   @override
   State<ReviewedRunbookLibrary> createState() => _ReviewedRunbookLibraryState();
@@ -220,6 +259,13 @@ class _ReviewedRunbookLibraryState extends State<ReviewedRunbookLibrary> {
   bool _hasMore = false;
   String _query = '';
   String? _moreError;
+  final OfflineRunbookRepository _defaultOfflineRepository =
+      OfflineRunbookRepository();
+  String? _downloadingId;
+  String? _downloadMessageId;
+  String? _downloadMessage;
+  OfflineRunbookRepository get _repository =>
+      widget.offlineRepository ?? _defaultOfflineRepository;
 
   bool get _configured => widget.pageLoader != null ||
       ReviewedRunbookReader.configuredOrigin() != null;
@@ -250,6 +296,9 @@ class _ReviewedRunbookLibraryState extends State<ReviewedRunbookLibrary> {
     _hasMore = false;
     _moreError = null;
     _loadingMore = false;
+    _downloadingId = null;
+    _downloadMessageId = null;
+    _downloadMessage = null;
     _query = '';
     _first = _configured ? _fetch(1) : Future.value(
       const ReviewedRunbookPage(
@@ -295,6 +344,43 @@ class _ReviewedRunbookLibraryState extends State<ReviewedRunbookLibrary> {
     } finally {
       if (mounted && generation == _generation) {
         setState(() => _loadingMore = false);
+      }
+    }
+  }
+
+  Future<void> _download(ReviewedRunbook item) async {
+    // A selected item claims the operation before the first async boundary.
+    if (_downloadingId != null || !_repository.source.configured) return;
+    final generation = _generation;
+    setState(() {
+      _downloadingId = item.id;
+      _downloadMessageId = item.id;
+      _downloadMessage = null;
+    });
+    try {
+      final selected = await downloadReviewedPublication(
+        listed: item,
+        reload: widget.detailLoader ??
+            const ReviewedRunbookReader().loadDetail,
+        repository: _repository,
+      );
+      if (!mounted || generation != _generation) return;
+      setState(() => _downloadMessage = widget.arabic
+          ? 'تم التحقق من النسخة الموقّعة وحفظها دون إنترنت.'
+          : 'Signed published revision verified and stored offline.');
+      await Navigator.of(context).push<void>(MaterialPageRoute<void>(
+        builder: (_) => OfflineRunbookDetail(
+          item: selected.item, pack: selected.pack, arabic: widget.arabic,
+        ),
+      ));
+    } catch (_) {
+      if (!mounted || generation != _generation) return;
+      setState(() => _downloadMessage = widget.arabic
+          ? 'تعذّر توثيق التنزيل. احتُفظ بالنسخة المحلية السابقة.'
+          : 'Download could not be verified. Previous offline content was kept.');
+    } finally {
+      if (mounted && generation == _generation) {
+        setState(() => _downloadingId = null);
       }
     }
   }
@@ -364,6 +450,12 @@ class _ReviewedRunbookLibraryState extends State<ReviewedRunbookLibrary> {
                         ),
                       ),
                       const SizedBox(height: 14),
+                      if (!_repository.source.configured)
+                        Text(
+                          ar ? 'التنزيل الموقّع غير مهيأ. لن تُحفظ نسخة غير موثوقة.'
+                              : 'Signed downloads are not configured; no untrusted copy is cached.',
+                          key: const Key('online-runbook-download-unconfigured'),
+                        ),
                       if (items.isEmpty)
                         Text(
                           ar ? 'لا توجد أدلة منشورة ومعتمدة حاليًا.'
@@ -377,24 +469,57 @@ class _ReviewedRunbookLibraryState extends State<ReviewedRunbookLibrary> {
                           key: const Key('online-runbook-search-empty'),
                         ),
                       for (final item in visible)
-                        Card(child: ListTile(
-                          key: Key('online-runbook-' + item.id),
-                          leading: const Icon(Icons.fact_check_outlined),
-                          title: Text(item.title),
-                          subtitle: Text(ar
-                              ? 'الإصدار ' + item.version.toString()
-                              : 'Version ' + item.version.toString()),
-                          trailing: Icon(ar
-                              ? Icons.chevron_left : Icons.chevron_right),
-                          onTap: () => Navigator.of(context).push(
-                            MaterialPageRoute<void>(builder: (_) =>
-                              ReviewedRunbookDetail(
-                                id: item.id,
-                                arabic: ar,
-                                loader: widget.detailLoader,
+                        Card(child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            ListTile(
+                              key: Key('online-runbook-' + item.id),
+                              leading: const Icon(Icons.fact_check_outlined),
+                              title: Text(item.title),
+                              subtitle: Text(ar
+                                  ? 'الإصدار ' + item.version.toString()
+                                  : 'Version ' + item.version.toString()),
+                              trailing: Icon(ar
+                                  ? Icons.chevron_left : Icons.chevron_right),
+                              onTap: () => Navigator.of(context).push(
+                                MaterialPageRoute<void>(builder: (_) =>
+                                  ReviewedRunbookDetail(
+                                    id: item.id, arabic: ar,
+                                    loader: widget.detailLoader,
+                                    offlineRepository: _repository,
+                                  ),
+                                ),
                               ),
                             ),
-                          ),
+                            Padding(
+                              padding: const EdgeInsetsDirectional.only(
+                                  start: 12, end: 12, bottom: 8),
+                              child: Align(
+                                alignment: AlignmentDirectional.centerEnd,
+                                child: OutlinedButton.icon(
+                                  key: Key('online-runbook-download-' + item.id),
+                                  onPressed: _downloadingId != null ||
+                                          !_repository.source.configured
+                                      ? null : () => _download(item),
+                                  icon: const Icon(Icons.download_for_offline_outlined),
+                                  label: Text(_downloadingId == item.id
+                                      ? (ar ? 'جارٍ التوثيق...' : 'Verifying...')
+                                      : (ar ? 'تنزيل النسخة الموقّعة'
+                                          : 'Download signed revision')),
+                                ),
+                              ),
+                            ),
+                            if (_downloadMessageId == item.id &&
+                                _downloadMessage != null)
+                              Padding(
+                                padding: const EdgeInsetsDirectional.only(
+                                    start: 12, end: 12, bottom: 12),
+                                child: Text(
+                                  _downloadMessage!,
+                                  key: const Key('online-runbook-download-status'),
+                                ),
+                              ),
+                          ],
                         )),
                       if (_moreError != null)
                         Text(_moreError!, key: const Key('online-runbook-more-error')),
@@ -612,33 +737,19 @@ class _ReviewedRunbookDetailState extends State<ReviewedRunbookDetail> {
       _downloadMessage = null;
     });
     try {
-      // Recheck publication at the time of Download, including revocation
-      // and latest reviewed revision. A list-card is not approval evidence.
-      final current = await (widget.loader?.call(widget.id) ??
-          const ReviewedRunbookReader().loadDetail(widget.id));
-      if (current.id.toLowerCase() != item.id.toLowerCase()) {
-        throw const FormatException('Changed reviewed runbook identifier');
-      }
-      final pack = await repository.syncPublished(PublishedRunbookRevision(
-        id: current.id,
-        version: current.version,
-        markdown: current.markdown,
-        validatedAt: current.validatedAt,
-      ));
+      final selected = await downloadReviewedPublication(
+        listed: item,
+        reload: widget.loader ?? const ReviewedRunbookReader().loadDetail,
+        repository: repository,
+      );
       if (!mounted || epoch != _detailEpoch) return;
-      final matches = pack.items.where((offline) =>
-          offline.id == current.id.toLowerCase() &&
-          offline.publishedVersion == current.version).toList();
-      if (!pack.signedVerified || matches.length != 1) {
-        throw const FormatException('Missing signed downloaded runbook');
-      }
       setState(() => _downloadMessage = widget.arabic
           ? 'تم التحقق من النسخة الموقعة وحفظها محليًا.'
           : 'Signed published revision verified and saved offline.');
       await Navigator.of(context).push(MaterialPageRoute<void>(
         builder: (_) => OfflineRunbookDetail(
-          item: matches.single,
-          pack: pack,
+          item: selected.item,
+          pack: selected.pack,
           arabic: widget.arabic,
         ),
       ));
