@@ -272,12 +272,18 @@ final class AdminUpdateController extends Controller
         }
 
         try {
+            // Preflight is not a place to initialize writable private inbox
+            // directories for an invalid or missing session receipt.
+            $inboxRoot = storage_path('app/private/verified-updates');
+            if (! is_dir($inboxRoot) || is_link($inboxRoot)) {
+                throw new \DomainException('Previously verified upload inbox is unavailable.');
+            }
             // Recheck owner, release signature, source-version binding, ZIP
             // integrity and file safety on EVERY request.
             $verified = $inbox->getVerified(
                 $inboxId,
                 (string) $request->user()->getKey(),
-                storage_path('app/private/verified-updates'),
+                $inboxRoot,
                 public_path(),
                 (string) config('site.trusted_release_origin'),
                 (string) config('site.trusted_release_public_key'),
