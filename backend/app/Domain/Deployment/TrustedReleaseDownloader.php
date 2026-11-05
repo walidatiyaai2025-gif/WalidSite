@@ -156,6 +156,7 @@ final class TrustedReleaseDownloader
         }
 
         try {
+            $networkOptions = TrustedReleasePublicNetwork::curlPinOptions($url);
             $options = [
                 CURLOPT_FOLLOWLOCATION => false,
                 CURLOPT_MAXREDIRS => 0,
@@ -177,7 +178,8 @@ final class TrustedReleaseDownloader
                 $options[CURLOPT_PROTOCOLS] = CURLPROTO_HTTPS;
                 $options[CURLOPT_REDIR_PROTOCOLS] = CURLPROTO_HTTPS;
             }
-            if (! curl_setopt_array($handle, $options) || curl_exec($handle) === false) {
+            if (! curl_setopt_array($handle, $networkOptions + $options)
+                || curl_exec($handle) === false) {
                 throw new DomainException('Pinned HTTPS release download failed.');
             }
 

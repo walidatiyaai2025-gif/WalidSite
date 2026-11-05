@@ -71,6 +71,9 @@ final class TrustedReleaseCatalog
         }
 
         try {
+            // Pin the exact vetted public DNS address for this request; cURL
+            // may not independently resolve a private/rebound address.
+            $networkOptions = TrustedReleasePublicNetwork::curlPinOptions($url);
             $options = [
                 CURLOPT_FOLLOWLOCATION => false,
                 CURLOPT_MAXREDIRS => 0,
@@ -93,7 +96,9 @@ final class TrustedReleaseCatalog
                 $options[CURLOPT_REDIR_PROTOCOLS] = CURLPROTO_HTTPS;
             }
 
-            if (! curl_setopt_array($handle, $options) || curl_exec($handle) === false) {
+            // Verified IP and proxy exclusion are mandatory, not best effort.
+            if (! curl_setopt_array($handle, $networkOptions + $options)
+                || curl_exec($handle) === false) {
                 throw new DomainException('Publisher release HTTPS check failed.');
             }
             return (int) curl_getinfo($handle, CURLINFO_RESPONSE_CODE);
