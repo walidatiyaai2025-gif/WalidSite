@@ -17,6 +17,8 @@ import re
 import ssl
 import stat
 import sys
+import threading
+import time
 from dataclasses import dataclass
 from html.parser import HTMLParser
 from pathlib import Path
@@ -180,22 +182,74 @@ class Client:
         method = "POST" if form is not None else "GET"
         request = Request(self.origin + path, data=data, method=method,
                           headers={"Accept": "text/html"})
+
+        # urllib's socket timeout bounds only inactivity. A TLS peer can
+        # drip bytes indefinitely while read(MAX_BODY + 1) waits for more.
+        # Bound DNS/TLS, headers, body AND close within one wall-clock budget.
+        # The daemon may complete late, but its result is never accepted.
+        finished = threading.Event()
+        results: list[Response] = []
+        failures: list[Exception] = []
+
+        def probe() -> None:
+            try:
+                results.append(self._request_transaction(request))
+            except Exception as exc:
+                failures.append(exc)
+            finally:
+                finished.set()
+
+        threading.Thread(
+            target=probe, name="walidsite-local-https-acceptance", daemon=True,
+        ).start()
+        if not finished.wait(self.timeout):
+            raise AcceptanceError("Local HTTPS whole-request deadline exceeded")
+        if failures:
+            failure = failures[0]
+            if isinstance(failure, AcceptanceError):
+                raise failure
+            # Never serialize underlying exceptions containing host, headers,
+            # cookies or the private first-run token.
+            raise AcceptanceError("Local HTTPS transport failed") from None
+        if not results:
+            raise AcceptanceError("Local HTTPS probe produced no result")
+        return results[0]
+
+    def _request_transaction(self, request: Request) -> Response:
+        deadline = time.monotonic() + self.timeout
         try:
             try:
                 response = self.opener.open(request, timeout=self.timeout)
             except HTTPError as error:
                 response = error
             with response:
-                body = response.read(MAX_BODY + 1)
-                if len(body) > MAX_BODY:
-                    raise AcceptanceError("Oversized HTTP response")
                 location = response.headers.get("Location", "")
                 if location and not location.startswith(self.origin + "/"):
                     raise AcceptanceError("External or cross-origin redirect refused")
+                body = bytearray()
+                read_once = getattr(response, "read1", None)
+                while len(body) <= MAX_BODY:
+                    if time.monotonic() >= deadline:
+                        raise AcceptanceError("Local HTTPS whole-request deadline exceeded")
+                    remaining = MAX_BODY + 1 - len(body)
+                    if callable(read_once):
+                        chunk = read_once(min(16384, remaining))
+                    else:
+                        # Exact-size read(N) might block until all N bytes
+                        # arrive. One-byte reads are safe for wrapped errors.
+                        chunk = response.read(1)
+                    if time.monotonic() >= deadline:
+                        raise AcceptanceError("Local HTTPS whole-request deadline exceeded")
+                    if not isinstance(chunk, bytes):
+                        raise AcceptanceError("Invalid HTTPS response chunk")
+                    if not chunk:
+                        break
+                    body.extend(chunk)
+                if len(body) > MAX_BODY:
+                    raise AcceptanceError("Oversized HTTP response")
                 return Response(int(response.code), location, body.decode("utf-8", "strict"))
         except (URLError, OSError, UnicodeError, ssl.SSLError) as exc:
             raise AcceptanceError("HTTPS transport/certificate failure") from exc
-
 
 def accept(origin: str, account_home: Path, ca_file: Path) -> dict:
     token = private_token(account_home)
