@@ -195,6 +195,88 @@ class T024ReadinessTest(unittest.TestCase):
             with patch("qa.t024_readiness.os.O_NOFOLLOW", 0):
                 self.assertFalse(proof_ok(root, entry))
 
+    def test_evidence_proof_rejects_hardlinks_and_mutable_qa_paths(self):
+        """Real evidence must be single-linked and not writable by peers."""
+        if os.name != "posix":
+            self.skipTest("POSIX identity and mode enforcement")
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            qa_dir = root / "qa"
+            evidence_dir = qa_dir / "t024-evidence"
+            evidence_dir.mkdir(parents=True)
+            proof_file = evidence_dir / "proof.json"
+            payload = b'{"receipt":"synthetic_fixture_only"}'
+            proof_file.write_bytes(payload)
+            proof = {
+                "path": "qa/t024-evidence/proof.json",
+                "sha256": hashlib.sha256(payload).hexdigest(),
+                "source_sha": "a" * 40,
+                "command": "python3 -m unittest",
+            }
+            self.assertTrue(proof_ok(root, proof))
+            alias = root / "linked-private.json"
+            try:
+                os.link(proof_file, alias)
+            except (NotImplementedError, OSError):
+                self.skipTest("Hard link fixture is unsupported")
+            self.assertFalse(proof_ok(root, proof))
+            alias.unlink()
+            self.assertTrue(proof_ok(root, proof))
+
+            for path in (proof_file, evidence_dir, qa_dir, root):
+                with self.subTest(path=str(path)):
+                    prior = path.stat().st_mode & 0o777
+                    path.chmod(0o777 if path.is_dir() else 0o666)
+                    try:
+                        self.assertFalse(proof_ok(root, proof))
+                    finally:
+                        path.chmod(prior)
+                    self.assertTrue(proof_ok(root, proof))
+
+    def test_evidence_ancestor_swap_during_read_cannot_preserve_old_receipt(self):
+        """A moved directory's old FD is not current evidence provenance."""
+        if os.name != "posix" or not hasattr(os, "O_NOFOLLOW"):
+            self.skipTest("Requires descriptor-relative POSIX path verification")
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            evidence_dir = root / "qa/t024-evidence"
+            evidence_dir.mkdir(parents=True)
+            proof_file = evidence_dir / "proof.json"
+            contents = b'{"receipt":"synthetic_fixture_only"}'
+            proof_file.write_bytes(contents)
+            proof = {
+                "path": "qa/t024-evidence/proof.json",
+                "sha256": hashlib.sha256(contents).hexdigest(),
+                "source_sha": "a" * 40,
+                "command": "python3 -m unittest",
+            }
+            self.assertTrue(proof_ok(root, proof))
+            moved = root / "qa/moved-evidence"
+            real_read = os.read
+            swapped = False
+
+            def replace_parent_after_read(fd, size):
+                nonlocal swapped
+                data = real_read(fd, size)
+                if data and not swapped:
+                    swapped = True
+                    evidence_dir.rename(moved)
+                    evidence_dir.mkdir()
+                    (evidence_dir / "proof.json").write_bytes(contents)
+                return data
+
+            try:
+                with patch("qa.t024_readiness.os.read",
+                           side_effect=replace_parent_after_read):
+                    self.assertFalse(proof_ok(root, proof))
+                self.assertTrue(swapped)
+            finally:
+                if moved.exists():
+                    (evidence_dir / "proof.json").unlink()
+                    evidence_dir.rmdir()
+                    moved.rename(evidence_dir)
+            self.assertTrue(proof_ok(root, proof))
+
     def test_wrong_gate_or_extra_action_cannot_be_reported_ready(self):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
