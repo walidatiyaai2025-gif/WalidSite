@@ -308,6 +308,13 @@ final class CpanelImmutableCodePointer
             if (! is_array($original)) {
                 throw new DomainException('Physical release inode unavailable.');
             }
+            // The pathname was inspected BEFORE open; reject an exchanged
+            // inode even if its bytes, size and permissions are identical.
+            foreach (['dev', 'ino', 'size', 'mode', 'nlink', 'mtime', 'ctime'] as $key) {
+                if (! isset($named[$key], $original[$key]) || $named[$key] !== $original[$key]) {
+                    throw new DomainException('Physical release inode changed between inspection and open.');
+                }
+            }
             $this->assertPinnedPhysicalFile($stream, $path, $original);
             $bytes = @stream_get_contents($stream, $maximum + 1);
             if (! is_string($bytes) || strlen($bytes) !== $original['size']) {
