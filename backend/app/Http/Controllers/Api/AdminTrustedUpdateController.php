@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Domain\Deployment\TrustedReleaseCatalog;
+use App\Domain\Deployment\TrustedInstalledVersion;
 use App\Http\Controllers\Controller;
 use DomainException;
 use Illuminate\Http\JsonResponse;
@@ -26,15 +27,7 @@ final class AdminTrustedUpdateController extends Controller
      */
     private function installedVersion(): ?string
     {
-        $file = base_path('VERSION');
-        if (! is_file($file) || is_link($file) || ! is_readable($file)
-            || filesize($file) === false || filesize($file) > 32) {
-            return null;
-        }
-
-        $version = trim((string) @file_get_contents($file));
-        return preg_match('/\\A(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)\\z/D', $version) === 1
-            ? $version : null;
+        return app(TrustedInstalledVersion::class)->read(base_path('VERSION'));
     }
 
     public function check(Request $request, TrustedReleaseCatalog $catalog): JsonResponse
