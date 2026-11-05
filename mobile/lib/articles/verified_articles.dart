@@ -190,9 +190,7 @@ class VerifiedArticle {
 
   /// Re-validate an exact detail against published evidence before display.
   static VerifiedArticle parseDetail(String body, String expectedSlug) {
-    // The direct detail parser can also be called without the HTTP reader.
-    // Count encoded bytes before JSON parsing; non-ASCII input can be
-    // within the UTF-16 length limit while exceeding the transport budget.
+    // Bound encoded bytes before JSON decode for direct detail callers too.
     if (!RegExp(r'^[A-Za-z0-9-]{1,180}
       throw const FormatException('Invalid article detail');
     }
