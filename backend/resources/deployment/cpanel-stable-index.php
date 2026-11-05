@@ -17,17 +17,82 @@ $pointer = $home.'/.walidsite-active-release.json';
 $maintenance = $home.'/.walidsite-update-maintenance.json';
 $forcedPrevious = null;
 
+/**
+ * Read a private update-control inode exactly once. This file runs before
+ * Laravel autoload, so the fail-closed guard must depend only on PHP itself.
+ *
+ * The writer creates both control files as 0600, single-link regular files.
+ * Checking a pathname before a later file_get_contents() reopens a possibly
+ * different inode after a rename. Keep one descriptor and validate the name
+ * against it before AND after the bounded read.
+ */
+$readPrivateControl = static function (string $path, int $maximum, string $unavailable): string {
+    $stream = null;
+    try {
+        clearstatcache(true, $path);
+        $before = @lstat($path);
+        if (! is_array($before)
+            || ($before['mode'] & 0170000) !== 0100000
+            || ($before['mode'] & 0777) !== 0600
+            || $before['nlink'] !== 1
+            || $before['size'] < 1 || $before['size'] > $maximum) {
+            throw new \RuntimeException('Invalid private control-file metadata.');
+        }
+
+        $stream = @fopen($path, 'rb');
+        if ($stream === false) {
+            throw new \RuntimeException('Cannot open private control-file inode.');
+        }
+
+        $fields = ['dev', 'ino', 'size', 'mode', 'nlink', 'mtime', 'ctime'];
+        $sameInode = static function ($candidate) use ($before, $fields): bool {
+            if (! is_array($candidate)) {
+                return false;
+            }
+            foreach ($fields as $field) {
+                if (! isset($candidate[$field]) || $candidate[$field] !== $before[$field]) {
+                    return false;
+                }
+            }
+
+            return true;
+        };
+
+        clearstatcache(true, $path);
+        if (! $sameInode(@fstat($stream)) || ! $sameInode(@lstat($path))) {
+            throw new \RuntimeException('Private control-file identity changed before read.');
+        }
+        $raw = @stream_get_contents($stream, $maximum + 1);
+        if (! is_string($raw) || strlen($raw) !== $before['size']) {
+            throw new \RuntimeException('Private control-file bytes changed during read.');
+        }
+
+        clearstatcache(true, $path);
+        if (! $sameInode(@fstat($stream)) || ! $sameInode(@lstat($path))) {
+            throw new \RuntimeException('Private control-file identity changed after read.');
+        }
+
+        return $raw;
+    } catch (\Throwable) {
+        http_response_code(503);
+        header('Cache-Control: no-store');
+        exit($unavailable);
+    } finally {
+        if (is_resource($stream)) {
+            fclose($stream);
+        }
+    }
+};
+
 if (file_exists($maintenance) || is_link($maintenance)) {
     // An interrupted update must never expose unverified code to visitors.
     // A lease expiring after a crashed PHP worker serves its known previous
     // release; manual recovery removes the marker after inspecting the vault.
-    if (is_link($maintenance) || ! is_file($maintenance)
-        || filesize($maintenance) === false || filesize($maintenance) > 1024) {
-        http_response_code(503);
-        exit('Site update maintenance is unavailable.');
-    }
     try {
-        $lease = json_decode((string) file_get_contents($maintenance), true, 8, JSON_THROW_ON_ERROR);
+        $lease = json_decode(
+            $readPrivateControl($maintenance, 1024, 'Site update maintenance is unavailable.'),
+            true, 8, JSON_THROW_ON_ERROR,
+        );
     } catch (\Throwable) {
         http_response_code(503);
         exit('Site update maintenance is unavailable.');
@@ -68,13 +133,11 @@ if ($forcedPrevious !== null && $forcedPrevious['previous_root'] === 'legacy') {
         'root' => $forcedPrevious['previous_root'],
     ];
 } elseif (file_exists($pointer) || is_link($pointer)) {
-    if (is_link($pointer) || ! is_file($pointer)
-        || filesize($pointer) === false || filesize($pointer) > 512) {
-        http_response_code(503);
-        exit('Site release pointer unavailable.');
-    }
     try {
-        $state = json_decode((string) file_get_contents($pointer), true, 8, JSON_THROW_ON_ERROR);
+        $state = json_decode(
+            $readPrivateControl($pointer, 512, 'Site release pointer unavailable.'),
+            true, 8, JSON_THROW_ON_ERROR,
+        );
     } catch (\Throwable) {
         http_response_code(503);
         exit('Site release pointer unavailable.');
