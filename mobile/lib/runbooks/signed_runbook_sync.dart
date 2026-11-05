@@ -55,6 +55,7 @@ class SignedRunbookSource {
     const privateSuffixes = [
       'localhost', 'local', 'localdomain', 'internal', 'test',
       'invalid', 'onion', 'lan', 'home', 'arpa', 'svc',
+      'corp', 'intranet', 'private',
     ];
     if (InternetAddress.tryParse(host) != null ||
         !publicHostPattern.hasMatch(host) ||
