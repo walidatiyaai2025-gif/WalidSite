@@ -542,6 +542,68 @@ final class CpanelImmutableCodePointerTest extends TestCase
         ));
     }
 
+    public function test_hardlinked_existing_active_pointer_is_not_read_or_accepted(): void
+    {
+        if (! function_exists('link') || PHP_OS_FAMILY === 'Windows') {
+            self::markTestSkipped('POSIX hardlink support required.');
+        }
+        $pointer = $this->home.'/.walidsite-active-release.json';
+        $external = $this->home.'/foreign-control-record.json';
+        file_put_contents($external, json_encode([
+            'schema' => 1,
+            'version' => '0.1.2',
+            'root' => '.walidsite-releases/v0.1.2-'.$this->sha,
+        ], JSON_THROW_ON_ERROR));
+        $this->assertTrue(link($external, $pointer));
+
+        try {
+            (new CpanelImmutableCodePointer())->activate(...$this->args());
+            $this->fail('A shared-inode release pointer must not authorize an update.');
+        } catch (DomainException $error) {
+            $this->assertStringContainsString('pointer', $error->getMessage());
+        }
+        $this->assertSame(2, stat($external)['nlink']);
+        $this->assertSame('KEEP_MY_PRIVATE_APP_KEY', file_get_contents(
+            $this->home.'/application/.env',
+        ));
+        $this->assertSame('PRIVATE_UPLOAD', file_get_contents(
+            $this->home.'/application/storage/app/photo.txt',
+        ));
+    }
+
+    public function test_active_pointer_read_identity_rejects_same_bytes_new_inode(): void
+    {
+        if (PHP_OS_FAMILY === 'Windows') {
+            self::markTestSkipped('POSIX atomic rename semantics required.');
+        }
+        $pointer = $this->home.'/.walidsite-active-release.json';
+        $bytes = '{"schema":1,"version":"0.1.2","root":".walidsite-releases/v0.1.2-'.$this->sha.'"}';
+        file_put_contents($pointer, $bytes);
+        $stream = fopen($pointer, 'rb');
+        $this->assertIsResource($stream);
+        $opened = fstat($stream);
+        $this->assertIsArray($opened);
+        $guard = new \ReflectionMethod(CpanelImmutableCodePointer::class, 'assertPointerReadIdentity');
+        try {
+            $guard->invoke(new CpanelImmutableCodePointer(), $stream, $pointer, $opened);
+            $oldPath = $this->home.'/.orphaned-active-pointer.json';
+            $this->assertTrue(rename($pointer, $oldPath));
+            $this->assertSame(strlen($bytes), file_put_contents($pointer, $bytes));
+            $this->assertNotSame(fstat($stream)['ino'], lstat($pointer)['ino']);
+            try {
+                $guard->invoke(new CpanelImmutableCodePointer(), $stream, $pointer, $opened);
+                $this->fail('Identical bytes in another inode must not pass the pointer read gate.');
+            } catch (DomainException $error) {
+                $this->assertStringContainsString('inode changed', $error->getMessage());
+            }
+        } finally {
+            fclose($stream);
+        }
+        $this->assertSame('KEEP_MY_PRIVATE_APP_KEY', file_get_contents(
+            $this->home.'/application/.env',
+        ));
+    }
+
     public function test_changed_public_router_or_htaccess_blocks_unsafe_cutover(): void
     {
         file_put_contents($this->candidate.'/public_html/.htaccess', 'RewriteEngine Off');
