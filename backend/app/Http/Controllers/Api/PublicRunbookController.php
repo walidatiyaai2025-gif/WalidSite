@@ -107,10 +107,12 @@ final class PublicRunbookController extends Controller
             $eligible++;
         }
 
+        // Approval and rights can be revoked after this request. An HTTP
+        // intermediary must never replay a previously reviewed runbook.
         return response()->json([
             'data' => $data,
             'meta' => ['current_page' => $page, 'has_more_pages' => $hasMore],
-        ]);
+        ])->header('Cache-Control', 'no-store');
     }
 
     /**
@@ -136,6 +138,8 @@ final class PublicRunbookController extends Controller
         $data = $this->verifiedData($id);
         abort_unless($data !== null, 404);
 
-        return response()->json(['data' => $data]);
+        // A later withdrawal must take effect on the very next API read.
+        return response()->json(['data' => $data])
+            ->header('Cache-Control', 'no-store');
     }
 }
