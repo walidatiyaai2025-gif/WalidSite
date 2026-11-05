@@ -113,7 +113,11 @@ class ReviewedRunbookPage {
   final bool hasMorePages;
 
   static ReviewedRunbookPage parse(String body, int requestedPage) {
+    // The transport caps raw UTF-8 bytes, not Dart UTF-16 code units.
+    // Keep that invariant for directly invoked parsers and injected loaders.
+    // Check the cheap code-unit bound first to avoid encoding huge strings.
     if (body.length > 1024 * 1024 ||
+        utf8.encode(body).length > 1024 * 1024 ||
         requestedPage < 1 || requestedPage > 10000) {
       throw const FormatException('Invalid runbook page size');
     }

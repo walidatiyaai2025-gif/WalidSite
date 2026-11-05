@@ -167,6 +167,21 @@ void main() {
     expect(page.items.single.validatedAt.year, 2026);
   });
 
+  test('rejects UTF-8 oversized runbook page before JSON decode', () {
+    const maxBytes = 1024 * 1024;
+    // Multibyte content can fit below the Dart string-length cap while
+    // exceeding the transport's actual 1 MiB byte limit. Unknown metadata
+    // would otherwise be ignored after decoding.
+    final raw = response(1, [guide()]);
+    final oversized = raw.substring(0, raw.length - 1) +
+        ',"padding":"' + ('é' * (maxBytes ~/ 2)) + '"}';
+    expect(oversized.length, lessThan(maxBytes));
+    expect(utf8.encode(oversized).length, greaterThan(maxBytes));
+    expect(() => ReviewedRunbookPage.parse(oversized, 1),
+        throwsFormatException);
+    expect(ReviewedRunbookPage.parse(raw, 1).items, hasLength(1));
+  });
+
   test('rejects untrusted, malformed and oversized runbook data', () {
     final invalid = <String>[
       '{}',
