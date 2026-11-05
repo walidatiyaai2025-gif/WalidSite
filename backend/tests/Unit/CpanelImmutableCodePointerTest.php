@@ -480,11 +480,6 @@ final class CpanelImmutableCodePointerTest extends TestCase
     public function test_health_callback_cannot_replace_active_pointer_and_trigger_unsafe_rollback(): void
     {
         $pointer = $this->home.'/.walidsite-active-release.json';
-        $foreign = [
-            'schema' => 1,
-            'version' => '0.1.3',
-            'root' => '.walidsite-releases/v0.1.3-'.str_repeat('b', 40),
-        ];
         // A third party may replace the pointer with an invalid or different
         // release during an external HTTP health callback. Do not overwrite it.
         $health = function () use ($pointer): bool {
