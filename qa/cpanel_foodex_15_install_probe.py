@@ -22,7 +22,7 @@ import zipfile
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from qa.build_cpanel_package import verify_archive
+from qa.cpanel_first_run_http_probe import extract_verified_archive
 from qa.cpanel_full_install_probe import Client, SetupFailure, csrf, Inputs
 
 
@@ -287,11 +287,11 @@ def run(package: Path, sha: str, host: str, port: int, database: str,
             or not password):
         raise SetupFailure("disposable_database_only")
 
-    verify_archive(package, sha)
     with tempfile.TemporaryDirectory(prefix="walidsite-ci-foodex-") as directory:
         home = Path(directory)
-        with zipfile.ZipFile(package) as archive:
-            archive.extractall(home)  # validate ZIP inventory *before* extraction
+        # The verified source/manifest and installed bytes must be the SAME
+        # immutable private snapshot, even if the source pathname is swapped.
+        extract_verified_archive(package, home, expected_sha=sha)
         application = home / "application"
         public = home / "public_html"
         if ((application / ".env").exists()
