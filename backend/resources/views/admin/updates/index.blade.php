@@ -100,11 +100,16 @@ button:disabled{background:#718096;cursor:not-allowed}
 @endif
 @if($hostPreflight)
 <div class="success" role="status" data-testid="owner-host-preflight-verified">
-<strong>{{ $locale === 'ar' ? 'اجتاز تخطيط الاستضافة الفحص المبدئي.' : 'Physical hosting layout preflight passed.' }}</strong>
+<strong>{{ $locale === 'ar' ? 'اجتاز تخطيط الاستضافة وتوافق حزمة الكود الفحص المبدئي.' : 'Physical hosting and code-only ZIP compatibility preflight passed.' }}</strong>
 <p>{{ $locale === 'ar'
     ? 'لم يتم إنشاء نسخة احتياطية أو تنفيذ تجربة استعادة أو إيقاف الكتابة أو تثبيت التحديث. يظل التثبيت محجوبًا.'
     : 'No backup, restore drill, queue isolation or code installation was performed. Install remains blocked.' }}</p>
 </div>
+@endif
+@if($errors->has('compatibility'))
+<p class="error" role="alert" data-testid="owner-code-compatibility-blocked">{{ $locale === 'ar'
+    ? 'تتطلب الحزمة الموقّعة ترحيلات قاعدة بيانات مختلفة أو تعديلًا لملفات تشغيل cPanel الثابتة؛ لا يمكن تثبيتها كترقية كود فقط. لم يتم تغيير أي بيانات أو ملفات.'
+    : $errors->first('compatibility') }}</p>
 @endif
 @if($errors->has('hosting'))
 <p class="error" role="alert" data-testid="owner-host-preflight-blocked">{{ $locale === 'ar'

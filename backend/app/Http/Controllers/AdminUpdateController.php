@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Domain\Deployment\CpanelArchiveCodeOnlyPreflight;
 use App\Domain\Deployment\CpanelPhysicalHostPreflight;
 use App\Domain\Deployment\TrustedReleaseCatalog;
 use App\Domain\Deployment\TrustedOwnerUpdateInbox;
@@ -253,6 +254,7 @@ final class AdminUpdateController extends Controller
         Request $request,
         TrustedOwnerUpdateInbox $inbox,
         CpanelPhysicalHostPreflight $hosting,
+        CpanelArchiveCodeOnlyPreflight $compatibility,
     ): RedirectResponse {
         $this->authorizeOwner($request);
         $request->session()->forget('owner_update_host_preflight');
@@ -299,6 +301,22 @@ final class AdminUpdateController extends Controller
                 $installed,
                 $size,
             );
+
+            // The host alone cannot certify an update: the signed ZIP must
+            // be code-only compatible with the ACTUAL installed migration
+            // inventory, version identity, and stable public dispatcher.
+            // This is read-only; no ZIP extraction or PHP/SQL execution.
+            try {
+                $compatibility->assertCompatible(
+                    dirname(base_path()), public_path(), $verified['archive'],
+                    $verified['artifact_sha256'], $installed, $verified['version'],
+                );
+            } catch (\DomainException $incompatible) {
+                \Illuminate\Support\Facades\Log::warning('admin.updates.code_compatibility_blocked', [
+                    'type' => $incompatible::class,
+                ]);
+                return back()->withErrors(['compatibility' => 'Signed candidate is not compatible with a code-only update. A separately tested database upgrade or stable dispatcher transition is required. No code or data changed.']);
+            }
         } catch (Throwable $error) {
             \Illuminate\Support\Facades\Log::warning('admin.updates.host_preflight_blocked', [
                 'type' => $error::class,
@@ -317,7 +335,7 @@ final class AdminUpdateController extends Controller
         ]);
         return redirect()->route('admin.updates.index', [
             'lang' => ($input['lang'] ?? 'en') === 'ar' ? 'ar' : 'en',
-        ])->with('status', 'Hosting layout checked. Backups, write isolation and code installation are NOT verified.');
+        ])->with('status', 'Physical hosting and code-only ZIP compatibility checked. Backups, write isolation and code installation are NOT verified.');
     }
 
     public function apply(Request $request, SiteUpdater $updater): RedirectResponse
