@@ -242,6 +242,57 @@ final class CpanelImmutableCodePointerTest extends TestCase
         ));
     }
 
+
+    public function test_hard_linked_code_pointer_lock_blocks_activation_without_touching_private_data(): void
+    {
+        if (! function_exists('link')) {
+            self::markTestSkipped('Hard links unavailable on this host.');
+        }
+        $external = $this->home.'/external-lock-data';
+        file_put_contents($external, 'KEEP_OTHER_PRIVATE_DATA');
+        if (! @link($external, $this->home.'/.walidsite-active-release.lock')) {
+            self::markTestSkipped('Hard-link fixture cannot be created.');
+        }
+
+        $this->expectException(DomainException::class);
+        try {
+            (new CpanelImmutableCodePointer())->activate(...$this->args());
+        } finally {
+            $this->assertSame('KEEP_OTHER_PRIVATE_DATA', file_get_contents($external));
+            $this->assertSame('KEEP_MY_PRIVATE_APP_KEY', file_get_contents($this->home.'/application/.env'));
+            $this->assertFileDoesNotExist($this->home.'/.walidsite-active-release.json');
+        }
+    }
+
+    public function test_swapped_pointer_lock_during_maintenance_blocks_activation(): void
+    {
+        if (PHP_OS_FAMILY === 'Windows') {
+            self::markTestSkipped('POSIX rename semantics required.');
+        }
+        $lock = $this->home.'/.walidsite-active-release.lock';
+        $old = $this->home.'/.orphaned-code-pointer.lock';
+        $calls = 0;
+        $maintenance = static function () use (&$calls, $lock, $old): bool {
+            ++$calls;
+            if ($calls === 1) {
+                if (! rename($lock, $old) || file_put_contents($lock, 'replacement') === false) {
+                    throw new RuntimeException('Cannot set up lock swap test.');
+                }
+            }
+            return true;
+        };
+
+        $this->expectException(DomainException::class);
+        try {
+            (new CpanelImmutableCodePointer())->activate(...$this->args(maintenance: $maintenance));
+        } finally {
+            $this->assertSame(1, $calls);
+            $this->assertSame('replacement', file_get_contents($lock));
+            $this->assertFileDoesNotExist($this->home.'/.walidsite-active-release.json');
+            $this->assertSame('PRIVATE_UPLOAD', file_get_contents($this->home.'/application/storage/app/photo.txt'));
+        }
+    }
+
     public function test_changed_public_router_or_htaccess_blocks_unsafe_cutover(): void
     {
         file_put_contents($this->candidate.'/public_html/.htaccess', 'RewriteEngine Off');

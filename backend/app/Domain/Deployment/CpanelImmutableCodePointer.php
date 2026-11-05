@@ -88,13 +88,16 @@ final class CpanelImmutableCodePointer
             throw new DomainException('Unable to lock private code pointer.');
         }
         try {
+            $this->assertLockIdentity($lock, $lockPath);
             if (! flock($lock, LOCK_EX | LOCK_NB)) {
                 throw new DomainException('Another code update is in progress.');
             }
+            $this->assertLockIdentity($lock, $lockPath);
             if ($maintenanceReady() !== true || $recoveryVerified() !== true
                 || $signedCandidateVerified() !== true) {
                 throw new DomainException('Code installation requires write isolation, signed release and restored backup.');
             }
+            $this->assertLockIdentity($lock, $lockPath);
 
             $previous = $this->read($pointer, $home);
             $oldRoot = $previous === null ? $home : $home.'/'.$previous['root'];
@@ -125,6 +128,7 @@ final class CpanelImmutableCodePointer
             if ($maintenanceReady() !== true || $signedCandidateVerified() !== true) {
                 throw new DomainException('Maintenance or candidate identity changed during update.');
             }
+            $this->assertLockIdentity($lock, $lockPath);
 
             $next = ['schema' => 1, 'version' => $version,
                 'root' => '.walidsite-releases/v'.$version.'-'.$sourceSha];
@@ -133,6 +137,7 @@ final class CpanelImmutableCodePointer
                 if ($healthCheck() !== true || $maintenanceReady() !== true) {
                     throw new RuntimeException('New release failed health validation.');
                 }
+                $this->assertLockIdentity($lock, $lockPath);
                 // The HTTP health probe may consume the last seconds of the
                 // private maintenance lease. Never return "switched" after
                 // its expiration: the stable dispatcher would serve old code
@@ -154,6 +159,29 @@ final class CpanelImmutableCodePointer
         } finally {
             flock($lock, LOCK_UN);
             fclose($lock);
+        }
+    }
+
+    /**
+     * Match the exclusively locked descriptor to the one-link regular file at
+     * its expected private pathname. Reject hard-link aliases and pathname
+     * replacement, including changes made inside maintenance/health callbacks.
+     *
+     * @param resource $stream
+     */
+    private function assertLockIdentity($stream, string $path): void
+    {
+        clearstatcache(true, $path);
+        $opened = @fstat($stream);
+        $named = @lstat($path);
+        if (! is_array($opened) || ! is_array($named)
+            || ($opened['mode'] & 0170000) !== 0100000
+            || ($named['mode'] & 0170000) !== 0100000
+            || $opened['nlink'] !== 1 || $named['nlink'] !== 1
+            || $opened['dev'] !== $named['dev']
+            || $opened['ino'] !== $named['ino']
+            || is_link($path)) {
+            throw new DomainException('Unsafe private code pointer lock identity; no release may be activated.');
         }
     }
 
