@@ -410,7 +410,7 @@ final class TrustedReleaseUpdateJourneyTest extends TestCase
         $downloads = 0;
         $writes = 0;
         $transport = new TrustedReleaseDownloader(
-            static function (string $url, \\Closure $write) use ($bytes, &$downloads): int {
+            static function (string $url, \Closure $write) use ($bytes, &$downloads): int {
                 $downloads++;
                 self::assertSame(
                     'https://updates.example.com/releases/WalidSite-update-v1.2.0.zip', $url,
@@ -441,7 +441,7 @@ final class TrustedReleaseUpdateJourneyTest extends TestCase
         );
         self::assertSame('LIVE-vA', file_get_contents($this->paths['public'].'/index.php'));
         self::assertSame('APP_KEY=keep-existing-secret', file_get_contents($this->paths['environment']));
-        self::assertSame("\\x00\\xffUPLOAD", file_get_contents($this->paths['uploads'].'/avatar.png'));
+        self::assertSame("\x00\xffUPLOAD", file_get_contents($this->paths['uploads'].'/avatar.png'));
         self::assertSame([], glob($this->paths['backup_vault'].'/mariadb-*') ?: []);
 
         return $signed;
@@ -474,7 +474,7 @@ final class TrustedReleaseUpdateJourneyTest extends TestCase
         self::assertSame('LIVE-vA', file_get_contents($this->paths['releases'].'/v1/public_html/index.php'));
         self::assertSame('APP_KEY=keep-existing-secret', file_get_contents($this->paths['environment']));
         self::assertSame('keep-private', file_get_contents($this->paths['private_data'].'/memo.txt'));
-        self::assertSame("\\x00\\xffUPLOAD", file_get_contents($this->paths['uploads'].'/avatar.png'));
+        self::assertSame("\x00\xffUPLOAD", file_get_contents($this->paths['uploads'].'/avatar.png'));
         self::assertSame('محتوى عربي',
             $this->restoreDb->query('SELECT memo FROM billing WHERE id=1')->fetchColumn());
         self::assertSame([], glob($this->paths['quarantine'].'/release-staging/candidate-*') ?: []);
