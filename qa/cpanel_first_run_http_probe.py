@@ -163,13 +163,21 @@ def main() -> None:
     modes = parser.add_mutually_exclusive_group(required=True)
     modes.add_argument("--app-root", type=Path, help="Uninstalled Laravel root (CI checkout)")
     modes.add_argument("--cpanel-zip", type=Path, help="Built cPanel one-upload archive")
+    parser.add_argument("--sha", help="Exact 40-character source Git SHA for the Setup ZIP")
     args = parser.parse_args()
     if args.app_root:
+        if args.sha is not None:
+            parser.error("--sha is only valid with --cpanel-zip")
         root = args.app_root.resolve()
         probe(root, root / "public")
     else:
+        # Require release-source identity at the CLI boundary, before
+        # opening or extracting any ZIP or booting any PHP. The shared
+        # no-follow descriptor snapshot pins the actual verified bytes.
+        if args.sha is None or not re.fullmatch(r"[a-f0-9]{40}", args.sha):
+            parser.error("--cpanel-zip requires the exact source Git SHA")
         with tempfile.TemporaryDirectory(prefix="walidsite-bootstrap-probe-") as tmp:
-            extract_verified_archive(args.cpanel_zip, Path(tmp))
+            extract_verified_archive(args.cpanel_zip, Path(tmp), expected_sha=args.sha)
             home = Path(tmp)
             probe(home / "application", home / "public_html")
 

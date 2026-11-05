@@ -515,7 +515,7 @@ jobs:
           unzip -t "$package"
           (cd dist && sha256sum --check "WalidSite-Setup-v${version}.zip.sha256")
           PACKAGE="$package" SOURCE_SHA="$source_sha" python3 -c 'from pathlib import Path; from qa.build_cpanel_package import verify_archive; import os; verify_archive(Path(os.environ["PACKAGE"]), os.environ["SOURCE_SHA"])'
-          python3 qa/cpanel_first_run_http_probe.py --cpanel-zip "$package"
+          python3 qa/cpanel_first_run_http_probe.py --cpanel-zip "$package" --sha "$source_sha"
           # The same immutable Setup ZIP must complete a disposable MariaDB HTTP install.
           CI_INSTALL_DB_HOST=127.0.0.1 CI_INSTALL_DB_PORT=3306 \
             CI_INSTALL_DB_NAME=walidsite_ci_install CI_INSTALL_DB_USER=walidsite_ci \
