@@ -138,6 +138,53 @@ class ApiContractRouteParityTest(unittest.TestCase):
         self.assertEqual(report["matched_operations"], 2)
         self.assertEqual(report["uncontracted_registrations"], [])
 
+    def test_html_outside_php_cannot_fake_a_registered_route(self):
+        root = self.fixture(
+            "paths:\n  /public/home:\n    get:\n  /private/ghost:\n    delete:\n",
+            "Route::delete('/private/ghost', FakeOutsidePhp::class);\n"
+            "<?php\nRoute::get('/public/home', Actual::class);\n?>\n"
+            "Route::delete('/private/ghost', FakeAfterClose::class);\n",
+        )
+        report, errors = audit(root)
+        self.assertTrue(errors)
+        self.assertEqual(report["matched_operations"], 1)
+        self.assertEqual(report["missing_operations"], ["DELETE /private/ghost"])
+        self.assertEqual(report["duplicate_registrations"], [])
+
+    def test_reopened_php_code_counts_real_routes_not_embedded_literal_tags(self):
+        root = self.fixture(
+            "paths:\n  /public/home:\n    get:\n  /public/about:\n    post:\n"
+            "  /private/ghost:\n    put:\n",
+            "<?php\n"
+            "$literal = '?> Route::put(\\'/private/ghost\\', Phantom::class)';\n"
+            "Route::get('/public/home', Actual::class);\n"
+            "?>\n"
+            "Route::put('/private/ghost', FakeHtml::class);\n"
+            "<?PHP\nRoute::post('/public/about', Actual::class);\n?>\n",
+        )
+        report, errors = audit(root)
+        self.assertTrue(errors)
+        self.assertEqual(report["matched_operations"], 2)
+        self.assertEqual(report["missing_operations"], ["PUT /private/ghost"])
+        self.assertEqual(report["duplicate_registrations"], [])
+
+    def test_php_line_comment_closing_tag_exits_executable_region(self):
+        root = self.fixture(
+            "paths:\n  /public/home:\n    get:\n  /private/ghost:\n    delete:\n",
+            "<?php\n"
+            "// Comment ends with closing PHP tag ?>\n"
+            "Route::delete('/private/ghost', NotExecutable::class);\n"
+            "<?php\nRoute::get('/public/home', Actual::class);\n",
+        )
+        report, errors = audit(root)
+        self.assertTrue(errors)
+        self.assertEqual(report["matched_operations"], 1)
+        self.assertEqual(report["missing_operations"], ["DELETE /private/ghost"])
+
+    def test_route_lines_with_no_php_open_tag_fail_closed(self):
+        with self.assertRaisesRegex(ValueError, "No literal Laravel routes"):
+            php_routes("Route::get('/public/home', TextOnly::class);\n")
+
     def test_unreadable_routes_and_malformed_template_fail_closed(self):
         root = self.fixture(
             "paths:\n  /public/home:\n    get:\n",

@@ -45,9 +45,12 @@ def _php_code_mask(source: str) -> str:
     endpoint. Mask code-vs-data before admitting a route; the ORIGINAL source
     is used to parse its quoted literal URI once a real Route:: token exists.
     Recognize multiline quoted strings, block/line comments and heredocs.
+    Importantly, only regions between actual PHP opening/closing tags
+    execute. A raw Route::get line in an HTML fragment before <?php or
+    after ?> must never satisfy the API contract.
     """
     masked = list(source)
-    mode = "code"
+    mode = "html"
     quote = ""
     heredoc = ""
     i = 0
@@ -61,7 +64,28 @@ def _php_code_mask(source: str) -> str:
         ch = source[i]
         nxt = source[i + 1] if i + 1 < n else ""
 
+        if mode == "html":
+            # PHP's long opening tag requires whitespace after "php".
+            # Ignore short/open-echo tags: a route in static HTML (or in
+            # an echo expression) cannot be a Laravel declaration here.
+            opening = re.match(r"<\?php(?=\s)", source[i:], flags=re.IGNORECASE)
+            if opening is not None:
+                for pos in range(i, i + opening.end()):
+                    blank(pos)
+                i += opening.end()
+                mode = "code"
+                continue
+            blank(i)
+            i += 1
+            continue
+
         if mode == "code":
+            if source.startswith("?>", i):
+                blank(i)
+                blank(i + 1)
+                i += 2
+                mode = "html"
+                continue
             if source.startswith("<<<", i):
                 marker = re.match(
                     r"""<<<[ \t]*(?:'([A-Za-z_]\w*)'|"([A-Za-z_]\w*)"|([A-Za-z_]\w*))""",
@@ -109,6 +133,14 @@ def _php_code_mask(source: str) -> str:
                 mode = "code"
                 continue
         elif mode == "line":
+            # In PHP a // or # comment ends at ?> even without a
+            # newline. Its following lines are raw HTML until reopened.
+            if source.startswith("?>", i):
+                blank(i)
+                blank(i + 1)
+                i += 2
+                mode = "html"
+                continue
             if ch == "\n":
                 mode = "code"
             else:
