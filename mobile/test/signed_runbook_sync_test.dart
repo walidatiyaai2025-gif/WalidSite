@@ -356,6 +356,58 @@ void main() {
     expect((await repo.load()).version, '2.0.0');
   });
 
+  test('separate repository instances cannot overwrite a newer signed snapshot',
+      () async {
+    final keys = await signer();
+    final time = DateTime.now().toUtc().subtract(const Duration(hours: 3));
+    final old = await signedEnvelope(
+      key: keys.pair, verifiedAt: time, version: '1.0.0',
+    );
+    final recent = await signedEnvelope(
+      key: keys.pair,
+      verifiedAt: time.add(const Duration(hours: 1)),
+      version: '2.0.0',
+    );
+    final store = GatedSnapshotStore();
+    var recentDownloads = 0;
+    var oldDownloads = 0;
+
+    OfflineRunbookRepository makeRepo(String envelope, void Function() onFetch) =>
+        OfflineRunbookRepository(
+          source: SignedRunbookSource(
+            url: 'https://docs.example.org/packs/signed.json',
+            publicKeyBase64: keys.key,
+            transport: (_) async {
+              onFetch();
+              return envelope;
+            },
+          ),
+          store: store,
+          bundled: () => SynchronousFuture<OfflineRunbookPack>(fallback),
+        );
+    final recentRepo = makeRepo(recent, () => recentDownloads++);
+    final oldRepo = makeRepo(old, () => oldDownloads++);
+
+    final first = recentRepo.sync();
+    await store.firstStarted.future;
+    final stale = oldRepo.sync();
+    await Future<void>.delayed(Duration.zero);
+    expect(recentDownloads, 1);
+    expect(oldDownloads, 0,
+        reason: 'Another repository must not fetch while a signed write is pending');
+    expect(store.activeWrites, 1);
+
+    store.releaseFirst.complete();
+    expect((await first).version, '2.0.0');
+    await expectLater(stale, throwsFormatException);
+    expect(oldDownloads, 1);
+    expect(store.maxActiveWrites, 1);
+    expect(store.writes, 1);
+    expect(store.snapshot, recent,
+        reason: 'Older publisher-signed bytes cannot replace the newer verified snapshot');
+    expect((await oldRepo.load()).version, '2.0.0');
+  });
+
   test('failed first signed sync releases the queue for verified next update',
       () async {
     final keys = await signer();
