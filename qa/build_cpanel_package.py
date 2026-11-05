@@ -164,8 +164,16 @@ def verify_archive(output, expected_sha=None):
                     or (not name.startswith(("application/", "public_html/", "contracts/"))
                         and name not in ("PACKAGE-MANIFEST.json", "INSTALL-CPANEL-AR.md"))):
                 raise ValueError("Unsafe ZIP entry: " + name)
-            if (info.external_attr >> 16) & 0o170000 == 0o120000:
+            # ZIP member names and hashes alone do not make a Unix special
+            # file safe. Some extractors honor the file type in external_attr;
+            # refuse FIFOs, devices and sockets before any member inflation.
+            # Older/portable ZIP writers omit the file type entirely (mode=0),
+            # so accept that legacy regular-file encoding alongside S_IFREG.
+            unix_type = stat.S_IFMT(info.external_attr >> 16)
+            if info.create_system == 3 and unix_type == stat.S_IFLNK:
                 raise ValueError("Symbolic link in ZIP")
+            if info.create_system == 3 and unix_type not in (0, stat.S_IFREG):
+                raise ValueError("Non-regular Unix file in ZIP")
         if archive.testzip() is not None:
             raise ValueError("Corrupt ZIP entry")
         mandatory = {
