@@ -82,6 +82,13 @@ final class CpanelReleaseMaintenance
         }
     }
 
+    /**
+     * Finalize a successful cutover only while its private lease is LIVE.
+     * Expired markers stay in place as a fail-closed recovery barrier; never
+     * clear one just because a token still matches: that could expose a
+     * switched but no-longer-verified release in the stable web dispatcher.
+     * Recovery of an expired marker requires independently proven rollback.
+     */
     public function clear(string $homeDirectory, string $token): void
     {
         $home = realpath($homeDirectory);
@@ -93,9 +100,15 @@ final class CpanelReleaseMaintenance
             throw new DomainException('Private maintenance lease unavailable.');
         }
         $marker = json_decode((string) file_get_contents($path), true, 8, JSON_THROW_ON_ERROR);
-        if (! is_array($marker) || ! is_string($marker['probe_sha256'] ?? null)
+        if (! is_array($marker)
+            || array_keys($marker) !== ['schema', 'expires_at', 'previous_root', 'previous_version', 'probe_sha256']
+            || $marker['schema'] !== 1
+            || ! is_int($marker['expires_at']) || $marker['expires_at'] <= time()
+            || ! is_string($marker['previous_root'])
+            || ! is_string($marker['previous_version'])
+            || ! is_string($marker['probe_sha256'])
             || ! hash_equals($marker['probe_sha256'], hash('sha256', $token))) {
-            throw new DomainException('Maintenance ownership is invalid.');
+            throw new DomainException('Maintenance ownership is invalid or lease expired; recovery required.');
         }
         if (! @unlink($path)) {
             throw new RuntimeException('Cannot release private maintenance barrier.');
