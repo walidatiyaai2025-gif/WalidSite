@@ -82,6 +82,112 @@ final class PrivateRecoverySnapshotTest extends TestCase
         self::assertSame('private data', file_get_contents($this->privateData.'/user/document.txt'));
     }
 
+    public function test_recovery_manifest_attests_and_restores_empty_nested_directories(): void
+    {
+        self::assertTrue(mkdir($this->privateData.'/empty-staging/deep', 0700, true));
+        self::assertTrue(mkdir($this->uploads.'/customer-uploads/empty', 0700, true));
+
+        $snapshot = $this->snapshot();
+        $manifest = json_decode(
+            (string) file_get_contents($snapshot['directory'].'/manifest.json'),
+            true, 8, JSON_THROW_ON_ERROR,
+        );
+        self::assertSame(2, $manifest['schema']);
+        self::assertSame(3, $snapshot['files']);
+        foreach ([
+            'private-data', 'private-data/empty-staging',
+            'private-data/empty-staging/deep', 'uploads',
+            'uploads/customer-uploads', 'uploads/customer-uploads/empty',
+        ] as $name) {
+            self::assertContains($name, $manifest['directories']);
+        }
+
+        $result = (new PrivateRecoverySnapshot())->drill(
+            $snapshot['directory'], $snapshot['manifest_sha256'], $this->drillRoot,
+        );
+        self::assertSame(['files' => 3, 'bytes' => $snapshot['bytes']], $result);
+        $restored = glob($this->drillRoot.'/restored-*');
+        self::assertCount(1, $restored);
+        self::assertDirectoryExists($restored[0].'/private-data/empty-staging/deep');
+        self::assertDirectoryExists($restored[0].'/uploads/customer-uploads/empty');
+        self::assertSame('private data', file_get_contents(
+            $restored[0].'/private-data/user/document.txt',
+        ));
+        self::assertSame("\0binary\xff", file_get_contents(
+            $restored[0].'/uploads/avatar.png',
+        ));
+        // Neither the live source paths nor .env were modified by the drill.
+        self::assertDirectoryExists($this->uploads.'/customer-uploads/empty');
+        self::assertSame("APP_KEY=base64:secret-do-not-log\n",
+            file_get_contents($this->environment));
+    }
+
+    public function test_legacy_v1_file_backup_remains_restorable_without_claiming_empty_directory_proof(): void
+    {
+        $snapshot = $this->snapshot();
+        $manifestPath = $snapshot['directory'].'/manifest.json';
+        $decoded = json_decode((string) file_get_contents($manifestPath), true);
+        $legacy = json_encode(['schema' => 1, 'files' => $decoded['files']],
+            JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+        file_put_contents($manifestPath, $legacy);
+        $result = (new PrivateRecoverySnapshot())->drill(
+            $snapshot['directory'], hash('sha256', $legacy), $this->drillRoot,
+        );
+        self::assertSame($snapshot['files'], $result['files']);
+        $restored = glob($this->drillRoot.'/restored-*');
+        self::assertCount(1, $restored);
+        self::assertSame('private data', file_get_contents(
+            $restored[0].'/private-data/user/document.txt',
+        ));
+    }
+
+    public function test_missing_or_linked_attested_empty_directory_fails_before_restore(): void
+    {
+        self::assertTrue(mkdir($this->uploads.'/empty-verified', 0700));
+        $snapshot = $this->snapshot();
+        $backedUp = $snapshot['directory'].'/uploads/empty-verified';
+        self::assertTrue(rmdir($backedUp));
+        $this->assertRejected(fn () => (new PrivateRecoverySnapshot())->drill(
+            $snapshot['directory'], $snapshot['manifest_sha256'], $this->drillRoot,
+        ));
+        self::assertSame([], glob($this->drillRoot.'/restored-*') ?: []);
+
+        $outside = $this->home.'/outside-data-not-to-use';
+        self::assertTrue(mkdir($outside, 0700));
+        file_put_contents($outside.'/preserve.txt', 'outside remains safe');
+        self::assertTrue(symlink($outside, $backedUp));
+        $this->assertRejected(fn () => (new PrivateRecoverySnapshot())->drill(
+            $snapshot['directory'], $snapshot['manifest_sha256'], $this->drillRoot,
+        ));
+        self::assertSame('outside remains safe',
+            file_get_contents($outside.'/preserve.txt'));
+        self::assertSame([], glob($this->drillRoot.'/restored-*') ?: []);
+    }
+
+    public function test_forged_directory_inventory_traversal_and_missing_root_are_rejected(): void
+    {
+        $snapshot = $this->snapshot();
+        $manifestPath = $snapshot['directory'].'/manifest.json';
+        $safeManifest = json_decode((string) file_get_contents($manifestPath), true);
+
+        foreach ([
+            ['private-data', 'uploads', 'uploads/../../outside'],
+            ['private-data'],
+            ['private-data', 'private-data', 'uploads'],
+        ] as $directories) {
+            $forged = $safeManifest;
+            $forged['directories'] = $directories;
+            $body = json_encode($forged, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+            file_put_contents($manifestPath, $body);
+            // Even if the caller were passed the attacker's new digest, no
+            // unsafe destination or success receipt can be created.
+            $this->assertRejected(fn () => (new PrivateRecoverySnapshot())->drill(
+                $snapshot['directory'], hash('sha256', $body), $this->drillRoot,
+            ));
+            self::assertSame([], glob($this->drillRoot.'/restored-*') ?: []);
+        }
+    }
+
     public function test_recovery_tampering_is_detected_before_restoration(): void
     {
         $snapshot = $this->snapshot();
