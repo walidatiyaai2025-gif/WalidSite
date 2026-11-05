@@ -151,6 +151,74 @@ final class TrustedOwnerUpdateInboxTest extends TestCase
         }
     }
 
+    public function test_exposed_receipt_permissions_cannot_reauthorize_signed_update(): void
+    {
+        [$upload, $catalog, $key, $origin] = $this->candidate();
+        $service = new TrustedOwnerUpdateInbox();
+        $ok = $service->verifyUpload($upload, $catalog, $origin, $key,
+            '0.1.0', '42', $this->inbox, $this->public);
+        $receipt = $this->inbox.'/'.$ok['id'].'/receipt.json';
+
+        $this->assertTrue(chmod($receipt, 0644));
+        clearstatcache(true, $receipt);
+        try {
+            $service->getVerified($ok['id'], '42',
+                $this->inbox, $this->public, $origin, $key, '0.1.0');
+            $this->fail('An exposed, owner-bound update receipt must not authorize a ZIP.');
+        } catch (DomainException $exception) {
+            $this->assertStringContainsString('receipt', $exception->getMessage());
+        } finally {
+            chmod($receipt, 0600);
+            clearstatcache(true, $receipt);
+        }
+
+        // Once permissions match the private 0600 writer contract, normal
+        // signed-envelope and archive verification must still succeed.
+        $this->assertSame('0.1.1', $service->getVerified($ok['id'], '42',
+            $this->inbox, $this->public, $origin, $key, '0.1.0')['version']);
+    }
+
+    public function test_hardlinked_receipt_does_not_reauthorize_signed_update(): void
+    {
+        [$upload, $catalog, $key, $origin] = $this->candidate();
+        $service = new TrustedOwnerUpdateInbox();
+        $ok = $service->verifyUpload($upload, $catalog, $origin, $key,
+            '0.1.0', '42', $this->inbox, $this->public);
+        $receipt = $this->inbox.'/'.$ok['id'].'/receipt.json';
+        $link = $this->workspace.'/linked-owner-receipt.json';
+        $this->assertTrue(link($receipt, $link));
+        clearstatcache(true, $receipt);
+
+        try {
+            $service->getVerified($ok['id'], '42',
+                $this->inbox, $this->public, $origin, $key, '0.1.0');
+            $this->fail('A hard-linked update receipt must not authorize a ZIP.');
+        } catch (DomainException $exception) {
+            $this->assertStringContainsString('receipt', $exception->getMessage());
+        } finally {
+            unlink($link);
+            clearstatcache(true, $receipt);
+        }
+
+        $this->assertSame('0.1.1', $service->getVerified($ok['id'], '42',
+            $this->inbox, $this->public, $origin, $key, '0.1.0')['version']);
+    }
+
+    public function test_symlinked_receipt_is_rejected_even_with_valid_signed_bytes(): void
+    {
+        [$upload, $catalog, $key, $origin] = $this->candidate();
+        $service = new TrustedOwnerUpdateInbox();
+        $ok = $service->verifyUpload($upload, $catalog, $origin, $key,
+            '0.1.0', '42', $this->inbox, $this->public);
+        $receipt = $this->inbox.'/'.$ok['id'].'/receipt.json';
+        $moved = $this->workspace.'/saved-owner-receipt.json';
+        $this->assertTrue(rename($receipt, $moved));
+        $this->assertTrue(symlink($moved, $receipt));
+        $this->expectException(DomainException::class);
+        $service->getVerified($ok['id'], '42',
+            $this->inbox, $this->public, $origin, $key, '0.1.0');
+    }
+
     public function test_receipt_expiry_and_installed_version_changes_invalidate_upload(): void
     {
         [$upload, $catalog, $key, $origin] = $this->candidate();

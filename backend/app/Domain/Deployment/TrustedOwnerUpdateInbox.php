@@ -116,12 +116,7 @@ final class TrustedOwnerUpdateInbox
             throw new DomainException('Verified update reference not found.');
         }
 
-        $receiptFile = $directory.'/receipt.json';
-        if (! is_file($receiptFile) || is_link($receiptFile)
-            || filesize($receiptFile) === false || filesize($receiptFile) > 20000) {
-            throw new DomainException('Trusted update receipt is unavailable.');
-        }
-        $receipt = json_decode((string) file_get_contents($receiptFile), true, 16, JSON_THROW_ON_ERROR);
+        $receipt = $this->readPrivateReceipt($directory.'/receipt.json');
         if (! is_array($receipt) || ($receipt['schema'] ?? '') !== 'walidsite.owner-update-inbox.v1'
             || ! hash_equals($ownerId, (string) ($receipt['owner'] ?? ''))
             || ! hash_equals($installedVersion, (string) ($receipt['installed'] ?? ''))
@@ -153,6 +148,78 @@ final class TrustedOwnerUpdateInbox
             'artifact_sha256' => $release['artifact_sha256'],
             'files' => $inventory['files'],
         ];
+    }
+
+    /**
+     * Verify the owner-bound receipt through ONE opened, immutable-identity
+     * inode. A pathname precheck followed by file_get_contents() can read a
+     * replacement name; the owner ZIP must remain private even after upload.
+     *
+     * @return array<string, mixed>
+     */
+    private function readPrivateReceipt(string $path): array
+    {
+        clearstatcache(true, $path);
+        if (is_link($path)) {
+            throw new DomainException('Trusted update receipt is unavailable.');
+        }
+        $stream = @fopen($path, 'rb');
+        if ($stream === false) {
+            throw new DomainException('Trusted update receipt is unavailable.');
+        }
+        try {
+            $opened = @fstat($stream);
+            if (! is_array($opened)
+                || ($opened['mode'] & 0170000) !== 0100000
+                || ($opened['mode'] & 0777) !== 0600
+                || $opened['nlink'] !== 1
+                || $opened['size'] < 1 || $opened['size'] > 20000) {
+                throw new DomainException('Unsafe private update receipt.');
+            }
+
+            $this->assertReceiptIdentity($stream, $path, $opened);
+            $raw = @stream_get_contents($stream, 20001);
+            if (! is_string($raw) || strlen($raw) !== $opened['size']) {
+                throw new DomainException('Trusted update receipt changed while reading.');
+            }
+            $this->assertReceiptIdentity($stream, $path, $opened);
+        } finally {
+            fclose($stream);
+        }
+
+        try {
+            $receipt = json_decode($raw, true, 16, JSON_THROW_ON_ERROR);
+        } catch (\JsonException) {
+            throw new DomainException('Trusted update receipt is malformed.');
+        }
+        if (! is_array($receipt)) {
+            throw new DomainException('Trusted update receipt is malformed.');
+        }
+
+        return $receipt;
+    }
+
+    /**
+     * @param resource $stream
+     * @param array<string|int, mixed> $baseline
+     */
+    private function assertReceiptIdentity($stream, string $path, array $baseline): void
+    {
+        clearstatcache(true, $path);
+        $opened = @fstat($stream);
+        $named = @lstat($path);
+        if (! is_array($opened) || ! is_array($named)
+            || ($opened['mode'] & 0170000) !== 0100000
+            || ($named['mode'] & 0170000) !== 0100000
+            || is_link($path) || realpath($path) !== $path) {
+            throw new DomainException('Trusted update receipt pathname changed.');
+        }
+        foreach (['dev', 'ino', 'size', 'mode', 'nlink', 'mtime', 'ctime'] as $field) {
+            if ($opened[$field] !== $baseline[$field]
+                || $named[$field] !== $baseline[$field]) {
+                throw new DomainException('Trusted update receipt identity changed.');
+            }
+        }
     }
 
     private function privateDirectory(string $directory, string $publicDocumentRoot): string
