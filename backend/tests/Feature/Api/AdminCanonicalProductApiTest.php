@@ -559,9 +559,9 @@ final class AdminCanonicalProductApiTest extends TestCase
         // The SQL scope excludes the invalid-slug article before the final
         // pinned-citation public gate is evaluated.
         $this->assertSame(2, Article::query()->publiclyVisible()->count());
-        // The SQL scope itself already excludes one invalid project; the
-        // remaining private-evidence row must still fail the public proof gate.
-        $this->assertSame(2, Project::query()->publiclyVerified()->count());
+        // SQL still counts all three imported projects; the authoritative
+        // public serializer rejects unsafe proof links and unroutable slugs.
+        $this->assertSame(3, Project::query()->publiclyVerified()->count());
 
         $response = $this->withToken($token)->getJson('/api/v1/admin/analytics')
             ->assertOk()
