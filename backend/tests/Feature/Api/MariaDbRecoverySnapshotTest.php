@@ -119,6 +119,27 @@ final class MariaDbRecoverySnapshotTest extends TestCase
         self::assertSame(2, (int) $this->source->query('SELECT COUNT(*) FROM recovery_parent')->fetchColumn());
     }
 
+    public function test_snapshot_manifest_capacity_matches_restore_contract(): void
+    {
+        $service = new MariaDbRecoverySnapshot();
+        $check = new \\ReflectionMethod(MariaDbRecoverySnapshot::class, 'assertManifestCapacity');
+        $check->invoke($service, str_repeat('x', 8388608));
+        foreach (['', str_repeat('x', 8388609)] as $bad) {
+            try {
+                $check->invoke($service, $bad);
+                self::fail('Snapshot builder accepted a manifest that restore would reject.');
+            } catch (DomainException $error) {
+                self::assertStringContainsString('manifest exceeds safe size', $error->getMessage());
+            }
+        }
+        // Normal snapshot remains readable by the exact restore service.
+        $checkpoint = $this->capture();
+        self::assertSame(['tables' => 2, 'rows' => 3],
+            (new MariaDbRecoverySnapshot())->restoreAndVerify(
+                $this->target, $checkpoint['directory'], $checkpoint['manifest_sha256'],
+            ));
+    }
+
     public function test_hardlinked_manifest_is_rejected_without_creating_tables(): void
     {
         if (PHP_OS_FAMILY === 'Windows' || ! function_exists('link')) {
