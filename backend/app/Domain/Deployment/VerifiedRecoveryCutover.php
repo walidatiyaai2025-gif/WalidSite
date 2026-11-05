@@ -77,14 +77,30 @@ final class VerifiedRecoveryCutover
             // Never back up real data under a stale or hard-linked lock.
             $this->assertSecureLockIdentity($lock, $lockFile);
 
+            // Preserve the same on-disk lock identity throughout all external
+            // callbacks, backup/restore work and the final code switch.
+            // A replaced pathname would permit an unrelated second updater
+            // to acquire a different inode while this process still holds flock.
+            $lockCheck = fn (): bool => $this->assertSecureLockIdentity($lock, $lockFile);
+            $guard = function (callable $callback) use ($lockCheck): bool {
+                $lockCheck();
+                $result = $callback();
+                $lockCheck();
+                return $result === true;
+            };
+            $guardWrites = fn (): bool => $guard($writesQuiesced);
+            $guardCandidate = fn (): bool => $guard($candidateVerified);
+            $guardHealth = fn (): bool => $guard($healthCheck);
+
             // These checks are repeated under the lock before any backups.
-            if ($writesQuiesced() !== true || $candidateVerified() !== true) {
+            if ($guardWrites() !== true || $guardCandidate() !== true) {
                 throw new DomainException('Update preconditions changed after locking.');
             }
 
             $files = (new PrivateRecoverySnapshot())->create(
                 $environmentFile, $privateUserData, $publicUploads, $vault,
             );
+            $lockCheck();
             $fileDrill = (new PrivateRecoverySnapshot())->drill(
                 $files['directory'], $files['manifest_sha256'], $restoration,
             );
@@ -92,9 +108,11 @@ final class VerifiedRecoveryCutover
                 throw new DomainException('Private file restore proof does not match the backup.');
             }
 
+            $lockCheck();
             $database = (new MariaDbRecoverySnapshot())->create(
                 $liveDatabase, $vault, $publicDocumentRoot,
             );
+            $lockCheck();
             $dbDrill = (new MariaDbRecoverySnapshot())->restoreAndVerify(
                 $disposableRestoreDatabase, $database['directory'], $database['manifest_sha256'],
             );
@@ -102,14 +120,17 @@ final class VerifiedRecoveryCutover
                 throw new DomainException('MariaDB restore proof does not match the source backup.');
             }
 
+            $lockCheck();
+
             // A successful restore drill never authorizes a later cutover if
             // the caller has resumed writes or candidate identity has changed.
             $result = (new AtomicReleaseSwitcher())->switch(
                 $releaseRoot, $currentLink, $publicDocumentRoot, $approvedCandidate,
-                fn (): bool => $writesQuiesced() === true && $candidateVerified() === true,
-                $healthCheck,
+                fn (): bool => $guardWrites() && $guardCandidate(),
+                $guardHealth,
             );
 
+            $lockCheck();
             return [
                 'state' => $result['state'],
                 'previous' => $result['previous'],
@@ -131,7 +152,7 @@ final class VerifiedRecoveryCutover
      *
      * @param resource $lock
      */
-    private function assertSecureLockIdentity($lock, string $path): void
+    private function assertSecureLockIdentity($lock, string $path): bool
     {
         clearstatcache(true, $path);
         $opened = @fstat($lock);
@@ -143,8 +164,9 @@ final class VerifiedRecoveryCutover
             || $opened['dev'] !== $named['dev']
             || $opened['ino'] !== $named['ino']
             || is_link($path)) {
-            throw new DomainException('Unsafe recovery lock identity; no backup or cutover was performed.');
+            throw new DomainException('Unsafe recovery lock identity; operation must stop.');
         }
+        return true;
     }
 
     private function overlap(string $left, string $right): bool
