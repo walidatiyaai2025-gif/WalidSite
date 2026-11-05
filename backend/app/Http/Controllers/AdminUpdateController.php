@@ -33,7 +33,7 @@ final class AdminUpdateController extends Controller
      */
     private function installedVersion(): ?string
     {
-        return app(TrustedInstalledVersion::class)->read(base_path('VERSION'));
+        return (new TrustedInstalledVersion())->read(base_path('VERSION'));
     }
 
     private function pinnedInstalledVersion(): ?string
