@@ -189,6 +189,68 @@ final class Web13PaginatedSearchTest extends TestCase
         }
     }
 
+
+    public function test_search_project_page_two_roundtrip_is_source_scoped_and_bilingual(): void
+    {
+        for ($i = 1; $i <= 15; $i++) {
+            $this->project('pagination-project-return-'.$i);
+        }
+        $this->project('pagination-project-private', false);
+
+        foreach (['en', 'ar'] as $lang) {
+            foreach (['all', 'projects'] as $type) {
+                $params = [
+                    'lang' => $lang, 'q' => 'PagerEvidence2026',
+                    'type' => $type, 'page' => 2,
+                ];
+                $listing = $this->get(route('public.search', $params))->assertOk()
+                    ->assertDontSee('pagination-project-private');
+                preg_match_all('/href="([^"]*\\/projects\\/pagination-project-return-[^"]*)"/',
+                    $listing->getContent(), $links);
+                $this->assertCount(5, $links[1], $lang.' '.$type.' should link all five verified projects');
+                foreach ($links[1] as $link) {
+                    $href = html_entity_decode($link, ENT_QUOTES);
+                    $this->assertStringContainsString('source=search', $href);
+                    $this->assertStringContainsString('page=2', $href);
+                    $this->assertStringContainsString('type='.$type, $href);
+                }
+
+                $detailBase = [
+                    'slug' => 'pagination-project-return-11',
+                    'lang' => $lang, 'source' => 'search',
+                    'q' => 'PagerEvidence2026', 'type' => $type,
+                ];
+                $detailUrl = route('public.project', $detailBase + ['page' => 2]);
+                $listing->assertSee('href="'.e($detailUrl).'"', false);
+                $return = route('public.search', $params);
+                $this->get($detailUrl)->assertOk()
+                    ->assertSee('href="'.e($return).'"', false)
+                    ->assertSee($lang === 'ar' ? 'العودة إلى نتائج البحث' : 'Back to search results');
+
+                // Default case-study entry still returns to the public project
+                // listing. Invalid source/page/type must not forge a search
+                // history link or permit arbitrary return destinations.
+                $plain = route('public.project', [
+                    'slug' => 'pagination-project-return-11',
+                    'lang' => $lang,
+                ]);
+                $this->get($plain)->assertOk()
+                    ->assertSee('href="'.e(route('public.projects', ['lang' => $lang])).'"', false)
+                    ->assertDontSee($lang === 'ar' ? 'العودة إلى نتائج البحث' : 'Back to search results');
+                foreach (['page=10001', 'page=-1', 'page=2.5', 'page%5B%5D=2'] as $badPage) {
+                    $this->get(route('public.project', $detailBase).'&'.$badPage)
+                        ->assertOk()
+                        ->assertSee('href="'.e(route('public.search', [
+                            'lang' => $lang, 'q' => 'PagerEvidence2026', 'type' => $type,
+                        ])).'"', false);
+                }
+                $this->get(route('public.project', $detailBase + ['type' => 'articles', 'page' => 2]))
+                    ->assertOk()
+                    ->assertDontSee($lang === 'ar' ? 'العودة إلى نتائج البحث' : 'Back to search results');
+            }
+        }
+    }
+
     public function test_empty_results_and_invalid_pages_cannot_invent_pagination_or_leak_data(): void
     {
         $this->article('pagination-unpublished', false);

@@ -83,7 +83,7 @@
 @endif
 @if($projects->isNotEmpty())
 <section class="ed-card" aria-labelledby="projects-h" data-testid="search-project-results"><h2 id="projects-h">{{ $locale === 'ar' ? 'المشاريع' : 'Projects' }}</h2><ul>
-@foreach($projects->skip($web13ProjectPreviewCount) as $p)<li data-testid="search-project-result"><a href="{{ route('public.project', ['slug'=>$p['slug'],'lang'=>$locale]) }}">{{ $p['name'] }}</a></li>@endforeach
+@foreach($projects->skip($web13ProjectPreviewCount) as $p)<li data-testid="search-project-result"><a href="{{ route('public.project', array_merge(['slug' => $p['slug'], 'lang' => $locale, 'source' => 'search', 'q' => $search, 'type' => $type], $page > 1 ? ['page' => $page] : [])) }}">{{ $p['name'] }}</a></li>@endforeach
 </ul>
 <a class="ed-more" href="{{ route('public.projects', ['lang' => $locale, 'q' => $search]) }}">{{ $locale === 'ar' ? 'استعراض جميع المشاريع المطابقة' : 'Browse all matching projects' }}</a>
 </section>

@@ -74,6 +74,27 @@ body:has(.project-case-live) .site-header{display:none}
     $returnCategory !== '' ? ['category' => $returnCategory] : [],
     $returnPage !== false && $returnPage > 1 ? ['page' => $returnPage] : []
 )))
+{{-- A project opened from verified Search must return to that precise
+     first-party result set. Preserve normal project-list filters otherwise.
+     Never accept arbitrary return URLs or unsupported result types. --}}
+@php
+    $searchSource = request()->query()['source'] ?? null;
+    $searchType = request()->query()['type'] ?? null;
+    $fromVerifiedSearch = $searchSource === 'search'
+        && is_string($returnQRaw)
+        && trim($returnQRaw) !== ''
+        && mb_strlen(trim($returnQRaw)) <= 80
+        && in_array($searchType, ['all', 'projects'], true);
+    if ($fromVerifiedSearch) {
+        $validSearchPage = (is_int($returnPageRaw) || is_string($returnPageRaw))
+            && ctype_digit((string) $returnPageRaw)
+            && $returnPage !== false && $returnPage > 1;
+        $returnToListing = route('public.search', array_merge(
+            ['lang' => $locale, 'q' => trim($returnQRaw), 'type' => $searchType],
+            $validSearchPage ? ['page' => $returnPage] : []
+        ));
+    }
+@endphp
 @section('content')
 <div class="project-case-live" lang="{{ $locale }}" dir="{{ $isArabic ? 'rtl' : 'ltr' }}">
   <header class="pc-nav">
@@ -91,7 +112,7 @@ body:has(.project-case-live) .site-header{display:none}
   </header>
   <div class="pc-wrap">
     <nav class="pc-breadcrumb" aria-label="{{ $isArabic ? 'مسار التنقل' : 'Breadcrumb' }}">
-      <a href="{{ $returnToListing }}">{{ $isArabic ? 'المشاريع' : 'All projects' }}</a>
+      <a href="{{ $returnToListing }}">{{ $fromVerifiedSearch ? ($isArabic ? 'نتائج البحث' : 'Search results') : ($isArabic ? 'المشاريع' : 'All projects') }}</a>
       <span aria-hidden="true">›</span>
       <span>{{ $project['name'] }}</span>
     </nav>
@@ -135,7 +156,7 @@ body:has(.project-case-live) .site-header{display:none}
       <aside class="pc-panel">
         <h2>{{ $isArabic?'عودة للتصفح':'Keep exploring' }}</h2>
         <p>{{ $isArabic?'اختر فئة أخرى أو ارجع إلى قائمة المشاريع المنشورة.':'Browse more of the published, evidence-reviewed work.' }}</p>
-        <div class="pc-links-more"><a href="{{ $returnToListing }}">{{ $isArabic ? 'العودة إلى نتائج المشاريع' : 'Back to project results' }}</a>
+        <div class="pc-links-more"><a href="{{ $returnToListing }}">{{ $fromVerifiedSearch ? ($isArabic ? 'العودة إلى نتائج البحث' : 'Back to search results') : ($isArabic ? 'العودة إلى نتائج المشاريع' : 'Back to project results') }}</a>
           <a href="{{ route('public.expertise', ['lang'=>$locale]) }}">{{ $isArabic?'تصفح الخبرات':'Explore expertise' }}</a></div>
       </aside>
     </div>
