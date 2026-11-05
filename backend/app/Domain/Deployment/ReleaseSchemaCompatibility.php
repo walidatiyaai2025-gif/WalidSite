@@ -67,21 +67,77 @@ final class ReleaseSchemaCompatibility
             if (! preg_match('#^(?:[A-Za-z0-9_-]+/)*[A-Za-z0-9_-]+\.php$#D', $relative)) {
                 throw new DomainException('Unsafe migration filename.');
             }
-            $size = filesize($path);
-            $stat = stat($path);
-            if ($size === false || $stat === false || ($stat['nlink'] ?? 0) !== 1
-                || ++$count > 5000 || ($total += $size) > 67108864) {
+            // Hash the same opened regular inode that passes size/link/path
+            // validation. Opening the pathname again for hash_file() admits
+            // a race against rename, replacement and hard-link aliases.
+            [$size, $hash] = $this->migrationDigest($path);
+            if (++$count > 5000 || ($total += $size) > 67108864) {
                 throw new DomainException('Migration inventory exceeds supported security limits.');
-            }
-            $hash = hash_file('sha256', $path);
-            if (! is_string($hash)) {
-                throw new DomainException('Unable to verify migration bytes.');
             }
             $items[$relative] = $hash;
         }
         ksort($items, SORT_STRING);
 
         return $items;
+    }
+
+    /** @return array{int,string} */
+    private function migrationDigest(string $path): array
+    {
+        clearstatcache(true, $path);
+        if (is_link($path) || ! is_file($path) || realpath($path) !== $path) {
+            throw new DomainException('Untrusted migration file identity.');
+        }
+        $handle = @fopen($path, 'rb');
+        if ($handle === false) {
+            throw new DomainException('Unable to open migration for verification.');
+        }
+
+        try {
+            $before = @fstat($handle);
+            if (! is_array($before)) {
+                throw new DomainException('Unable to identify migration inode.');
+            }
+            $this->assertStableMigration($handle, $path, $before);
+            $size = $before['size'];
+            if (! is_int($size) || $size < 0 || $size > 67108864) {
+                throw new DomainException('Migration file exceeds supported security limits.');
+            }
+            $hasher = hash_init('sha256');
+            // Bound a single file even before the aggregate 64-MiB budget.
+            $read = hash_update_stream($hasher, $handle, $size + 1);
+            if ($read !== $size) {
+                throw new DomainException('Migration changed while hashing.');
+            }
+            $this->assertStableMigration($handle, $path, $before);
+            return [$size, hash_final($hasher)];
+        } finally {
+            fclose($handle);
+        }
+    }
+
+    /**
+     * @param resource $handle
+     * @param array<string|int,mixed> $before
+     */
+    private function assertStableMigration($handle, string $path, array $before): void
+    {
+        clearstatcache(true, $path);
+        $opened = @fstat($handle);
+        $named = @lstat($path);
+        if (! is_array($opened) || ! is_array($named)
+            || ($opened['mode'] & 0170000) !== 0100000
+            || ($named['mode'] & 0170000) !== 0100000
+            || $opened['nlink'] !== 1 || $named['nlink'] !== 1
+            || is_link($path) || realpath($path) !== $path
+            || $opened['dev'] !== $named['dev'] || $opened['ino'] !== $named['ino']) {
+            throw new DomainException('Migration pathname or inode changed during compatibility inspection.');
+        }
+        foreach (['dev', 'ino', 'size', 'mtime', 'ctime'] as $field) {
+            if ($opened[$field] !== $before[$field] || $named[$field] !== $before[$field]) {
+                throw new DomainException('Migration metadata changed during compatibility inspection.');
+            }
+        }
     }
 
     /** @return array{previous:array<string,string>,candidate:array<string,string>} */
