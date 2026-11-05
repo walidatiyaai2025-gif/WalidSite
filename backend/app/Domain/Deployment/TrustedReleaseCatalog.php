@@ -29,7 +29,7 @@ final class TrustedReleaseCatalog
         string $installedVersion,
     ): array {
         // Reject invalid destinations BEFORE making a network request.
-        TrustedReleaseOrigin::assertValid($approvedOrigin);
+        TrustedReleaseMetadata::assertPinnedHttpsOrigin($approvedOrigin);
 
         $url = $approvedOrigin.'/releases/latest.json';
         $content = '';
