@@ -119,6 +119,30 @@ final class MariaDbRecoverySnapshotTest extends TestCase
         self::assertSame(2, (int) $this->source->query('SELECT COUNT(*) FROM recovery_parent')->fetchColumn());
     }
 
+    public function test_total_row_limit_is_shared_by_all_tables_and_restoration(): void
+    {
+        $snapshot = new MariaDbRecoverySnapshot();
+        $check = new \ReflectionMethod(MariaDbRecoverySnapshot::class, 'assertTotalRowCapacity');
+        $check->invoke($snapshot, 249999, 1);
+        $check->invoke($snapshot, 0, 250000);
+        foreach ([[249999, 2], [250000, 1], [0, 250001], [-1, 1]] as [$previous, $additional]) {
+            try {
+                $check->invoke($snapshot, $previous, $additional);
+                self::fail('Total recovery rows must be bounded across all tables.');
+            } catch (DomainException $error) {
+                self::assertStringContainsString('total row capacity', $error->getMessage());
+            }
+        }
+
+        // Multiple ordinary InnoDB tables still pass the full snapshot and
+        // disposable database restore contract.
+        $backup = $this->capture();
+        self::assertSame(['tables' => 2, 'rows' => 3],
+            $snapshot->restoreAndVerify(
+                $this->target, $backup['directory'], $backup['manifest_sha256'],
+            ));
+    }
+
     public function test_snapshot_manifest_capacity_matches_restore_contract(): void
     {
         $service = new MariaDbRecoverySnapshot();

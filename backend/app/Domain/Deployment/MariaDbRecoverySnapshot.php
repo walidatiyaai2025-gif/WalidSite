@@ -72,7 +72,8 @@ final class MariaDbRecoverySnapshot
                         while (($row = $stmt->fetch(PDO::FETCH_ASSOC)) !== false) {
                             $encoded = $this->encode($row);
                             $line = json_encode($encoded, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES)."\n";
-                            if (++$count > self::MAX_ROWS || ($size += strlen($line)) > self::MAX_BYTES) {
+                            $this->assertTotalRowCapacity($rows, ++$count);
+                            if (($size += strlen($line)) > self::MAX_BYTES) {
                                 throw new DomainException('MariaDB backup exceeds safe recovery capacity.');
                             }
                             if (fwrite($out, $line) !== strlen($line)) {
@@ -179,6 +180,7 @@ final class MariaDbRecoverySnapshot
         // atomic pathname replacement after checksum validation. Keep each
         // preflight inode identity for the later DDL/restore phase.
         $preflightBytes = 0;
+        $preflightRows = 0;
         $verifiedInodes = [];
         foreach ($metadata['tables'] as $table => $info) {
             $this->ident($table);
@@ -190,6 +192,8 @@ final class MariaDbRecoverySnapshot
                 || ! $this->validHash($info['data_sha256'] ?? null)) {
                 throw new DomainException('Untrusted MariaDB recovery table metadata.');
             }
+            $this->assertTotalRowCapacity($preflightRows, $info['rows']);
+            $preflightRows += $info['rows'];
             $file = $directory.'/'.$table.'.jsonl';
             $input = @fopen($file, 'rb');
             if ($input === false) {
@@ -227,9 +231,7 @@ final class MariaDbRecoverySnapshot
                         throw new DomainException('Malformed MariaDB recovery row; restore rejected.', 0, $error);
                     }
                     $decoded = $this->decode($encoded);
-                    if (++$count > self::MAX_ROWS) {
-                        throw new DomainException('MariaDB recovery row limit exceeded.');
-                    }
+                    $this->assertTotalRowCapacity($preflightRows - $info['rows'], ++$count);
                     $digests[] = hash('sha256', $this->canonical($this->encode($decoded)));
                 }
                 if (! feof($input)) {
@@ -276,9 +278,7 @@ final class MariaDbRecoverySnapshot
                             throw new DomainException('Malformed MariaDB recovery row; restore rejected.', 0, $error);
                         }
                         $row = $this->decode($encoded);
-                        if (++$count > self::MAX_ROWS) {
-                            throw new DomainException('MariaDB recovery row budget exceeded.');
-                        }
+                        $this->assertTotalRowCapacity($rows, ++$count);
                         $columns = array_keys($row);
                         $sql = 'INSERT INTO '.$quoted.' ('.implode(',', array_map($this->ident(...), $columns))
                             .') VALUES ('.implode(',', array_fill(0, count($columns), '?')).')';
@@ -448,6 +448,19 @@ final class MariaDbRecoverySnapshot
             throw new DomainException('Unsupported MariaDB database identifier.');
         }
         return chr(96).$name.chr(96);
+    }
+
+    /**
+     * Cap the complete snapshot, not each table independently; multi-table
+     * databases must share the same bounded row budget at create and restore.
+     */
+    private function assertTotalRowCapacity(int $previous, int $additional): void
+    {
+        if ($previous < 0 || $additional < 0
+            || $previous > self::MAX_ROWS
+            || $additional > self::MAX_ROWS - $previous) {
+            throw new DomainException('MariaDB recovery total row capacity exceeded.');
+        }
     }
 
     /** Reject snapshots that our own restore verifier would refuse to open. */
