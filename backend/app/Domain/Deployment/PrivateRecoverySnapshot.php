@@ -218,27 +218,115 @@ final class PrivateRecoverySnapshot
         if (is_link($source) || ! is_file($source) || ! is_readable($source)) {
             throw new DomainException('Recovery source is not a regular readable file.');
         }
-        $status = stat($source);
-        if ($status === false || ($status['nlink'] ?? 0) !== 1) {
-            throw new DomainException('Hard-linked private recovery inputs are forbidden.');
+
+        // Copy and hash bytes from ONE opened file descriptor. Hashing a
+        // pathname after copy() would reopen a possibly replaced source.
+        $input = @fopen($source, 'rb');
+        if ($input === false) {
+            throw new DomainException('Cannot securely open private recovery source.');
         }
-        $size = filesize($source);
-        if ($size === false || $size < 0 || ++$count > self::MAX_FILES
-            || ($total += $size) > self::MAX_TOTAL_BYTES) {
-            throw new DomainException('Recovery snapshot exceeds configured storage safety budget.');
+
+        try {
+            $baseline = @fstat($input);
+            if (! is_array($baseline)) {
+                throw new DomainException('Cannot identify private recovery source.');
+            }
+            $this->assertStableSource($input, $source, $baseline);
+            $size = $baseline['size'];
+            if (! is_int($size) || $size < 0 || ++$count > self::MAX_FILES
+                || ($total += $size) > self::MAX_TOTAL_BYTES) {
+                throw new DomainException('Recovery snapshot exceeds configured storage safety budget.');
+            }
+            if (! is_dir(dirname($destination)) && ! mkdir(dirname($destination), 0700, true)) {
+                throw new RuntimeException('Cannot create recovery directory.');
+            }
+
+            // Exclusive creation and 0600 before any private bytes are written.
+            $output = @fopen($destination, 'xb');
+            if ($output === false) {
+                throw new RuntimeException('Cannot create private snapshot file exclusively.');
+            }
+            try {
+                if (! @chmod($destination, 0600)) {
+                    throw new RuntimeException('Cannot restrict private snapshot file.');
+                }
+                $hash = hash_init('sha256');
+                $copied = 0;
+                while (! feof($input)) {
+                    $chunk = fread($input, 65536);
+                    if ($chunk === false || ($chunk === '' && ! feof($input))) {
+                        throw new DomainException('Private recovery source read was interrupted.');
+                    }
+                    if ($chunk === '') {
+                        break;
+                    }
+                    $length = strlen($chunk);
+                    $copied += $length;
+                    if ($copied > $size) {
+                        throw new DomainException('Recovery source grew during snapshot.');
+                    }
+                    hash_update($hash, $chunk);
+                    $offset = 0;
+                    while ($offset < $length) {
+                        $written = fwrite($output, substr($chunk, $offset));
+                        if ($written === false || $written === 0) {
+                            throw new RuntimeException('Private recovery snapshot write was interrupted.');
+                        }
+                        $offset += $written;
+                    }
+                }
+                if (! fflush($output)) {
+                    throw new RuntimeException('Cannot flush private recovery snapshot.');
+                }
+            } finally {
+                fclose($output);
+            }
+
+            // Reject a renamed/replaced pathname even when a previous inode
+            // remains open and contains identical bytes. Also detect changes
+            // to the source inode's size/mtime/ctime while copying.
+            $this->assertStableSource($input, $source, $baseline);
+            $digest = hash_final($hash);
+            $copyDigest = hash_file('sha256', $destination);
+            if ($copied !== $size || filesize($destination) !== $size
+                || ! is_string($copyDigest) || ! hash_equals($digest, $copyDigest)) {
+                throw new DomainException('Backup source changed or snapshot is incomplete.');
+            }
+            $this->assertStableSource($input, $source, $baseline);
+            $manifest[$name] = ['bytes' => $size, 'sha256' => $digest];
+        } finally {
+            fclose($input);
         }
-        if (! is_dir(dirname($destination)) && ! mkdir(dirname($destination), 0700, true)) {
-            throw new RuntimeException('Cannot create recovery directory.');
+    }
+
+    /**
+     * The opened private data inode, its stable metadata and its visible
+     * pathname must remain identical throughout backup. Merely checking
+     * is_link() and hashing a later pathname admits rename/swap races.
+     *
+     * @param resource $stream
+     * @param array<string|int,mixed> $baseline
+     */
+    private function assertStableSource($stream, string $path, array $baseline): void
+    {
+        clearstatcache(true, $path);
+        $opened = @fstat($stream);
+        $named = @lstat($path);
+        if (! is_array($opened) || ! is_array($named)
+            || ($opened['mode'] & 0170000) !== 0100000
+            || ($named['mode'] & 0170000) !== 0100000
+            || $opened['nlink'] !== 1 || $named['nlink'] !== 1
+            || $opened['dev'] !== $named['dev'] || $opened['ino'] !== $named['ino']
+            || is_link($path)) {
+            throw new DomainException('Private recovery source pathname or inode changed during snapshot.');
         }
-        if (! copy($source, $destination) || ! chmod($destination, 0600)) {
-            throw new RuntimeException('Cannot snapshot private file.');
+
+        foreach (['dev', 'ino', 'size', 'mtime', 'ctime'] as $field) {
+            if ($opened[$field] !== $baseline[$field]
+                || $named[$field] !== $baseline[$field]) {
+                throw new DomainException('Private recovery source changed while being backed up.');
+            }
         }
-        $digest = hash_file('sha256', $source);
-        if ($digest === false || ! hash_equals($digest, hash_file('sha256', $destination))
-            || filesize($destination) !== $size) {
-            throw new DomainException('Backup source changed or snapshot is incomplete.');
-        }
-        $manifest[$name] = ['bytes' => $size, 'sha256' => $digest];
     }
 
     private function within(string $path, string $root): bool
