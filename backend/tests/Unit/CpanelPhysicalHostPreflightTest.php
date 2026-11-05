@@ -171,6 +171,42 @@ final class CpanelPhysicalHostPreflightTest extends TestCase
         $this->inspect();
     }
 
+    public function test_hardlinked_or_writable_stable_front_controller_fails_closed(): void
+    {
+        $live = $this->home.'/public_html/index.php';
+        $originalMode = fileperms($live) & 0777;
+        try {
+            self::assertTrue(chmod($live, 0666));
+            $this->expectPreflightRejection();
+        } finally {
+            chmod($live, $originalMode);
+            clearstatcache(true, $live);
+        }
+
+        $alias = $this->home.'/linked-stable-controller';
+        if (! @link($live, $alias)) {
+            self::markTestSkipped('Hard links are unsupported on this filesystem.');
+        }
+        try {
+            $this->expectPreflightRejection();
+        } finally {
+            unlink($alias);
+            clearstatcache(true, $live);
+        }
+
+        self::assertSame('hosting_layout_verified', $this->inspect()['state']);
+    }
+
+    private function expectPreflightRejection(): void
+    {
+        try {
+            $this->inspect();
+            self::fail('Untrusted stable front controller passed preflight.');
+        } catch (DomainException) {
+            self::assertTrue(true);
+        }
+    }
+
     public function test_missing_private_env_and_runtime_storage_are_not_approved(): void
     {
         unlink($this->home.'/application/.env');
