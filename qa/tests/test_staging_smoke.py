@@ -2,6 +2,8 @@
 import io
 import json
 import tempfile
+import threading
+import time
 import unittest
 from contextlib import redirect_stdout, redirect_stderr
 from http.client import HTTPException
@@ -186,6 +188,83 @@ class StagingSmokeTest(unittest.TestCase):
         self.assertLess(clock[0], 3)
         self.assertTrue(all(x.closed for x in opener.responses))
         self.assertNotIn("do-not-log-this-token", json.dumps(report))
+
+    def test_blocked_https_headers_or_body_cannot_exceed_whole_request_budget(self):
+        """Socket/header/body stalls fail within deadline, without raw values."""
+        for mode in ("headers", "body"):
+            entered = threading.Event()
+            release = threading.Event()
+
+            class BlockingOpener(FakeOpener):
+                def open(self, request, timeout):
+                    blocked = request.full_url.endswith("/api/v1/public/home")
+                    if blocked and mode == "headers":
+                        entered.set()
+                        release.wait(5)
+                    response = super().open(request, timeout)
+                    if blocked and mode == "body":
+                        original = response.read1
+
+                        def blocked_read(size):
+                            entered.set()
+                            release.wait(5)
+                            return original(size)
+
+                        response.read1 = blocked_read
+                    return response
+
+            opener = BlockingOpener({
+                "/api/v1/public/home": (
+                    200, "json", b'{"data":{"secret":"do-not-print"}}',
+                ),
+            })
+            try:
+                start = time.perf_counter()
+                report = permitted_run("https://staging.example.com", opener, timeout=1)
+                elapsed = time.perf_counter() - start
+                self.assertTrue(entered.is_set(), mode)
+                self.assertLess(elapsed, 1.9, mode)
+                failures = [item for item in report["checks"] if not item["passed"]]
+                self.assertEqual(
+                    [(item["path"], item["reason"]) for item in failures],
+                    [("/api/v1/public/home", "request_deadline_exceeded")],
+                    mode,
+                )
+                self.assertIsNone(failures[0]["observed_status"])
+                self.assertFalse(report["http_smoke_passed"])
+                self.assertNotIn("do-not-print", json.dumps(report))
+            finally:
+                # Unblock the test worker for cleanup; no production GET has
+                # ever been permitted to send data or perform a write.
+                release.set()
+
+    def test_json_body_inherits_budget_spent_before_http_headers(self):
+        """A late header must not buy a second full JSON read deadline."""
+        clock = [0.0]
+
+        class SlowHeadersOpener(FakeOpener):
+            def open(self, request, timeout):
+                response = super().open(request, timeout)
+                if request.full_url.endswith("/api/v1/public/home"):
+                    clock[0] += 0.85
+                    original = response.read1
+
+                    def first_chunk(size):
+                        clock[0] += 0.25
+                        return original(size)
+
+                    response.read1 = first_chunk
+                return response
+
+        opener = SlowHeadersOpener()
+        with patch("qa.staging_smoke.time.monotonic", side_effect=lambda: clock[0]):
+            report = permitted_run("https://staging.example.com", opener, timeout=1)
+        self.assertFalse(report["http_smoke_passed"])
+        self.assertEqual(
+            [(item["path"], item["reason"]) for item in report["checks"] if not item["passed"]],
+            [("/api/v1/public/home", "json_body_deadline_exceeded")],
+        )
+        self.assertTrue(all(response.closed for response in opener.responses))
 
     def test_single_slow_read_fails_even_when_full_valid_json_is_returned(self):
         clock = [0.0]
