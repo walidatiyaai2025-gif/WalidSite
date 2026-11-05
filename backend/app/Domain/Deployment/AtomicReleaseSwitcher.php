@@ -61,15 +61,22 @@ final class AtomicReleaseSwitcher
                 || realpath($publicDocumentRoot) !== $previous.'/public_html') {
                 throw new DomainException('Unverified or incompatible immutable release topology.');
             }
-            // Orchestrator supplies a restore-tested backup verifier. Without it
-            // there is NO filesystem pointer mutation at all.
-            if ($verifiedBackup() !== true) {
+            // Orchestrator supplies a restore-tested backup verifier. A
+            // callback may be long-running and must not change the pathname
+            // whose inode this process holds locked: another updater could
+            // otherwise acquire a different file under the same lock name.
+            $this->assertSecureLockIdentity($lock, $lockFile);
+            $backupVerified = $verifiedBackup();
+            $this->assertSecureLockIdentity($lock, $lockFile);
+            if ($backupVerified !== true) {
                 throw new DomainException('Code switch requires an independently verified recovery backup.');
             }
-            // Verify current still points to the same release immediately before swap.
+            // Verify lock identity and current code under the same exclusive
+            // lease immediately before any irreversible pointer mutation.
             if (realpath($currentLink) !== $previous) {
                 throw new DomainException('Concurrent release change detected.');
             }
+            $this->assertSecureLockIdentity($lock, $lockFile);
 
             $this->replacePointer($currentLink, $candidate);
             try {
