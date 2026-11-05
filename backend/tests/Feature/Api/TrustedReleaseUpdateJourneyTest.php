@@ -425,7 +425,7 @@ final class TrustedReleaseUpdateJourneyTest extends TestCase
                 $this->publicKey, 'https://updates.example.com', '1.0.0',
                 $this->paths,
                 static function () use (&$writes): bool {
-                    return ++$writes < 3;
+                    return ++$writes < 4;
                 },
                 static fn (): bool => true, $transport,
             );
@@ -433,7 +433,7 @@ final class TrustedReleaseUpdateJourneyTest extends TestCase
         } catch (DomainException $failure) {
             self::assertStringContainsString('preconditions changed after locking', $failure->getMessage());
         }
-        self::assertSame(3, $writes);
+        self::assertSame(4, $writes);
         self::assertSame(1, $downloads);
         self::assertSame($bytes, file_get_contents($this->paths['archive']));
         self::assertDirectoryExists(
