@@ -146,7 +146,8 @@ final class PrivacyConsentRealJourneyTest extends TestCase
         $this->actingAs($admin, 'web');
         $this->get('/admin/audience?purpose=product_updates&channel=email')->assertOk()
             ->assertSee('Consented recipients')
-            ->assertSee('<strong>1</strong>', false)
+            ->assertSee('data-testid="audience-consented">1</strong>', false)
+            ->assertSee('data-testid="audience-suppressed">1</strong>', false)
             ->assertDontSee($reader->email);
 
         Auth::forgetGuards();
@@ -167,7 +168,9 @@ final class PrivacyConsentRealJourneyTest extends TestCase
         $this->assertFalse($gate->allows($reader->refresh(), 'product_updates', 'email'));
         $this->actingAs($admin, 'web');
         $this->get('/admin/audience?purpose=product_updates&channel=email')->assertOk()
-            ->assertSee('<strong>0</strong>', false);
+            ->assertSee('data-testid="audience-consented">0</strong>', false)
+            ->assertSee('data-testid="audience-revoked">1</strong>', false)
+            ->assertDontSee($reader->email);
     }
 
     public function test_signed_in_export_and_confirmed_deletion_are_not_public_web_claims(): void
