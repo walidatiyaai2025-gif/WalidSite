@@ -215,6 +215,29 @@ final class VerifiedRecoveryCutoverTest extends TestCase
             ->query('SELECT COUNT(*) FROM information_schema.tables WHERE TABLE_SCHEMA=DATABASE()')->fetchColumn());
     }
 
+    public function test_hard_linked_recovery_lock_rejects_backup_and_code_cutover(): void
+    {
+        $unrelated = $this->home.'/shared-recovery-lock';
+        file_put_contents($unrelated, 'do-not-modify');
+        self::assertTrue(link($unrelated, $this->vault.'/.verified-cutover.lock'));
+
+        try {
+            $this->execute();
+            self::fail('A hard-linked recovery lock must fail before backups.');
+        } catch (DomainException $failure) {
+            self::assertStringContainsString('lock identity', $failure->getMessage());
+        }
+
+        self::assertSame('do-not-modify', file_get_contents($unrelated));
+        self::assertSame($this->old, realpath($this->current));
+        self::assertSame('vA', file_get_contents($this->publicRoot.'/index.php'));
+        self::assertSame([], glob($this->vault.'/.mariadb-*') ?: []);
+        self::assertSame([], glob($this->vault.'/recovery-*') ?: []);
+        self::assertSame(0, (int) $this->recoveryDb
+            ->query('SELECT COUNT(*) FROM information_schema.tables WHERE TABLE_SCHEMA=DATABASE()')->fetchColumn());
+        self::assertSame(1, (int) $this->liveDb->query('SELECT COUNT(*) FROM orders')->fetchColumn());
+    }
+
     private function assertDenied(callable $quiesced, callable $approved): void
     {
         try {

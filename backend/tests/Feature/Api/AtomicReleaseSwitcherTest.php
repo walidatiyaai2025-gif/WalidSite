@@ -165,6 +165,33 @@ final class AtomicReleaseSwitcherTest extends TestCase
         $this->reject();
     }
 
+    public function test_hard_linked_release_lock_denies_backup_and_pointer_swap(): void
+    {
+        $unrelated = $this->home.'/shared-release-lock';
+        file_put_contents($unrelated, 'preserved');
+        self::assertTrue(link($unrelated, $this->releases.'/.release-switch.lock'));
+        $backupCalls = 0;
+
+        try {
+            (new AtomicReleaseSwitcher())->switch(
+                $this->releases, $this->current, $this->docroot, $this->next,
+                static function () use (&$backupCalls): bool {
+                    ++$backupCalls;
+                    return true;
+                },
+                static fn (): bool => true,
+            );
+            self::fail('A hard-linked release lock must not authorize cutover.');
+        } catch (DomainException $failure) {
+            self::assertStringContainsString('lock identity', $failure->getMessage());
+        }
+
+        self::assertSame(0, $backupCalls);
+        self::assertSame('preserved', file_get_contents($unrelated));
+        self::assertSame($this->old, realpath($this->current));
+        self::assertSame('v1', file_get_contents($this->docroot.'/index.php'));
+    }
+
     private function reject(?string $candidate = null): void
     {
         try {

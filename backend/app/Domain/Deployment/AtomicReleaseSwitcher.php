@@ -48,9 +48,13 @@ final class AtomicReleaseSwitcher
             throw new DomainException('Cannot acquire private release lock.');
         }
         try {
+            $this->assertSecureLockIdentity($lock, $lockFile);
             if (! flock($lock, LOCK_EX | LOCK_NB)) {
                 throw new DomainException('Another code update is running.');
             }
+            // Recheck the actual inode after exclusive locking: a pre-open
+            // is_link() check alone cannot prevent a swapped or aliased lock.
+            $this->assertSecureLockIdentity($lock, $lockFile);
             $previous = realpath($currentLink);
             if ($previous === false || ! is_dir($previous) || ! $this->under($previous, $root)
                 || $previous === $candidate || ! $this->complete($candidate) || ! $this->complete($previous)
@@ -104,6 +108,28 @@ final class AtomicReleaseSwitcher
             if (is_link($temporary)) {
                 @unlink($temporary);
             }
+        }
+    }
+
+    /**
+     * The private lock must be a unique regular inode, identical to the one
+     * at the lock path. No hard links, symlinks or pre-open path swaps.
+     *
+     * @param resource $lock
+     */
+    private function assertSecureLockIdentity($lock, string $path): void
+    {
+        clearstatcache(true, $path);
+        $opened = @fstat($lock);
+        $named = @lstat($path);
+        if (! is_array($opened) || ! is_array($named)
+            || ($opened['mode'] & 0170000) !== 0100000
+            || ($named['mode'] & 0170000) !== 0100000
+            || $opened['nlink'] !== 1 || $named['nlink'] !== 1
+            || $opened['dev'] !== $named['dev']
+            || $opened['ino'] !== $named['ino']
+            || is_link($path)) {
+            throw new DomainException('Unsafe atomic release lock identity; no code switch was performed.');
         }
     }
 

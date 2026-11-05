@@ -69,9 +69,13 @@ final class VerifiedRecoveryCutover
         }
 
         try {
+            $this->assertSecureLockIdentity($lock, $lockFile);
             if (! flock($lock, LOCK_EX | LOCK_NB)) {
                 throw new DomainException('Another verified recovery process is already running.');
             }
+            // The pathname may have been exchanged while flock was pending.
+            // Never back up real data under a stale or hard-linked lock.
+            $this->assertSecureLockIdentity($lock, $lockFile);
 
             // These checks are repeated under the lock before any backups.
             if ($writesQuiesced() !== true || $candidateVerified() !== true) {
@@ -117,6 +121,29 @@ final class VerifiedRecoveryCutover
         } finally {
             flock($lock, LOCK_UN);
             fclose($lock);
+        }
+    }
+
+    /**
+     * Require the opened descriptor and the visible lock pathname to be the
+     * SAME single-linked regular inode. Checking is_link() before fopen()
+     * alone leaves a path-swap race and accepts hard-linked lock aliases.
+     *
+     * @param resource $lock
+     */
+    private function assertSecureLockIdentity($lock, string $path): void
+    {
+        clearstatcache(true, $path);
+        $opened = @fstat($lock);
+        $named = @lstat($path);
+        if (! is_array($opened) || ! is_array($named)
+            || ($opened['mode'] & 0170000) !== 0100000
+            || ($named['mode'] & 0170000) !== 0100000
+            || $opened['nlink'] !== 1 || $named['nlink'] !== 1
+            || $opened['dev'] !== $named['dev']
+            || $opened['ino'] !== $named['ino']
+            || is_link($path)) {
+            throw new DomainException('Unsafe recovery lock identity; no backup or cutover was performed.');
         }
     }
 
