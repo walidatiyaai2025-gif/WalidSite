@@ -458,11 +458,19 @@ class OfflineRunbookRepository {
             (only != null && item.id != only) ||
             conflicts.contains(item.id)) continue;
         final prior = entries[item.id];
-        if (prior == null || time.isAfter(prior.time)) {
+        // A signed envelope's verification timestamp is not the published
+        // content version. When a legacy global pack and a per-UUID pin both
+        // exist, never let a newly re-signed older revision replace the
+        // higher published version on a subsequent cold start.
+        final version = item.publishedVersion ?? 0;
+        final previousVersion = prior?.item.publishedVersion ?? 0;
+        if (prior == null || version > previousVersion ||
+            (version == previousVersion && time.isAfter(prior.time))) {
           entries[item.id] = (item: item, time: time, envelope: envelope);
-        } else if (time.isAtSameMomentAs(prior.time) &&
+        } else if (version == previousVersion &&
+            time.isAtSameMomentAs(prior.time) &&
             envelope != prior.envelope) {
-          // Ambiguous equal-time revisions cannot be ordered by guesswork.
+          // Equal version + time with different signed content is unordered.
           entries.remove(item.id);
           conflicts.add(item.id);
         }
