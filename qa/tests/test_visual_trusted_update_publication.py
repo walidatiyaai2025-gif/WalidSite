@@ -205,6 +205,67 @@ class TrustedUpdatePublicationTest(unittest.TestCase):
         self.assertFalse((self.root / f'WalidSite-update-v{VERSION}.zip').exists())
 
     @unittest.skipUnless(shutil.which('php'), 'PHP CLI not installed')
+    def test_publisher_rejects_hardlinked_or_writable_archive_before_signing(self):
+        if os.name != 'posix':
+            self.skipTest('Publisher inode and file permission gate requires POSIX')
+        if subprocess.run(['php', '-r', 'exit(extension_loaded("zip") ? 0 : 1);'],
+                          capture_output=True).returncode:
+            self.skipTest('PHP ZIP extension required')
+        receipt = self.make_update()
+        meta = {key: receipt[key] for key in (
+            'product', 'version', 'source_sha', 'artifact_sha256',
+            'artifact_size', 'min_php', 'artifact_file',
+        )}
+        archive = self.root / receipt['artifact_file']
+        key = subprocess.run(
+            ['php', '-r', '$k=sodium_crypto_sign_keypair();'
+             'echo base64_encode(sodium_crypto_sign_secretkey($k));'],
+            capture_output=True, check=True,
+        ).stdout.decode()
+        signer = Path(__file__).resolve().parents[1] / 'sign_trusted_update_release.php'
+        env = dict(os.environ, WALIDSITE_PUBLISHER_SECRET_KEY_B64=key)
+
+        def attempt():
+            return subprocess.run(['php', str(signer), str(self.root)],
+                                  input=json.dumps(meta).encode(),
+                                  capture_output=True, env=env)
+
+        alias = self.root / 'linked-update.zip'
+        os.link(archive, alias)
+        try:
+            result = attempt()
+            self.assertNotEqual(result.returncode, 0)
+            self.assertFalse((self.root / 'latest.json').exists())
+            self.assertNotIn(key.encode(), result.stdout + result.stderr)
+        finally:
+            alias.unlink()
+        self.assertEqual(archive.read_bytes().__len__(), meta['artifact_size'])
+
+        original_mode = archive.stat().st_mode & 0o777
+        try:
+            archive.chmod(0o666)
+            result = attempt()
+            self.assertNotEqual(result.returncode, 0)
+            self.assertFalse((self.root / 'latest.json').exists())
+        finally:
+            archive.chmod(original_mode)
+
+        original_root_mode = self.root.stat().st_mode & 0o777
+        try:
+            self.root.chmod(0o777)
+            result = attempt()
+            self.assertNotEqual(result.returncode, 0)
+            self.assertFalse((self.root / 'latest.json').exists())
+        finally:
+            self.root.chmod(original_root_mode)
+
+        # A clean legitimate source continues to sign successfully.
+        result = attempt()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue((self.root / 'latest.json').is_file())
+        self.assertNotIn(key.encode(), result.stdout + result.stderr)
+
+    @unittest.skipUnless(shutil.which('php'), 'PHP CLI not installed')
     def test_publisher_rejects_rehashed_malicious_zip_before_signing(self):
         if subprocess.run(['php', '-r', 'exit(extension_loaded("zip") ? 0 : 1);'],
                           capture_output=True).returncode:

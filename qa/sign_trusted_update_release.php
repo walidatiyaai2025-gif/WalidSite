@@ -54,8 +54,105 @@ if ($actual !== $keys || $meta['product'] !== 'walidsite'
     failClosed();
 }
 $archive = $directory.'/'.$meta['artifact_file'];
-if (is_link($archive) || ! is_file($archive) || filesize($archive) !== $meta['artifact_size']
-    || ! hash_equals($meta['artifact_sha256'], hash_file('sha256', $archive))) {
+
+// Publisher inspection MUST be performed on the SAME immutable bytes whose
+// digest will be signed. Hashing a pathname, reopening it with ZipArchive,
+// then hashing the pathname again can inspect a different inode/ZIP after a
+// local publisher workspace rename (including a hard-link or in-place edit).
+// Pin the source descriptor, copy it into a private new directory and scan
+// only those frozen bytes; reject identity drift before publishing a catalog.
+if (is_link($archive) || realpath($archive) !== $archive
+    || (fileperms($directory) & 0022) !== 0) {
+    failClosed();
+}
+$input = @fopen($archive, 'rb');
+if ($input === false) {
+    failClosed();
+}
+clearstatcache(true, $archive);
+$baseline = @fstat($input);
+$named = @lstat($archive);
+$fields = ['dev', 'ino', 'size', 'mode', 'nlink', 'mtime', 'ctime'];
+$sameInput = static function () use ($input, $archive, $baseline, $fields): bool {
+    clearstatcache(true, $archive);
+    $open = @fstat($input);
+    $name = @lstat($archive);
+    if (! is_array($open) || ! is_array($name) || is_link($archive)
+        || realpath($archive) !== $archive) {
+        return false;
+    }
+    foreach ($fields as $field) {
+        if (($open[$field] ?? null) !== ($baseline[$field] ?? null)
+            || ($name[$field] ?? null) !== ($baseline[$field] ?? null)) {
+            return false;
+        }
+    }
+    return true;
+};
+if (! is_array($baseline) || ! is_array($named)
+    || ($baseline['mode'] & 0170000) !== 0100000
+    || ($baseline['mode'] & 0022) !== 0
+    || ($baseline['nlink'] ?? 0) !== 1
+    || $baseline['size'] !== $meta['artifact_size']
+    || ! $sameInput()) {
+    failClosed();
+}
+
+// A random 0700 directory and x-created 0600 file ensure that ZipArchive
+// never follows or scans the untrusted mutable source path. Shutdown cleanup
+// also runs when failClosed() exits from deep inside an inspection loop.
+$freezeRoot = rtrim(sys_get_temp_dir(), '/').'/.walidsite-publisher-'.bin2hex(random_bytes(16));
+if (! @mkdir($freezeRoot, 0700)
+    || realpath($freezeRoot) !== $freezeRoot
+    || (fileperms($freezeRoot) & 0077) !== 0) {
+    failClosed();
+}
+$frozen = $freezeRoot.'/approved-update.zip';
+register_shutdown_function(static function () use ($freezeRoot, $frozen): void {
+    if (! is_link($frozen) && is_file($frozen)) {
+        @unlink($frozen);
+    }
+    if (! is_link($freezeRoot) && is_dir($freezeRoot)) {
+        @rmdir($freezeRoot);
+    }
+});
+$output = @fopen($frozen, 'xb');
+if ($output === false || ! @chmod($frozen, 0600)) {
+    failClosed();
+}
+$hash = hash_init('sha256');
+$totalCopied = 0;
+while (! feof($input)) {
+    $part = fread($input, 1048576);
+    if (! is_string($part) || ($part === '' && ! feof($input))) {
+        failClosed();
+    }
+    if ($part === '') {
+        break;
+    }
+    $totalCopied += strlen($part);
+    if ($totalCopied > $meta['artifact_size']) {
+        failClosed();
+    }
+    hash_update($hash, $part);
+    $remaining = $part;
+    while ($remaining !== '') {
+        $written = fwrite($output, $remaining);
+        if ($written === false || $written < 1) {
+            failClosed();
+        }
+        $remaining = substr($remaining, $written);
+    }
+}
+if (! fflush($output) || (function_exists('fsync') && ! fsync($output))) {
+    failClosed();
+}
+fclose($output);
+$copiedHash = hash_final($hash);
+if ($totalCopied !== $meta['artifact_size']
+    || ! hash_equals($meta['artifact_sha256'], $copiedHash)
+    || ! $sameInput()
+    || filesize($frozen) !== $totalCopied) {
     failClosed();
 }
 // The publisher must independently reject structural ZIP hazards, even when
@@ -65,7 +162,7 @@ if (! class_exists(ZipArchive::class)) {
     failClosed();
 }
 $zip = new ZipArchive();
-if ($zip->open($archive, ZipArchive::RDONLY | ZipArchive::CHECKCONS) !== true) {
+if ($zip->open($frozen, ZipArchive::RDONLY | ZipArchive::CHECKCONS) !== true) {
     failClosed();
 }
 $required = [
@@ -147,10 +244,40 @@ foreach ($required as $path) {
     }
 }
 if ($versionInZip !== $meta['version']
-    || ! hash_equals($meta['artifact_sha256'], (string) hash_file('sha256', $archive))
-    || filesize($archive) !== $meta['artifact_size']) {
+    || ! hash_equals($meta['artifact_sha256'], (string) hash_file('sha256', $frozen))
+    || ! $sameInput()
+    || filesize($frozen) !== $meta['artifact_size']) {
     failClosed();
 }
+
+// Re-read from the SAME held source descriptor, not a reopened pathname.
+// The published archive still must match the exact frozen, inspected digest
+// at the final trust boundary; a substituted source must not get a catalog.
+if (@fseek($input, 0) !== 0) {
+    failClosed();
+}
+$again = hash_init('sha256');
+$againBytes = 0;
+while (! feof($input)) {
+    $part = fread($input, 1048576);
+    if (! is_string($part) || ($part === '' && ! feof($input))) {
+        failClosed();
+    }
+    if ($part === '') {
+        break;
+    }
+    $againBytes += strlen($part);
+    if ($againBytes > $meta['artifact_size']) {
+        failClosed();
+    }
+    hash_update($again, $part);
+}
+if ($againBytes !== $meta['artifact_size']
+    || ! hash_equals($copiedHash, hash_final($again))
+    || ! $sameInput()) {
+    failClosed();
+}
+fclose($input);
 
 $catalog = $directory.'/latest.json';
 if (file_exists($catalog) || is_link($catalog)) {
