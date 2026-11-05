@@ -113,7 +113,7 @@ final class CpanelArchiveCodeOnlyPreflight
                 if ($dir) {
                     $relativeDir = substr($name, strlen('application/database/migrations/'), -1);
                     if ($name !== 'application/database/migrations/'
-                        && ! preg_match('#\A(?:[A-Za-z0-9_-]+/)*[A-Za-z0-9_-]+\z/D', $relativeDir)) {
+                        && ! preg_match('#\A(?:[A-Za-z0-9_-]+/)*[A-Za-z0-9_-]+\z#D', $relativeDir)) {
                         throw new DomainException('Unsupported migration directory in candidate ZIP.');
                     }
                     if ($stat['size'] !== 0) {
@@ -138,7 +138,7 @@ final class CpanelArchiveCodeOnlyPreflight
                     $stableWeb[substr($name, strlen('public_html/'))] = hash('sha256', $content);
                 } else {
                     $relative = substr($name, strlen('application/database/migrations/'));
-                    if (! preg_match('#\A(?:[A-Za-z0-9_-]+/)*[A-Za-z0-9_-]+\.php\z/D', $relative)
+                    if (! preg_match('#\A(?:[A-Za-z0-9_-]+/)*[A-Za-z0-9_-]+\.php\z#D', $relative)
                         || count($migrations) >= 5000) {
                         throw new DomainException('Candidate includes an unsafe migration inventory.');
                     }
