@@ -55,6 +55,12 @@ CHECKS = (
     # admitted; redirects (including login), 5xx or a successful body fail.
     # Never consume or serialize a denied resource's response bytes.
     Check("/.env", 404, "private_denied"),
+    # cPanel/manual backup suffixes are common accidental web exposures.
+    # Never read or report their contents even if they respond with HTTP 200.
+    Check("/.env.bak", 404, "private_denied"),
+    Check("/.env.backup", 404, "private_denied"),
+    Check("/application/database/database.sqlite", 404, "private_denied"),
+    Check("/application/bootstrap/cache/config.php", 404, "private_denied"),
     Check("/application/.env", 404, "private_denied"),
     Check("/.git/config", 404, "private_denied"),
     Check("/vendor/autoload.php", 404, "private_denied"),
