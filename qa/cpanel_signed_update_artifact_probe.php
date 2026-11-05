@@ -137,6 +137,18 @@ try {
         json_encode($badEnvelope, JSON_THROW_ON_ERROR), $public, $origin, '0.0.0'
     ));
 
+    // Exercise release policy using the ACTUAL candidate payload fields.
+    // A valid ephemeral signature alone must not authorize a downgrade,
+    // reinstallation of the same version, or unsupported PHP runtime.
+    $reject(static fn () => $trust->verify($encode($payload), $public, $origin, $version));
+    $older = $payload;
+    $older['version'] = '0.0.0';
+    $older['artifact_file'] = 'WalidSite-update-v0.0.0.zip';
+    $reject(static fn () => $trust->verify($encode($older), $public, $origin, $version));
+    $requiresFuturePhp = $payload;
+    $requiresFuturePhp['min_php'] = '999.0.0';
+    $reject(static fn () => $trust->verify($encode($requiresFuturePhp), $public, $origin, '0.0.0'));
+
     $wrongName = $tempDirectory.'/wrong-name.zip';
     if (! rename($staged, $wrongName)) {
         throw new RuntimeException('Cannot prepare wrong-name rejection test');
@@ -160,7 +172,7 @@ try {
         'version' => $version,
         'artifact_sha256' => $digest,
         'verified_files' => $inventory['files'],
-        'negative_rejections' => 4,
+        'negative_rejections' => 7,
         'test_only_ephemeral_key' => true,
         'publisher_signature_verified' => false,
         'code_update_performed' => false,
