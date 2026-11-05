@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -8,7 +9,109 @@ import 'package:waleed_tech_companion/runbooks/verified_online_runbooks.dart';
 import 'package:waleed_tech_companion/runbooks/offline_runbooks.dart';
 import 'package:waleed_tech_companion/solutions/offline_solution_finder.dart';
 
+// flutter_test installs a global 400-response HttpClient override. These
+// localhost-only transport tests must use real sockets; restore the mock for
+// all other tests even if an assertion throws.
+Future<T> withRealLoopbackHttp<T>(Future<T> Function() operation) async {
+  final previous = HttpOverrides.current;
+  HttpOverrides.global = null;
+  try {
+    return await operation();
+  } finally {
+    HttpOverrides.global = previous;
+  }
+}
+
 void main() {
+
+  test('MOBILE-03 real HTTP slow-drip response obeys one total deadline', () => withRealLoopbackHttp(() async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final stop = Completer<void>();
+    var requests = 0;
+    server.listen((request) async {
+      requests++;
+      try {
+        request.response.headers.contentType = ContentType.json;
+        request.response.write('{"data":');
+        await request.response.flush();
+        // A response that keeps sending bytes is not allowed to reset the
+        // whole-operation budget. No external AI API or secrets are involved.
+        while (!stop.isCompleted) {
+          await Future<void>.delayed(const Duration(milliseconds: 20));
+          if (stop.isCompleted) break;
+          request.response.write(' ');
+          await request.response.flush();
+        }
+      } catch (_) {
+        // Client abort is expected when the deadline expires.
+      }
+    });
+    try {
+      final url = Uri.parse('http://127.0.0.1:${server.port}/api/v1/mobile/ai/diagnose');
+      await expectLater(
+        MobileAiClient.boundedExchange(
+          'POST', url,
+          body: const {'symptom': 'local fixture only'},
+          totalTimeout: const Duration(milliseconds: 350),
+        ),
+        throwsA(isA<TimeoutException>()),
+      );
+      expect(requests, 1, reason: 'An indeterminate paid POST must not be retried');
+    } finally {
+      stop.complete();
+      await server.close(force: true);
+    }
+  }));
+
+  test('MOBILE-03 real HTTP hanging headers respect the same deadline', () => withRealLoopbackHttp(() async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final release = Completer<void>();
+    var requests = 0;
+    server.listen((request) async {
+      requests++;
+      await release.future;
+      try {
+        await request.response.close();
+      } catch (_) {
+        // The client is expected to have closed its request socket.
+      }
+    });
+    try {
+      final url = Uri.parse('http://127.0.0.1:${server.port}/api/v1/mobile/ai/jobs');
+      await expectLater(
+        MobileAiClient.boundedExchange(
+          'GET', url, totalTimeout: const Duration(milliseconds: 350),
+        ),
+        throwsA(isA<TimeoutException>()),
+      );
+      expect(requests, 1);
+    } finally {
+      release.complete();
+      await server.close(force: true);
+    }
+  }));
+
+  test('MOBILE-03 real HTTP quick response retains exact status and body', () => withRealLoopbackHttp(() async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    server.listen((request) async {
+      request.response.statusCode = HttpStatus.unauthorized;
+      request.response.headers.contentType = ContentType.json;
+      request.response.write('{"message":"unauthorized"}');
+      await request.response.close();
+    });
+    try {
+      final url = Uri.parse('http://127.0.0.1:${server.port}/api/v1/mobile/me');
+      final answer = await MobileAiClient.boundedExchange(
+        'GET', url, totalTimeout: const Duration(seconds: 2),
+      );
+      expect(answer.key, HttpStatus.unauthorized);
+      expect(answer.value, '{"message":"unauthorized"}');
+    } finally {
+      await server.close(force: true);
+    }
+  }));
+
+
   test('MOBILE-03 total HTTP deadline rejects a never-ending body', () async {
     final pending = Completer<void>();
     await expectLater(
