@@ -238,7 +238,7 @@ final class SignedPublishedRunbookPublisherTest extends TestCase
         $dir = storage_path('framework/testing/runbook-publisher-'.Str::random(12));
         $this->assertTrue(mkdir($dir, 0700, true));
         $outside = $dir.'/unrelated-data';
-        $this->assertSame(11, file_put_contents($outside, 'do not touch'));
+        $this->assertSame(strlen('do not touch'), file_put_contents($outside, 'do not touch'));
         $target = $dir.'/reviewed-runbooks-'.hash('sha256', $envelope).'.json';
         if (! @symlink($outside, $target)) {
             @unlink($outside);
