@@ -132,27 +132,58 @@ def proof_ok(root: Path, proof: object) -> bool:
     file_flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK
     dir_flags |= getattr(os, "O_CLOEXEC", 0)
     file_flags |= getattr(os, "O_CLOEXEC", 0)
-    directory_fd = None
+    directory_fds: list[int] = []
+    directory_chain: list[tuple[int, int | None, str | None, tuple]] = []
     file_fd = None
     limit = 2 * 1024 * 1024
 
     def identity(s):
-        return (s.st_dev, s.st_ino, s.st_size, s.st_mtime_ns, s.st_ctime_ns)
+        # Changes in hard-link count or writable permissions matter as much
+        # as changes in bytes/inode. Neither is a trustworthy QA receipt.
+        return (s.st_dev, s.st_ino, s.st_size, s.st_mode,
+                s.st_nlink, s.st_mtime_ns, s.st_ctime_ns)
+
+    def stable_directory(fd, parent_fd, name, baseline=None):
+        opened = os.fstat(fd)
+        named = (os.stat(root, follow_symlinks=False) if name is None
+                 else os.stat(name, dir_fd=parent_fd, follow_symlinks=False))
+        return (stat.S_ISDIR(opened.st_mode)
+                and stat.S_ISDIR(named.st_mode)
+                and not (opened.st_mode & 0o022)
+                and not (named.st_mode & 0o022)
+                and identity(opened) == identity(named)
+                and (baseline is None or identity(opened) == baseline))
 
     try:
-        directory_fd = os.open(root, dir_flags)
+        # Keep the ROOT and EVERY ancestor inode open until after the file
+        # digest. Previously only the leaf directory stayed open, so renaming
+        # qa/t024-evidence while it was being read could leave a valid digest
+        # for bytes no longer reachable at the evidenced pathname.
+        root_fd = os.open(root, dir_flags)
+        directory_fds.append(root_fd)
+        if not stable_directory(root_fd, None, None):
+            return False
+        directory_chain.append((root_fd, None, None, identity(os.fstat(root_fd))))
+        parent_fd = root_fd
         for part in parts[:-1]:
-            child_fd = os.open(part, dir_flags, dir_fd=directory_fd)
-            os.close(directory_fd)
-            directory_fd = child_fd
+            child_fd = os.open(part, dir_flags, dir_fd=parent_fd)
+            directory_fds.append(child_fd)
+            if not stable_directory(child_fd, parent_fd, part):
+                return False
+            directory_chain.append((
+                child_fd, parent_fd, part, identity(os.fstat(child_fd)),
+            ))
+            parent_fd = child_fd
 
-        # The name is resolved relative to a pinned directory; the descriptor
-        # stays on the same inode even if someone renames/replaces the pathname.
-        file_fd = os.open(parts[-1], file_flags, dir_fd=directory_fd)
+        # The file name is resolved relative to a pinned directory. Refuse
+        # linked, writable, special, oversized or swapped proof identities.
+        file_fd = os.open(parts[-1], file_flags, dir_fd=parent_fd)
         before = os.fstat(file_fd)
-        named_before = os.stat(parts[-1], dir_fd=directory_fd, follow_symlinks=False)
+        named_before = os.stat(parts[-1], dir_fd=parent_fd, follow_symlinks=False)
         if (not stat.S_ISREG(before.st_mode)
                 or not stat.S_ISREG(named_before.st_mode)
+                or before.st_nlink != 1
+                or (before.st_mode & 0o022)
                 or identity(before) != identity(named_before)
                 or not 0 < before.st_size <= limit):
             return False
@@ -169,18 +200,25 @@ def proof_ok(root: Path, proof: object) -> bool:
             digest.update(data)
 
         after = os.fstat(file_fd)
-        named_after = os.stat(parts[-1], dir_fd=directory_fd, follow_symlinks=False)
-        return (length == before.st_size
-                and identity(before) == identity(after) == identity(named_after)
-                and stat.S_ISREG(named_after.st_mode)
-                and hmac.compare_digest(digest.hexdigest(), proof["sha256"]))
+        named_after = os.stat(parts[-1], dir_fd=parent_fd, follow_symlinks=False)
+        if (length != before.st_size
+                or identity(before) != identity(after)
+                or identity(before) != identity(named_after)
+                or not stat.S_ISREG(named_after.st_mode)
+                or not hmac.compare_digest(digest.hexdigest(), proof["sha256"])):
+            return False
+        # A parent can be renamed/replaced during the read while a pinned
+        # file handle remains valid. Require the EXACT original on-disk
+        # ancestry still to be named at the end of the proof operation.
+        return all(stable_directory(fd, parent, name, baseline)
+                   for fd, parent, name, baseline in directory_chain)
     except (OSError, TypeError, ValueError, NotImplementedError):
         return False
     finally:
         if file_fd is not None:
             os.close(file_fd)
-        if directory_fd is not None:
-            os.close(directory_fd)
+        for fd in reversed(directory_fds):
+            os.close(fd)
 
 
 def source_proof_ok(root: Path, source_sha: str) -> bool:
