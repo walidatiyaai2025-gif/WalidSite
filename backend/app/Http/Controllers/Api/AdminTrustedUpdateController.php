@@ -27,7 +27,7 @@ final class AdminTrustedUpdateController extends Controller
      */
     private function installedVersion(): ?string
     {
-        return app(TrustedInstalledVersion::class)->read(base_path('VERSION'));
+        return (new TrustedInstalledVersion())->read(base_path('VERSION'));
     }
 
     public function check(Request $request, TrustedReleaseCatalog $catalog): JsonResponse
