@@ -180,6 +180,20 @@ final class MariaDbRecoverySnapshot
                     throw new DomainException('MariaDB recovery archive exceeds safe byte limits.');
                 }
 
+                // Validate the raw byte checksum on this SAME open descriptor
+                // before parsing any JSON. A tampered stream must report the
+                // integrity failure rather than leak parsing/encoding details.
+                $preflightHash = hash_init('sha256');
+                $hashedBytes = hash_update_stream($preflightHash, $input, $before['size'] + 1);
+                $this->assertStableRowFile($input, $file, $before);
+                if ($hashedBytes !== $before['size']
+                    || ! hash_equals($info['file_sha256'], hash_final($preflightHash))) {
+                    throw new DomainException('MariaDB recovery file checksum mismatch before restore.');
+                }
+                if (! rewind($input)) {
+                    throw new DomainException('Unable to rewind verified MariaDB recovery row source.');
+                }
+
                 $count = 0;
                 $digests = [];
                 $fileHash = hash_init('sha256');
