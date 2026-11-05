@@ -1,6 +1,7 @@
 """T025 staging-smoke synthetic transport tests; no deployment receipts."""
 import io
 import json
+import os
 import tempfile
 import threading
 import time
@@ -10,6 +11,7 @@ from http.client import HTTPException
 from pathlib import Path
 from unittest.mock import patch
 from urllib.error import HTTPError, URLError
+from urllib.request import ProxyHandler, getproxies
 
 from qa.staging_smoke import CHECKS, NoRedirects, main, run, staging_origin
 
@@ -441,6 +443,37 @@ class StagingSmokeTest(unittest.TestCase):
         report = permitted_run("https://staging.example.com", fake)
         self.assertFalse(report["network_egress_isolation_verified"])
         self.assertEqual(report["operator_approved_host"], "staging.example.com")
+
+    def test_default_https_staging_transport_ignores_hostile_environment_proxy(self):
+        # urllib build_opener() silently installs ProxyHandler() from the host
+        # environment unless a ProxyHandler({}) is explicitly supplied.
+        # A synthetic HTTPS_PROXY must never change who a staging audit reaches.
+        proxy_environment = {
+            "HTTPS_PROXY": "http://proxy.attacker.invalid:9999",
+            "https_proxy": "http://proxy.attacker.invalid:9999",
+            "ALL_PROXY": "http://proxy.attacker.invalid:9999",
+            "all_proxy": "http://proxy.attacker.invalid:9999",
+            "NO_PROXY": "",
+            "no_proxy": "",
+        }
+        fake = FakeOpener()
+        with patch.dict(os.environ, proxy_environment):
+            self.assertEqual(getproxies().get("https"),
+                             proxy_environment["https_proxy"])
+            with patch("qa.staging_smoke.build_opener", return_value=fake) as builder:
+                receipt = permitted_run("https://staging.example.com")
+
+        builder.assert_called_once()
+        handlers = builder.call_args.args
+        no_proxy = [item for item in handlers if isinstance(item, ProxyHandler)]
+        self.assertEqual(len(no_proxy), 1,
+                         "A default urllib proxy handler would inherit HTTPS_PROXY")
+        self.assertEqual(no_proxy[0].proxies, {})
+        self.assertTrue(any(isinstance(item, NoRedirects) for item in handlers))
+        self.assertTrue(receipt["http_smoke_passed"])
+        self.assertFalse(receipt["network_egress_isolation_verified"])
+        self.assertTrue(all(method == "GET" for _, method, _ in fake.requested))
+        self.assertEqual(len(fake.requested), len(CHECKS))
 
     def test_redirect_handler_never_constructs_a_followup_request(self):
         handler = NoRedirects()
