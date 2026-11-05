@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -83,33 +84,60 @@ class DiagnosisReportClient {
     if (origin == null) {
       throw const FormatException('Unconfigured secure contact origin');
     }
-    final url = origin.replace(path: '/api/v1/public/contact');
+    // Only the build-time HTTPS-validated API origin is used in production.
+    await boundedSubmit(report, origin.replace(path: '/api/v1/public/contact'));
+  }
+
+  /// Whole-POST deadline covers connection, writing private contact details,
+  /// status/headers, every body byte, UTF-8 and validated acceptance receipt.
+  /// An endless sequence of sub-8s chunks must not strand the report screen.
+  /// The production URL is chosen only by the validated send() path; this
+  /// seam allows genuine local HttpServer tests without external email.
+  @visibleForTesting
+  static Future<void> boundedSubmit(
+    DiagnosisReportInput report,
+    Uri url, {
+    Duration totalTimeout = const Duration(seconds: 12),
+  }) async {
+    if (totalTimeout <= Duration.zero) {
+      throw const FormatException('Invalid diagnosis report deadline');
+    }
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
     try {
-      final request = await client.postUrl(url)
-          .timeout(const Duration(seconds: 8));
-      request.followRedirects = false;
-      request.headers.set(HttpHeaders.acceptHeader, 'application/json');
-      request.headers.set(HttpHeaders.contentTypeHeader, 'application/json');
-      request.add(utf8.encode(jsonEncode(report.toJson())));
-      final response = await request.close()
-          .timeout(const Duration(seconds: 8));
-      if (response.statusCode != HttpStatus.ok) {
-        throw DiagnosisReportHttpException(response.statusCode);
-      }
-      final bytes = BytesBuilder(copy: false);
-      await for (final chunk in response.timeout(const Duration(seconds: 8))) {
-        if (bytes.length + chunk.length > 4096) {
-          throw const FormatException('Oversized contact receipt');
+      await Future<void>.sync(() async {
+        final request = await client.postUrl(url);
+        request.followRedirects = false;
+        request.headers.set(HttpHeaders.acceptHeader, 'application/json');
+        request.headers.set(HttpHeaders.contentTypeHeader, 'application/json');
+        // No bearer, diagnosis prompt/code, job id or provider data are sent.
+        request.add(utf8.encode(jsonEncode(report.toJson())));
+        final response = await request.close();
+        if (response.statusCode != HttpStatus.ok) {
+          throw DiagnosisReportHttpException(response.statusCode);
         }
-        bytes.add(chunk);
-      }
-      DiagnosisReportReceipt.parse(
-          utf8.decode(bytes.takeBytes(), allowMalformed: false));
+        final bytes = BytesBuilder(copy: false);
+        await for (final chunk in response) {
+          if (bytes.length + chunk.length > 4096) {
+            throw const FormatException('Oversized contact receipt');
+          }
+          bytes.add(chunk);
+        }
+        // HTTP 200 is not sufficient: only the exact transport acceptance
+        // shape is a successful report, never a claim of inbox delivery.
+        DiagnosisReportReceipt.parse(
+          utf8.decode(bytes.takeBytes(), allowMalformed: false),
+        );
+      }).timeout(totalTimeout, onTimeout: () {
+        // Abort a slow-drip socket and leave the report unconfirmed. The UI
+        // offers an explicit retry, not an automatic duplicate POST.
+        client.close(force: true);
+        throw TimeoutException('Report total HTTP deadline exceeded');
+      });
     } finally {
       client.close(force: true);
     }
   }
+
 }
 
 /// MOBILE-03: an independent, explicit report form for a diagnosis problem.
