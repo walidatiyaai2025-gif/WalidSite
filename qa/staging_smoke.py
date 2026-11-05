@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Protocol
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
-from urllib.request import HTTPRedirectHandler, Request, build_opener
+from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 
 MAX_JSON_BYTES = 1024 * 1024
 UNSAFE_SUFFIXES = {
@@ -288,8 +288,14 @@ def run(origin: str, opener: Opener | None = None, timeout: int = 8,
     if type(timeout) is not int or not 1 <= timeout <= 30:
         raise ValueError("Timeout must be an integer from 1 to 30 seconds")
     if opener is None:
-        # Standard urllib HTTPS verifies hostnames and certificates by default.
-        opener = build_opener(NoRedirects())
+        # urllib otherwise inherits HTTPS_PROXY / ALL_PROXY from the runner.
+        # An environment-controlled proxy can impersonate the destination
+        # and invalidate the meaning of a read-only staging smoke receipt.
+        # Explicitly disable proxy discovery: TLS verification and the strict
+        # no-redirect policy still apply to every direct HTTPS request.
+        # A network requiring an outbound proxy must fail closed rather than
+        # silently claiming to have reached the approved staging origin.
+        opener = build_opener(ProxyHandler({}), NoRedirects())
     results = [_check_one(origin, check, opener, timeout) for check in CHECKS]
     passed = all(item["passed"] for item in results)
     return {
