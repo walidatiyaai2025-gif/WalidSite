@@ -13,7 +13,7 @@ import 'package:waleed_tech_companion/solutions/offline_solution_finder.dart';
 // localhost-only transport tests must use real sockets; restore the mock for
 // all other tests even if an assertion throws.
 Future<T> withRealLoopbackHttp<T>(Future<T> Function() operation) async {
-  final previous = HttpOverrides.global;
+  final previous = HttpOverrides.current;
   HttpOverrides.global = null;
   try {
     return await operation();
