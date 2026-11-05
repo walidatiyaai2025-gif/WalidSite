@@ -50,8 +50,7 @@ final class CpanelImmutableCodePointer
             || ! is_writable($home)
             || ! is_file($home.'/public_html/index.php')
             || is_link($home.'/public_html/index.php')
-            || ! is_file($front) || is_link($trustedFrontController)
-            || ! hash_equals(hash_file('sha256', $front), hash_file('sha256', $home.'/public_html/index.php'))) {
+            || ! is_file($front) || is_link($trustedFrontController)) {
             throw new DomainException('BLOCKED HOSTING: safe cPanel release pointer requires the trusted stable web entrypoint.');
         }
 
@@ -62,20 +61,10 @@ final class CpanelImmutableCodePointer
                 throw new DomainException('Untrusted or incomplete immutable release candidate.');
             }
         }
-        if (trim((string) file_get_contents($candidate.'/application/VERSION')) !== $version) {
-            throw new DomainException('Candidate version differs from signed version.');
-        }
-        // The active cPanel router and rewrite policy are deliberately stable.
-        // A release requiring changed webserver config needs a separate tested
-        // host transition; silently ignoring the signed .htaccess is unsafe.
-        if (! is_file($home.'/public_html/.htaccess')
-            || is_link($home.'/public_html/.htaccess')
-            || ! hash_equals((string) hash_file('sha256', $candidate.'/public_html/.htaccess'),
-                (string) hash_file('sha256', $home.'/public_html/.htaccess'))
-            || ! hash_equals((string) hash_file('sha256', $candidate.'/public_html/index.php'),
-                (string) hash_file('sha256', $home.'/public_html/index.php'))) {
-            throw new DomainException('Signed release changes the stable cPanel webserver entrypoint.');
-        }
+        // Preserve the *exact* held regular-file identities, not just
+        // pathname-level hashes. Revalidate these same identities after
+        // every external maintenance/health callback and before success.
+        $releaseIdentity = $this->physicalReleaseIdentity($home, $candidate, $front, $version);
 
         $pointer = $home.'/.walidsite-active-release.json';
         $lockPath = $home.'/.walidsite-active-release.lock';
@@ -93,6 +82,9 @@ final class CpanelImmutableCodePointer
                 throw new DomainException('Another code update is in progress.');
             }
             $this->assertLockIdentity($lock, $lockPath);
+            $this->assertPhysicalIdentityUnchanged(
+                $home, $candidate, $front, $version, $releaseIdentity,
+            );
             if ($maintenanceReady() !== true || $recoveryVerified() !== true
                 || $signedCandidateVerified() !== true) {
                 throw new DomainException('Code installation requires write isolation, signed release and restored backup.');
@@ -109,7 +101,9 @@ final class CpanelImmutableCodePointer
             // not merely a caller returning true from a maintenance callback.
             $previousRoot = $previous === null ? 'legacy' : $previous['root'];
             (new CpanelReleaseMaintenance())->assertActive($home, $maintenanceToken, $previousRoot);
-            $oldVersion = trim((string) file_get_contents($oldRoot.'/application/VERSION'));
+            $oldVersionFile = $oldRoot.'/application/VERSION';
+            $oldVersionSnapshot = $this->readPinnedPhysicalFile($oldVersionFile, 32);
+            $oldVersion = trim($oldVersionSnapshot['bytes']);
             if (! preg_match('/\A(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\z/D', $oldVersion)
                 || version_compare($version, $oldVersion, '<=')) {
                 throw new DomainException('The signed release must be newer than installed code.');
@@ -124,6 +118,15 @@ final class CpanelImmutableCodePointer
             // The archive-only check is advisory. Revalidate the physical
             // dependency graph at the final trusted cutover entrypoint too.
             $this->assertComposerParity($oldRoot, $candidate);
+            // The untrusted callbacks may have exchanged the public router
+            // or old VERSION since the original pinned inspection.
+            $this->assertPhysicalIdentityUnchanged(
+                $home, $candidate, $front, $version, $releaseIdentity,
+            );
+            if ($this->readPinnedPhysicalFile($oldVersionFile, 32)['fingerprint']
+                !== $oldVersionSnapshot['fingerprint']) {
+                throw new DomainException('Installed release version identity changed during update.');
+            }
             // Preload only non-executable static assets before pointer switch.
             // Public name collisions with different bytes fail closed.
             $this->preloadImmutableAssets($candidate.'/public_html', $home.'/public_html');
@@ -132,6 +135,13 @@ final class CpanelImmutableCodePointer
                 throw new DomainException('Maintenance or candidate identity changed during update.');
             }
             $this->assertLockIdentity($lock, $lockPath);
+            $this->assertPhysicalIdentityUnchanged(
+                $home, $candidate, $front, $version, $releaseIdentity,
+            );
+            if ($this->readPinnedPhysicalFile($oldVersionFile, 32)['fingerprint']
+                !== $oldVersionSnapshot['fingerprint']) {
+                throw new DomainException('Installed release version identity changed before cutover.');
+            }
             // Maintenance and candidate callbacks may have changed files
             // after the first check. Never publish a different runtime graph
             // or a candidate with a different migration inventory.
@@ -148,6 +158,13 @@ final class CpanelImmutableCodePointer
                     throw new RuntimeException('New release failed health validation.');
                 }
                 $this->assertLockIdentity($lock, $lockPath);
+                $this->assertPhysicalIdentityUnchanged(
+                    $home, $candidate, $front, $version, $releaseIdentity,
+                );
+                if ($this->readPinnedPhysicalFile($oldVersionFile, 32)['fingerprint']
+                    !== $oldVersionSnapshot['fingerprint']) {
+                    throw new RuntimeException('Installed release version identity changed during health.');
+                }
                 // The health probe is also an external callback. If it
                 // changes runtime dependencies, restore the old pointer
                 // rather than reporting the unverified code as installed.
@@ -207,6 +224,135 @@ final class CpanelImmutableCodePointer
         } finally {
             flock($lock, LOCK_UN);
             fclose($lock);
+        }
+    }
+
+    /**
+     * Pin the source-of-truth cPanel dispatcher, both installed/candidate
+     * stable web entrypoints, and candidate VERSION to regular file inodes.
+     * Return immutable fingerprints so *same-bytes inode swaps* inside a
+     * maintenance or health callback are rejected too.
+     *
+     * @return array<string,string>
+     */
+    private function physicalReleaseIdentity(
+        string $home, string $candidate, string $front, string $version,
+    ): array {
+        $paths = [
+            'trusted_front' => [$front, 1048576],
+            'installed_front' => [$home.'/public_html/index.php', 1048576],
+            'candidate_front' => [$candidate.'/public_html/index.php', 1048576],
+            'installed_rewrite' => [$home.'/public_html/.htaccess', 1048576],
+            'candidate_rewrite' => [$candidate.'/public_html/.htaccess', 1048576],
+            'candidate_version' => [$candidate.'/application/VERSION', 32],
+        ];
+        $snapshots = [];
+        foreach ($paths as $name => [$path, $maximum]) {
+            $snapshots[$name] = $this->readPinnedPhysicalFile($path, $maximum);
+        }
+
+        if (trim($snapshots['candidate_version']['bytes']) !== $version) {
+            throw new DomainException('Candidate version differs from signed version.');
+        }
+        $frontHash = hash('sha256', $snapshots['trusted_front']['bytes']);
+        if (! hash_equals($frontHash, hash('sha256', $snapshots['installed_front']['bytes']))
+            || ! hash_equals($frontHash, hash('sha256', $snapshots['candidate_front']['bytes']))
+            || ! hash_equals(
+                hash('sha256', $snapshots['installed_rewrite']['bytes']),
+                hash('sha256', $snapshots['candidate_rewrite']['bytes']),
+            )) {
+            throw new DomainException('Signed release changes the stable cPanel webserver entrypoint.');
+        }
+        $fingerprints = [];
+        foreach ($snapshots as $name => $snapshot) {
+            $fingerprints[$name] = $snapshot['fingerprint'];
+        }
+        return $fingerprints;
+    }
+
+    /** @param array<string,string> $baseline */
+    private function assertPhysicalIdentityUnchanged(
+        string $home, string $candidate, string $front, string $version, array $baseline,
+    ): void {
+        if ($this->physicalReleaseIdentity($home, $candidate, $front, $version) !== $baseline) {
+            throw new DomainException('Physical cPanel release identity changed during update.');
+        }
+    }
+
+    /**
+     * One bounded descriptor read with a verified named inode on both sides.
+     * Named pipes, links, unsafe modes and re-opened replacement files cannot
+     * certify the installed version or stable web dispatcher.
+     *
+     * @return array{bytes:string,fingerprint:string}
+     */
+    private function readPinnedPhysicalFile(string $path, int $maximum): array
+    {
+        clearstatcache(true, $path);
+        $named = @lstat($path);
+        if (! is_array($named)
+            || ($named['mode'] & 0170000) !== 0100000
+            || ($named['nlink'] ?? 0) !== 1
+            || ($named['mode'] & 0022) !== 0
+            || ! is_int($named['size']) || $named['size'] < 1
+            || $named['size'] > $maximum
+            || is_link($path) || realpath($path) !== $path) {
+            throw new DomainException('Unsafe physical release file identity.');
+        }
+        $stream = @fopen($path, 'rb');
+        if ($stream === false) {
+            throw new DomainException('Physical release identity cannot be opened.');
+        }
+        try {
+            $original = @fstat($stream);
+            if (! is_array($original)) {
+                throw new DomainException('Physical release inode unavailable.');
+            }
+            // The pathname was inspected BEFORE open; reject an exchanged
+            // inode even if its bytes, size and permissions are identical.
+            foreach (['dev', 'ino', 'size', 'mode', 'nlink', 'mtime', 'ctime'] as $key) {
+                if (! isset($named[$key], $original[$key]) || $named[$key] !== $original[$key]) {
+                    throw new DomainException('Physical release inode changed between inspection and open.');
+                }
+            }
+            $this->assertPinnedPhysicalFile($stream, $path, $original);
+            $bytes = @stream_get_contents($stream, $maximum + 1);
+            if (! is_string($bytes) || strlen($bytes) !== $original['size']) {
+                throw new DomainException('Physical release bytes changed while reading.');
+            }
+            $this->assertPinnedPhysicalFile($stream, $path, $original);
+            return [
+                'bytes' => $bytes,
+                'fingerprint' => hash('sha256', $path."\n".implode(':', array_map(
+                    static fn ($key) => (string) $original[$key],
+                    ['dev', 'ino', 'size', 'mode', 'nlink', 'mtime', 'ctime'],
+                ))."\n".hash('sha256', $bytes)),
+            ];
+        } finally {
+            fclose($stream);
+        }
+    }
+
+    /** @param resource $stream @param array<string|int,mixed> $original */
+    private function assertPinnedPhysicalFile($stream, string $path, array $original): void
+    {
+        clearstatcache(true, $path);
+        $opened = @fstat($stream);
+        $named = @lstat($path);
+        if (! is_array($opened) || ! is_array($named)
+            || ($opened['mode'] & 0170000) !== 0100000
+            || ($named['mode'] & 0170000) !== 0100000
+            || ($opened['nlink'] ?? 0) !== 1 || ($named['nlink'] ?? 0) !== 1
+            || ($opened['mode'] & 0022) !== 0 || ($named['mode'] & 0022) !== 0
+            || is_link($path) || realpath($path) !== $path) {
+            throw new DomainException('Unsafe physical release inode during verification.');
+        }
+        foreach (['dev', 'ino', 'size', 'mode', 'nlink', 'mtime', 'ctime'] as $key) {
+            if (! isset($original[$key], $named[$key], $opened[$key])
+                || $named[$key] !== $original[$key]
+                || $opened[$key] !== $original[$key]) {
+                throw new DomainException('Physical release pathname or inode exchanged.');
+            }
         }
     }
 
