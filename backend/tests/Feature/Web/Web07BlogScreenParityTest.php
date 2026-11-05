@@ -3,6 +3,7 @@
 namespace Tests\Feature\Web;
 
 use App\Models\Article;
+use App\Models\Category;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -16,10 +17,10 @@ final class Web07BlogScreenParityTest extends TestCase
 {
     use RefreshDatabase;
 
-    private function publishedGuide(): Article
+    private function publishedGuide(string $slug = 'web07-reviewed-guide'): Article
     {
         $article = Article::query()->create([
-            'slug' => 'web07-reviewed-guide',
+            'slug' => $slug,
             'title_en' => 'WEB07 Reviewed live guide',
             'title_ar' => 'دليل موثق ومتاح',
             'canonical_lang' => 'en',
@@ -40,6 +41,77 @@ final class Web07BlogScreenParityTest extends TestCase
         $article->publishVerified();
 
         return $article;
+    }
+
+    public function test_filtered_second_page_first_viewport_article_returns_to_same_blog_results(): void
+    {
+        $category = Category::query()->create([
+            'slug' => 'verified-web07-guides',
+            'name_en' => 'Verified WEB07 guides',
+            'name_ar' => 'أدلة موثقة للمدونة',
+        ]);
+        for ($i = 1; $i <= 11; $i++) {
+            $article = $this->publishedGuide('web07-paged-guide-'.$i);
+            $article->categories()->attach($category->id);
+        }
+        $draft = Article::query()->create([
+            'slug' => 'web07-private-paged-draft',
+            'title_en' => 'WEB07 PRIVATE PAGED DRAFT',
+            'title_ar' => 'مسودة خاصة غير منشورة',
+            'canonical_lang' => 'en',
+        ]);
+        $draft->categories()->attach($category->id);
+
+        foreach (['en', 'ar'] as $locale) {
+            $filters = [
+                'lang' => $locale,
+                'q' => 'WEB07',
+                'category' => $category->slug,
+                'page' => 2,
+            ];
+            $listing = $this->get(route('public.blog', $filters))->assertOk()
+                ->assertDontSee('WEB07 PRIVATE PAGED DRAFT')
+                ->assertDontSee('web07-private-paged-draft');
+
+            // Page two has two verified cards in BOTH the reference viewport
+            // and the lower functional grid. Neither may silently drop the
+            // filters when linking to the article's already implemented Back.
+            foreach (['web07-paged-guide-10', 'web07-paged-guide-11'] as $slug) {
+                $articleUrl = route('public.article', [
+                    'slug' => $slug,
+                    'lang' => $locale,
+                    'source' => 'blog',
+                    'q' => 'WEB07',
+                    'category' => $category->slug,
+                    'page' => 2,
+                ]);
+                $listing->assertSee(
+                    'class="t012-card-link" href="'.e($articleUrl).'"',
+                    false,
+                );
+                self::assertSame(2, substr_count(
+                    $listing->getContent(), 'href="'.e($articleUrl).'"',
+                ), 'Both article links must preserve validated blog context');
+
+                $detail = $this->get($articleUrl)->assertOk()
+                    ->assertSee(
+                        'href="'.e(route('public.blog', $filters)).'"',
+                        false,
+                    );
+                $detail->assertDontSee('WEB07 PRIVATE PAGED DRAFT');
+                $this->get(route('public.blog', $filters))->assertOk();
+            }
+        }
+
+        // No filter => no stateful query added to otherwise public article
+        // URLs. Canonical links remain clean and crawler-safe.
+        $plain = $this->get(route('public.blog', ['lang' => 'en']))->assertOk();
+        $plain->assertSee(
+            'class="t012-card-link" href="'.e(route('public.article', [
+                'slug' => 'web07-paged-guide-1', 'lang' => 'en',
+            ])).'"',
+            false,
+        );
     }
 
     public function test_empty_reference_viewport_is_explained_and_recoverable_in_both_languages(): void
