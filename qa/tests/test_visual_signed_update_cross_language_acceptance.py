@@ -45,12 +45,25 @@ try {
 @unittest.skipUnless(shutil.which("php"), "PHP CLI is required for signing acceptance")
 class SignedPublisherCrossLanguageAcceptance(unittest.TestCase):
     def setUp(self):
+        if subprocess.run(["php", "-r", 'exit(extension_loaded("zip") && extension_loaded("sodium") ? 0 : 1);'],
+                          capture_output=True).returncode:
+            self.skipTest("PHP ZipArchive and sodium are required for actual signer acceptance")
         self.temp = tempfile.TemporaryDirectory(prefix="walidsite-w10-signed-")
         self.addCleanup(self.temp.cleanup)
         self.private = Path(self.temp.name)
         self.candidate = self.private / f"WalidSite-update-v{VERSION}.zip"
         with zipfile.ZipFile(self.candidate, "w", zipfile.ZIP_DEFLATED) as package:
-            package.writestr("application/app/ReleaseIdentity.php", b"<?php // isolated QA fixture")
+            for name, body in {
+                "application/app/ReleaseIdentity.php": b"<?php // isolated QA fixture",
+                "application/bootstrap/app.php": b"<?php return [];",
+                "application/vendor/autoload.php": b"<?php return [];",
+                "application/composer.json": b'{"require":{"php":"^8.3"}}',
+                "application/composer.lock": b'{"packages":[]}',
+                "application/VERSION": b"0.1.1\n",
+                "public_html/index.php": b"<?php echo 'stable';",
+                "public_html/.htaccess": b"RewriteEngine On",
+            }.items():
+                package.writestr(name, body)
         self.metadata = {
             "product": "walidsite",
             "version": VERSION,
