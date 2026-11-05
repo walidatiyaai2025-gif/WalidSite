@@ -10,8 +10,10 @@ import tempfile
 import unittest
 import zipfile
 
+from qa.android_qa_build_metadata import metadata
 from qa.verify_release_android_qa import (
-    APK_NAME, CHECKSUM_NAME, IDENTITY_NAME, PROOF_NAME, verify,
+    APK_NAME, CHECKSUM_NAME, IDENTITY_NAME, PROOF_NAME, verify, verify_bundle,
+    site_release_version,
 )
 
 SHA = "a" * 40
@@ -26,6 +28,8 @@ class ReleaseAndroidQaAttachmentTest(unittest.TestCase):
         self.checkout = self.root / "checkout"
         self.folder = self.root / "candidate"
         (self.checkout / "mobile/android/app").mkdir(parents=True)
+        (self.checkout / "backend").mkdir()
+        (self.checkout / "backend/VERSION").write_text("1.2.3\n", encoding="ascii")
         (self.checkout / "mobile/pubspec.yaml").write_text(
             "name: waleed_tech_companion\nversion: 1.2.3+7\n", encoding="utf-8"
         )
@@ -135,6 +139,113 @@ class ReleaseAndroidQaAttachmentTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.attempt()
 
+    def make_candidate(self):
+        directory = self.root / "candidate-releases"
+        directory.mkdir()
+        archives = {}
+        for kind in ("Setup", "Update"):
+            name = f"WalidSite-{kind}-v1.2.3.zip"
+            target = directory / name
+            with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as archive:
+                archive.writestr("application/bootstrap/app.php", b"<?php return 1;")
+                archive.writestr("public_html/index.php", b"<?php echo 1;")
+            digest = hashlib.sha256(target.read_bytes()).hexdigest()
+            (directory / (name + ".sha256")).write_text(
+                digest + "  " + name + "\\n", encoding="ascii"
+            )
+            archives[kind.lower()] = {
+                "file": name, "sha256": digest, "bytes": target.stat().st_size,
+            }
+        self.release_manifest = {
+            "schema": "walidsite.release-candidate.v1",
+            "product": "walidsite", "version": "1.2.3",
+            "source_sha": SHA, "published": False,
+            "production_ready": False, "publisher_signature_verified": False,
+            "setup": archives["setup"], "update": archives["update"],
+            "acceptance": {
+                "fresh_install_on_live_host": False,
+                "signed_publisher_release": False,
+            },
+        }
+        self.php = {
+            "schema": "walidsite.signed-zip-ci-acceptance.v1",
+            "source_sha": SHA, "version": "1.2.3",
+            "artifact_sha256": archives["update"]["sha256"],
+            "verified_files": 5, "negative_rejections": 4,
+            "test_only_ephemeral_key": True,
+            "publisher_signature_verified": False,
+            "code_update_performed": False, "production_ready": False,
+        }
+        self.release_dir = directory
+        return directory
+
+    def verify_candidate(self):
+        (self.release_dir / "WalidSite-Release-Manifest-v1.2.3.json").write_text(
+            json.dumps(self.release_manifest), encoding="utf-8"
+        )
+        (self.release_dir / "signed-zip-acceptance.json").write_text(
+            json.dumps(self.php), encoding="utf-8"
+        )
+        self.attempt()
+        return verify_bundle(self.folder, self.checkout, SHA, self.release_dir)
+
+    def test_combined_site_native_release_manifest_binds_real_archives(self):
+        self.make_candidate()
+        receipt = self.verify_candidate()
+        self.assertEqual(receipt["schema"], "walidsite.unpublished-full-release-candidate.v1")
+        self.assertEqual(receipt["version"], "1.2.3")
+        self.assertEqual(receipt["source_sha"], SHA)
+        self.assertEqual(receipt["android_apk_sha256"], self.proof["apk_sha256"])
+        self.assertEqual(receipt["update_sha256"], self.php["artifact_sha256"])
+        self.assertTrue(receipt["native_and_web_version_match"])
+        self.assertTrue(receipt["same_sha_assets_verified"])
+        self.assertFalse(receipt["production_ready"])
+        self.assertFalse(receipt["publisher_signature_verified"])
+
+    def test_mismatched_web_native_version_and_forged_release_evidence_rejected(self):
+        self.make_candidate()
+        self.verify_candidate()
+        version = self.checkout / "backend/VERSION"
+        version.write_text("1.2.4\\n", encoding="ascii")
+        with self.assertRaises(ValueError):
+            self.verify_candidate()
+        version.write_text("1.2.3\\n", encoding="ascii")
+        for key, value in (
+            ("source_sha", "f" * 40),
+            ("version", "1.2.4"),
+            ("published", True),
+            ("publisher_signature_verified", True),
+            ("production_ready", True),
+        ):
+            original = self.release_manifest[key]
+            self.release_manifest[key] = value
+            with self.subTest(field=key), self.assertRaises(ValueError):
+                self.verify_candidate()
+            self.release_manifest[key] = original
+        for key, value in (
+            ("artifact_sha256", "0" * 64),
+            ("test_only_ephemeral_key", False),
+            ("negative_rejections", 3),
+            ("publisher_signature_verified", True),
+            ("code_update_performed", True),
+            ("production_ready", True),
+        ):
+            original = self.php[key]
+            self.php[key] = value
+            with self.subTest(field=key), self.assertRaises(ValueError):
+                self.verify_candidate()
+            self.php[key] = original
+        self.verify_candidate()
+        with (self.release_dir / "WalidSite-Update-v1.2.3.zip").open("ab") as output:
+            output.write(b"altered")
+        with self.assertRaises(ValueError):
+            self.verify_candidate()
+
+    def test_real_repository_native_and_web_versions_match(self):
+        source_root = Path(__file__).resolve().parents[2]
+        self.assertEqual(metadata(source_root)["version_name"],
+                         site_release_version(source_root))
+
     def test_release_workflow_requires_native_ci_before_qa_attachment(self):
         workflow = (Path(__file__).resolve().parents[2] /
                     ".github/workflows/release.yml").read_text()
@@ -142,6 +253,9 @@ class ReleaseAndroidQaAttachmentTest(unittest.TestCase):
         self.assertIn('.name == "build-android-qa-apk"', workflow)
         self.assertIn("gh run download", workflow)
         self.assertIn("qa/verify_release_android_qa.py", workflow)
+        self.assertIn("--candidates dist/candidates", workflow)
+        self.assertIn("unified-release-evidence.json", workflow)
+        self.assertIn("native_and_web_version_match", workflow)
         self.assertIn("WalidSite-Android-debug-QA-${SOURCE_SHA}", workflow)
         self.assertIn("head_sha=${SOURCE_SHA}&event=push", workflow)
         self.assertLess(workflow.index("Attach same-commit Android debug QA APK"),
