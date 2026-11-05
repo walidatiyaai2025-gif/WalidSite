@@ -26,6 +26,9 @@ class TrustedUpdatePublicationTest(unittest.TestCase):
         self.entries = {
             'application/bootstrap/app.php': b'<?php return 1;',
             'application/vendor/autoload.php': b'<?php return 2;',
+            'application/composer.json': b'{"require":{"php":"^8.3"}}',
+            'application/composer.lock': b'{"packages":[]}',
+            'application/VERSION': b'1.2.3\n',
             'public_html/index.php': b'<?php echo "hello";',
             'public_html/.htaccess': b'Deny from all',
             'application/.env.example': b'APP_KEY=',
@@ -149,7 +152,69 @@ class TrustedUpdatePublicationTest(unittest.TestCase):
         self.assertFalse((self.root / f'WalidSite-update-v{VERSION}.zip').exists())
 
     @unittest.skipUnless(shutil.which('php'), 'PHP CLI not installed')
+    def test_publisher_rejects_rehashed_malicious_zip_before_signing(self):
+        if subprocess.run(['php', '-r', 'exit(extension_loaded("zip") ? 0 : 1);'],
+                          capture_output=True).returncode:
+            self.skipTest('PHP ZIP extension required for publisher ZIP inspection')
+        import io
+        import stat
+        import warnings
+
+        receipt = self.make_update()
+        archive_path = self.root / receipt['artifact_file']
+        original = archive_path.read_bytes()
+        keygen = subprocess.run(['php', '-r',
+            '$kp=sodium_crypto_sign_keypair();'
+            'echo base64_encode(sodium_crypto_sign_secretkey($kp));'],
+            capture_output=True, check=True)
+        signer = Path(__file__).resolve().parents[1] / 'sign_trusted_update_release.php'
+        env = dict(os.environ, WALIDSITE_PUBLISHER_SECRET_KEY_B64=keygen.stdout.decode())
+
+        for case in ('traversal', 'duplicate', 'symlink', 'missing', 'version', 'private_state'):
+            with self.subTest(case=case):
+                archive_path.write_bytes(original)
+                if case in ('traversal', 'duplicate', 'symlink', 'private_state'):
+                    with zipfile.ZipFile(archive_path, 'a') as candidate:
+                        if case == 'traversal':
+                            candidate.writestr('application/../outside.php', '<?php exit;')
+                        elif case == 'duplicate':
+                            with warnings.catch_warnings():
+                                warnings.simplefilter('ignore', UserWarning)
+                                candidate.writestr('application/bootstrap/app.php', '<?php altered;')
+                        elif case == 'symlink':
+                            link = zipfile.ZipInfo('application/app/linked.php')
+                            link.create_system = 3
+                            link.external_attr = (stat.S_IFLNK | 0o777) << 16
+                            candidate.writestr(link, '../../outside.php')
+                        else:
+                            candidate.writestr('public_html/uploads/owner.png', 'private owner upload')
+                else:
+                    payload = io.BytesIO(original)
+                    with zipfile.ZipFile(payload) as source:
+                        remaining = [(info, source.read(info.filename))
+                                     for info in source.infolist()
+                                     if not (case == 'missing' and info.filename == 'application/vendor/autoload.php')]
+                    with zipfile.ZipFile(archive_path, 'w', zipfile.ZIP_DEFLATED) as candidate:
+                        for info, body in remaining:
+                            candidate.writestr(info.filename,
+                                b'9.9.9\n' if case == 'version' and info.filename == 'application/VERSION'
+                                else body)
+                meta = {k: receipt[k] for k in (
+                    'product', 'version', 'source_sha', 'artifact_sha256',
+                    'artifact_size', 'min_php', 'artifact_file')}
+                meta['artifact_sha256'] = hashlib.sha256(archive_path.read_bytes()).hexdigest()
+                meta['artifact_size'] = archive_path.stat().st_size
+                result = subprocess.run(['php', str(signer), str(self.root)],
+                    input=json.dumps(meta).encode(), capture_output=True, env=env)
+                self.assertNotEqual(result.returncode, 0, case)
+                self.assertFalse((self.root / 'latest.json').exists(), case)
+                self.assertNotIn(keygen.stdout, result.stdout + result.stderr)
+
+    @unittest.skipUnless(shutil.which('php'), 'PHP CLI not installed')
     def test_real_ed25519_signing_roundtrip_and_tamper_rejection(self):
+        if subprocess.run(['php', '-r', 'exit(extension_loaded("zip") ? 0 : 1);'],
+                          capture_output=True).returncode:
+            self.skipTest('PHP ZIP extension required for publisher ZIP inspection')
         meta = self.make_update()
         meta.pop('publisher_signature_verified')
         proc = subprocess.run(['php', '-r',
