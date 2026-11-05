@@ -102,7 +102,7 @@ final class Web13SearchStageJourneyTest extends TestCase
                 ->assertDontSee('class="t012-discovery-card"', false)
                 ->assertSee('name="type" value="all"', false);
             $this->assertSame(1, substr_count($page->getContent(), 'class="t012-search-card"'));
-            $url = route('public.project', ['slug' => $approved->slug, 'lang' => $lang]);
+            $url = route('public.project', ['slug' => $approved->slug, 'lang' => $lang, 'source' => 'search', 'q' => 'screenneedle', 'type' => 'all']);
             $this->assertSame(1, substr_count($page->getContent(), 'href="'.e($url).'"'));
         }
     }
@@ -129,7 +129,7 @@ final class Web13SearchStageJourneyTest extends TestCase
                 $this->assertSame(1, substr_count($html, $path), $lang.' duplicate/missing '.$path);
             }
             foreach ($projects as $project) {
-                $url = route('public.project', ['slug' => $project->slug, 'lang' => $lang]);
+                $url = route('public.project', ['slug' => $project->slug, 'lang' => $lang, 'source' => 'search', 'q' => 'screenneedle', 'type' => 'all']);
                 $this->assertSame(1, substr_count($html, 'href="'.e($url).'"'), $lang.' duplicate/missing '.$url);
             }
 

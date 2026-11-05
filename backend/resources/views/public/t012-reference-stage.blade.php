@@ -270,7 +270,7 @@ html[dir="rtl"] .t012-screen-blog .t012-visual-stack{left:55px;right:auto}
                             <h2>{{ $t012IsProject ? $t012Item['name'] : ($t012Ar ? $t012Item->title_ar : $t012Item->title_en) }}</h2>
                             <p>{{ $t012Ar ? 'ملخص، أدلة، مراجع' : 'Summary, evidence, references' }}</p>
                             @if($t012IsProject)
-                                <a href="{{ route('public.project', ['slug' => $t012Item['slug'], 'lang' => $locale]) }}">{{ $t012Ar ? 'عرض المشروع' : 'View project' }} &nbsp;&gt;</a>
+                                <a href="{{ route('public.project', array_merge(['slug' => $t012Item['slug'], 'lang' => $locale, 'source' => 'search', 'q' => $search, 'type' => $type], $page > 1 ? ['page' => $page] : [])) }}">{{ $t012Ar ? 'عرض المشروع' : 'View project' }} &nbsp;&gt;</a>
                             @else
                                 <a href="{{ route('public.article', array_merge(['slug' => $t012Item->slug, 'lang' => $locale, 'source' => 'search', 'q' => $search, 'type' => $type], $page > 1 ? ['page' => $page] : [])) }}">{{ $t012Ar ? 'فتح الدليل التفصيلي' : 'Open detailed guide' }} &nbsp;&gt;</a>
                             @endif
