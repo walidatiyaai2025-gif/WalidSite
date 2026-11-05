@@ -112,8 +112,11 @@ final class TrustedOwnerUpdateInbox
         }
         $root = $this->privateDirectory($privateInboxRoot, $publicDocumentRoot);
         $directory = $root.'/'.$id;
-        if (! is_dir($directory) || is_link($directory) || realpath($directory) !== $directory) {
-            throw new DomainException('Verified update reference not found.');
+        if (! is_dir($directory) || is_link($directory) || realpath($directory) !== $directory
+            || (fileperms($directory) & 0777) !== 0700) {
+            // Even signed release artifacts contain executable application code.
+            // A post-upload chmod must never expose the owner's private inbox.
+            throw new DomainException('Verified update reference not found or unsafe.');
         }
 
         $receipt = $this->readPrivateReceipt($directory.'/receipt.json');
@@ -237,6 +240,7 @@ final class TrustedOwnerUpdateInbox
         }
         $root = realpath($directory);
         if ($root === false || $root !== $directory || is_link($directory)
+            || (fileperms($root) & 0777) !== 0700
             || ! is_writable($root) || $root === $public
             || str_starts_with($root, rtrim($public, '/').'/')
             || str_starts_with($public, rtrim($root, '/').'/')) {

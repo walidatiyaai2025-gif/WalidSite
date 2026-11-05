@@ -151,6 +151,51 @@ final class TrustedOwnerUpdateInboxTest extends TestCase
         }
     }
 
+    public function test_exposed_inbox_root_is_rejected_before_staging_a_signed_zip(): void
+    {
+        [$upload, $catalog, $key, $origin] = $this->candidate();
+        $this->assertTrue(mkdir($this->inbox, 0700));
+        $this->assertTrue(chmod($this->inbox, 0755));
+        clearstatcache(true, $this->inbox);
+        $service = new TrustedOwnerUpdateInbox();
+        try {
+            $service->verifyUpload($upload, $catalog, $origin, $key,
+                '0.1.0', '42', $this->inbox, $this->public);
+            $this->fail('A publicly traversable inbox must not stage signed code.');
+        } catch (DomainException $exception) {
+            $this->assertStringContainsString('inbox', $exception->getMessage());
+            $this->assertSame([], array_values(array_diff(scandir($this->inbox), ['.', '..'])));
+        } finally {
+            chmod($this->inbox, 0700);
+            clearstatcache(true, $this->inbox);
+        }
+        $this->assertSame('0.1.1', $service->verifyUpload($upload, $catalog, $origin,
+            $key, '0.1.0', '42', $this->inbox, $this->public)['version']);
+    }
+
+    public function test_exposed_staged_directory_cannot_reauthorize_owner_update(): void
+    {
+        [$upload, $catalog, $key, $origin] = $this->candidate();
+        $service = new TrustedOwnerUpdateInbox();
+        $ok = $service->verifyUpload($upload, $catalog, $origin, $key,
+            '0.1.0', '42', $this->inbox, $this->public);
+        $directory = $this->inbox.'/'.$ok['id'];
+        $this->assertTrue(chmod($directory, 0755));
+        clearstatcache(true, $directory);
+        try {
+            $service->getVerified($ok['id'], '42', $this->inbox,
+                $this->public, $origin, $key, '0.1.0');
+            $this->fail('An exposed staged directory cannot authorize a signed ZIP.');
+        } catch (DomainException $exception) {
+            $this->assertStringContainsString('unsafe', $exception->getMessage());
+        } finally {
+            chmod($directory, 0700);
+            clearstatcache(true, $directory);
+        }
+        $this->assertSame('0.1.1', $service->getVerified($ok['id'], '42',
+            $this->inbox, $this->public, $origin, $key, '0.1.0')['version']);
+    }
+
     public function test_exposed_receipt_permissions_cannot_reauthorize_signed_update(): void
     {
         [$upload, $catalog, $key, $origin] = $this->candidate();
