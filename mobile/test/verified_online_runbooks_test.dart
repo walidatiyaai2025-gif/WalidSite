@@ -307,7 +307,7 @@ void main() {
     expect(page.categories.map((item) => item.name), ['Databases', 'Security']);
     expect(ReviewedRunbookPage.parse(response(1, [guide()]), 1).categories, isEmpty);
 
-    for (final invalid in [
+    for (final invalid in <List<Map<String, dynamic>>>[
       [{}],
       [{'slug': 'database', 'name': ''}],
       [{'slug': 'database', 'name': 'Valid', 'secret': 'x'}],
