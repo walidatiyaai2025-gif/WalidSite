@@ -400,14 +400,38 @@ final class CpanelImmutableCodePointer
     /** @return array{schema:int,version:string,root:string}|null */
     private function read(string $path, string $home): ?array
     {
-        if (! file_exists($path)) {
+        clearstatcache(true, $path);
+        if (! file_exists($path) && ! is_link($path)) {
             return null;
         }
-        if (is_link($path) || ! is_file($path) || filesize($path) === false
-            || filesize($path) > 512) {
+        if (is_link($path) || ! is_file($path)) {
             throw new DomainException('Invalid private release pointer.');
         }
-        $json = json_decode((string) file_get_contents($path), true, 8, JSON_THROW_ON_ERROR);
+        // A release pointer is security-sensitive control data. Read exactly
+        // one opened regular inode, never stat one path and later reopen it
+        // via file_get_contents after an attacker can swap the filename.
+        $stream = @fopen($path, 'rb');
+        if ($stream === false) {
+            throw new DomainException('Cannot securely open private release pointer.');
+        }
+        try {
+            $opened = @fstat($stream);
+            if (! is_array($opened)
+                || ($opened['mode'] & 0170000) !== 0100000
+                || $opened['nlink'] !== 1
+                || $opened['size'] < 1 || $opened['size'] > 512) {
+                throw new DomainException('Unsafe private release pointer inode.');
+            }
+            $this->assertPointerReadIdentity($stream, $path, $opened);
+            $contents = stream_get_contents($stream, 513);
+            if (! is_string($contents) || strlen($contents) !== $opened['size']) {
+                throw new DomainException('Private release pointer changed during read.');
+            }
+            $this->assertPointerReadIdentity($stream, $path, $opened);
+        } finally {
+            fclose($stream);
+        }
+        $json = json_decode($contents, true, 8, JSON_THROW_ON_ERROR);
         if (! is_array($json) || array_keys($json) !== ['schema','version','root']
             || $json['schema'] !== 1
             || ! is_string($json['version']) || ! is_string($json['root'])
@@ -418,6 +442,30 @@ final class CpanelImmutableCodePointer
             throw new DomainException('Invalid or missing private active release.');
         }
         return $json;
+    }
+
+    /**
+     * @param resource $stream
+     * @param array<string|int,mixed> $baseline
+     */
+    private function assertPointerReadIdentity($stream, string $path, array $baseline): void
+    {
+        clearstatcache(true, $path);
+        $opened = @fstat($stream);
+        $named = @lstat($path);
+        if (! is_array($opened) || ! is_array($named)
+            || ($opened['mode'] & 0170000) !== 0100000
+            || ($named['mode'] & 0170000) !== 0100000
+            || $opened['nlink'] !== 1 || $named['nlink'] !== 1
+            || is_link($path) || realpath($path) !== $path
+            || $opened['dev'] !== $named['dev'] || $opened['ino'] !== $named['ino']) {
+            throw new DomainException('Private release pointer pathname or inode changed during read.');
+        }
+        foreach (['dev', 'ino', 'size', 'mtime', 'ctime'] as $field) {
+            if ($opened[$field] !== $baseline[$field] || $named[$field] !== $baseline[$field]) {
+                throw new DomainException('Private release pointer changed during read.');
+            }
+        }
     }
 
     /** @param array{schema:int,version:string,root:string} $value */
