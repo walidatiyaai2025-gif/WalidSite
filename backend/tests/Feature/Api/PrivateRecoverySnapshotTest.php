@@ -152,6 +152,94 @@ final class PrivateRecoverySnapshotTest extends TestCase
         $this->assertRejected(fn () => $this->snapshot());
     }
 
+    public function test_open_private_source_descriptor_must_match_named_path_after_same_byte_replacement(): void
+    {
+        // A copied and re-opened pathname can contain the same data as an old
+        // descriptor after an atomic rename. The original copy()/hash_file()
+        // implementation would not notice this change in source identity.
+        $handle = fopen($this->environment, 'rb');
+        self::assertIsResource($handle);
+        $baseline = fstat($handle);
+        self::assertIsArray($baseline);
+        $guard = new \ReflectionMethod(PrivateRecoverySnapshot::class, 'assertStableSource');
+        $service = new PrivateRecoverySnapshot();
+        try {
+            $guard->invoke($service, $handle, $this->environment, $baseline);
+            $bytes = file_get_contents($this->environment);
+            $oldPath = $this->environment.'.old-inode';
+            self::assertTrue(rename($this->environment, $oldPath));
+            self::assertSame(strlen($bytes), file_put_contents($this->environment, $bytes));
+            self::assertNotSame(fstat($handle)['ino'], lstat($this->environment)['ino']);
+            try {
+                $guard->invoke($service, $handle, $this->environment, $baseline);
+                self::fail('Source pathname swapped to an identical-byte inode was accepted.');
+            } catch (DomainException $error) {
+                self::assertStringContainsString('inode changed', $error->getMessage());
+            }
+        } finally {
+            fclose($handle);
+        }
+        // The snapshot must never have been authorized or written.
+        self::assertSame([], glob($this->backupRoot.'/recovery-*') ?: []);
+    }
+
+    public function test_private_snapshot_identity_rejects_hardlink_and_symlink_aliases(): void
+    {
+        $handle = fopen($this->environment, 'rb');
+        self::assertIsResource($handle);
+        $baseline = fstat($handle);
+        self::assertIsArray($baseline);
+        $guard = new \ReflectionMethod(PrivateRecoverySnapshot::class, 'assertStableSource');
+        $service = new PrivateRecoverySnapshot();
+        $alias = $this->home.'/alias-to-env';
+        try {
+            self::assertTrue(link($this->environment, $alias));
+            try {
+                $guard->invoke($service, $handle, $this->environment, $baseline);
+                self::fail('Hard-linked private recovery source was accepted.');
+            } catch (DomainException $error) {
+                self::assertStringContainsString('inode changed', $error->getMessage());
+            }
+            self::assertTrue(unlink($alias));
+
+            $original = $this->environment.'.original';
+            self::assertTrue(rename($this->environment, $original));
+            self::assertTrue(symlink($original, $this->environment));
+            try {
+                $guard->invoke($service, $handle, $this->environment, $baseline);
+                self::fail('Symlink-replaced private recovery source was accepted.');
+            } catch (DomainException $error) {
+                self::assertStringContainsString('inode changed', $error->getMessage());
+            }
+        } finally {
+            fclose($handle);
+        }
+        self::assertSame([], glob($this->backupRoot.'/recovery-*') ?: []);
+    }
+
+    public function test_private_snapshot_identity_rejects_in_place_source_metadata_mutation(): void
+    {
+        $handle = fopen($this->environment, 'rb');
+        self::assertIsResource($handle);
+        $baseline = fstat($handle);
+        self::assertIsArray($baseline);
+        $guard = new \ReflectionMethod(PrivateRecoverySnapshot::class, 'assertStableSource');
+        try {
+            // Move mtime far enough to be deterministic despite filesystem
+            // timestamp granularity; the file remains the same inode.
+            self::assertTrue(touch($this->environment, $baseline['mtime'] - 120));
+            try {
+                $guard->invoke(new PrivateRecoverySnapshot(), $handle, $this->environment, $baseline);
+                self::fail('In-place recovery source mutation was accepted.');
+            } catch (DomainException $error) {
+                self::assertStringContainsString('changed', $error->getMessage());
+            }
+        } finally {
+            fclose($handle);
+        }
+        self::assertSame([], glob($this->backupRoot.'/recovery-*') ?: []);
+    }
+
     private function assertRejected(callable $attempt): void
     {
         try {
