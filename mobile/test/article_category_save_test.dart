@@ -194,6 +194,72 @@ void main() {
     }
   });
 
+
+  test('ambiguous Save reconciliation only accepts the same authenticated UUID', () async {
+    final first = MobileSavedResource(
+      type: 'runbook',
+      id: articleId,
+      title: 'A different resource',
+      detailPath: '/api/v1/mobile/solutions/$articleId',
+      savedAt: DateTime.utc(2026, 11, 1),
+    );
+    final target = MobileSavedResource(
+      type: 'article',
+      id: articleId,
+      title: 'Verified article',
+      detailPath: '/api/v1/public/articles/$articleSlug',
+      savedAt: DateTime.utc(2026, 11, 1),
+    );
+    final seen = <int>[];
+    final matched = await MobileAccountClient.confirmArticleInSavedList(
+      'owner-bearer-only', articleId, (bearer, arabic, page) async {
+        expect(bearer, 'owner-bearer-only');
+        expect(arabic, isFalse);
+        seen.add(page);
+        return page == 1
+            ? MobileSavedPage([first], page, true)
+            : MobileSavedPage([target], page, false);
+      },
+    );
+    expect(matched, isTrue);
+    expect(seen, [1, 2]);
+
+    var attempts = 0;
+    final missing = await MobileAccountClient.confirmArticleInSavedList(
+      'owner-bearer-only', articleId, (_, __, page) async {
+        attempts++;
+        return MobileSavedPage([first], page, false);
+      },
+    );
+    expect(missing, isFalse, reason: 'Runbook with matching UUID is not an article Save');
+    expect(attempts, 1);
+  });
+
+  test('unverified pagination cannot authorize an ambiguous Save', () async {
+    await expectLater(
+      MobileAccountClient.confirmArticleInSavedList(
+        'bearer', articleId, (_, __, page) async =>
+            MobileSavedPage(const [], page + 1, false),
+      ),
+      throwsFormatException,
+    );
+    var reads = 0;
+    final missing = await MobileAccountClient.confirmArticleInSavedList(
+      'bearer', articleId, (_, __, page) async {
+        reads++;
+        return MobileSavedPage(const [], page, true);
+      },
+    );
+    expect(missing, isFalse);
+    expect(reads, 20, reason: 'Do not scan unbounded private Saved pages');
+    await expectLater(
+      MobileAccountClient.confirmArticleInSavedList(
+        '', articleId, (_, __, ___) async => fail('No network on bad identity'),
+      ),
+      throwsFormatException,
+    );
+  });
+
   test('bookmarks need exact positive HTTP 200 body, UUID and resource type', () {
     final receipt = jsonEncode({
       'data': {
