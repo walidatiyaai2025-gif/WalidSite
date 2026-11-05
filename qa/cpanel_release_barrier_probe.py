@@ -65,7 +65,7 @@ def main() -> None:
         if not installed_version_file.is_file() or installed_version_file.is_symlink():
             raise RuntimeError("Verified installed release identity missing")
         installed_version = installed_version_file.read_text(encoding="ascii").strip()
-        if not re.fullmatch(r"(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)", installed_version):
+        if not re.fullmatch(r"(?:0|[1-9][0-9]*)[.](?:0|[1-9][0-9]*)[.](?:0|[1-9][0-9]*)", installed_version):
             raise RuntimeError("Invalid installed release version")
         major, minor, patch = map(int, installed_version.split("."))
         candidate_version = f"{major}.{minor}.{patch + 1}"
