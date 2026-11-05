@@ -228,8 +228,17 @@ final class CpanelArchiveCodeOnlyPreflight
     private function withPinned(string $path, int $maximum, callable $reader): string
     {
         clearstatcache(true, $path);
-        if (is_link($path) || realpath($path) !== $path) {
-            throw new DomainException('Untrusted update file pathname.');
+        $namedBeforeOpen = @lstat($path);
+        // Do not open a FIFO or device before checking its type: a blocking
+        // fopen() of a malicious named pipe could hang the owner preflight.
+        if (! is_array($namedBeforeOpen)
+            || ($namedBeforeOpen['mode'] & 0170000) !== 0100000
+            || ($namedBeforeOpen['nlink'] ?? 0) !== 1
+            || ($namedBeforeOpen['mode'] & 0022) !== 0
+            || ! is_int($namedBeforeOpen['size'])
+            || $namedBeforeOpen['size'] < 1 || $namedBeforeOpen['size'] > $maximum
+            || is_link($path) || realpath($path) !== $path) {
+            throw new DomainException('Untrusted update file pathname or type.');
         }
         $stream = @fopen($path, 'rb');
         if ($stream === false) {
