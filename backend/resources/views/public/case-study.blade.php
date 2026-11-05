@@ -1,8 +1,7 @@
-@php($locale = request()->query('lang') === 'ar' ? 'ar' : 'en')
-@php($isArabic = $locale === 'ar')
 @extends('layouts.site')
 @section('title', $project['name'].' — Waleed Atiya')
 @push('head')
+@php($locale = request()->query('lang') === 'ar' ? 'ar' : 'en')
 <link rel="canonical" href="{{ route('public.project', ['slug' => $project['slug'], 'lang' => $locale]) }}">
 <link rel="alternate" hreflang="ar" href="{{ route('public.project', ['slug' => $project['slug'], 'lang' => 'ar']) }}">
 <link rel="alternate" hreflang="en" href="{{ route('public.project', ['slug' => $project['slug'], 'lang' => 'en']) }}">
@@ -53,6 +52,9 @@ body:has(.project-case-live) .site-header{display:none}
 @media(max-width:560px){.pc-contact{margin-inline-start:auto}.pc-hero{min-height:290px}}
 </style>
 @endpush
+@section('content')
+@php($locale = request()->query('lang') === 'ar' ? 'ar' : 'en')
+@php($isArabic = $locale === 'ar')
 @php($statusLabels = $isArabic
     ? ['completed' => 'مكتمل', 'in_progress' => 'قيد التنفيذ', 'research' => 'بحث', 'archived' => 'مؤرشف']
     : ['completed' => 'Completed', 'in_progress' => 'In progress', 'research' => 'Research', 'archived' => 'Archived'])
@@ -93,7 +95,6 @@ body:has(.project-case-live) .site-header{display:none}
         $validSearchPage ? ['page' => $returnPage] : []
       ))
     : $returnToListing)
-@section('content')
 <div class="project-case-live" lang="{{ $locale }}" dir="{{ $isArabic ? 'rtl' : 'ltr' }}">
   <header class="pc-nav">
     <div class="pc-wrap">
