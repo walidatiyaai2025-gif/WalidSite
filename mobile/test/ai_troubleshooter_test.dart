@@ -9,9 +9,22 @@ import 'package:waleed_tech_companion/runbooks/verified_online_runbooks.dart';
 import 'package:waleed_tech_companion/runbooks/offline_runbooks.dart';
 import 'package:waleed_tech_companion/solutions/offline_solution_finder.dart';
 
+// flutter_test installs a global 400-response HttpClient override. These
+// localhost-only transport tests must use real sockets; restore the mock for
+// all other tests even if an assertion throws.
+Future<T> withRealLoopbackHttp<T>(Future<T> Function() operation) async {
+  final previous = HttpOverrides.global;
+  HttpOverrides.global = null;
+  try {
+    return await operation();
+  } finally {
+    HttpOverrides.global = previous;
+  }
+}
+
 void main() {
 
-  test('MOBILE-03 real HTTP slow-drip response obeys one total deadline', () async {
+  test('MOBILE-03 real HTTP slow-drip response obeys one total deadline', () => withRealLoopbackHttp(() async {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     final stop = Completer<void>();
     var requests = 0;
@@ -48,9 +61,9 @@ void main() {
       stop.complete();
       await server.close(force: true);
     }
-  });
+  }));
 
-  test('MOBILE-03 real HTTP hanging headers respect the same deadline', () async {
+  test('MOBILE-03 real HTTP hanging headers respect the same deadline', () => withRealLoopbackHttp(() async {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     final release = Completer<void>();
     var requests = 0;
@@ -76,9 +89,9 @@ void main() {
       release.complete();
       await server.close(force: true);
     }
-  });
+  }));
 
-  test('MOBILE-03 real HTTP quick response retains exact status and body', () async {
+  test('MOBILE-03 real HTTP quick response retains exact status and body', () => withRealLoopbackHttp(() async {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     server.listen((request) async {
       request.response.statusCode = HttpStatus.unauthorized;
@@ -96,7 +109,7 @@ void main() {
     } finally {
       await server.close(force: true);
     }
-  });
+  }));
 
 
   test('MOBILE-03 total HTTP deadline rejects a never-ending body', () async {
