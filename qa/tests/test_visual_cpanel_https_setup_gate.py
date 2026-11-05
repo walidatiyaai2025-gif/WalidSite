@@ -3,6 +3,8 @@ import io
 import json
 import os
 import tempfile
+import threading
+import time
 import unittest
 from contextlib import redirect_stderr
 from pathlib import Path
@@ -141,6 +143,110 @@ class FirstRunHttpGateTest(unittest.TestCase):
                          environment["https_proxy"])
         self.assertEqual(client.origin, "https://localhost:18966")
         self.assertEqual(private_token(self.home), TOKEN)
+
+    def test_local_https_total_deadline_covers_blocked_tls_or_headers(self):
+        ca = self.home / "synthetic-ca.pem"
+        ca.write_text("fixture certificate bytes; TLS context is mocked")
+        with patch("qa.cpanel_https_setup_gate.ssl.create_default_context"):
+            client = Client("https://localhost:18966", ca, timeout=1)
+
+        released = threading.Event()
+        requests = []
+
+        class BlockedHeaders:
+            def open(self, request, timeout):
+                requests.append((request.full_url, request.get_method(), timeout))
+                released.wait(4)
+                raise TimeoutError("synthetic headers delayed")
+
+        client.opener = BlockedHeaders()
+        started = time.monotonic()
+        try:
+            with self.assertRaisesRegex(AcceptanceError, "whole-request deadline"):
+                client.request("/install/step/1", {"token": TOKEN})
+        finally:
+            released.set()
+        elapsed = time.monotonic() - started
+        self.assertLess(elapsed, 1.9)
+        self.assertGreaterEqual(elapsed, 0.7)
+        self.assertEqual(requests, [("https://localhost:18966/install/step/1",
+                                     "POST", 1)])
+
+    def test_local_https_total_deadline_covers_slow_drip_body(self):
+        ca = self.home / "synthetic-ca.pem"
+        ca.write_text("fixture certificate bytes; TLS context is mocked")
+        with patch("qa.cpanel_https_setup_gate.ssl.create_default_context"):
+            client = Client("https://localhost:18966", ca, timeout=1)
+        released = threading.Event()
+
+        class SlowResponse:
+            code = 200
+            headers = {"Location": ""}
+
+            def __init__(self):
+                self.reads = 0
+                self.closed = False
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc_value, traceback):
+                self.closed = True
+
+            def read1(self, count):
+                self.reads += 1
+                if self.reads == 1:
+                    return b"<"
+                released.wait(4)
+                return b"html>"
+
+        response = SlowResponse()
+
+        class SlowOpener:
+            def open(self, request, timeout):
+                return response
+
+        client.opener = SlowOpener()
+        started = time.monotonic()
+        try:
+            with self.assertRaisesRegex(AcceptanceError, "whole-request deadline"):
+                client.request("/")
+        finally:
+            released.set()
+        self.assertLess(time.monotonic() - started, 1.9)
+        self.assertGreaterEqual(response.reads, 2)
+
+    def test_local_https_fast_response_remains_valid_and_bounded(self):
+        ca = self.home / "synthetic-ca.pem"
+        ca.write_text("fixture certificate bytes; TLS context is mocked")
+        with patch("qa.cpanel_https_setup_gate.ssl.create_default_context"):
+            client = Client("https://localhost:18966", ca, timeout=1)
+
+        class FastResponse:
+            code = 302
+            headers = {"Location": "https://localhost:18966/install"}
+
+            def __init__(self):
+                self.stream = io.BytesIO(b"OK")
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc_value, traceback):
+                self.stream.close()
+
+            def read1(self, count):
+                return self.stream.read(count)
+
+        class FastOpener:
+            def open(self, request, timeout):
+                return FastResponse()
+
+        client.opener = FastOpener()
+        self.assertEqual(
+            client.request("/"),
+            Response(302, "https://localhost:18966/install", "OK"),
+        )
 
     def test_public_html_symlink_to_private_tree_is_rejected_before_http(self):
         public = self.home / "public_html"
