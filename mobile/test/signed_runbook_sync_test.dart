@@ -117,7 +117,7 @@ void main() {
           throwsFormatException);
       expect(await store.read(), 'signed-v1');
 
-      await temporary.createSymbolicLink(outside.path);
+      await Link(temporary.path).create(outside.path);
       await expectLater(store.write('signed-v2'), throwsFormatException);
       expect(await outside.readAsString(), 'keep original');
       expect(await store.read(), 'signed-v1');
@@ -126,7 +126,7 @@ void main() {
       await temporary.delete();
 
       await snapshot.delete();
-      await snapshot.createSymbolicLink(outside.path);
+      await Link(snapshot.path).create(outside.path);
       await expectLater(store.read(), throwsFormatException);
       await expectLater(store.write('signed-v3'), throwsFormatException);
       expect(await outside.readAsString(), 'keep original');
