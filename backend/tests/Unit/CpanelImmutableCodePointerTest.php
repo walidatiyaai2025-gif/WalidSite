@@ -583,7 +583,7 @@ final class CpanelImmutableCodePointerTest extends TestCase
         $this->assertIsResource($stream);
         $opened = fstat($stream);
         $this->assertIsArray($opened);
-        $guard = new \\ReflectionMethod(CpanelImmutableCodePointer::class, 'assertPointerReadIdentity');
+        $guard = new \ReflectionMethod(CpanelImmutableCodePointer::class, 'assertPointerReadIdentity');
         try {
             $guard->invoke(new CpanelImmutableCodePointer(), $stream, $pointer, $opened);
             $oldPath = $this->home.'/.orphaned-active-pointer.json';
