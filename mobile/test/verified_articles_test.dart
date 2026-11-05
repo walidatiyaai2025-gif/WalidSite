@@ -16,6 +16,25 @@ void main() {
   "published_at":"2026-10-31T18:00:00Z"}]}
   ''';
 
+  test('MOBILE-07 uses canonical public mobile article feed and query contract', () {
+    final origin = VerifiedArticleReader.validatedOrigin(
+        'https://articles.example.org')!;
+    final arabic = VerifiedArticleReader.mobileArticleFeedUri(
+        origin, true, 3, 'verified-databases');
+    expect(arabic.scheme, 'https');
+    expect(arabic.host, 'articles.example.org');
+    expect(arabic.path, '/api/v1/mobile/articles');
+    expect(arabic.queryParameters, {
+      'lang': 'ar', 'page': '3', 'category': 'verified-databases',
+    });
+    expect(arabic.userInfo, isEmpty);
+    final english = VerifiedArticleReader.mobileArticleFeedUri(
+        origin, false, 1, null);
+    expect(english.path, '/api/v1/mobile/articles');
+    expect(english.queryParameters, {'lang': 'en', 'page': '1'});
+    expect(english.queryParameters.containsKey('category'), isFalse);
+  });
+
   test('article API origin accepts only canonical public HTTPS destinations', () {
     for (final trusted in <String>[
       'https://articles.example.org',
