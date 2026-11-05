@@ -67,10 +67,13 @@ final class CpanelPhysicalHostPreflight
                 throw new DomainException('Private runtime state or stable public entrypoint is unsafe.');
             }
         }
-        $trustedHash = hash_file('sha256', $trusted);
-        $deployedHash = hash_file('sha256', $public.'/index.php');
-        if (! is_string($trustedHash) || ! is_string($deployedHash)
-            || ! hash_equals($trustedHash, $deployedHash)) {
+        // Compare bytes through held, regular, single-link descriptors.
+        // A pathname-only hash after is_file()/realpath() may authenticate
+        // a replaced or hardlinked front controller rather than the opened
+        // immutable source that the release gate intended to inspect.
+        $trustedHash = $this->hashPinnedFrontController($trusted);
+        $deployedHash = $this->hashPinnedFrontController($public.'/index.php');
+        if (! hash_equals($trustedHash, $deployedHash)) {
             throw new DomainException('The live dispatcher is not the immutable trusted cPanel entrypoint.');
         }
 
@@ -142,6 +145,43 @@ final class CpanelPhysicalHostPreflight
             'backup_verified' => false,
             'code_update_performed' => false,
         ];
+    }
+
+    /**
+     * Hash the exact open inode, never a second mutable pathname.
+     * This is a read-only preflight, not authorization to execute the file.
+     */
+    private function hashPinnedFrontController(string $path): string
+    {
+        clearstatcache(true, $path);
+        if (is_link($path) || realpath($path) !== $path) {
+            throw new DomainException('Unsafe cPanel front controller path.');
+        }
+        $stream = @fopen($path, 'rb');
+        if ($stream === false) {
+            throw new DomainException('Trusted cPanel front controller cannot be read.');
+        }
+        try {
+            $baseline = @fstat($stream);
+            if (! is_array($baseline)
+                || ($baseline['mode'] & 0170000) !== 0100000
+                || ($baseline['nlink'] ?? 0) !== 1
+                || $baseline['size'] < 1 || $baseline['size'] > 1048576
+                || ($baseline['mode'] & 0022) !== 0) {
+                throw new DomainException('Unsafe cPanel front controller inode.');
+            }
+            $this->assertPinnedIdentity($stream, $path, $baseline);
+            $hash = hash_init('sha256');
+            if (hash_update_stream($hash, $stream) !== $baseline['size']) {
+                throw new DomainException('cPanel front controller changed while hashing.');
+            }
+            $digest = hash_final($hash);
+            $this->assertPinnedIdentity($stream, $path, $baseline);
+
+            return $digest;
+        } finally {
+            fclose($stream);
+        }
     }
 
     /**
