@@ -173,7 +173,7 @@ class TrustedUpdatePublicationTest(unittest.TestCase):
             checks.append('sealed-before-publication')
             return original_link(staged, destination, **kwargs)
 
-        with patch('qa.build_trusted_update_release.os.link', side_effect=inspect_then_publish):
+        with patch('qa.build_trusted_update_release.publish_no_replace', side_effect=inspect_then_publish):
             receipt = self.make_update()
         self.assertEqual(checks, ['sealed-before-publication'])
         self.assertEqual(receipt['artifact_sha256'],
@@ -192,7 +192,7 @@ class TrustedUpdatePublicationTest(unittest.TestCase):
             output.write_bytes(marker)
             raise FileExistsError('Another immutable publication already exists')
 
-        with patch('qa.build_trusted_update_release.os.link', side_effect=compete):
+        with patch('qa.build_trusted_update_release.publish_no_replace', side_effect=compete):
             with self.assertRaises(FileExistsError):
                 self.make_update()
         self.assertEqual(output.read_bytes(), marker)
