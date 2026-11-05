@@ -79,6 +79,16 @@ final class AdminUpdateController extends Controller
 
         $verifiedUpload = null;
         $inboxId = $request->session()->get('verified_owner_update_inbox');
+        // A previously authenticated archive must cease to be a selectable
+        // candidate immediately when owner updates or the installed identity
+        // are disabled. Do not leave a dormant session reference that could
+        // resurface if a server setting is changed back later.
+        if (is_string($inboxId)
+            && (config('site.updates_enabled') !== true
+                || $this->pinnedInstalledVersion() === null)) {
+            $request->session()->forget('verified_owner_update_inbox');
+            $inboxId = null;
+        }
         if (is_string($inboxId) && $this->pinnedInstalledVersion() !== null
             && filled(config('site.trusted_release_origin'))
             && filled(config('site.trusted_release_public_key'))) {
@@ -164,6 +174,14 @@ final class AdminUpdateController extends Controller
         TrustedReleaseCatalog $catalog,
     ): RedirectResponse {
         $this->authorizeOwner($request);
+        // Every new upload attempt starts a distinct publisher-identity
+        // decision. A failed replacement must NEVER leave the older ZIP shown
+        // as if it were the package just verified; likewise, discard stale
+        // release discovery when the owner requests a different candidate.
+        $request->session()->forget([
+            'verified_owner_update_inbox',
+            'trusted_release_check',
+        ]);
         abort_unless(config('site.updates_enabled') === true, 403);
         $data = $request->validate([
             'package' => ['required', 'file', 'max:512000'],

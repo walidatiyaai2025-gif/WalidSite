@@ -7,6 +7,7 @@ use App\Models\Role;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Routing\Middleware\ThrottleRequests;
 use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
 use ZipArchive;
@@ -27,6 +28,10 @@ final class AdminSignedUpdateUploadTest extends TestCase
         ]);
         $owner->roles()->attach(Role::firstOrCreate(['name' => 'owner'])->id);
         $this->actingAs($owner);
+        // This test deliberately makes three consecutive upload attempts.
+        // Keep the real production throttle intact while isolating the
+        // session/identity boundary from its independent 2/minute limit.
+        $this->withoutMiddleware(ThrottleRequests::class);
 
         $zipFile = tempnam(sys_get_temp_dir(), 'signed-update-');
         $zip = new ZipArchive;
@@ -40,6 +45,10 @@ final class AdminSignedUpdateUploadTest extends TestCase
             $zip->addFromString($name, $body);
         }
         $zip->close();
+        $validArchiveBytes = (string) file_get_contents($zipFile);
+        $verifiedIds = [];
+        $invalidZipFile = null;
+        $replacementZipFile = null;
 
         $pair = sodium_crypto_sign_keypair();
         $pub = base64_encode(sodium_crypto_sign_publickey($pair));
@@ -85,6 +94,7 @@ final class AdminSignedUpdateUploadTest extends TestCase
 
             $id = session('verified_owner_update_inbox');
             $this->assertMatchesRegularExpression('/^[a-f0-9]{32}$/D', $id);
+            $verifiedIds[] = $id;
             $this->get('https://localhost/admin/updates')->assertOk()
                 ->assertSee('data-testid="owner-signed-upload-verified"', false)
                 ->assertSee('0.1.3')
@@ -92,16 +102,56 @@ final class AdminSignedUpdateUploadTest extends TestCase
                 ->assertDontSee($pub)
                 ->assertDontSee($envelope);
             $this->assertSame('0.1.2', trim(file_get_contents(base_path('VERSION'))));
+
+            // Replacing a known-good upload with a rejected ZIP must not leave
+            // that older signed artifact presented as the NEW verified ZIP.
+            // No new publisher origin/key or archive bytes are ever trusted.
+            session()->put('trusted_release_check', ['state' => 'signed_release_available']);
+            $invalidZipFile = tempnam(sys_get_temp_dir(), 'rejected-update-');
+            file_put_contents($invalidZipFile, 'this is not the signed ZIP');
+            $this->post('https://localhost/admin/updates/verify-upload', [
+                'package' => new UploadedFile($invalidZipFile, 'bad.zip', 'application/zip', null, true),
+            ])->assertRedirect()->assertSessionHasErrors('upload');
+            $this->assertNull(session('verified_owner_update_inbox'));
+            $this->assertNull(session('trusted_release_check'));
+            $this->get('https://localhost/admin/updates')->assertOk()
+                ->assertDontSee('data-testid="owner-signed-upload-verified"', false)
+                ->assertSee('Install Update — Hosting/Recovery Blocked');
+
+            // A later valid upload is a NEW owner action with a NEW receipt.
+            $replacementZipFile = tempnam(sys_get_temp_dir(), 'replacement-update-');
+            file_put_contents($replacementZipFile, $validArchiveBytes);
+            $this->post('https://localhost/admin/updates/verify-upload', [
+                'package' => new UploadedFile($replacementZipFile, 'replacement.zip', 'application/zip', null, true),
+            ])->assertRedirect();
+            $secondId = session('verified_owner_update_inbox');
+            $this->assertMatchesRegularExpression('/^[a-f0-9]{32}$/D', $secondId);
+            $this->assertNotSame($id, $secondId);
+            $verifiedIds[] = $secondId;
+            $this->get('https://localhost/admin/updates')->assertOk()
+                ->assertSee('data-testid="owner-signed-upload-verified"', false);
+
+            // Disabling Admin updates invalidates the verified-session claim,
+            // rather than allowing the old candidate to resurface later.
+            config(['site.updates_enabled' => false]);
+            $this->get('https://localhost/admin/updates')->assertOk()
+                ->assertDontSee('data-testid="owner-signed-upload-verified"', false);
+            $this->assertNull(session('verified_owner_update_inbox'));
+            config(['site.updates_enabled' => true]);
+            $this->get('https://localhost/admin/updates')->assertOk()
+                ->assertDontSee('data-testid="owner-signed-upload-verified"', false);
+            $this->assertSame('0.1.2', trim(file_get_contents(base_path('VERSION'))));
         } finally {
-            $id = session('verified_owner_update_inbox');
-            if (is_string($id) && preg_match('/^[a-f0-9]{32}$/D', $id)) {
+            foreach ($verifiedIds as $id) {
                 $root = storage_path('app/private/verified-updates/'.$id);
                 @unlink($root.'/receipt.json');
                 @unlink($root.'/WalidSite-update-v0.1.3.zip');
                 @rmdir($root);
-                @rmdir(storage_path('app/private/verified-updates'));
             }
+            @rmdir(storage_path('app/private/verified-updates'));
             @unlink($zipFile);
+            if ($invalidZipFile !== null) @unlink($invalidZipFile);
+            if ($replacementZipFile !== null) @unlink($replacementZipFile);
         }
     }
 
