@@ -190,8 +190,10 @@ class VerifiedArticle {
 
   /// Re-validate an exact detail against published evidence before display.
   static VerifiedArticle parseDetail(String body, String expectedSlug) {
+    // Bound encoded bytes before JSON decode for direct detail callers too.
     if (!RegExp(r'^[A-Za-z0-9-]{1,180}$').hasMatch(expectedSlug) ||
-        body.length > 2 * 1024 * 1024) {
+        body.length > 2 * 1024 * 1024 ||
+        utf8.encode(body).length > 2 * 1024 * 1024) {
       throw const FormatException('Invalid article detail');
     }
     final payload = jsonDecode(body);
