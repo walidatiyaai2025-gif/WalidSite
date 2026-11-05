@@ -84,6 +84,42 @@ final class PublicRunbookPublicationTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_revocable_runbook_catalog_and_detail_are_never_http_cacheable(): void
+    {
+        $id = $this->guide('retractable-review');
+        $catalog = '/api/v1/mobile/runbooks';
+        $detail = '/api/v1/mobile/solutions/'.$id;
+
+        foreach ([$catalog, $detail] as $uri) {
+            $result = $this->getJson($uri)->assertOk();
+            $this->assertStringContainsString('no-store',
+                (string) $result->headers->get('Cache-Control'));
+            $result->assertSee('Reviewed guide retractable-review');
+        }
+
+        // The database gate can revoke a once-authorized version at any time.
+        // A cacheable former 200 would bypass this otherwise correct 404.
+        DB::table('runbook_versions')->where('runbook_id', $id)
+            ->update(['checksum' => str_repeat('0', 64)]);
+        $after = $this->getJson($catalog)->assertOk()
+            ->assertJsonCount(0, 'data')
+            ->assertJsonPath('meta.has_more_pages', false)
+            ->assertDontSee('retractable-review');
+        $this->assertStringContainsString('no-store',
+            (string) $after->headers->get('Cache-Control'));
+        $this->getJson($detail)->assertNotFound()
+            ->assertDontSee('Reviewed guide retractable-review');
+
+        // A new independent review can restore public availability; a stale
+        // negative/positive intermediary result must not be relied on.
+        DB::table('runbook_versions')->where('runbook_id', $id)
+            ->update(['checksum' => hash('sha256', '# Reviewed recovery checklist: retractable-review')]);
+        $restored = $this->getJson($detail)->assertOk()
+            ->assertJsonPath('data.id', $id);
+        $this->assertStringContainsString('no-store',
+            (string) $restored->headers->get('Cache-Control'));
+    }
+
     public function test_draft_future_offline_disabled_and_bad_checksums_are_invisible(): void
     {
         $draft = $this->guide('draft-guide', approved: false);
