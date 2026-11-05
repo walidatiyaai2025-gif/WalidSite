@@ -12,6 +12,7 @@ import json
 import os
 import re
 import shutil
+import unicodedata
 import zipfile
 from pathlib import Path
 
@@ -77,7 +78,13 @@ def prepare(cpanel_zip: Path, output_dir: Path, version: str, sha: str) -> dict:
                     or not isinstance(package.get('name'), str)
                     or not re.fullmatch(r'[a-z0-9_.-]+/[a-z0-9_.-]+', package['name'])
                     or not isinstance(package.get('version'), str)
-                    or not package['version'] or len(package['version']) > 80):
+                    or not package['version'] or len(package['version']) > 80
+                    # Source-verified Composer metadata is still untrusted
+                    # display/provenance input. Reject invisible format,
+                    # control and whitespace characters (including bidi
+                    # overrides) before serializing immutable Build Info.
+                    or any(unicodedata.category(char)[0] in ('C', 'Z')
+                           for char in package['version'])):
                 raise ValueError('Invalid frozen Composer dependency identity')
             dependencies.append({'name': package['name'], 'version': package['version']})
         if len(dependencies) > 2000 or len({item['name'] for item in dependencies}) != len(dependencies):
