@@ -57,6 +57,26 @@ final class CpanelArchiveCodeOnlyPreflight
         // This same installed-release inventory is enforced again by the
         // physical code-pointer cutover; never use a synthetic filename list.
         $oldMigrations = (new ReleaseSchemaCompatibility())->inventory($root);
+        // A code-only switch may not silently change Composer's dependency
+        // graph or PHP platform requirements. Any such change needs a
+        // separately tested full-runtime upgrade and recovery path.
+        $installedComposer = [];
+        foreach (['composer.json' => 1048576, 'composer.lock' => 8388608] as $entry => $limit) {
+            $path = $root.'/application/'.$entry;
+            $size = @filesize($path);
+            $stat = @stat($path);
+            if (! is_file($path) || is_link($path) || realpath($path) !== $path
+                || ! is_readable($path) || $size === false || $size < 1
+                || $size > $limit || $stat === false || ($stat['nlink'] ?? 0) !== 1) {
+                throw new DomainException('Installed Composer dependency identity is unsafe.');
+            }
+            $contents = @file_get_contents($path);
+            if (! is_string($contents) || strlen($contents) !== $size
+                || ! is_array(json_decode($contents, true))) {
+                throw new DomainException('Installed Composer dependency metadata is invalid.');
+            }
+            $installedComposer[$entry] = hash('sha256', $contents);
+        }
         foreach (['index.php', '.htaccess'] as $entry) {
             if (! is_file($public.'/'.$entry) || is_link($public.'/'.$entry)) {
                 throw new DomainException('Stable installed web entrypoint is unavailable.');
@@ -72,6 +92,7 @@ final class CpanelArchiveCodeOnlyPreflight
         }
         $migrations = [];
         $stableWeb = [];
+        $candidateComposer = [];
         $candidateVersion = null;
         $seen = [];
         $bytes = 0;
@@ -88,7 +109,8 @@ final class CpanelArchiveCodeOnlyPreflight
                 $name = $stat['name'];
                 $dir = str_ends_with($name, '/');
                 $relevant = $name === 'application/VERSION'
-                    || in_array($name, ['public_html/index.php', 'public_html/.htaccess'], true)
+                    || in_array($name, ['public_html/index.php', 'public_html/.htaccess',
+                        'application/composer.json', 'application/composer.lock'], true)
                     || str_starts_with($name, 'application/database/migrations/');
                 if (! $relevant) {
                     if ($name === 'application/database/migrations') {
@@ -122,7 +144,9 @@ final class CpanelArchiveCodeOnlyPreflight
                     continue;
                 }
 
-                if ($stat['size'] > 2097152 || ($bytes += $stat['size']) > 67108864) {
+                $limit = $name === 'application/composer.lock' ? 8388608
+                    : ($name === 'application/composer.json' ? 1048576 : 2097152);
+                if ($stat['size'] > $limit || ($bytes += $stat['size']) > 67108864) {
                     throw new DomainException('Candidate migration or entrypoint exceeds safe inspection bounds.');
                 }
                 $content = $zip->getFromIndex($i);
@@ -134,6 +158,11 @@ final class CpanelArchiveCodeOnlyPreflight
                         throw new DomainException('Candidate version is too large.');
                     }
                     $candidateVersion = trim($content);
+                } elseif (str_starts_with($name, 'application/composer.')) {
+                    if (! is_array(json_decode($content, true))) {
+                        throw new DomainException('Candidate Composer dependency metadata is invalid.');
+                    }
+                    $candidateComposer[substr($name, strlen('application/'))] = hash('sha256', $content);
                 } elseif (str_starts_with($name, 'public_html/')) {
                     $stableWeb[substr($name, strlen('public_html/'))] = hash('sha256', $content);
                 } else {
@@ -155,6 +184,9 @@ final class CpanelArchiveCodeOnlyPreflight
         }
         if ($candidateVersion !== $targetVersion || $oldMigrations !== $this->sorted($migrations)) {
             throw new DomainException('Changed database migrations require a separately verified upgrade and recovery.');
+        }
+        if ($candidateComposer !== $installedComposer) {
+            throw new DomainException('Changed Composer dependencies require a separately verified runtime upgrade.');
         }
         foreach (['index.php', '.htaccess'] as $entry) {
             $onDisk = hash_file('sha256', $public.'/'.$entry);
