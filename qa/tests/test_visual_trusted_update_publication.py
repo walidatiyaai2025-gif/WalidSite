@@ -145,6 +145,17 @@ class TrustedUpdatePublicationTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.make_update()
 
+    def test_hardlinked_source_archive_is_rejected_without_output(self):
+        if os.name != 'posix':
+            self.skipTest('Hardlink identity check requires POSIX')
+        alias = self.root / 'second-source.zip'
+        os.link(self.source, alias)
+        with self.assertRaisesRegex(ValueError, 'Unsafe, unstable or oversized Setup source'):
+            self.make_update()
+        self.assertFalse((self.root / f'WalidSite-update-v{VERSION}.zip').exists())
+        alias.unlink()
+        self.assertEqual(self.make_update()['version'], VERSION)
+
     def test_missing_secure_nofollow_primitives_fail_closed(self):
         with patch('qa.build_trusted_update_release.os.O_NOFOLLOW', 0):
             with self.assertRaisesRegex(ValueError, 'Secure source archive descriptors unavailable'):
