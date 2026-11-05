@@ -176,6 +176,33 @@ class ReleaseCandidateTest(unittest.TestCase):
                 self.assertEqual(list(self.out.iterdir()), [])
         self.entries['application/composer.lock'] = original
 
+    def test_composer_provenance_rejects_control_and_bidi_versions(self):
+        # Source checksum verification is separate from safe presentation
+        # of publisher-facing package version metadata in Build Info.
+        for invalid in ('v1.2.3\\nINJECTED', 'dev-main\\t', 'v1.0.0\\u202e',
+                        'dev-main\\u200b', 'v1.0.0\\x7f'):
+            with self.subTest(version=repr(invalid)):
+                self.entries['application/composer.lock'] = json.dumps({
+                    'packages': [{'name': 'laravel/framework', 'version': invalid}],
+                }).encode('utf-8')
+                self.make_source()
+                with self.assertRaisesRegex(ValueError, 'dependency identity'):
+                    prepare(self.source, self.out, '1.2.3', SHA)
+                self.assertEqual(list(self.out.iterdir()), [])
+
+        # Branch-qualified Composer versions remain legitimate, even though
+        # they are not simple MAJOR.MINOR.PATCH release numbers.
+        self.entries['application/composer.lock'] = json.dumps({
+            'packages': [{'name': 'vendor/library', 'version': 'dev-feature/topic'}],
+        }).encode('utf-8')
+        self.make_source()
+        proof = prepare(self.source, self.out, '1.2.3', SHA)
+        self.assertEqual(
+            json.loads((self.out / proof['build_info']['file']).read_text())
+            ['production_dependencies'],
+            [{'name': 'vendor/library', 'version': 'dev-feature/topic'}],
+        )
+
     def test_existing_build_info_is_immutable_and_never_overwritten(self):
         existing = self.out / 'WalidSite-Build-Info-v1.2.3.json'
         existing.write_bytes(b'previous publisher build evidence')
