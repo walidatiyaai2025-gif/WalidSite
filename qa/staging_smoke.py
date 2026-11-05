@@ -50,6 +50,18 @@ CHECKS = (
     # Without any owner session, the Updates control plane must deny access.
     # A redirect is allowed ONLY to the same-origin owner login.
     Check("/admin/updates", 302, "redirect", redirect_to="/admin/login"),
+    # A public host that returns HTTP 200 for private Laravel files is unsafe,
+    # regardless of healthy API routes. 403 and 404 are the ONLY denials
+    # admitted; redirects (including login), 5xx or a successful body fail.
+    # Never consume or serialize a denied resource's response bytes.
+    Check("/.env", 404, "private_denied"),
+    Check("/application/.env", 404, "private_denied"),
+    Check("/.git/config", 404, "private_denied"),
+    Check("/vendor/autoload.php", 404, "private_denied"),
+    Check("/storage/logs/laravel.log", 404, "private_denied"),
+    Check("/storage/app/site-first-run.json", 404, "private_denied"),
+    Check("/site-first-run.json", 404, "private_denied"),
+    Check("/contracts/owner-cv-baseline.json", 404, "private_denied"),
     Check("/api/v1/public/app-bootstrap", 200, "json", dict),
     Check("/api/v1/public/home", 200, "json", dict),
     Check("/api/v1/public/projects", 200, "json", list),
@@ -167,6 +179,12 @@ def _check_one_transaction(origin: str, spec: Check, opener: Opener, timeout: in
         observed = int(response.status if hasattr(response, "status") else response.code)
         if time.monotonic() >= deadline:
             reason = "request_deadline_exceeded"
+        elif spec.kind == "private_denied":
+            # Check the HTTP status only. Reading leaked content, even for
+            # diagnostics, could put APP_KEY/credentials into runner memory or
+            # a later traceback. A 302 is NOT a denial and is never followed.
+            if observed not in (403, 404):
+                reason = "private_resource_not_denied"
         elif observed != spec.status:
             reason = "unexpected_http_status"
         elif spec.kind == "redirect":
