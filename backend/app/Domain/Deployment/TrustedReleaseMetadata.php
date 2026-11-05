@@ -81,14 +81,9 @@ final class TrustedReleaseMetadata
             throw new DomainException('Release artifact path is not approved.');
         }
 
-        $parts = parse_url($approvedOrigin);
-        if ($parts === false || ($parts['scheme'] ?? '') !== 'https'
-            || ! isset($parts['host']) || ! preg_match('/^[a-z0-9.-]+$/iD', $parts['host'])
-            || isset($parts['user']) || isset($parts['pass']) || isset($parts['query'])
-            || isset($parts['fragment']) || isset($parts['path'])
-            || isset($parts['port']) || str_contains($approvedOrigin, '\\')) {
-            throw new DomainException('Release origin must be a pinned HTTPS host.');
-        }
+        // The catalog and direct archive downloader must reject the same
+        // unsafe hostnames, even if an envelope has a valid signature.
+        TrustedReleaseOrigin::assertValid($approvedOrigin);
 
         return [
             'product' => $metadata['product'],
