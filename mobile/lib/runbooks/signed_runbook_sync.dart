@@ -197,12 +197,255 @@ abstract class RunbookSnapshotStore {
   Future<void> write(String envelope);
 }
 
-class AppSupportRunbookStore implements RunbookSnapshotStore {
+/// Optional per-publication storage. A second signed pack must not erase an
+/// earlier, independently signed UUID downloaded by the same guest.
+/// All stored envelopes are reverified with the build-pinned key on restart.
+abstract class RunbookPinnedSnapshotStore implements RunbookSnapshotStore {
+  Future<List<String>> pinnedIds();
+  Future<String?> readPinned(String id);
+  Future<void> writePinned(String id, String envelope);
+}
+
+class AppSupportRunbookStore implements RunbookPinnedSnapshotStore {
   const AppSupportRunbookStore();
+
+  static final _uuid = RegExp(
+    r'^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}/// Live reviewed identity refreshed on explicit user Download; a generic
+/// signed educational pack cannot masquerade as this published revision.
+class PublishedRunbookRevision {
+  const PublishedRunbookRevision({
+    required this.id,
+    required this.version,
+    required this.markdown,
+    required this.validatedAt,
+  });
+
+  final String id;
+  final int version;
+  final String markdown;
+  final DateTime validatedAt;
+}
+
+class OfflineRunbookRepository {
+  OfflineRunbookRepository({
+    SignedRunbookSource? source,
+    RunbookSnapshotStore? store,
+    Future<OfflineRunbookPack> Function()? bundled,
+  })  : source = source ?? const SignedRunbookSource(
+          url: SignedRunbookSource.configuredUrl,
+          publicKeyBase64: SignedRunbookSource.configuredPublicKey,
+        ),
+        store = store ?? const AppSupportRunbookStore(),
+        bundled = bundled ?? OfflineRunbookPack.loadBundled;
+
+  final SignedRunbookSource source;
+  final RunbookSnapshotStore store;
+  final Future<OfflineRunbookPack> Function() bundled;
+
+  // Multiple repository instances (online library, offline library, or a
+  // recreated view) may share the same app-support snapshot. An instance-only
+  // queue lets both validate the same stale disk state and then overwrite a
+  // newer verified pack. Serialize all signed syncs within the app isolate;
+  // every operation rechecks the stored signature after acquiring its slot.
+  // Do not retain a completed Future across unrelated Flutter widget zones.
+  static Future<void>? _sharedSyncBarrier;
+
+  // Retain the exact signed envelope alongside its verified payload.
+  // A timestamp alone cannot establish an ordering between two different
+  // publisher-signed packs stamped at the same instant.
+  Future<({OfflineRunbookPack pack, String envelope})?> _trustedSnapshot() async {
+    if (!source.configured) return null;
+    try {
+      final stored = await store.read();
+      if (stored == null) return null;
+      final pack = await source.verify(stored);
+      return (pack: pack, envelope: stored);
+    } catch (_) {
+      // Invalid/partially written/unreadable snapshots never become trusted.
+      return null;
+    }
+  }
+
+  Future<OfflineRunbookPack> load() async =>
+      (await _trustedSnapshot())?.pack ?? await bundled();
+
+  Future<OfflineRunbookPack> sync() {
+    final prior = _sharedSyncBarrier;
+    final completed = Completer<void>();
+    _sharedSyncBarrier = completed.future;
+    return _syncAfter(prior, completed);
+  }
+
+  /// A signed envelope for a different UUID/revision must NEVER replace the
+  /// last trusted copy as the result of a user-selected published download.
+  Future<OfflineRunbookPack> syncPublished(PublishedRunbookRevision revision) {
+    final prior = _sharedSyncBarrier;
+    final completed = Completer<void>();
+    _sharedSyncBarrier = completed.future;
+    return _syncAfter(prior, completed, revision);
+  }
+
+  Future<OfflineRunbookPack> _syncAfter(
+      Future<void>? prior, Completer<void> completed,
+      [PublishedRunbookRevision? revision]) async {
+    try {
+      if (prior != null) await prior;
+      return await _syncOnce(revision);
+    } finally {
+      // A newer queued update keeps its reservation; the last completed
+      // operation clears the slot so unrelated widget zones don't inherit
+      // an old asynchronous Future.
+      if (identical(_sharedSyncBarrier, completed.future)) {
+        _sharedSyncBarrier = null;
+      }
+      completed.complete();
+    }
+  }
+
+  Future<OfflineRunbookPack> _syncOnce(
+      [PublishedRunbookRevision? revision]) async {
+    if (!source.configured) {
+      throw const FormatException('Signed runbook updates not configured');
+    }
+    final received = await source.fetch();
+    final fresh = await source.verify(received);
+    if (revision != null) {
+      // Compare against the live API's current identity, not just the
+      // previously listed item or a publisher-controlled label.
+      final matches = fresh.items.where((item) =>
+          item.id == revision.id.toLowerCase() &&
+          item.publishedVersion == revision.version &&
+          item.publishedMarkdown == revision.markdown &&
+          item.publishedValidatedAt?.isAtSameMomentAs(
+              revision.validatedAt) == true).toList();
+      if (matches.length != 1) {
+        throw const FormatException('Published revision absent from signed pack');
+      }
+    }
+    final snapshot = await _trustedSnapshot();
+    if (snapshot != null) {
+      final order = fresh.verifiedAt!.compareTo(snapshot.pack.verifiedAt!);
+      if (order < 0) {
+        throw const FormatException('Refusing older signed runbook update');
+      }
+      if (order == 0) {
+        // Re-downloading identical signed bytes is harmless and should not
+        // rewrite the offline cache. A *different* signed payload with the
+        // same UTC time is unordered: do not permit a same-time rollback.
+        if (received != snapshot.envelope) {
+          throw const FormatException('Conflicting signed runbook timestamp');
+        }
+        return snapshot.pack;
+      }
+    }
+    await store.write(received);
+    return fresh;
+  }
+}
+,
+  );
+  static const _maxPins = 20;
 
   Future<File> _file() async {
     final dir = await getApplicationSupportDirectory();
     return File(dir.path + Platform.pathSeparator + 'signed-runbook-pack-v1.json');
+  }
+
+  Future<Directory> _pins({bool create = false}) async {
+    final home = await getApplicationSupportDirectory();
+    final directory = Directory(
+      home.path + Platform.pathSeparator + 'signed-runbook-pins-v1',
+    );
+    final kind = await FileSystemEntity.type(
+      directory.path, followLinks: false,
+    );
+    if (kind == FileSystemEntityType.notFound && create) {
+      await directory.create();
+    } else if (kind != FileSystemEntityType.notFound &&
+        kind != FileSystemEntityType.directory) {
+      throw const FormatException('Unsafe signed runbook storage');
+    }
+    return directory;
+  }
+
+  File _pinnedFile(Directory directory, String id) {
+    if (!_uuid.hasMatch(id)) {
+      throw const FormatException('Invalid published runbook UUID');
+    }
+    return File(directory.path + Platform.pathSeparator + '$id.json');
+  }
+
+  @override
+  Future<List<String>> pinnedIds() async {
+    final directory = await _pins();
+    if (!await directory.exists()) return const [];
+    final ids = <String>[];
+    var entries = 0;
+    await for (final entry in directory.list(followLinks: false)) {
+      if (++entries > 64) {
+        throw const FormatException('Unbounded signed runbook storage');
+      }
+      final name = entry.path.split(Platform.pathSeparator).last;
+      if (!name.endsWith('.json')) continue; // Interrupted .part is not signed.
+      final id = name.substring(0, name.length - 5);
+      if (!_uuid.hasMatch(id) ||
+          await FileSystemEntity.type(entry.path, followLinks: false) !=
+              FileSystemEntityType.file) {
+        throw const FormatException('Unsafe signed runbook storage entry');
+      }
+      ids.add(id);
+      if (ids.length > _maxPins) {
+        throw const FormatException('Too many signed runbook downloads');
+      }
+    }
+    ids.sort();
+    return List.unmodifiable(ids);
+  }
+
+  @override
+  Future<String?> readPinned(String id) async {
+    final directory = await _pins();
+    final file = _pinnedFile(directory, id);
+    if (await FileSystemEntity.type(file.path, followLinks: false) !=
+        FileSystemEntityType.file) {
+      return null;
+    }
+    if (await file.length() > 800 * 1024) return null;
+    return file.readAsString();
+  }
+
+  @override
+  Future<void> writePinned(String id, String envelope) async {
+    if (utf8.encode(envelope).length > 800 * 1024 || envelope.isEmpty) {
+      throw const FormatException('Signed runbook snapshot exceeds storage limits');
+    }
+    final directory = await _pins(create: true);
+    final target = _pinnedFile(directory, id);
+    final current = await pinnedIds();
+    if (!current.contains(id) && current.length >= _maxPins) {
+      throw const FormatException('Signed runbook storage is full');
+    }
+    final kind = await FileSystemEntity.type(target.path, followLinks: false);
+    if (kind != FileSystemEntityType.notFound &&
+        kind != FileSystemEntityType.file) {
+      throw const FormatException('Unsafe published snapshot destination');
+    }
+    final part = File(target.path + '.part');
+    if (await FileSystemEntity.type(part.path, followLinks: false) ==
+        FileSystemEntityType.link) {
+      throw const FormatException('Unsafe interrupted signed snapshot');
+    }
+    try {
+      // The old verified file remains readable if this write is interrupted.
+      // The global sync barrier serializes app-isolate writers to each UUID.
+      await part.writeAsString(envelope, flush: true);
+      await part.rename(target.path);
+    } finally {
+      if (await FileSystemEntity.type(part.path, followLinks: false) ==
+          FileSystemEntityType.file) {
+        await part.delete();
+      }
+    }
   }
 
   @override
@@ -213,12 +456,154 @@ class AppSupportRunbookStore implements RunbookSnapshotStore {
     return file.readAsString();
   }
 
-  /// Clear only the downloaded signed snapshot and its interrupted temp file.
-  /// The immutable bundled fallback and all server/account data stay intact.
+  /// Clear ALL downloaded signed copies; retain the immutable bundled pack.
   Future<void> clearDownloadedSnapshot() async {
     final target = await _file();
     for (final file in [target, File(target.path + '.part')]) {
       if (await file.exists()) await file.delete();
+    }
+    final pins = await _pins();
+    if (!await pins.exists()) return;
+    await for (final entry in pins.list(followLinks: false)) {
+      final name = entry.path.split(Platform.pathSeparator).last;
+      if ((_uuid.hasMatch(name.replaceFirst(RegExp(r'\\.json(?:\\.part)?/// Live reviewed identity refreshed on explicit user Download; a generic
+/// signed educational pack cannot masquerade as this published revision.
+class PublishedRunbookRevision {
+  const PublishedRunbookRevision({
+    required this.id,
+    required this.version,
+    required this.markdown,
+    required this.validatedAt,
+  });
+
+  final String id;
+  final int version;
+  final String markdown;
+  final DateTime validatedAt;
+}
+
+class OfflineRunbookRepository {
+  OfflineRunbookRepository({
+    SignedRunbookSource? source,
+    RunbookSnapshotStore? store,
+    Future<OfflineRunbookPack> Function()? bundled,
+  })  : source = source ?? const SignedRunbookSource(
+          url: SignedRunbookSource.configuredUrl,
+          publicKeyBase64: SignedRunbookSource.configuredPublicKey,
+        ),
+        store = store ?? const AppSupportRunbookStore(),
+        bundled = bundled ?? OfflineRunbookPack.loadBundled;
+
+  final SignedRunbookSource source;
+  final RunbookSnapshotStore store;
+  final Future<OfflineRunbookPack> Function() bundled;
+
+  // Multiple repository instances (online library, offline library, or a
+  // recreated view) may share the same app-support snapshot. An instance-only
+  // queue lets both validate the same stale disk state and then overwrite a
+  // newer verified pack. Serialize all signed syncs within the app isolate;
+  // every operation rechecks the stored signature after acquiring its slot.
+  // Do not retain a completed Future across unrelated Flutter widget zones.
+  static Future<void>? _sharedSyncBarrier;
+
+  // Retain the exact signed envelope alongside its verified payload.
+  // A timestamp alone cannot establish an ordering between two different
+  // publisher-signed packs stamped at the same instant.
+  Future<({OfflineRunbookPack pack, String envelope})?> _trustedSnapshot() async {
+    if (!source.configured) return null;
+    try {
+      final stored = await store.read();
+      if (stored == null) return null;
+      final pack = await source.verify(stored);
+      return (pack: pack, envelope: stored);
+    } catch (_) {
+      // Invalid/partially written/unreadable snapshots never become trusted.
+      return null;
+    }
+  }
+
+  Future<OfflineRunbookPack> load() async =>
+      (await _trustedSnapshot())?.pack ?? await bundled();
+
+  Future<OfflineRunbookPack> sync() {
+    final prior = _sharedSyncBarrier;
+    final completed = Completer<void>();
+    _sharedSyncBarrier = completed.future;
+    return _syncAfter(prior, completed);
+  }
+
+  /// A signed envelope for a different UUID/revision must NEVER replace the
+  /// last trusted copy as the result of a user-selected published download.
+  Future<OfflineRunbookPack> syncPublished(PublishedRunbookRevision revision) {
+    final prior = _sharedSyncBarrier;
+    final completed = Completer<void>();
+    _sharedSyncBarrier = completed.future;
+    return _syncAfter(prior, completed, revision);
+  }
+
+  Future<OfflineRunbookPack> _syncAfter(
+      Future<void>? prior, Completer<void> completed,
+      [PublishedRunbookRevision? revision]) async {
+    try {
+      if (prior != null) await prior;
+      return await _syncOnce(revision);
+    } finally {
+      // A newer queued update keeps its reservation; the last completed
+      // operation clears the slot so unrelated widget zones don't inherit
+      // an old asynchronous Future.
+      if (identical(_sharedSyncBarrier, completed.future)) {
+        _sharedSyncBarrier = null;
+      }
+      completed.complete();
+    }
+  }
+
+  Future<OfflineRunbookPack> _syncOnce(
+      [PublishedRunbookRevision? revision]) async {
+    if (!source.configured) {
+      throw const FormatException('Signed runbook updates not configured');
+    }
+    final received = await source.fetch();
+    final fresh = await source.verify(received);
+    if (revision != null) {
+      // Compare against the live API's current identity, not just the
+      // previously listed item or a publisher-controlled label.
+      final matches = fresh.items.where((item) =>
+          item.id == revision.id.toLowerCase() &&
+          item.publishedVersion == revision.version &&
+          item.publishedMarkdown == revision.markdown &&
+          item.publishedValidatedAt?.isAtSameMomentAs(
+              revision.validatedAt) == true).toList();
+      if (matches.length != 1) {
+        throw const FormatException('Published revision absent from signed pack');
+      }
+    }
+    final snapshot = await _trustedSnapshot();
+    if (snapshot != null) {
+      final order = fresh.verifiedAt!.compareTo(snapshot.pack.verifiedAt!);
+      if (order < 0) {
+        throw const FormatException('Refusing older signed runbook update');
+      }
+      if (order == 0) {
+        // Re-downloading identical signed bytes is harmless and should not
+        // rewrite the offline cache. A *different* signed payload with the
+        // same UTC time is unordered: do not permit a same-time rollback.
+        if (received != snapshot.envelope) {
+          throw const FormatException('Conflicting signed runbook timestamp');
+        }
+        return snapshot.pack;
+      }
+    }
+    await store.write(received);
+    return fresh;
+  }
+}
+), '')) &&
+              (name.endsWith('.json') || name.endsWith('.json.part'))) &&
+          await FileSystemEntity.type(entry.path, followLinks: false) !=
+              FileSystemEntityType.directory) {
+        await entry.delete();
+      }
     }
   }
 
