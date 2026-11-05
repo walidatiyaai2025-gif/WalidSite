@@ -621,6 +621,76 @@ final class CpanelImmutableCodePointerTest extends TestCase
         (new CpanelImmutableCodePointer())->activate(...$this->args());
     }
 
+    public function test_late_maintenance_callback_cannot_change_migration_inventory_before_cutover(): void
+    {
+        $oldMigrations = $this->home.'/application/database/migrations';
+        $candidateMigrations = $this->candidate.'/application/database/migrations';
+        $this->assertTrue(mkdir($oldMigrations, 0700, true));
+        $this->assertTrue(mkdir($candidateMigrations, 0700, true));
+        $filename = '2026_11_05_000001_verified.php';
+        file_put_contents($oldMigrations.'/'.$filename, '<?php return "original";');
+        file_put_contents($candidateMigrations.'/'.$filename, '<?php return "original";');
+        $maintenanceCalls = 0;
+        $maintenance = function () use (&$maintenanceCalls, $candidateMigrations, $filename): bool {
+            ++$maintenanceCalls;
+            if ($maintenanceCalls === 2) {
+                file_put_contents($candidateMigrations.'/'.$filename, '<?php return "changed";');
+            }
+            return true;
+        };
+
+        try {
+            (new CpanelImmutableCodePointer())->activate(...$this->args(
+                maintenance: $maintenance,
+            ));
+            $this->fail('Mutated migrations must not pass the final code-only release gate.');
+        } catch (DomainException $error) {
+            $this->assertStringContainsString('Migrations changed', $error->getMessage());
+        }
+
+        $this->assertSame(2, $maintenanceCalls);
+        $this->assertFileDoesNotExist($this->home.'/.walidsite-active-release.json');
+        $this->assertSame('KEEP_MY_PRIVATE_APP_KEY', file_get_contents(
+            $this->home.'/application/.env',
+        ));
+        $this->assertSame('PRIVATE_UPLOAD', file_get_contents(
+            $this->home.'/application/storage/app/photo.txt',
+        ));
+    }
+
+    public function test_health_callback_cannot_mutate_migrations_and_leave_new_code_active(): void
+    {
+        $oldMigrations = $this->home.'/application/database/migrations';
+        $candidateMigrations = $this->candidate.'/application/database/migrations';
+        $this->assertTrue(mkdir($oldMigrations, 0700, true));
+        $this->assertTrue(mkdir($candidateMigrations, 0700, true));
+        $filename = '2026_11_05_000002_verified.php';
+        file_put_contents($oldMigrations.'/'.$filename, '<?php return true;');
+        file_put_contents($candidateMigrations.'/'.$filename, '<?php return true;');
+        $health = function () use ($candidateMigrations, $filename): bool {
+            $this->assertFileExists($this->home.'/.walidsite-active-release.json');
+            file_put_contents($candidateMigrations.'/'.$filename, '<?php return false;');
+            return true;
+        };
+
+        try {
+            (new CpanelImmutableCodePointer())->activate(...$this->args(
+                health: $health,
+            ));
+            $this->fail('Health-time migration mutation must not produce a release receipt.');
+        } catch (RuntimeException $error) {
+            $this->assertStringContainsString('old code pointer restored', $error->getMessage());
+        }
+
+        $this->assertFileDoesNotExist($this->home.'/.walidsite-active-release.json');
+        $this->assertSame('KEEP_MY_PRIVATE_APP_KEY', file_get_contents(
+            $this->home.'/application/.env',
+        ));
+        $this->assertSame('PRIVATE_UPLOAD', file_get_contents(
+            $this->home.'/application/storage/app/photo.txt',
+        ));
+    }
+
     public function test_candidate_must_be_the_exact_immutable_version_and_sha(): void
     {
         $bad = $this->args();
