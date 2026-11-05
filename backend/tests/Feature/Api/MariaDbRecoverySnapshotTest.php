@@ -119,6 +119,77 @@ final class MariaDbRecoverySnapshotTest extends TestCase
         self::assertSame(2, (int) $this->source->query('SELECT COUNT(*) FROM recovery_parent')->fetchColumn());
     }
 
+    public function test_hardlinked_restore_row_rejects_before_any_ddl(): void
+    {
+        $backup = $this->capture();
+        $file = $backup['directory'].'/recovery_parent.jsonl';
+        $alias = $this->home.'/private/alias.jsonl';
+        if (! @link($file, $alias)) {
+            self::markTestSkipped('Hardlinks not supported by this host.');
+        }
+        try {
+            $this->reject(fn () => (new MariaDbRecoverySnapshot())->restoreAndVerify(
+                $this->target, $backup['directory'], $backup['manifest_sha256'],
+            ));
+            self::assertSame([], $this->target->query('SHOW TABLES')->fetchAll(PDO::FETCH_COLUMN));
+        } finally {
+            unlink($alias);
+        }
+        self::assertSame(['tables' => 2, 'rows' => 3],
+            (new MariaDbRecoverySnapshot())->restoreAndVerify(
+                $this->target, $backup['directory'], $backup['manifest_sha256'],
+            ));
+    }
+
+    public function test_same_bytes_path_replacement_cannot_reuse_preflight_inode(): void
+    {
+        if (PHP_OS_FAMILY === 'Windows') {
+            self::markTestSkipped('Requires POSIX rename of opened files.');
+        }
+        $backup = $this->capture();
+        $file = $backup['directory'].'/recovery_child.jsonl';
+        $stream = fopen($file, 'rb');
+        self::assertIsResource($stream);
+        $method = new \ReflectionMethod(MariaDbRecoverySnapshot::class, 'assertStableRowFile');
+        $service = new MariaDbRecoverySnapshot();
+        try {
+            $before = $method->invoke($service, $stream, $file);
+            $same = file_get_contents($file);
+            $previous = $this->home.'/private/previous-row.jsonl';
+            self::assertTrue(rename($file, $previous));
+            self::assertSame(strlen($same), file_put_contents($file, $same));
+            self::assertNotSame(fstat($stream)['ino'], lstat($file)['ino']);
+            $this->reject(fn () => $method->invoke($service, $stream, $file, $before));
+        } finally {
+            fclose($stream);
+        }
+        self::assertSame([], $this->target->query('SHOW TABLES')->fetchAll(PDO::FETCH_COLUMN));
+    }
+
+    public function test_mutated_or_symlinked_row_identity_is_rejected(): void
+    {
+        $backup = $this->capture();
+        $file = $backup['directory'].'/recovery_parent.jsonl';
+        $stream = fopen($file, 'rb');
+        self::assertIsResource($stream);
+        $method = new \ReflectionMethod(MariaDbRecoverySnapshot::class, 'assertStableRowFile');
+        $service = new MariaDbRecoverySnapshot();
+        try {
+            $before = $method->invoke($service, $stream, $file);
+            self::assertTrue(touch($file, $before['mtime'] - 120));
+            $this->reject(fn () => $method->invoke($service, $stream, $file, $before));
+            if (PHP_OS_FAMILY !== 'Windows') {
+                $previous = $this->home.'/private/previous-parent.jsonl';
+                self::assertTrue(rename($file, $previous));
+                self::assertTrue(symlink($previous, $file));
+                $this->reject(fn () => $method->invoke($service, $stream, $file, $before));
+            }
+        } finally {
+            fclose($stream);
+        }
+        self::assertSame([], $this->target->query('SHOW TABLES')->fetchAll(PDO::FETCH_COLUMN));
+    }
+
     public function test_corrupt_manifest_and_row_bytes_are_rejected_before_restore(): void
     {
         $checkpoint = $this->capture();
