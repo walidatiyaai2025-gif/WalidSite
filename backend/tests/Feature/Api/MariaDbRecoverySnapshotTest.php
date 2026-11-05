@@ -119,6 +119,52 @@ final class MariaDbRecoverySnapshotTest extends TestCase
         self::assertSame(2, (int) $this->source->query('SELECT COUNT(*) FROM recovery_parent')->fetchColumn());
     }
 
+    public function test_backup_row_manifest_hashes_exact_written_files_and_restores(): void
+    {
+        $snapshot = $this->capture();
+        $manifest = json_decode(
+            (string) file_get_contents($snapshot['directory'].'/manifest.json'),
+            true, 16, JSON_THROW_ON_ERROR,
+        );
+        foreach ($manifest['tables'] as $table => $details) {
+            $file = $snapshot['directory'].'/'.$table.'.jsonl';
+            self::assertFileExists($file);
+            self::assertSame(hash_file('sha256', $file), $details['file_sha256']);
+            self::assertSame(0600, fileperms($file) & 0777);
+        }
+        self::assertSame(['tables' => 2, 'rows' => 3],
+            (new MariaDbRecoverySnapshot())->restoreAndVerify(
+                $this->target, $snapshot['directory'], $snapshot['manifest_sha256'],
+            ));
+    }
+
+    public function test_open_backup_writer_rejects_swapped_source_inode(): void
+    {
+        if (PHP_OS_FAMILY === 'Windows') {
+            self::markTestSkipped('Requires POSIX rename of opened writer.');
+        }
+        $path = $this->home.'/private/writer-row.jsonl';
+        $stream = fopen($path, 'x+b');
+        self::assertIsResource($stream);
+        $guard = new \ReflectionMethod(MariaDbRecoverySnapshot::class, 'assertStableRowFile');
+        try {
+            self::assertSame(4, fwrite($stream, "abc\\n"));
+            self::assertTrue(fflush($stream));
+            $guard->invoke(new MariaDbRecoverySnapshot(), $stream, $path);
+            $orphan = $this->home.'/private/orphan-writer.jsonl';
+            self::assertTrue(rename($path, $orphan));
+            self::assertSame(4, file_put_contents($path, "abc\\n"));
+            try {
+                $guard->invoke(new MariaDbRecoverySnapshot(), $stream, $path);
+                self::fail('Replaced writer path must not be accepted.');
+            } catch (DomainException $error) {
+                self::assertStringContainsString('inode changed', $error->getMessage());
+            }
+        } finally {
+            fclose($stream);
+        }
+    }
+
     public function test_total_row_limit_is_shared_by_all_tables_and_restoration(): void
     {
         $snapshot = new MariaDbRecoverySnapshot();
