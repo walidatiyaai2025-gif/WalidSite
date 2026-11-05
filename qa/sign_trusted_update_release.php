@@ -93,7 +93,7 @@ try {
         $name = $stat['name'];
         if (strlen($name) > 512 || isset($seen[$name])
             || ! preg_match('#\\A(?:application|public_html|contracts)/(?:[A-Za-z0-9_.@+ -]+/)*[A-Za-z0-9_.@+ -]+\\z#D', $name)
-            || str_contains($name, "\\0") || str_contains($name, '\\\\')) {
+            || str_contains($name, chr(0)) || str_contains($name, chr(92))) {
             failClosed();
         }
         foreach (explode('/', $name) as $part) {
