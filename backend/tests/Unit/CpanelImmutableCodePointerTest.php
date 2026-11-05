@@ -805,6 +805,63 @@ final class CpanelImmutableCodePointerTest extends TestCase
         }
     }
 
+    public function test_symlinked_version_and_stable_public_sources_never_authorize_cutover(): void
+    {
+        if (! function_exists('symlink') || PHP_OS_FAMILY === 'Windows') {
+            self::markTestSkipped('POSIX symlink fixture required.');
+        }
+        foreach ([
+            $this->home.'/application/VERSION',
+            $this->candidate.'/application/VERSION',
+            $this->home.'/public_html/index.php',
+            $this->candidate.'/public_html/index.php',
+            $this->home.'/public_html/.htaccess',
+            $this->candidate.'/public_html/.htaccess',
+        ] as $source) {
+            $moved = $source.'.original-inode';
+            $this->assertTrue(rename($source, $moved));
+            $this->assertTrue(symlink($moved, $source));
+            try {
+                (new CpanelImmutableCodePointer())->activate(...$this->args());
+                $this->fail('Symlinked release version/router was incorrectly trusted.');
+            } catch (DomainException) {
+                $this->assertFileDoesNotExist($this->home.'/.walidsite-active-release.json');
+            } finally {
+                @unlink($source);
+                rename($moved, $source);
+            }
+        }
+        $this->assertSame('KEEP_MY_PRIVATE_APP_KEY',
+            file_get_contents($this->home.'/application/.env'));
+    }
+
+    public function test_trusted_front_controller_itself_must_have_a_private_stable_inode(): void
+    {
+        $front = $this->home.'/approved-trusted-front.php';
+        $this->assertTrue(copy($this->front, $front));
+        $args = $this->args();
+        $args[4] = $front;
+
+        $alias = $this->home.'/approved-front-alias.php';
+        $this->assertTrue(link($front, $alias));
+        try {
+            (new CpanelImmutableCodePointer())->activate(...$args);
+            $this->fail('Hardlinked trust-root PHP could authorize deployment.');
+        } catch (DomainException) {
+            $this->assertFileDoesNotExist($this->home.'/.walidsite-active-release.json');
+        } finally {
+            unlink($alias);
+        }
+
+        $this->assertTrue(chmod($front, 0666));
+        try {
+            (new CpanelImmutableCodePointer())->activate(...$args);
+            $this->fail('Group-writable trust-root PHP could authorize deployment.');
+        } catch (DomainException) {
+            $this->assertFileDoesNotExist($this->home.'/.walidsite-active-release.json');
+        }
+    }
+
     public function test_maintenance_inode_swap_with_identical_router_bytes_fails_closed(): void
     {
         $live = $this->home.'/public_html/index.php';
