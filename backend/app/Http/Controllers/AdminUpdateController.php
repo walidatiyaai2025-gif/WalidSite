@@ -354,6 +354,9 @@ final class AdminUpdateController extends Controller
         if ($result['state'] === 'schema_mismatch') {
             return back()->withErrors(['updates' => 'Database migration history is incompatible with this release. Deploy compatible code or restore a verified backup.']);
         }
+        if ($result['state'] === 'recovery_required') {
+            return back()->withErrors(['updates' => 'Pending migrations are blocked until an independently verified database and file restore with write isolation is available. No migrations were run.']);
+        }
         if (! in_array($result['state'], ['applied', 'current'], true)) {
             return back()->withErrors(['updates' => 'Database unavailable or migration already running.']);
         }

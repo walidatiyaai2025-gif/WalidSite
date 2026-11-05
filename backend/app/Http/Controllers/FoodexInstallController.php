@@ -223,7 +223,7 @@ final class FoodexInstallController extends Controller
                     break;
 
                 case 11:
-                    $result = $updater->apply();
+                    $result = $updater->applyForFirstInstall();
                     if (! in_array($result['state'], ['current', 'applied'], true)) {
                         return $this->fail($request, 'Trusted database migrations failed; inspect private logs.', 'فشل تنفيذ ترحيلات قاعدة البيانات المعتمدة؛ راجع السجلات الخاصة.');
                     }

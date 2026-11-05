@@ -89,7 +89,7 @@ final class SiteSetupController extends Controller
         abort_unless(config('site.setup_database_ready'), 403);
 
         try {
-            $result = $updater->apply();
+            $result = $updater->applyForFirstInstall();
         } catch (Throwable $exception) {
             report($exception);
             return back()->withErrors(['setup' => $this->localeMessage($request,

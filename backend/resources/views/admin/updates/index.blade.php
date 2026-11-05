@@ -176,11 +176,11 @@ button:disabled{background:#718096;cursor:not-allowed}
 <p role="status">{{ $locale === 'ar' ? 'لا توجد ترحيلات معلقة في ملفات هذا الإصدار.' : 'No pending migrations in this deployed code release.' }}</p>
 @else
 <ul class="migrations">@foreach($status['pending'] as $migration)<li><code>{{ $migration }}</code></li>@endforeach</ul>
-<p class="blocked">{{ $locale === 'ar' ? 'تحذير: لا يوجد إثبات بإنشاء نسخة احتياطية قابلة للاستعادة من هذه الصفحة. تحقق منها قبل الترحيل.' : 'Warning: this page cannot prove a restorable backup exists. Verify one before applying migrations.' }}</p>
+<p class="blocked" data-testid="installed-migrations-recovery-required">{{ $locale === 'ar' ? 'تم حظر ترحيلات قاعدة البيانات المعلقة. لا يوجد إثبات نسخة احتياطية واختبار استعادة مستقل وعزل للكتابة؛ لا يمكن تطبيق الترحيلات من هذه الصفحة أو عبر Cron.' : 'Pending database migrations are blocked. No independently verified database and file restore with write isolation is available; this page and Cron cannot apply these migrations.' }}</p>
 @endif
 <form method="post" action="{{ route('admin.updates.apply', ['lang' => $locale]) }}">@csrf
-<button type="submit" @disabled(!config('site.updates_enabled') || count($status['pending']) === 0)>
-{{ $locale === 'ar' ? 'تطبيق الترحيلات الموجودة فقط' : 'Apply deployed migrations only' }}</button>
+<button type="submit" disabled data-testid="installed-migration-apply-blocked">
+{{ $locale === 'ar' ? 'تطبيق الترحيلات محجوب — إثبات الاستعادة مطلوب' : 'Apply blocked — verified recovery required' }}</button>
 </form>
 @endif
 </section>

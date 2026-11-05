@@ -43,6 +43,56 @@ class SiteMigrationHistoryTest extends TestCase
         $this->assertDatabaseHas('migrations', ['migration' => $future, 'batch' => 999]);
     }
 
+    public function test_pending_installed_site_migrations_fail_closed_before_artisan(): void
+    {
+        $updater = app(SiteUpdater::class);
+        $migration = DB::table('migrations')->orderBy('migration')->value('migration');
+        self::assertIsString($migration);
+        DB::table('migrations')->where('migration', $migration)->delete();
+        self::assertContains($migration, $updater->inspect()['pending']);
+
+        Artisan::shouldReceive('call')->never();
+        self::assertSame(
+            ['state' => 'recovery_required', 'applied' => 0],
+            $updater->apply(),
+        );
+        $this->assertDatabaseMissing('migrations', ['migration' => $migration]);
+
+        config(['site.setup_enabled' => false]);
+        self::assertSame(
+            ['state' => 'setup_closed', 'applied' => 0],
+            $updater->applyForFirstInstall(),
+        );
+        $this->assertDatabaseMissing('migrations', ['migration' => $migration]);
+    }
+
+    public function test_initial_install_possession_can_run_pending_trusted_schema(): void
+    {
+        $migration = DB::table('migrations')->orderBy('migration')->value('migration');
+        self::assertIsString($migration);
+        DB::table('migrations')->where('migration', $migration)->delete();
+        config([
+            'site.setup_enabled' => true,
+            'site.setup_token' => str_repeat('k', 40),
+            'site.install_lock_path' => storage_path('app/test-no-install-'.bin2hex(random_bytes(10)).'.lock'),
+        ]);
+        self::assertTrue(app(\App\Support\Deployment\SiteInstaller::class)->allowed());
+
+        // Model completed migrate without recreating existing tables inside
+        // the test transaction. The real Setup ZIP runs full migrations in CI.
+        Artisan::shouldReceive('call')->once()
+            ->with('migrate', ['--force' => true, '--no-interaction' => true])
+            ->andReturnUsing(static function () use ($migration): int {
+                DB::table('migrations')->insert(['migration' => $migration, 'batch' => 1]);
+                return 0;
+            });
+        self::assertSame(
+            ['state' => 'applied', 'applied' => 1],
+            app(SiteUpdater::class)->applyForFirstInstall(),
+        );
+        $this->assertDatabaseHas('migrations', ['migration' => $migration]);
+    }
+
     public function test_matching_migration_history_remains_current_and_safe_to_retry(): void
     {
         $updater = app(SiteUpdater::class);
