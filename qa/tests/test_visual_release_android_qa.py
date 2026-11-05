@@ -262,6 +262,16 @@ class ReleaseAndroidQaAttachmentTest(unittest.TestCase):
                         workflow.index("Retain unpublished inspection candidates only"))
         self.assertIn("exit 1", workflow.split("  release-gate:", 1)[1])
         self.assertNotIn("gh release create", workflow)
+        ci = (Path(__file__).resolve().parents[2] /
+              ".github/workflows/ci.yml").read_text()
+        self.assertIn("verify-source-pinned-release-bundle:", ci)
+        self.assertIn("needs: [required-ci-gate, build-cpanel-package, build-android-qa-apk]", ci)
+        self.assertIn("WalidSite-UNPUBLISHED-release-train-${{ github.sha }}", ci)
+        self.assertIn("WalidSite-Android-debug-QA-${{ github.sha }}", ci)
+        self.assertIn("--candidates dist/source-proof/release/release-train", ci)
+        self.assertIn("WalidSite-UNPUBLISHED-unified-build-proof-", ci)
+        self.assertIn("proof['native_and_web_version_match'] is True", ci)
+        self.assertIn("proof['production_ready'] is False", ci)
 
 
 if __name__ == "__main__":
