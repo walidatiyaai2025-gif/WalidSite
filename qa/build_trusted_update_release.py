@@ -70,6 +70,7 @@ def frozen_setup_archive(source_zip: Path):
             if (not stat.S_ISREG(before.st_mode)
                     or not stat.S_ISREG(named_before.st_mode)
                     or identity(before) != identity(named_before)
+                    or before.st_nlink != 1 or named_before.st_nlink != 1
                     or not 0 < before.st_size <= MAX_TOTAL):
                 raise ValueError('Unsafe, unstable or oversized Setup source')
 
@@ -89,6 +90,7 @@ def frozen_setup_archive(source_zip: Path):
             if (copied != before.st_size
                     or identity(before) != identity(after)
                     or identity(after) != identity(named_after)
+                    or after.st_nlink != 1 or named_after.st_nlink != 1
                     or not stat.S_ISREG(named_after.st_mode)):
                 raise ValueError('Setup source changed during release snapshot')
         # Only our private (0700) temporary directory exposes this file.
