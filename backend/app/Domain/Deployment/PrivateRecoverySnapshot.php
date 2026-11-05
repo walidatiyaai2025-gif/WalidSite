@@ -18,6 +18,7 @@ use Throwable;
 final class PrivateRecoverySnapshot
 {
     private const MAX_FILES = 50000;
+    private const MAX_DIRECTORIES = 50000;
     private const MAX_TOTAL_BYTES = 2147483648; // 2 GiB. Larger sites fail closed.
 
     /**
@@ -71,6 +72,7 @@ final class PrivateRecoverySnapshot
 
         try {
             $manifest = [];
+            $directories = [];
             $total = 0;
             $count = 0;
 
@@ -79,6 +81,7 @@ final class PrivateRecoverySnapshot
                 $manifest, $total, $count);
 
             foreach (['private-data', 'uploads'] as $key) {
+                $directories[] = $key;
                 if (! mkdir($working.'/'.$key, 0700)) {
                     throw new RuntimeException('Cannot create private backup data directory.');
                 }
@@ -99,6 +102,12 @@ final class PrivateRecoverySnapshot
                     }
                     $destination = $working.'/'.$key.'/'.$relative;
                     if ($entry->isDir()) {
+                        $directoryName = $key.'/'.$relative;
+                        if (! $this->validDirectoryName($directoryName)
+                            || count($directories) >= self::MAX_DIRECTORIES) {
+                            throw new DomainException('Unsafe or oversized recovery directory inventory.');
+                        }
+                        $directories[] = $directoryName;
                         if (! mkdir($destination, 0700) && ! is_dir($destination)) {
                             throw new RuntimeException('Cannot copy private backup directory.');
                         }
@@ -116,7 +125,11 @@ final class PrivateRecoverySnapshot
                 }
             }
             ksort($manifest, SORT_STRING);
-            $json = json_encode(['schema' => 1, 'files' => $manifest],
+            sort($directories, SORT_STRING);
+            // v2 attests the directory tree as well as the file bytes.
+            // Empty upload/storage directories are real application state and
+            // must survive the isolated restore rehearsal before a code update.
+            $json = json_encode(['schema' => 2, 'files' => $manifest, 'directories' => $directories],
                 JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
             if (file_put_contents($working.'/manifest.json', $json, LOCK_EX) !== strlen($json)
                 || ! chmod($working.'/manifest.json', 0600)) {
@@ -164,15 +177,52 @@ final class PrivateRecoverySnapshot
             throw new DomainException('Recovery inventory integrity check failed.');
         }
         $decoded = json_decode($json, true, 8, JSON_THROW_ON_ERROR);
-        if (! is_array($decoded) || array_keys($decoded) !== ['schema', 'files']
-            || $decoded['schema'] !== 1 || ! is_array($decoded['files'])) {
+        $legacy = is_array($decoded) && array_keys($decoded) === ['schema', 'files']
+            && $decoded['schema'] === 1;
+        $complete = is_array($decoded) && array_keys($decoded) === ['schema', 'files', 'directories']
+            && $decoded['schema'] === 2;
+        if ((! $legacy && ! $complete) || ! is_array($decoded['files'])) {
             throw new DomainException('Unrecognized recovery inventory.');
         }
+
+        // Legacy v1 receipts remain readable for their file bytes; all new
+        // v2 receipts cryptographically bind exact private/upload directories.
+        $directories = $complete ? $decoded['directories'] : [];
+        if (! is_array($directories) || ! array_is_list($directories)
+            || ($complete && (count($directories) < 2 || count($directories) > self::MAX_DIRECTORIES))) {
+            throw new DomainException('Unsupported recovery directory inventory.');
+        }
+        $seen = [];
+        foreach ($directories as $name) {
+            if (! is_string($name) || ! $this->validDirectoryName($name)
+                || isset($seen[$name])
+                || ($name !== 'private-data' && $name !== 'uploads'
+                    && ! isset($seen[dirname($name)]))) {
+                throw new DomainException('Unsafe recovery directory entry.');
+            }
+            $origin = $snapshot.'/'.$name;
+            if (! is_dir($origin) || is_link($origin) || realpath($origin) !== $origin) {
+                throw new DomainException('Recovery snapshot directory is missing or linked.');
+            }
+            $seen[$name] = true;
+        }
+        if ($complete && (! isset($seen['private-data']) || ! isset($seen['uploads']))) {
+            throw new DomainException('Recovery inventory is missing private or upload roots.');
+        }
+
         $target = $root.'/restored-'.bin2hex(random_bytes(16));
         if (! mkdir($target, 0700)) {
             throw new RuntimeException('Cannot create disposable recovery target.');
         }
         try {
+            // Recreate every attested directory, including completely empty
+            // nested trees. Parent names and snapshot identities were
+            // validated before the disposable restoration root was created.
+            foreach ($directories as $directory) {
+                if (! mkdir($target.'/'.$directory, 0700)) {
+                    throw new RuntimeException('Cannot restore private directory layout.');
+                }
+            }
             $bytes = 0;
             $files = 0;
             foreach ($decoded['files'] as $name => $expected) {
@@ -181,6 +231,10 @@ final class PrivateRecoverySnapshot
                     || ! is_int($expected['bytes']) || $expected['bytes'] < 0
                     || ! is_string($expected['sha256']) || ! preg_match('/^[a-f0-9]{64}$/D', $expected['sha256'])) {
                     throw new DomainException('Unsafe recovery inventory entry.');
+                }
+                if ($complete && str_starts_with($name, 'environment/') === false
+                    && ! isset($seen[dirname($name)])) {
+                    throw new DomainException('Recovery file parent missing from directory inventory.');
                 }
                 $origin = $snapshot.'/'.$name;
                 if (! is_file($origin) || is_link($origin)
@@ -327,6 +381,20 @@ final class PrivateRecoverySnapshot
                 throw new DomainException('Private recovery source changed while being backed up.');
             }
         }
+    }
+
+    private function validDirectoryName(string $name): bool
+    {
+        if (! preg_match('#\\A(?:private-data|uploads)(?:/[A-Za-z0-9_.@+ -]+)*\\z#D', $name)) {
+            return false;
+        }
+        foreach (explode('/', $name) as $segment) {
+            if ($segment === '.' || $segment === '..') {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private function within(string $path, string $root): bool
