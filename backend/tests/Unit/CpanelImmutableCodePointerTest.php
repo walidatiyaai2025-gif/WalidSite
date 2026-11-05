@@ -40,6 +40,15 @@ final class CpanelImmutableCodePointerTest extends TestCase
         file_put_contents($this->candidate.'/application/bootstrap/app.php', '<?php');
         file_put_contents($this->candidate.'/application/vendor/autoload.php', '<?php');
         file_put_contents($this->candidate.'/application/VERSION', "0.1.2\n");
+        // A code-only release must preserve both Composer metadata byte for
+        // byte, not merely its migration inventory and stable web router.
+        foreach ([
+            'composer.json' => '{"name":"walidsite/app","require":{"php":"^8.3"}}',
+            'composer.lock' => '{"packages":[],"content-hash":"stable"}',
+        ] as $file => $bytes) {
+            file_put_contents($this->home.'/application/'.$file, $bytes);
+            file_put_contents($this->candidate.'/application/'.$file, $bytes);
+        }
         copy($this->front, $this->candidate.'/public_html/index.php');
         file_put_contents($this->candidate.'/public_html/.htaccess', 'RewriteEngine On');
         mkdir($this->candidate.'/public_html/assets/icons', 0700, true);
@@ -290,6 +299,117 @@ final class CpanelImmutableCodePointerTest extends TestCase
             $this->assertSame('replacement', file_get_contents($lock));
             $this->assertFileDoesNotExist($this->home.'/.walidsite-active-release.json');
             $this->assertSame('PRIVATE_UPLOAD', file_get_contents($this->home.'/application/storage/app/photo.txt'));
+        }
+    }
+
+    public function test_changed_missing_invalid_or_oversized_composer_identity_cannot_switch_code(): void
+    {
+        foreach (['composer.json', 'composer.lock'] as $file) {
+            $path = $this->candidate.'/application/'.$file;
+            $original = file_get_contents($path);
+            $cases = [
+                '{"changed":true}',
+                'not-valid-json',
+                '',
+                str_repeat(' ', $file === 'composer.json' ? 1048577 : 8388609),
+            ];
+            foreach ($cases as $bytes) {
+                file_put_contents($path, $bytes);
+                try {
+                    (new CpanelImmutableCodePointer())->activate(...$this->args());
+                    $this->fail($file.' incompatible metadata unexpectedly activated code.');
+                } catch (DomainException) {
+                    $this->assertFileDoesNotExist($this->home.'/.walidsite-active-release.json');
+                    $this->assertSame('KEEP_MY_PRIVATE_APP_KEY', file_get_contents(
+                        $this->home.'/application/.env',
+                    ));
+                    $this->assertSame('PRIVATE_UPLOAD', file_get_contents(
+                        $this->home.'/application/storage/app/photo.txt',
+                    ));
+                } finally {
+                    file_put_contents($path, $original);
+                }
+            }
+
+            unlink($path);
+            try {
+                (new CpanelImmutableCodePointer())->activate(...$this->args());
+                $this->fail($file.' missing metadata unexpectedly activated code.');
+            } catch (DomainException) {
+                $this->assertFileDoesNotExist($this->home.'/.walidsite-active-release.json');
+            } finally {
+                file_put_contents($path, $original);
+            }
+        }
+    }
+
+    public function test_linked_or_hard_linked_composer_metadata_is_rejected(): void
+    {
+        if (PHP_OS_FAMILY === 'Windows' || ! function_exists('symlink')
+            || ! function_exists('link')) {
+            self::markTestSkipped('POSIX file-link fixtures required.');
+        }
+        $path = $this->candidate.'/application/composer.json';
+        $original = file_get_contents($path);
+        $other = $this->home.'/composer-alias-source.json';
+        file_put_contents($other, $original);
+
+        unlink($path);
+        if (! @symlink($other, $path)) {
+            file_put_contents($path, $original);
+            self::markTestSkipped('Symlink fixtures unavailable.');
+        }
+        try {
+            (new CpanelImmutableCodePointer())->activate(...$this->args());
+            $this->fail('Symlinked Composer metadata was accepted.');
+        } catch (DomainException) {
+            $this->assertFileDoesNotExist($this->home.'/.walidsite-active-release.json');
+        }
+
+        unlink($path);
+        if (! @link($other, $path)) {
+            file_put_contents($path, $original);
+            self::markTestSkipped('Hard link fixtures unavailable.');
+        }
+        try {
+            (new CpanelImmutableCodePointer())->activate(...$this->args());
+            $this->fail('Hard-linked Composer metadata was accepted.');
+        } catch (DomainException) {
+            $this->assertFileDoesNotExist($this->home.'/.walidsite-active-release.json');
+            $this->assertSame($original, file_get_contents($other));
+            $this->assertSame('PRIVATE_UPLOAD', file_get_contents(
+                $this->home.'/application/storage/app/photo.txt',
+            ));
+        }
+    }
+
+    public function test_composer_metadata_changed_in_host_callback_is_rechecked_before_cutover(): void
+    {
+        $calls = 0;
+        $path = $this->candidate.'/application/composer.lock';
+        $maintenance = static function () use (&$calls, $path): bool {
+            ++$calls;
+            if ($calls === 2) {
+                file_put_contents($path, '{"packages":[{"name":"unexpected/runtime"}]}');
+            }
+            return true;
+        };
+
+        try {
+            (new CpanelImmutableCodePointer())->activate(...$this->args(
+                maintenance: $maintenance,
+            ));
+            $this->fail('Late Composer dependency mutation unexpectedly switched code.');
+        } catch (DomainException $failure) {
+            $this->assertStringContainsString('Composer', $failure->getMessage());
+            $this->assertSame(2, $calls);
+            $this->assertFileDoesNotExist($this->home.'/.walidsite-active-release.json');
+            $this->assertSame('KEEP_MY_PRIVATE_APP_KEY', file_get_contents(
+                $this->home.'/application/.env',
+            ));
+            $this->assertSame('PRIVATE_UPLOAD', file_get_contents(
+                $this->home.'/application/storage/app/photo.txt',
+            ));
         }
     }
 
