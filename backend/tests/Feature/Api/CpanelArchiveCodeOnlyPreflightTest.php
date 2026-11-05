@@ -29,6 +29,8 @@ final class CpanelArchiveCodeOnlyPreflightTest extends TestCase
         self::assertTrue(mkdir($this->root.'/application/database/migrations', 0700, true));
         self::assertTrue(mkdir($this->root.'/public_html', 0700, true));
         file_put_contents($this->root.'/application/VERSION', "0.1.2\n");
+        file_put_contents($this->root.'/application/composer.json', '{"name":"walidsite/test","require":{"php":"^8.3"}}');
+        file_put_contents($this->root.'/application/composer.lock', '{"packages":[],"content-hash":"baseline"}');
         file_put_contents($this->root.'/application/database/migrations/'.$this->migration, '<?php return "original";');
         file_put_contents($this->root.'/public_html/index.php', '<?php echo "stable";');
         file_put_contents($this->root.'/public_html/.htaccess', "RewriteEngine On\n");
@@ -55,6 +57,8 @@ final class CpanelArchiveCodeOnlyPreflightTest extends TestCase
     {
         return [
             'application/VERSION' => "0.1.3\n",
+            'application/composer.json' => '{"name":"walidsite/test","require":{"php":"^8.3"}}',
+            'application/composer.lock' => '{"packages":[],"content-hash":"baseline"}',
             'application/bootstrap/app.php' => '<?php return [];',
             'application/vendor/autoload.php' => '<?php return [];',
             'application/database/migrations/'.$this->migration => '<?php return "original";',
@@ -174,6 +178,50 @@ final class CpanelArchiveCodeOnlyPreflightTest extends TestCase
         $sha = $this->makeZip($this->entries());
         file_put_contents($this->root.'/application/VERSION', '0.1.1');
         $this->reject($sha, 'Installed version drift must not pass.');
+    }
+
+    public function test_changed_or_missing_composer_metadata_is_blocked_before_any_code_write(): void
+    {
+        foreach (['composer.json', 'composer.lock'] as $filename) {
+            foreach (['missing', 'modified', 'invalid', 'oversized', 'linked'] as $case) {
+                $entries = $this->entries();
+                $key = 'application/'.$filename;
+                if ($case === 'missing') {
+                    unset($entries[$key]);
+                } elseif ($case === 'modified') {
+                    $entries[$key] = '{"packages":[{"name":"unexpected/package"}]}';
+                } elseif ($case === 'invalid') {
+                    $entries[$key] = '{not-json';
+                } elseif ($case === 'oversized') {
+                    $entries[$key] = str_repeat('x', $filename === 'composer.json' ? 1048577 : 8388609);
+                }
+                $modifier = $case === 'linked'
+                    ? static function (ZipArchive $zip) use ($key): void {
+                        self::assertTrue($zip->setExternalAttributesName(
+                            $key, ZipArchive::OPSYS_UNIX, 0120777 << 16,
+                        ));
+                    } : null;
+                $sha = $this->makeZip($entries, $modifier);
+                $this->reject($sha, 'Unsafe '.$case.' '.$filename.' cannot pass read-only preflight.');
+            }
+        }
+    }
+
+    public function test_installed_composer_drift_or_links_are_denied(): void
+    {
+        foreach (['composer.json', 'composer.lock'] as $filename) {
+            $path = $this->root.'/application/'.$filename;
+            $original = file_get_contents($path);
+            file_put_contents($path, '{"packages":[{"name":"unexpected/package"}]}');
+            $this->reject($this->makeZip($this->entries()), 'Installed dependency drift must fail.');
+            file_put_contents($path, $original);
+
+            unlink($path);
+            self::assertTrue(symlink($this->root.'/application/VERSION', $path));
+            $this->reject($this->makeZip($this->entries()), 'Installed dependency symlink must fail.');
+            unlink($path);
+            file_put_contents($path, $original);
+        }
     }
 
     public function test_candidate_migrations_cannot_be_streamed_outside_safe_bounds(): void
