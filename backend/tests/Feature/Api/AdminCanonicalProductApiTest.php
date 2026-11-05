@@ -523,6 +523,67 @@ final class AdminCanonicalProductApiTest extends TestCase
         Http::assertSentCount(1);
     }
 
+    public function test_github_sync_with_empty_or_invalid_allowlist_never_claims_provider_availability(): void
+    {
+        [, $token] = $this->account();
+        Http::fake();
+        $this->withToken($token);
+
+        foreach ([[], ['invalid', 'owner/../private', 'https://github.com/owner/repo']] as $configured) {
+            config()->set('portfolio.github_public_repos', $configured);
+            $this->getJson('/api/v1/admin/github')->assertOk()
+                ->assertJsonPath('meta.configured_count', 0)
+                ->assertJsonPath('meta.verified_count', 0);
+            $response = $this->postJson('/api/v1/admin/github/sync', [])->assertOk()
+                ->assertJsonPath('meta.configured_count', 0)
+                ->assertJsonPath('meta.verified_count', 0)
+                ->assertJsonPath('meta.external_available', false)
+                ->assertJsonPath('meta.configuration_status', 'not_configured')
+                ->assertHeader('Cache-Control', 'no-store, private');
+            $this->assertArrayNotHasKey('synced_at', $response->json('meta'));
+            $this->assertStringNotContainsString('owner/../private', $response->getContent());
+        }
+        Http::assertNothingSent();
+    }
+
+    public function test_github_api_counts_valid_unique_allowlist_slots_after_filtering(): void
+    {
+        [, $token] = $this->account();
+        config()->set('portfolio.github_public_repos', array_merge(
+            ['owner/verified', 'OWNER/VERIFIED'],
+            array_fill(0, 21, 'invalid!'),
+            ['owner/second', 'owner/secret']
+        ));
+        Http::fake(function ($request) {
+            if ($request->url() === 'https://api.github.com/repos/owner/verified') {
+                return Http::response([
+                    'full_name' => 'owner/verified',
+                    'html_url' => 'https://github.com/owner/verified',
+                    'private' => false, 'visibility' => 'public',
+                ]);
+            }
+            return Http::response([], 404);
+        });
+        $this->withToken($token);
+
+        $list = $this->getJson('/api/v1/admin/github')->assertOk()
+            ->assertJsonPath('meta.configured_count', 3)
+            ->assertJsonPath('meta.verified_count', 1)
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.full_name', 'owner/verified');
+        $this->assertStringNotContainsString('owner/secret', $list->getContent());
+        $this->assertStringNotContainsString('invalid!', $list->getContent());
+
+        $refresh = $this->postJson('/api/v1/admin/github/sync', [])->assertOk()
+            ->assertJsonPath('meta.configured_count', 3)
+            ->assertJsonPath('meta.verified_count', 1)
+            ->assertJsonPath('meta.external_available', true);
+        $this->assertNotEmpty($refresh->json('meta.synced_at'));
+        $this->assertStringNotContainsString('owner/secret', $refresh->getContent());
+        Http::assertSentCount(6); // Three unique, validated sources per API call.
+        Http::assertNotSent(fn ($request) => str_contains($request->url(), 'invalid!'));
+    }
+
     public function test_invalid_filters_and_unknown_approval_reason_fail_validation(): void
     {
         [, $token] = $this->account();

@@ -15,9 +15,14 @@ use Throwable;
 final class PublicRepositoryDirectory
 {
     /**
-     * @return list<array<string, mixed>>
+     * The one canonical, bounded public allowlist. Invalid and repeated names
+     * are not configuration slots and cannot be counted as verified sources.
+     * The cap applies AFTER validation/deduplication, just as public fetching
+     * historically did; never expose rejected or private identifiers.
+     *
+     * @return list<string>
      */
-    public function repositories(): array
+    public function configuredSlugs(): array
     {
         $configured = config('portfolio.github_public_repos', []);
         if (! is_array($configured)) {
@@ -25,20 +30,33 @@ final class PublicRepositoryDirectory
         }
 
         $seen = [];
-        $result = [];
+        $slugs = [];
         foreach ($configured as $candidate) {
             if (! is_string($candidate) || ! $this->validSlug($candidate)) {
                 continue;
             }
-            $slug = strtolower($candidate);
-            if (isset($seen[$slug])) {
+            $normalized = strtolower($candidate);
+            if (isset($seen[$normalized])) {
                 continue;
             }
-            $seen[$slug] = true;
-            $result[] = $this->fetchOne($candidate);
-            if (count($result) >= 20) {
+            $seen[$normalized] = true;
+            $slugs[] = $candidate;
+            if (count($slugs) === 20) {
                 break;
             }
+        }
+
+        return $slugs;
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public function repositories(): array
+    {
+        $result = [];
+        foreach ($this->configuredSlugs() as $slug) {
+            $result[] = $this->fetchOne($slug);
         }
 
         return $result;
