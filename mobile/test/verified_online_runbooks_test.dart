@@ -28,9 +28,14 @@ String response(
   int page,
   List<Map<String, dynamic>> guides, {
   bool more = false,
+  List<Map<String, dynamic>>? categories,
 }) => jsonEncode({
   'data': guides,
-  'meta': {'current_page': page, 'has_more_pages': more},
+  'meta': {
+    'current_page': page,
+    'has_more_pages': more,
+    if (categories != null) 'categories': categories,
+  },
 });
 
 void main() {
@@ -290,4 +295,115 @@ void main() {
     expect(find.byKey(const Key('online-runbook-' + secondId)), findsOneWidget);
     expect(find.byKey(const Key('online-runbook-more')), findsNothing);
   });
+
+  test('reviewed category labels are validated and legacy remains uncategorized', () {
+    const options = [
+      {'slug': 'database', 'name': 'Databases'},
+      {'slug': 'security', 'name': 'Security'},
+    ];
+    final page = ReviewedRunbookPage.parse(
+      response(1, [guide()], categories: options), 1);
+    expect(page.categories.map((item) => item.slug), ['database', 'security']);
+    expect(page.categories.map((item) => item.name), ['Databases', 'Security']);
+    expect(ReviewedRunbookPage.parse(response(1, [guide()]), 1).categories, isEmpty);
+
+    for (final invalid in [
+      [{}],
+      [{'slug': 'database', 'name': ''}],
+      [{'slug': 'database', 'name': 'Valid', 'secret': 'x'}],
+      [{'slug': 'database/../../secret', 'name': 'Wrong'}],
+      [{'slug': 'database--backup', 'name': 'Wrong'}],
+      [{'slug': 'database', 'name': 'Valid'}, {'slug': 'database', 'name': 'Duplicate'}],
+      [{'slug': 'private', 'name': 'line\nbreak'}],
+    ]) {
+      expect(() => ReviewedRunbookPage.parse(
+        response(1, [guide()], categories: invalid), 1,
+      ), throwsFormatException);
+    }
+    expect(() => ReviewedRunbookCategory.parse(
+      List.filled(201, {'slug': 'database', 'name': 'Databases'}),
+    ), throwsFormatException);
+  });
+
+  test('runbook category path and array injection are blocked before network',
+      () async {
+    for (final bad in [
+      'DATABASE', '../drafts', 'security/../../private',
+      'database--backup', 'not safe', 'a' * 61,
+    ]) {
+      await expectLater(
+        const ReviewedRunbookReader().loadPage(1, category: bad),
+        throwsFormatException,
+      );
+    }
+  });
+
+  for (final arabic in [false, true]) {
+    testWidgets('MOBILE-05 server category pagination ' +
+        (arabic ? 'Arabic' : 'English'), (tester) async {
+      const optionsEn = [
+        {'slug': 'database', 'name': 'Databases'},
+        {'slug': 'security', 'name': 'Security'},
+      ];
+      const optionsAr = [
+        {'slug': 'database', 'name': 'قواعد البيانات'},
+        {'slug': 'security', 'name': 'الأمان'},
+      ];
+      final options = arabic ? optionsAr : optionsEn;
+      final seen = <String>[];
+      Future<ReviewedRunbookPage> load(int page, String? selected) {
+        seen.add(page.toString() + ':' + (selected ?? 'all'));
+        final raw = selected == 'database'
+            ? response(page, page == 1
+                ? [guide(title: 'Reviewed DB guide')]
+                : [guide(id: secondId, title: 'Second DB guide')],
+                more: page == 1, categories: options)
+            : selected == 'security'
+                ? response(page, [], categories: options)
+                : response(page, [guide()], categories: options);
+        return SynchronousFuture(ReviewedRunbookPage.parse(raw, page));
+      }
+      await tester.pumpWidget(MaterialApp(
+        locale: Locale(arabic ? 'ar' : 'en'),
+        home: Directionality(
+          textDirection: arabic ? TextDirection.rtl : TextDirection.ltr,
+          child: ReviewedRunbookLibrary(
+            arabic: arabic,
+            categoryPageLoader: load,
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+      expect(seen, ['1:all']);
+      const filter = Key('online-runbook-category-filter');
+      expect(find.byKey(filter), findsOneWidget);
+      await tester.tap(find.byKey(filter));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(arabic ? 'قواعد البيانات' : 'Databases').last);
+      await tester.pumpAndSettle();
+      expect(seen.last, '1:database');
+      expect(find.byKey(const Key('online-runbook-more')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('online-runbook-more')));
+      await tester.pumpAndSettle();
+      expect(seen.last, '2:database');
+      expect(find.byKey(const Key('online-runbook-' + secondId)), findsOneWidget);
+      expect(find.byKey(const Key('online-runbook-more')), findsNothing);
+
+      await tester.ensureVisible(find.byKey(filter));
+      await tester.tap(find.byKey(filter));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(arabic ? 'الأمان' : 'Security').last);
+      await tester.pumpAndSettle();
+      expect(seen.last, '1:security');
+      expect(find.byKey(const Key('online-runbook-' + firstId)), findsNothing);
+      expect(find.byKey(const Key('online-runbook-' + secondId)), findsNothing);
+      expect(find.text(arabic
+          ? 'لا توجد أدلة معتمدة ضمن هذا التصنيف.'
+          : 'No reviewed runbooks in this category.'), findsOneWidget);
+      expect(find.byKey(filter), findsOneWidget,
+          reason: 'Category choices remain visible for an empty filter');
+    });
+  }
+
+
 }
