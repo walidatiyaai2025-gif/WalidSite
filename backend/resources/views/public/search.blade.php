@@ -76,7 +76,7 @@
 </p>
 @if($articles->isNotEmpty())
 <section class="ed-card" aria-labelledby="articles-h" data-testid="search-article-results"><h2 id="articles-h">{{ $locale === 'ar' ? 'المقالات' : 'Articles' }}</h2><ul>
-@foreach($articles->skip($web13ArticlePreviewCount) as $a)<li data-testid="search-article-result"><a href="{{ route('public.article', ['slug' => $a->slug, 'lang' => $locale, 'source' => 'search', 'q' => $search, 'type' => $type]) }}">{{ $locale === 'ar' ? $a->title_ar : $a->title_en }}</a></li>@endforeach
+@foreach($articles->skip($web13ArticlePreviewCount) as $a)<li data-testid="search-article-result"><a href="{{ route('public.article', array_merge(['slug' => $a->slug, 'lang' => $locale, 'source' => 'search', 'q' => $search, 'type' => $type], $page > 1 ? ['page' => $page] : [])) }}">{{ $locale === 'ar' ? $a->title_ar : $a->title_en }}</a></li>@endforeach
 </ul>
 <a class="ed-more" href="{{ route('public.blog', ['lang' => $locale, 'q' => $search]) }}">{{ $locale === 'ar' ? 'استعراض جميع المقالات المطابقة' : 'Browse all matching articles' }}</a>
 </section>

@@ -18,6 +18,15 @@
             $articleContextQuery['type'] = $rawType;
             $articleBackArgs['type'] = $rawType;
         }
+        // Accept only the bounded numeric page from the first-party search
+        // route. Never copy arbitrary query keys or caller-provided URLs.
+        $rawPage = $rawBrowse['page'] ?? null;
+        if ((is_int($rawPage) || is_string($rawPage))
+            && ctype_digit((string) $rawPage) && (int) $rawPage > 1
+            && (int) $rawPage <= 10000) {
+            $articleBackArgs['page'] = (int) $rawPage;
+            $articleContextQuery['page'] = (int) $rawPage;
+        }
     } elseif (($rawBrowse['source'] ?? null) === 'blog') {
         $articleContextQuery = ['source' => 'blog'];
         if ($browseSearch !== '') {

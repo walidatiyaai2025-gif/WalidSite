@@ -186,6 +186,10 @@ html[dir="rtl"] .t012-screen-blog .t012-visual-stack{left:55px;right:auto}
             if ($search !== '' || $type !== 'all') {
                 $t012SwitchArgs['type'] = $type;
             }
+            // Stay on the same verified results page while changing locale.
+            if ($search !== '' && $page > 1) {
+                $t012SwitchArgs['page'] = $page;
+            }
         }
     ?>
     <a class="t012-sr-only t012-locale-switch" lang="{{ $t012Ar ? 'en' : 'ar' }}" hreflang="{{ $t012Ar ? 'en' : 'ar' }}" @if($t012Screen === 'blog') data-web07-locale-switch @endif href="{{ route($t012Current ?? 'home', $t012SwitchArgs) }}">{{ $t012Ar ? 'English' : 'العربية' }}</a>
@@ -268,7 +272,7 @@ html[dir="rtl"] .t012-screen-blog .t012-visual-stack{left:55px;right:auto}
                             @if($t012IsProject)
                                 <a href="{{ route('public.project', ['slug' => $t012Item['slug'], 'lang' => $locale]) }}">{{ $t012Ar ? 'عرض المشروع' : 'View project' }} &nbsp;&gt;</a>
                             @else
-                                <a href="{{ route('public.article', ['slug' => $t012Item->slug, 'lang' => $locale, 'source' => 'search', 'q' => $search, 'type' => $type]) }}">{{ $t012Ar ? 'فتح الدليل التفصيلي' : 'Open detailed guide' }} &nbsp;&gt;</a>
+                                <a href="{{ route('public.article', array_merge(['slug' => $t012Item->slug, 'lang' => $locale, 'source' => 'search', 'q' => $search, 'type' => $type], $page > 1 ? ['page' => $page] : [])) }}">{{ $t012Ar ? 'فتح الدليل التفصيلي' : 'Open detailed guide' }} &nbsp;&gt;</a>
                             @endif
                         </article>
                     @endforeach
