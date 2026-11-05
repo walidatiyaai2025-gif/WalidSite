@@ -561,12 +561,23 @@ class _VerifiedArticleLibraryState extends State<VerifiedArticleLibrary> {
           (next.hasMorePages && next.articles.isEmpty)) {
         throw const FormatException('Inconsistent article pagination');
       }
-      final ids = <String>{
+      final slugs = <String>{
         for (final article in first.articles) article.slug,
         for (final article in _additional) article.slug,
       };
-      if (next.articles.any((article) => !ids.add(article.slug))) {
-        throw const FormatException('Duplicate article across pages');
+      // Save targets the published UUID, not the visible slug. A server can
+      // return a different slug with the same UUID on a later page; reject the
+      // entire page rather than display two ambiguous Save destinations.
+      final publishedIds = <String>{
+        for (final article in [...first.articles, ..._additional])
+          if (article.id != null) article.id!.toLowerCase(),
+      };
+      for (final article in next.articles) {
+        if (!slugs.add(article.slug) ||
+            (article.id != null &&
+                !publishedIds.add(article.id!.toLowerCase()))) {
+          throw const FormatException('Duplicate published article across pages');
+        }
       }
       setState(() {
         _additional = List.unmodifiable([..._additional, ...next.articles]);
