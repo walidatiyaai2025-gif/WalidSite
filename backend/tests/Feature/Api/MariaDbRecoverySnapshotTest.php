@@ -122,7 +122,7 @@ final class MariaDbRecoverySnapshotTest extends TestCase
     public function test_snapshot_manifest_capacity_matches_restore_contract(): void
     {
         $service = new MariaDbRecoverySnapshot();
-        $check = new \\ReflectionMethod(MariaDbRecoverySnapshot::class, 'assertManifestCapacity');
+        $check = new \ReflectionMethod(MariaDbRecoverySnapshot::class, 'assertManifestCapacity');
         $check->invoke($service, str_repeat('x', 8388608));
         foreach (['', str_repeat('x', 8388609)] as $bad) {
             try {
