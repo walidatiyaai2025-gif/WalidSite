@@ -331,49 +331,122 @@ final class CpanelImmutableCodePointer
                 || ++$count > 5000) {
                 throw new DomainException('Executable or oversized public release inventory.');
             }
-            $size = filesize($entry->getPathname());
-            if ($size === false || $size > 134217728 || ($bytes += $size) > 536870912) {
-                throw new DomainException('Release asset size exceeds hosting limits.');
+            $source = $entry->getPathname();
+            $input = @fopen($source, 'rb');
+            if ($input === false) {
+                throw new DomainException('Cannot securely open public release asset.');
             }
-            $target = $publicRoot.'/'.$relative;
-            $parent = dirname($target);
-            // Validate every ancestor BEFORE creating nested directories:
-            // recursive mkdir would otherwise follow an in-root symlink and
-            // write into a different location even when the final check fails.
-            $this->ensurePhysicalAssetParent($publicRoot, $parent);
-            clearstatcache(true, $parent);
-            if (is_link($target) || realpath($parent) !== $parent) {
-                throw new DomainException('Asset destination is linked or escapes web root.');
-            }
-            $sourceHash = hash_file('sha256', $entry->getPathname());
-            if (! is_string($sourceHash)) {
-                throw new DomainException('Cannot verify new asset hash.');
-            }
-            if (is_file($target)) {
-                if (! hash_equals($sourceHash, (string) hash_file('sha256', $target))) {
-                    throw new DomainException('Existing public asset collision; refusing overwrite.');
-                }
-                continue;
-            }
-            if (file_exists($target)) {
-                throw new DomainException('Asset destination is not a regular file.');
-            }
-            $temporary = $parent.'/.new-static-'.bin2hex(random_bytes(12));
-            if (! @copy($entry->getPathname(), $temporary) || ! @chmod($temporary, 0644)
-                || ! hash_equals($sourceHash, (string) hash_file('sha256', $temporary))) {
-                @unlink($temporary);
-                throw new RuntimeException('Failed staging immutable public asset.');
-            }
-            // rename() overwrites an existing target on POSIX. Publish
-            // atomically without replacement: another writer creating the
-            // path between the existence check and activation must not lose
-            // its file. cPanel/Linux supports same-directory hard links.
             try {
+                $baseline = @fstat($input);
+                if (! is_array($baseline)) {
+                    throw new DomainException('Cannot identify public release asset.');
+                }
+                $this->assertStaticSourceIdentity($input, $source, $baseline);
+                $size = $baseline['size'];
+                if (! is_int($size) || $size < 0 || $size > 134217728
+                    || ($bytes += $size) > 536870912) {
+                    throw new DomainException('Release asset size exceeds hosting limits.');
+                }
+                $target = $publicRoot.'/'.$relative;
+                $parent = dirname($target);
+                // Never follow an in-root symlink while preparing target paths.
+                $this->ensurePhysicalAssetParent($publicRoot, $parent);
+                clearstatcache(true, $parent);
+                if (is_link($target) || realpath($parent) !== $parent) {
+                    throw new DomainException('Asset destination is linked or escapes web root.');
+                }
+                $temporary = $parent.'/.new-static-'.bin2hex(random_bytes(12));
+                $output = @fopen($temporary, 'xb');
+                if ($output === false) {
+                    throw new RuntimeException('Cannot stage exclusive public release asset.');
+                }
+                try {
+                    if (! @chmod($temporary, 0644)) {
+                        throw new RuntimeException('Cannot set immutable release asset permissions.');
+                    }
+                    $hash = hash_init('sha256');
+                    $copied = 0;
+                    while (! feof($input)) {
+                        $chunk = fread($input, 65536);
+                        if ($chunk === false || ($chunk === '' && ! feof($input))) {
+                            throw new DomainException('Public release asset read interrupted.');
+                        }
+                        if ($chunk === '') {
+                            break;
+                        }
+                        $length = strlen($chunk);
+                        $copied += $length;
+                        if ($copied > $size) {
+                            throw new DomainException('Public release asset grew during staging.');
+                        }
+                        hash_update($hash, $chunk);
+                        $offset = 0;
+                        while ($offset < $length) {
+                            $written = fwrite($output, substr($chunk, $offset));
+                            if ($written === false || $written === 0) {
+                                throw new RuntimeException('Public release asset write interrupted.');
+                            }
+                            $offset += $written;
+                        }
+                    }
+                    if (! fflush($output)) {
+                        throw new RuntimeException('Cannot flush staged public release asset.');
+                    }
+                } finally {
+                    fclose($output);
+                }
+                $this->assertStaticSourceIdentity($input, $source, $baseline);
+                $sourceHash = hash_final($hash);
+                clearstatcache(true, $temporary);
+                if ($copied !== $size || filesize($temporary) !== $size
+                    || ! hash_equals($sourceHash, (string) hash_file('sha256', $temporary))) {
+                    throw new DomainException('Public release asset changed during staging.');
+                }
+                $this->assertStaticSourceIdentity($input, $source, $baseline);
+                // Existing public asset names are immutable, never replaced.
+                if (is_file($target)) {
+                    if (! hash_equals($sourceHash, (string) hash_file('sha256', $target))) {
+                        throw new DomainException('Existing public asset collision; refusing overwrite.');
+                    }
+                    continue;
+                }
+                if (file_exists($target) || is_link($target)) {
+                    throw new DomainException('Asset destination is not a regular file.');
+                }
+                // POSIX hard-link publish creates without overwrite even if
+                // another writer races to claim the public target name.
                 if (! @link($temporary, $target)) {
                     throw new RuntimeException('Unable to publish immutable asset without overwriting an existing file.');
                 }
             } finally {
-                @unlink($temporary);
+                fclose($input);
+                if (isset($temporary) && is_file($temporary)) {
+                    @unlink($temporary);
+                }
+            }
+        }
+    }
+
+    /**
+     * @param resource $stream
+     * @param array<string|int,mixed> $baseline
+     */
+    private function assertStaticSourceIdentity($stream, string $path, array $baseline): void
+    {
+        clearstatcache(true, $path);
+        $opened = @fstat($stream);
+        $named = @lstat($path);
+        if (! is_array($opened) || ! is_array($named)
+            || ($opened['mode'] & 0170000) !== 0100000
+            || ($named['mode'] & 0170000) !== 0100000
+            || $opened['nlink'] !== 1 || $named['nlink'] !== 1
+            || is_link($path) || realpath($path) !== $path
+            || $opened['dev'] !== $named['dev'] || $opened['ino'] !== $named['ino']) {
+            throw new DomainException('Public release asset source pathname or inode changed.');
+        }
+        foreach (['dev', 'ino', 'size', 'mtime', 'ctime'] as $field) {
+            if ($opened[$field] !== $baseline[$field] || $named[$field] !== $baseline[$field]) {
+                throw new DomainException('Public release asset source changed during staging.');
             }
         }
     }

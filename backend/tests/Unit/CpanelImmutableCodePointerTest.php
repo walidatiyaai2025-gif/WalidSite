@@ -252,6 +252,63 @@ final class CpanelImmutableCodePointerTest extends TestCase
     }
 
 
+    public function test_hardlinked_public_release_asset_cannot_publish_private_source_bytes(): void
+    {
+        if (! function_exists('link') || PHP_OS_FAMILY === 'Windows') {
+            self::markTestSkipped('POSIX hard-link fixtures required.');
+        }
+        $asset = $this->candidate.'/public_html/assets/icons/new.svg';
+        $private = $this->home.'/application/storage/app/internal-source.svg';
+        file_put_contents($private, '<svg>PRIVATE_SOURCE_DO_NOT_PUBLISH</svg>');
+        $this->assertTrue(unlink($asset));
+        $this->assertTrue(link($private, $asset));
+
+        try {
+            (new CpanelImmutableCodePointer())->activate(...$this->args());
+            $this->fail('A hard-linked private asset must not be published.');
+        } catch (DomainException $error) {
+            $this->assertStringContainsString('source pathname or inode', $error->getMessage());
+        }
+
+        $this->assertFileDoesNotExist($this->home.'/public_html/assets/icons/new.svg');
+        $this->assertFileDoesNotExist($this->home.'/.walidsite-active-release.json');
+        $this->assertSame('<svg>PRIVATE_SOURCE_DO_NOT_PUBLISH</svg>', file_get_contents($private));
+        $this->assertSame('KEEP_MY_PRIVATE_APP_KEY', file_get_contents(
+            $this->home.'/application/.env',
+        ));
+    }
+
+    public function test_public_asset_source_descriptor_rejects_replaced_named_inode(): void
+    {
+        if (PHP_OS_FAMILY === 'Windows') {
+            self::markTestSkipped('POSIX rename semantics required.');
+        }
+        $asset = $this->candidate.'/public_html/assets/icons/new.svg';
+        $stream = fopen($asset, 'rb');
+        $this->assertIsResource($stream);
+        $baseline = fstat($stream);
+        $this->assertIsArray($baseline);
+        $guard = new \ReflectionMethod(CpanelImmutableCodePointer::class, 'assertStaticSourceIdentity');
+        try {
+            $guard->invoke(new CpanelImmutableCodePointer(), $stream, $asset, $baseline);
+            $orphaned = $this->home.'/orphaned-static-asset.svg';
+            $this->assertTrue(rename($asset, $orphaned));
+            $this->assertSame(6, file_put_contents($asset, '<svg/>'));
+            $this->assertNotSame(fstat($stream)['ino'], lstat($asset)['ino']);
+            try {
+                $guard->invoke(new CpanelImmutableCodePointer(), $stream, $asset, $baseline);
+                $this->fail('Replacing an asset with identical bytes must not preserve source trust.');
+            } catch (DomainException $error) {
+                $this->assertStringContainsString('inode changed', $error->getMessage());
+            }
+        } finally {
+            fclose($stream);
+        }
+
+        $this->assertFileDoesNotExist($this->home.'/public_html/assets/icons/new.svg');
+        $this->assertFileDoesNotExist($this->home.'/.walidsite-active-release.json');
+    }
+
     public function test_hard_linked_code_pointer_lock_blocks_activation_without_touching_private_data(): void
     {
         if (! function_exists('link')) {
