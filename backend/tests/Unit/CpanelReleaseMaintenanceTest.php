@@ -119,4 +119,78 @@ final class CpanelReleaseMaintenanceTest extends TestCase
         $this->expectException(DomainException::class);
         $maintenance->begin($this->home, '.walidsite-releases/v0.1.2-'.str_repeat('a', 40), '0.1.1');
     }
+    public function test_hardlinked_lease_is_never_accepted_or_cleared(): void
+    {
+        $maintenance = new CpanelReleaseMaintenance();
+        $session = $maintenance->begin($this->home, 'legacy', '0.1.1');
+        $path = $this->home.'/.walidsite-update-maintenance.json';
+        $alias = $this->home.'/.unauthorized-lease-alias';
+        if (! @link($path, $alias)) {
+            $this->markTestSkipped('Hard links unavailable.');
+        }
+
+        try {
+            try {
+                $maintenance->assertActive($this->home, $session['token'], 'legacy');
+                $this->fail('Multi-linked maintenance marker was accepted.');
+            } catch (DomainException) {
+                $this->assertFileExists($path);
+            }
+            try {
+                $maintenance->clear($this->home, $session['token']);
+                $this->fail('Multi-linked maintenance marker was cleared.');
+            } catch (DomainException) {
+                $this->assertFileExists($path);
+            }
+        } finally {
+            unlink($alias);
+        }
+        $maintenance->assertActive($this->home, $session['token'], 'legacy');
+        $maintenance->clear($this->home, $session['token']);
+    }
+
+    public function test_loosened_private_lease_permissions_fail_closed(): void
+    {
+        $maintenance = new CpanelReleaseMaintenance();
+        $session = $maintenance->begin($this->home, 'legacy', '0.1.1');
+        $path = $this->home.'/.walidsite-update-maintenance.json';
+        chmod($path, 0644);
+        clearstatcache(true, $path);
+
+        try {
+            $maintenance->assertActive($this->home, $session['token'], 'legacy');
+            $this->fail('Readable maintenance marker was accepted.');
+        } catch (DomainException) {
+            $this->assertFileExists($path);
+        }
+        try {
+            $maintenance->clear($this->home, $session['token']);
+            $this->fail('Readable maintenance marker was cleared.');
+        } catch (DomainException) {
+            $this->assertFileExists($path);
+        }
+        chmod($path, 0600);
+        $maintenance->assertActive($this->home, $session['token'], 'legacy');
+        $maintenance->clear($this->home, $session['token']);
+    }
+
+    public function test_maintenance_clear_rejects_symlinked_account_home(): void
+    {
+        if (! function_exists('symlink')) {
+            $this->markTestSkipped('Symlinks unavailable.');
+        }
+        $maintenance = new CpanelReleaseMaintenance();
+        $session = $maintenance->begin($this->home, 'legacy', '0.1.1');
+        $alias = sys_get_temp_dir().'/walidsite-home-alias-'.bin2hex(random_bytes(6));
+        if (! @symlink($this->home, $alias)) {
+            $this->markTestSkipped('Symlinks unavailable.');
+        }
+        try {
+            $this->expectException(DomainException::class);
+            $maintenance->clear($alias, $session['token']);
+        } finally {
+            unlink($alias);
+        }
+    }
+
 }

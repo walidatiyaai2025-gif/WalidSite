@@ -63,15 +63,73 @@ final class CpanelReleaseMaintenance
         return ['token' => $token, 'expires_at' => $expires];
     }
 
+    /**
+     * Read the maintenance marker through one pinned regular-file descriptor.
+     * A hard link, loosened permissions or changed pathname must never prove
+     * that the updater still owns the private release barrier.
+     *
+     * @return array{string, mixed, array<string, int>}
+     */
+    private function readPrivateMarker(string $homeDirectory): array
+    {
+        if (is_link($homeDirectory)) {
+            throw new DomainException('Private maintenance root unavailable.');
+        }
+        $home = realpath($homeDirectory);
+        if ($home === false) {
+            throw new DomainException('Private maintenance root unavailable.');
+        }
+        $path = $home.'/.walidsite-update-maintenance.json';
+        if (is_link($path)) {
+            throw new DomainException('Private maintenance lease unavailable.');
+        }
+        $stream = @fopen($path, 'rb');
+        if ($stream === false) {
+            throw new DomainException('Private maintenance lease unavailable.');
+        }
+
+        try {
+            clearstatcache(true, $path);
+            $opened = fstat($stream);
+            $named = @lstat($path);
+            if ($opened === false || $named === false
+                || ($opened['mode'] & 0170000) !== 0100000
+                || ($opened['mode'] & 0777) !== 0600
+                || $opened['nlink'] !== 1
+                || $opened['size'] < 1 || $opened['size'] > 1024) {
+                throw new DomainException('Unsafe private maintenance lease.');
+            }
+            $fields = ['dev', 'ino', 'size', 'mode', 'nlink', 'mtime', 'ctime'];
+            foreach ($fields as $field) {
+                if ($opened[$field] !== $named[$field]) {
+                    throw new DomainException('Private maintenance lease pathname changed.');
+                }
+            }
+            $raw = stream_get_contents($stream, 1025);
+            if ($raw === false || strlen($raw) !== $opened['size']) {
+                throw new DomainException('Private maintenance lease contents changed.');
+            }
+            clearstatcache(true, $path);
+            $after = fstat($stream);
+            $namedAfter = @lstat($path);
+            if ($after === false || $namedAfter === false) {
+                throw new DomainException('Private maintenance lease disappeared.');
+            }
+            foreach ($fields as $field) {
+                if ($opened[$field] !== $after[$field]
+                    || $opened[$field] !== $namedAfter[$field]) {
+                    throw new DomainException('Private maintenance lease changed during read.');
+                }
+            }
+            return [$path, json_decode($raw, true, 8, JSON_THROW_ON_ERROR), $opened];
+        } finally {
+            fclose($stream);
+        }
+    }
+
     public function assertActive(string $homeDirectory, string $token, string $previousRoot): void
     {
-        $home = realpath($homeDirectory);
-        $path = $home.'/.walidsite-update-maintenance.json';
-        if ($home === false || ! is_file($path) || is_link($path)
-            || filesize($path) === false || filesize($path) > 1024) {
-            throw new DomainException('Private maintenance barrier is unavailable.');
-        }
-        $marker = json_decode((string) file_get_contents($path), true, 8, JSON_THROW_ON_ERROR);
+        [, $marker] = $this->readPrivateMarker($homeDirectory);
         if (! is_array($marker) || array_keys($marker) !== ['schema', 'expires_at', 'previous_root', 'previous_version', 'probe_sha256']
             || $marker['schema'] !== 1
             || ! is_int($marker['expires_at']) || $marker['expires_at'] <= time()
@@ -91,15 +149,7 @@ final class CpanelReleaseMaintenance
      */
     public function clear(string $homeDirectory, string $token): void
     {
-        $home = realpath($homeDirectory);
-        if ($home === false) {
-            throw new DomainException('Private maintenance root unavailable.');
-        }
-        $path = $home.'/.walidsite-update-maintenance.json';
-        if (! is_file($path) || is_link($path) || filesize($path) > 1024) {
-            throw new DomainException('Private maintenance lease unavailable.');
-        }
-        $marker = json_decode((string) file_get_contents($path), true, 8, JSON_THROW_ON_ERROR);
+        [$path, $marker, $identity] = $this->readPrivateMarker($homeDirectory);
         if (! is_array($marker)
             || array_keys($marker) !== ['schema', 'expires_at', 'previous_root', 'previous_version', 'probe_sha256']
             || $marker['schema'] !== 1
@@ -109,6 +159,19 @@ final class CpanelReleaseMaintenance
             || ! is_string($marker['probe_sha256'])
             || ! hash_equals($marker['probe_sha256'], hash('sha256', $token))) {
             throw new DomainException('Maintenance ownership is invalid or lease expired; recovery required.');
+        }
+        // Fail closed if the named marker was replaced after descriptor read.
+        // The cPanel account directory must remain private to the PHP owner:
+        // PHP has no portable unlink-by-descriptor primitive for a hostile
+        // account-level writer concurrently replacing this pathname.
+        clearstatcache(true, $path);
+        $named = @lstat($path);
+        if ($named === false
+            || $named['dev'] !== $identity['dev']
+            || $named['ino'] !== $identity['ino']
+            || $named['nlink'] !== 1
+            || ($named['mode'] & 0777) !== 0600) {
+            throw new DomainException('Maintenance barrier identity changed; recovery required.');
         }
         if (! @unlink($path)) {
             throw new RuntimeException('Cannot release private maintenance barrier.');
