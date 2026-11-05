@@ -1,6 +1,7 @@
 """Unit tests for secure cPanel installation ZIP generation."""
 import hashlib
 import os
+import stat
 import json
 import tempfile
 import unittest
@@ -192,6 +193,23 @@ class TestCpanelPackage(unittest.TestCase):
             zip.writestr("application/app/Test.php", "<?php malicious")
         with self.assertRaisesRegex(ValueError, "Duplicate ZIP entry"):
             verify_archive(self.output, "e" * 40)
+
+    def test_special_unix_zip_members_rejected_before_decompression(self):
+        # A well-formed central directory may label a member as a FIFO,
+        # character/block device or socket. No extractor should ever be
+        # asked to materialize these entries into a cPanel document root.
+        for mode in (stat.S_IFIFO, stat.S_IFCHR, stat.S_IFBLK, stat.S_IFSOCK):
+            with self.subTest(mode=mode):
+                build(self.root, self.output, "e" * 40)
+                member = zipfile.ZipInfo("public_html/assets/unsafe-entry")
+                member.create_system = 3
+                member.external_attr = (mode | 0o644) << 16
+                with zipfile.ZipFile(self.output, "a") as archive:
+                    archive.writestr(member, b"untrusted")
+                with patch.object(zipfile.ZipFile, "testzip",
+                                  side_effect=AssertionError("special file inflated")):
+                    with self.assertRaisesRegex(ValueError, "Non-regular Unix file"):
+                        verify_archive(self.output, "e" * 40)
 
     def test_high_ratio_zip_bomb_rejected_before_reading_or_crc(self):
         build(self.root, self.output, "e" * 40)
