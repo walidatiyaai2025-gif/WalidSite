@@ -82,9 +82,16 @@ final class AdminSignedUpdateUploadTest extends TestCase
         ]);
 
         try {
+            // No signed ZIP receipt: the owner cannot run a host preflight,
+            // and the action may not manufacture a private inbox or proof.
+            $this->post('https://localhost/admin/updates/preflight')
+                ->assertRedirect()->assertSessionHasErrors('hosting');
+            $this->assertNull(session('owner_update_host_preflight'));
+
             $this->get('https://localhost/admin/updates')->assertOk()
                 ->assertSee('data-testid="trusted-zip-upload-form"', false)
                 ->assertSee('data-testid="verify-signed-update-zip"', false)
+                ->assertDontSee('data-testid="owner-host-preflight-form"', false)
                 ->assertSee('Install Update — Hosting/Recovery Blocked')
                 ->assertDontSee('name="release_url"', false);
 
@@ -99,8 +106,20 @@ final class AdminSignedUpdateUploadTest extends TestCase
                 ->assertSee('data-testid="owner-signed-upload-verified"', false)
                 ->assertSee('0.1.3')
                 ->assertSee(str_repeat('a', 40))
+                ->assertSee('data-testid="owner-host-preflight-form"', false)
                 ->assertDontSee($pub)
                 ->assertDontSee($envelope);
+
+            // The CI working tree is NOT a physical /home/user/application
+            // plus /home/user/public_html cPanel installation. This real
+            // owner POST must fail closed without staging PHP, creating a
+            // false backup receipt or enabling the Install control.
+            $this->post('https://localhost/admin/updates/preflight')
+                ->assertRedirect()->assertSessionHasErrors('hosting');
+            $this->assertNull(session('owner_update_host_preflight'));
+            $this->get('https://localhost/admin/updates')->assertOk()
+                ->assertDontSee('data-testid="owner-host-preflight-verified"', false)
+                ->assertSee('Install Update — Hosting/Recovery Blocked');
             $this->assertSame('0.1.2', trim(file_get_contents(base_path('VERSION'))));
 
             // Replacing a known-good upload with a rejected ZIP must not leave
@@ -163,6 +182,8 @@ final class AdminSignedUpdateUploadTest extends TestCase
             'status' => 'active',
         ]);
         $this->actingAs($user)->post('https://localhost/admin/updates/verify-upload')
+            ->assertForbidden();
+        $this->actingAs($user)->post('https://localhost/admin/updates/preflight')
             ->assertForbidden();
     }
 }
