@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Domain\Deployment\CpanelArchiveCodeOnlyPreflight;
 use App\Domain\Deployment\CpanelPhysicalHostPreflight;
 use App\Domain\Deployment\TrustedReleaseCatalog;
+use App\Domain\Deployment\TrustedInstalledVersion;
 use App\Domain\Deployment\TrustedOwnerUpdateInbox;
 use Illuminate\Http\UploadedFile;
 use App\Support\Deployment\SiteUpdater;
@@ -32,59 +33,7 @@ final class AdminUpdateController extends Controller
      */
     private function installedVersion(): ?string
     {
-        $file = base_path('VERSION');
-        clearstatcache(true, $file);
-        if (is_link($file) || realpath($file) !== $file) {
-            return null;
-        }
-        $stream = @fopen($file, 'rb');
-        if ($stream === false) {
-            return null;
-        }
-        try {
-            $baseline = @fstat($stream);
-            if (! is_array($baseline)
-                || ($baseline['mode'] & 0170000) !== 0100000
-                || ($baseline['nlink'] ?? 0) !== 1
-                || $baseline['size'] < 1 || $baseline['size'] > 32
-                || ($baseline['mode'] & 0022) !== 0
-                || ! $this->sameInstalledVersionInode($stream, $file, $baseline)) {
-                return null;
-            }
-            $bytes = @stream_get_contents($stream, 33);
-            if (! is_string($bytes) || strlen($bytes) !== $baseline['size']
-                || ! $this->sameInstalledVersionInode($stream, $file, $baseline)) {
-                return null;
-            }
-            $version = trim($bytes);
-            return preg_match('/\A(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\z/D', $version) === 1
-                ? $version : null;
-        } finally {
-            fclose($stream);
-        }
-    }
-
-    /**
-     * @param resource $stream
-     * @param array<string|int,mixed> $baseline
-     */
-    private function sameInstalledVersionInode($stream, string $path, array $baseline): bool
-    {
-        clearstatcache(true, $path);
-        $named = @lstat($path);
-        $opened = @fstat($stream);
-        if (! is_array($named) || ! is_array($opened) || is_link($path)
-            || realpath($path) !== $path
-            || ($named['mode'] & 0170000) !== 0100000) {
-            return false;
-        }
-        foreach (['dev', 'ino', 'size', 'mode', 'nlink', 'mtime', 'ctime'] as $field) {
-            if ($named[$field] !== $baseline[$field]
-                || $opened[$field] !== $baseline[$field]) {
-                return false;
-            }
-        }
-        return true;
+        return app(TrustedInstalledVersion::class)->read(base_path('VERSION'));
     }
 
     private function pinnedInstalledVersion(): ?string
