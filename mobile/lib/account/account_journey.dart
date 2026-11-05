@@ -260,23 +260,29 @@ class MobileAccountClient {
   static Future<bool> confirmArticleInSavedList(
     String bearer,
     String articleId,
-    AccountReadSaved readSaved,
-  ) async {
-    if (bearer.isEmpty || bearer.length > 8192 || !_uuid.hasMatch(articleId)) {
+    AccountReadSaved readSaved, {
+    Duration totalDeadline = const Duration(seconds: 20),
+  }) async {
+    if (bearer.isEmpty || bearer.length > 8192 || !_uuid.hasMatch(articleId)
+        || totalDeadline <= Duration.zero) {
       throw const FormatException('Invalid saved reconciliation identity');
     }
-    for (var page = 1; page <= 20; page++) {
-      final result = await readSaved(bearer, false, page);
-      if (result.page != page) {
-        throw const FormatException('Mismatched saved reconciliation page');
+    // Per-page HTTP timeouts are insufficient: twenty slow pages can hold a
+    // post-Save recovery for minutes. One wall-clock budget covers all reads.
+    return (() async {
+      for (var page = 1; page <= 20; page++) {
+        final result = await readSaved(bearer, false, page);
+        if (result.page != page) {
+          throw const FormatException('Mismatched saved reconciliation page');
+        }
+        if (result.items.any((item) =>
+            item.type == 'article' && item.id == articleId)) {
+          return true;
+        }
+        if (!result.hasMore) return false;
       }
-      if (result.items.any((item) =>
-          item.type == 'article' && item.id == articleId)) {
-        return true;
-      }
-      if (!result.hasMore) return false;
-    }
-    return false; // Never claim a Save from an unverified later page.
+      return false; // Never claim a Save from an unverified later page.
+    })().timeout(totalDeadline);
   }
 
   Future<void> _resolveAmbiguousArticleSave(
