@@ -122,6 +122,27 @@ void main() {
     expect(VerifiedArticlePage.parse(page, 1).articles, hasLength(1));
   });
 
+  test('standalone article detail rejects UTF-8 oversized JSON before decoding', () {
+    const limit = 2 * 1024 * 1024;
+    final multibyte = '{"data":{"slug":"database-recovery","padding":"' +
+        ('é' * (limit ~/ 2)) + '"}}';
+    expect(multibyte.length, lessThan(limit),
+        reason: 'The UTF-16 length alone would accept this payload');
+    expect(utf8.encode(multibyte).length, greaterThan(limit));
+    expect(
+      () => VerifiedArticle.parseDetail(multibyte, 'database-recovery'),
+      throwsA(isA<FormatException>().having(
+          (exception) => exception.message, 'message',
+          'Invalid article detail')),
+    );
+
+    final valid = jsonEncode({
+      'data': (jsonDecode(safeJson) as Map<String, dynamic>)['data'][0],
+    });
+    expect(VerifiedArticle.parseDetail(valid, 'database-recovery').slug,
+        'database-recovery');
+  });
+
   test('article feed rejects duplicate published UUID across different slugs', () {
     const id = '12345678-1234-1234-1234-123456789abc';
     final original = jsonDecode(safeJson) as Map<String, dynamic>;
