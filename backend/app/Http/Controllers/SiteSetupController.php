@@ -97,6 +97,11 @@ final class SiteSetupController extends Controller
                 'فشل تنفيذ الترحيلات. راجع سجل التطبيق الخاص واستعد نسخة احتياطية موثقة قبل إعادة المحاولة.')]);
         }
 
+        if ($result['state'] === 'database_not_empty') {
+            return back()->withErrors(['setup' => $this->localeMessage($request,
+                'The selected database now contains existing tables without trusted migration history. Select an empty database or recover the interrupted install; no migrations were run.',
+                'قاعدة البيانات المختارة تحتوي الآن على جداول دون سجل ترحيلات موثوق. اختر قاعدة بيانات فارغة أو استعد التثبيت المنقطع؛ لم يتم تنفيذ أي ترحيلات.')]);
+        }
         if ($result['state'] === 'schema_mismatch') {
             return back()->withErrors(['setup' => $this->localeMessage($request,
                 'Database migration history is incompatible with this release. Deploy compatible code or restore a verified backup.',

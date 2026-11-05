@@ -224,6 +224,11 @@ final class FoodexInstallController extends Controller
 
                 case 11:
                     $result = $updater->applyForFirstInstall();
+                    if ($result['state'] === 'database_not_empty') {
+                        return $this->fail($request,
+                            'Database contents changed after the empty-database check. Select a new empty database or recover the interrupted install. No migrations were run.',
+                            'تغيرت محتويات قاعدة البيانات بعد فحص أنها فارغة. اختر قاعدة فارغة جديدة أو استعد التثبيت المنقطع. لم يتم تنفيذ أي ترحيلات.');
+                    }
                     if (! in_array($result['state'], ['current', 'applied'], true)) {
                         return $this->fail($request, 'Trusted database migrations failed; inspect private logs.', 'فشل تنفيذ ترحيلات قاعدة البيانات المعتمدة؛ راجع السجلات الخاصة.');
                     }

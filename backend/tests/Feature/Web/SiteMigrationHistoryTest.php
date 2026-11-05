@@ -3,6 +3,8 @@
 namespace Tests\Feature\Web;
 
 use App\Support\Deployment\SiteUpdater;
+use App\Support\Deployment\SiteInstaller;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
@@ -91,6 +93,40 @@ class SiteMigrationHistoryTest extends TestCase
             app(SiteUpdater::class)->applyForFirstInstall(),
         );
         $this->assertDatabaseHas('migrations', ['migration' => $migration]);
+    }
+
+    public function test_first_install_blocks_existing_schema_without_migration_history_and_preserves_data(): void
+    {
+        // Simulate an empty DB accepted at the wizard's Step 4, then filled
+        // with an unrelated table/data before the migration step. The
+        // installation token is genuine, but it is NOT authorization to
+        // overwrite an existing database with no trusted migration history.
+        config([
+            'site.setup_enabled' => true,
+            'site.setup_token' => str_repeat('k', 40),
+            'site.install_lock_path' => storage_path('app/nonexistent-first-run-'.bin2hex(random_bytes(10))),
+        ]);
+        $person = User::create([
+            'email' => 'preserve-before-install@example.test',
+            'password_hash' => null,
+            'status' => 'pending_activation',
+        ]);
+        self::assertTrue(app(SiteInstaller::class)->allowed());
+
+        DB::table('migrations')->delete();
+        self::assertSame(0, DB::table('migrations')->count());
+        self::assertNotEmpty(app(SiteUpdater::class)->inspect()['pending']);
+
+        Artisan::shouldReceive('call')->never();
+        self::assertSame(
+            ['state' => 'database_not_empty', 'applied' => 0],
+            app(SiteUpdater::class)->applyForFirstInstall(),
+        );
+        $this->assertDatabaseHas('users', [
+            'id' => $person->getKey(),
+            'email' => 'preserve-before-install@example.test',
+        ]);
+        self::assertSame(0, DB::table('migrations')->count());
     }
 
     public function test_matching_migration_history_remains_current_and_safe_to_retry(): void
