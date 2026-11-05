@@ -114,7 +114,7 @@ final class TrustedCodeCandidatePromoterTest extends TestCase
     private function promote(string $file, string $signed, ?string $quarantine = null): array
     {
         return (new TrustedCodeCandidatePromoter())->promote(
-            $signed, $this->publicKey, 'https://updates.example.test', '1.0.0',
+            $signed, $this->publicKey, 'https://updates.example.com', '1.0.0',
             $quarantine ?? $this->quarantine, $this->incoming, $file,
             $this->releases, $this->publicRoot,
         );

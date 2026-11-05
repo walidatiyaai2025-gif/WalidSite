@@ -59,7 +59,7 @@ final class TrustedReleaseArchiveTest extends TestCase
         self::assertTrue($zip->close());
 
         return [$file, [
-            'artifact_url' => 'https://updates.example.test/releases/WalidSite-update-v1.2.0.zip',
+            'artifact_url' => 'https://updates.example.com/releases/WalidSite-update-v1.2.0.zip',
             'artifact_size' => filesize($file),
             'artifact_sha256' => hash_file('sha256', $file),
         ]];

@@ -39,7 +39,7 @@ final class AdminTrustedUpdateApiTest extends TestCase
         config()->set('site.trusted_installed_version', $version ?? trim(
             (string) file_get_contents(base_path('VERSION')),
         ));
-        config()->set('site.trusted_release_origin', 'https://updates.example.test');
+        config()->set('site.trusted_release_origin', 'https://updates.example.com');
         config()->set('site.trusted_release_public_key', $key);
     }
 
@@ -75,7 +75,7 @@ final class AdminTrustedUpdateApiTest extends TestCase
                 &$requests, $envelope,
             ): int {
                 $requests++;
-                self::assertSame('https://updates.example.test/releases/latest.json', $url);
+                self::assertSame('https://updates.example.com/releases/latest.json', $url);
                 self::assertSame(strlen($envelope), $write($envelope));
                 return 200;
             }),
@@ -94,7 +94,7 @@ final class AdminTrustedUpdateApiTest extends TestCase
             ->assertJsonPath('meta.lang', 'ar');
         self::assertSame(1, $requests);
         self::assertStringContainsString('no-store', (string) $response->headers->get('Cache-Control'));
-        foreach ([$publicKey, $envelope, 'updates.example.test'] as $secretOrEndpoint) {
+        foreach ([$publicKey, $envelope, 'updates.example.com'] as $secretOrEndpoint) {
             self::assertStringNotContainsString($secretOrEndpoint, $response->getContent());
         }
     }

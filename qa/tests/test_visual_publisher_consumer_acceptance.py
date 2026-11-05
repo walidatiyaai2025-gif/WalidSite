@@ -23,7 +23,7 @@ ROOT = Path(__file__).resolve().parents[2]
 PHP = shutil.which("php")
 SOURCE_SHA = "a" * 40
 VERSION = "1.2.3"
-ORIGIN = "https://updates.example.test"
+ORIGIN = "https://updates.example.com"
 
 CONSUMER = r"""
 require $argv[1];
@@ -153,8 +153,8 @@ class PublisherConsumerAcceptanceTest(unittest.TestCase):
         self.assertNotEqual(self._consume(key=base64.b64encode(bytes(32)).decode()).returncode, 0)
         self.assertNotEqual(self._consume(installed=VERSION).returncode, 0)
         self.assertNotEqual(self._consume(installed="2.0.0").returncode, 0)
-        self.assertNotEqual(self._consume(origin="http://updates.example.test").returncode, 0)
-        self.assertNotEqual(self._consume(origin="https://updates.example.test:443").returncode, 0)
+        self.assertNotEqual(self._consume(origin="http://updates.example.com").returncode, 0)
+        self.assertNotEqual(self._consume(origin="https://updates.example.com:443").returncode, 0)
 
     def test_archive_byte_mutation_is_not_authorized_by_correct_signature(self):
         if not self._has_zip():

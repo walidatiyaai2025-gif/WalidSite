@@ -175,7 +175,7 @@ final class TrustedReleaseUpdateJourneyTest extends TestCase
     {
         return (new TrustedReleaseUpdateJourney())->execute(
             $this->liveDb, $this->restoreDb,
-            $signed, $this->publicKey, 'https://updates.example.test',
+            $signed, $this->publicKey, 'https://updates.example.com',
             '1.0.0', $this->paths,
             $writes ?? static fn (): bool => true,
             $health ?? fn (): bool => file_get_contents($this->paths['public'].'/index.php') === 'NEW-vB',
@@ -207,7 +207,7 @@ final class TrustedReleaseUpdateJourneyTest extends TestCase
         try {
             (new TrustedReleaseUpdateJourney())->downloadAndExecute(
                 $this->liveDb, $this->restoreDb, $signed,
-                $this->publicKey, 'https://updates.example.test', '1.0.0',
+                $this->publicKey, 'https://updates.example.com', '1.0.0',
                 $this->paths, static fn (): bool => true,
                 static fn (): bool => true, $transport,
             );
@@ -252,7 +252,7 @@ final class TrustedReleaseUpdateJourneyTest extends TestCase
         $catalog = new TrustedReleaseCatalog(static function (string $url, \Closure $write) use (
             $signed, &$catalogCalls,
         ): int {
-            self::assertSame('https://updates.example.test/releases/latest.json', $url);
+            self::assertSame('https://updates.example.com/releases/latest.json', $url);
             $catalogCalls++;
             self::assertSame(strlen($signed), $write($signed));
             return 200;
@@ -260,7 +260,7 @@ final class TrustedReleaseUpdateJourneyTest extends TestCase
         $downloader = new TrustedReleaseDownloader(static function (string $url, \Closure $write) use (
             $bytes, &$zipCalls,
         ): int {
-            self::assertSame('https://updates.example.test/releases/WalidSite-update-v1.2.0.zip', $url);
+            self::assertSame('https://updates.example.com/releases/WalidSite-update-v1.2.0.zip', $url);
             $zipCalls++;
             foreach (str_split($bytes, 29) as $chunk) {
                 self::assertSame(strlen($chunk), $write($chunk));
@@ -270,7 +270,7 @@ final class TrustedReleaseUpdateJourneyTest extends TestCase
 
         $result = (new TrustedReleaseUpdateJourney())->discoverAndExecute(
             $this->liveDb, $this->restoreDb,
-            $this->publicKey, 'https://updates.example.test', '1.0.0',
+            $this->publicKey, 'https://updates.example.com', '1.0.0',
             $this->paths,
             static fn (): bool => true,
             fn (): bool => file_get_contents($this->paths['public'].'/index.php') === 'NEW-vB',
@@ -306,7 +306,7 @@ final class TrustedReleaseUpdateJourneyTest extends TestCase
         try {
             (new TrustedReleaseUpdateJourney())->discoverAndExecute(
                 $this->liveDb, $this->restoreDb,
-                $this->publicKey, 'https://updates.example.test', '1.0.0',
+                $this->publicKey, 'https://updates.example.com', '1.0.0',
                 $this->paths,
                 static fn (): bool => true, static fn (): bool => true,
                 $catalog, $downloader,
@@ -343,7 +343,7 @@ final class TrustedReleaseUpdateJourneyTest extends TestCase
             try {
                 (new TrustedReleaseUpdateJourney())->discoverAndExecute(
                     $this->liveDb, $this->restoreDb,
-                    $this->publicKey, 'https://updates.example.test', '1.0.0',
+                    $this->publicKey, 'https://updates.example.com', '1.0.0',
                     $this->paths,
                     static fn (): bool => $quiesced, static fn (): bool => true,
                     $catalog, $downloader,
@@ -369,7 +369,7 @@ final class TrustedReleaseUpdateJourneyTest extends TestCase
             static function (string $url, \Closure $write) use ($bytes, &$requests): int {
                 $requests++;
                 self::assertSame(
-                    'https://updates.example.test/releases/WalidSite-update-v1.2.0.zip',
+                    'https://updates.example.com/releases/WalidSite-update-v1.2.0.zip',
                     $url,
                 );
                 for ($offset = 0; $offset < strlen($bytes); $offset += 17) {
@@ -382,7 +382,7 @@ final class TrustedReleaseUpdateJourneyTest extends TestCase
 
         $result = (new TrustedReleaseUpdateJourney())->downloadAndExecute(
             $this->liveDb, $this->restoreDb, $signed,
-            $this->publicKey, 'https://updates.example.test', '1.0.0',
+            $this->publicKey, 'https://updates.example.com', '1.0.0',
             $this->paths, static fn (): bool => true,
             fn (): bool => file_get_contents($this->paths['public'].'/index.php') === 'NEW-vB',
             $downloader,
@@ -412,7 +412,7 @@ final class TrustedReleaseUpdateJourneyTest extends TestCase
             try {
                 (new TrustedReleaseUpdateJourney())->downloadAndExecute(
                     $this->liveDb, $this->restoreDb, $signed,
-                    $this->publicKey, 'https://updates.example.test', '1.0.0',
+                    $this->publicKey, 'https://updates.example.com', '1.0.0',
                     $this->paths, static fn (): bool => true,
                     static fn (): bool => true, $transport,
                 );
@@ -439,7 +439,7 @@ final class TrustedReleaseUpdateJourneyTest extends TestCase
         try {
             (new TrustedReleaseUpdateJourney())->downloadAndExecute(
                 $this->liveDb, $this->restoreDb, $signed,
-                $this->publicKey, 'https://updates.example.test', '1.0.0',
+                $this->publicKey, 'https://updates.example.com', '1.0.0',
                 $this->paths, static fn (): bool => false,
                 static fn (): bool => true, $transport,
             );
@@ -503,7 +503,7 @@ final class TrustedReleaseUpdateJourneyTest extends TestCase
         try {
             (new TrustedReleaseUpdateJourney())->downloadAndExecute(
                 $this->liveDb, $this->restoreDb, $signed,
-                $this->publicKey, 'https://updates.example.test', '1.0.0',
+                $this->publicKey, 'https://updates.example.com', '1.0.0',
                 $this->paths, static fn (): bool => true, static fn (): bool => true, $downloader,
             );
             self::fail('Concurrent updater must not invoke its HTTPS transport.');

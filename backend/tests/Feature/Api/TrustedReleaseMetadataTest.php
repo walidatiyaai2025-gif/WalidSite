@@ -45,7 +45,7 @@ final class TrustedReleaseMetadataTest extends TestCase
     private function verify(string $envelope, ?string $origin = null, ?string $installed = null): array
     {
         return (new TrustedReleaseMetadata())->verify(
-            $envelope, $this->publicKey, $origin ?? 'https://updates.example.test', $installed ?? '1.1.9',
+            $envelope, $this->publicKey, $origin ?? 'https://updates.example.com', $installed ?? '1.1.9',
         );
     }
 
@@ -53,7 +53,7 @@ final class TrustedReleaseMetadataTest extends TestCase
     {
         $result = $this->verify($this->signed());
         self::assertSame('1.2.0', $result['version']);
-        self::assertSame('https://updates.example.test/releases/WalidSite-update-v1.2.0.zip', $result['artifact_url']);
+        self::assertSame('https://updates.example.com/releases/WalidSite-update-v1.2.0.zip', $result['artifact_url']);
         self::assertSame(str_repeat('b', 64), $result['artifact_sha256']);
     }
 
@@ -67,19 +67,27 @@ final class TrustedReleaseMetadataTest extends TestCase
             'https://127.0.0.1',
             'https://10.0.0.7',
             'https://internal',
-            'https://updates..example.test',
-            'https://-updates.example.test',
-            'https://updates.example.test.',
-            'https://updates.example.test:443',
-            'https://user@updates.example.test',
-            'https://updates.example.test/redirect',
+            'https://publisher.localhost',
+            'https://publisher.deep.localhost',
+            'https://publisher.local',
+            'https://publisher.internal',
+            'https://publisher.invalid',
+            'https://publisher.test',
+            'https://publisher.example',
+            'https://publisher.home.arpa',
+            'https://updates..example.com',
+            'https://-updates.example.com',
+            'https://updates.example.com.',
+            'https://updates.example.com:443',
+            'https://user@updates.example.com',
+            'https://updates.example.com/redirect',
         ] as $origin) {
             $this->assertRejected($signed, $origin);
         }
 
-        $valid = $this->verify($signed, 'https://cdn-1.updates.example.test');
+        $valid = $this->verify($signed, 'https://cdn-1.updates.example.com');
         self::assertSame(
-            'https://cdn-1.updates.example.test/releases/WalidSite-update-v1.2.0.zip',
+            'https://cdn-1.updates.example.com/releases/WalidSite-update-v1.2.0.zip',
             $valid['artifact_url'],
         );
     }
@@ -111,13 +119,13 @@ final class TrustedReleaseMetadataTest extends TestCase
         ] as $changes) {
             $this->assertRejected($this->signed(array_replace($this->metadata, $changes)));
         }
-        $this->assertRejected($this->signed(), 'https://updates.example.test/rewrite');
-        $this->assertRejected($this->signed(), 'http://updates.example.test');
-        $this->assertRejected($this->signed(), 'https://user:password@updates.example.test');
-        $this->assertRejected($this->signed(), 'https://updates.example.test:8443');
-        $this->assertRejected($this->signed(), 'https://updates.example.test?redirect=evil');
-        $this->assertRejected($this->signed(), 'https://updates.example.test#frag');
-        $this->assertRejected($this->signed(), 'https://updates.example.test', '1.2.0');
+        $this->assertRejected($this->signed(), 'https://updates.example.com/rewrite');
+        $this->assertRejected($this->signed(), 'http://updates.example.com');
+        $this->assertRejected($this->signed(), 'https://user:password@updates.example.com');
+        $this->assertRejected($this->signed(), 'https://updates.example.com:8443');
+        $this->assertRejected($this->signed(), 'https://updates.example.com?redirect=evil');
+        $this->assertRejected($this->signed(), 'https://updates.example.com#frag');
+        $this->assertRejected($this->signed(), 'https://updates.example.com', '1.2.0');
     }
 
     public function test_invalid_and_oversized_envelopes_and_bad_key_fail_closed(): void
@@ -130,7 +138,7 @@ final class TrustedReleaseMetadataTest extends TestCase
         $this->assertRejected(json_encode($envelope, JSON_THROW_ON_ERROR));
 
         $this->expectException(DomainException::class);
-        (new TrustedReleaseMetadata())->verify($this->signed(), 'invalid-base64', 'https://updates.example.test', '1.1.9');
+        (new TrustedReleaseMetadata())->verify($this->signed(), 'invalid-base64', 'https://updates.example.com', '1.1.9');
     }
 
     public function test_staged_archive_hash_length_and_private_location_are_verified(): void

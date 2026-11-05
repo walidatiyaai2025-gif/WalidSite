@@ -21,7 +21,7 @@ SIGNER = ROOT / "qa/sign_trusted_update_release.php"
 VERIFIER = ROOT / "backend/app/Domain/Deployment/TrustedReleaseMetadata.php"
 VERSION = "0.1.1"
 SOURCE_SHA = "a" * 40
-ORIGIN = "https://releases.example.test"
+ORIGIN = "https://releases.example.com"
 
 VERIFY_PHP = r"""<?php
 declare(strict_types=1);
@@ -137,9 +137,9 @@ class SignedPublisherCrossLanguageAcceptance(unittest.TestCase):
         for installed in (VERSION, "0.1.2"):
             with self.subTest(installed=installed):
                 self.assertNotEqual(self.verify(installed=installed).returncode, 0)
-        for origin in ("http://releases.example.test", "https://evil.test/path",
-                       "https://releases.example.test:8443",
-                       "https://user@releases.example.test"):
+        for origin in ("http://releases.example.com", "https://evil.test/path",
+                       "https://releases.example.com:8443",
+                       "https://user@releases.example.com"):
             with self.subTest(origin=origin):
                 self.assertNotEqual(self.verify(origin=origin).returncode, 0)
 

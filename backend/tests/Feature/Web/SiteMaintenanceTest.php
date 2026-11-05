@@ -425,7 +425,7 @@ class SiteMaintenanceTest extends TestCase
         $calls = 0;
         $this->app->instance(TrustedReleaseCatalog::class, new TrustedReleaseCatalog(
             static function (string $url, \Closure $write) use (&$calls, $envelope): int {
-                self::assertSame('https://updates.example.test/releases/latest.json', $url);
+                self::assertSame('https://updates.example.com/releases/latest.json', $url);
                 $calls++;
                 self::assertSame(strlen($envelope), $write($envelope));
                 return 200;
@@ -434,7 +434,7 @@ class SiteMaintenanceTest extends TestCase
         config([
             'site.updates_enabled' => true,
             'site.trusted_installed_version' => trim((string) file_get_contents(base_path('VERSION'))),
-            'site.trusted_release_origin' => 'https://updates.example.test',
+            'site.trusted_release_origin' => 'https://updates.example.com',
             'site.trusted_release_public_key' => $publicKey,
         ]);
         $owner = User::create([
@@ -463,7 +463,7 @@ class SiteMaintenanceTest extends TestCase
             ->assertSee('1.2.0')
             ->assertSee(str_repeat('a', 40))
             ->assertSee(str_repeat('b', 64))
-            ->assertDontSee('https://updates.example.test')
+            ->assertDontSee('https://updates.example.com')
             ->assertDontSee($publicKey)
             ->assertDontSee($envelope)
             ->assertDontSee('name="release_url"', false);
@@ -510,7 +510,7 @@ class SiteMaintenanceTest extends TestCase
         config([
             'site.updates_enabled' => true,
             'site.trusted_installed_version' => '9.9.9',
-            'site.trusted_release_origin' => 'https://updates.example.test',
+            'site.trusted_release_origin' => 'https://updates.example.com',
             'site.trusted_release_public_key' => base64_encode(str_repeat('x', 32)),
         ]);
         $owner = User::create([
@@ -532,7 +532,7 @@ class SiteMaintenanceTest extends TestCase
     public function test_old_signed_discovery_flash_is_invalidated_after_trust_or_version_change(): void
     {
         $installed = trim((string) file_get_contents(base_path('VERSION')));
-        $origin = 'https://updates.example.test';
+        $origin = 'https://updates.example.com';
         $key = base64_encode(str_repeat('x', 32));
         config([
             'site.updates_enabled' => true,
@@ -596,7 +596,7 @@ class SiteMaintenanceTest extends TestCase
         config([
             'site.updates_enabled' => true,
             'site.trusted_installed_version' => trim((string) file_get_contents(base_path('VERSION'))),
-            'site.trusted_release_origin' => 'https://updates.example.test',
+            'site.trusted_release_origin' => 'https://updates.example.com',
             'site.trusted_release_public_key' => base64_encode(str_repeat('x', 32)),
         ]);
         $owner = User::create([
@@ -612,7 +612,7 @@ class SiteMaintenanceTest extends TestCase
         $this->get('/admin/updates?lang=en')->assertOk()
             ->assertSee('data-testid="trusted-release-unverified"', false)
             ->assertDontSee('private-signature-error-do-not-display')
-            ->assertDontSee('updates.example.test')
+            ->assertDontSee('updates.example.com')
             ->assertDontSee(base64_encode(str_repeat('x', 32)));
     }
 
@@ -633,10 +633,10 @@ class SiteMaintenanceTest extends TestCase
 
         $user->roles()->attach(Role::firstOrCreate(['name' => 'owner'])->id);
         $this->post('/admin/updates/check?lang=en', [
-            'release_url' => 'https://attacker.example.test/release.zip',
+            'release_url' => 'https://attacker.example.com/release.zip',
             'publisher_public_key' => 'untrusted',
         ])->assertSessionHasErrors('updates');
-        $this->post('/admin/updates/check?origin=https://attacker.example.test')
+        $this->post('/admin/updates/check?origin=https://attacker.example.com')
             ->assertSessionHasErrors('updates');
         $user->forceFill(['status' => 'suspended'])->save();
         $this->post('/admin/updates/check?lang=ar')->assertForbidden();
