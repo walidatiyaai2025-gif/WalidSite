@@ -214,6 +214,36 @@ void main() {
     expect((await repo.load()).items.single.publishedVersion, 4);
   });
 
+  test('newer signature timestamp cannot downgrade an already pinned published version',
+      () async {
+    final keys = await _keys();
+    final moment = DateTime.now().toUtc();
+    final versionFour = await _envelope(keys.pair, version: 4,
+        signedAt: moment.subtract(const Duration(minutes: 2)));
+    final versionThreeResigned = await _envelope(keys.pair, version: 3,
+        signedAt: moment.subtract(const Duration(minutes: 1)));
+    var response = versionFour;
+    final store = _PinnedMemoryStore();
+    final repo = OfflineRunbookRepository(
+      source: SignedRunbookSource(
+        url: 'https://updates.example.org/reviewed-pack.json',
+        publicKeyBase64: keys.publicKey,
+        transport: (_) async => response,
+      ),
+      store: store,
+    );
+    await repo.syncPublished(_current(version: 4));
+    final writesBefore = store.writes;
+    response = versionThreeResigned;
+    await expectLater(repo.syncPublished(_current(version: 3)),
+        throwsFormatException);
+    expect(store.writes, writesBefore,
+        reason: 'A re-signed downgrade cannot replace a verified old copy');
+    expect(store.pins[publishedId], versionFour);
+    final restarted = OfflineRunbookRepository(source: repo.source, store: store);
+    expect((await restarted.load()).items.single.publishedVersion, 4);
+  });
+
   test('reviewed UUID + exact revision saves signed copy and reopens offline after restart',
       () async {
     final keys = await _keys();
