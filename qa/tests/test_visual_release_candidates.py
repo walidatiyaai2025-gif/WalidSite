@@ -5,6 +5,7 @@ from pathlib import Path
 import tempfile
 import unittest
 import zipfile
+from unittest.mock import patch
 
 from qa.build_cpanel_package import PRIVATE_GUARD_PATHS, PRIVATE_TREE_DENY
 from qa.prepare_release_candidate import prepare
@@ -73,6 +74,39 @@ class ReleaseCandidateTest(unittest.TestCase):
         self.assertIn('UNPUBLISHED', (self.out / 'WalidSite-Release-Notes-v1.2.3.md').read_text())
         with self.assertRaisesRegex(ValueError, 'already exists'):
             prepare(self.source, self.out, '1.2.3', SHA)
+
+    def test_source_path_replacement_after_verification_cannot_mix_setup_and_update(self):
+        original = self.source.read_bytes()
+        approved_code = self.entries['application/bootstrap/app.php']
+        verified_paths = []
+        from qa.build_cpanel_package import verify_archive as real_verify
+
+        def replace_original_after_verified(frozen, sha):
+            self.assertNotEqual(frozen, self.source)
+            self.assertTrue(frozen.exists())
+            manifest = real_verify(frozen, sha)
+            verified_paths.append(frozen)
+            # An operator-controlled pathname is replaced after the trusted
+            # verifier finishes, before either published artifact is copied.
+            self.entries['application/bootstrap/app.php'] = b'<?php exit("INJECTED");'
+            self.make_source()
+            return manifest
+
+        with patch('qa.prepare_release_candidate.verify_archive',
+                   side_effect=replace_original_after_verified) as verifier:
+            receipt = prepare(self.source, self.out, '1.2.3', SHA)
+        verifier.assert_called_once()
+        self.assertFalse(verified_paths[0].exists())
+        setup = self.out / receipt['setup']['file']
+        update = self.out / receipt['update']['file']
+        self.assertEqual(setup.read_bytes(), original)
+        self.assertNotEqual(self.source.read_bytes(), original)
+        with zipfile.ZipFile(update) as archive:
+            self.assertEqual(archive.read('application/bootstrap/app.php'), approved_code)
+        with zipfile.ZipFile(self.source) as replaced:
+            self.assertNotEqual(replaced.read('application/bootstrap/app.php'), approved_code)
+        self.assertEqual(receipt['setup']['sha256'], hashlib.sha256(original).hexdigest())
+        self.assertFalse(receipt['publisher_signature_verified'])
 
     def test_corrupt_archive_wrong_sha_invalid_version_and_symlinks_rejected(self):
         with zipfile.ZipFile(self.source, 'a') as archive:
