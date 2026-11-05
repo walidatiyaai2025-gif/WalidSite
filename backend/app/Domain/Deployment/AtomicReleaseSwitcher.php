@@ -83,7 +83,30 @@ final class AtomicReleaseSwitcher
                 if (realpath($currentLink) !== $candidate || $healthCheck() !== true) {
                     throw new RuntimeException('New release failed application health verification.');
                 }
+                // A health callback is external code and may change the live
+                // pointer or the lease pathname. Never report success based
+                // solely on the state observed before calling it.
+                $this->assertSecureLockIdentity($lock, $lockFile);
+                if (realpath($currentLink) !== $candidate
+                    || realpath($publicDocumentRoot) !== $candidate.'/public_html') {
+                    throw new RuntimeException('Release pointer changed during health verification.');
+                }
             } catch (Throwable $problem) {
+                // If ownership of the lock or pointer is no longer proven,
+                // an automatic rollback might overwrite another deployer's
+                // newer release. Stop and require verified manual recovery.
+                try {
+                    $this->assertSecureLockIdentity($lock, $lockFile);
+                    if (realpath($currentLink) !== $candidate) {
+                        throw new DomainException('Release pointer ownership lost during health check.');
+                    }
+                } catch (Throwable $ownershipFailure) {
+                    throw new RuntimeException(
+                        'Release ownership changed; manual recovery required before further updates.',
+                        0,
+                        $ownershipFailure,
+                    );
+                }
                 try {
                     $this->replacePointer($currentLink, $previous);
                     if (realpath($currentLink) !== $previous) {

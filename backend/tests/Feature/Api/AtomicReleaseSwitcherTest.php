@@ -226,6 +226,61 @@ final class AtomicReleaseSwitcherTest extends TestCase
         self::assertSame('v2', file_get_contents($this->next.'/public_html/index.php'));
     }
 
+    public function test_health_callback_cannot_replace_live_pointer_and_claim_success(): void
+    {
+        try {
+            (new AtomicReleaseSwitcher())->switch(
+                $this->releases, $this->current, $this->docroot, $this->next,
+                static fn (): bool => true,
+                function (): bool {
+                    self::assertSame('v2', file_get_contents($this->docroot.'/index.php'));
+                    // Simulate an independent deployment changing the current
+                    // pointer while our external health callback is running.
+                    self::assertTrue(unlink($this->current));
+                    self::assertTrue(symlink($this->old, $this->current));
+                    return true;
+                },
+            );
+            self::fail('Changed current pointer must not be reported as a successful release.');
+        } catch (RuntimeException $error) {
+            self::assertStringContainsString('manual recovery required', $error->getMessage());
+        }
+
+        self::assertSame($this->old, realpath($this->current));
+        self::assertSame('v1', file_get_contents($this->docroot.'/index.php'));
+    }
+
+    public function test_health_callback_replacing_lock_requires_manual_recovery_not_unsafe_rollback(): void
+    {
+        if (PHP_OS_FAMILY === 'Windows') {
+            self::markTestSkipped('POSIX lock replacement fixture required.');
+        }
+        $lockPath = $this->releases.'/.release-switch.lock';
+        $orphaned = $this->releases.'/.orphaned-health-lock';
+        try {
+            (new AtomicReleaseSwitcher())->switch(
+                $this->releases, $this->current, $this->docroot, $this->next,
+                static fn (): bool => true,
+                function () use ($lockPath, $orphaned): bool {
+                    self::assertSame('v2', file_get_contents($this->docroot.'/index.php'));
+                    if (! rename($lockPath, $orphaned)
+                        || file_put_contents($lockPath, 'replacement') === false) {
+                        throw new RuntimeException('Cannot arrange health lock swap fixture.');
+                    }
+                    return true;
+                },
+            );
+            self::fail('Lost lease must never produce a successful cutover receipt.');
+        } catch (RuntimeException $error) {
+            self::assertStringContainsString('manual recovery required', $error->getMessage());
+        }
+        self::assertSame('replacement', file_get_contents($lockPath));
+        // No unsafe automatic rollback while a different process could now
+        // hold the replacement lock. Operators must verify the live release.
+        self::assertSame($this->next, realpath($this->current));
+        self::assertSame('v2', file_get_contents($this->docroot.'/index.php'));
+    }
+
     private function reject(?string $candidate = null): void
     {
         try {
