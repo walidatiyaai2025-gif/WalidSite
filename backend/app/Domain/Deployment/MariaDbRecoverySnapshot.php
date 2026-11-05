@@ -194,21 +194,6 @@ final class MariaDbRecoverySnapshot
                     throw new DomainException('Unable to rewind verified MariaDB recovery row source.');
                 }
 
-                // Reject altered row bytes before decoding arbitrary rows. Hash the
-                // same opened regular inode, then rewind it for strict parsing;
-                // the second digest below detects changes during that pass.
-                $sourceHash = hash_init('sha256');
-                if (hash_update_stream($sourceHash, $input) !== $before['size']) {
-                    throw new DomainException('MariaDB recovery row stream is incomplete.');
-                }
-                $this->assertStableRowFile($input, $file, $before);
-                if (! hash_equals($info['file_sha256'], hash_final($sourceHash))) {
-                    throw new DomainException('MariaDB recovery file checksum mismatch before restore.');
-                }
-                if (! rewind($input)) {
-                    throw new DomainException('Cannot rewind verified MariaDB row stream.');
-                }
-
                 $count = 0;
                 $digests = [];
                 $fileHash = hash_init('sha256');
