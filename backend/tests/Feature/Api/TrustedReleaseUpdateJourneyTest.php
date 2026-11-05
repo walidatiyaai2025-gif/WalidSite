@@ -466,6 +466,57 @@ final class TrustedReleaseUpdateJourneyTest extends TestCase
         }
     }
 
+    public function test_hard_linked_trusted_lock_is_rejected_before_backup_or_cutover(): void
+    {
+        if (! function_exists('link')) {
+            self::markTestSkipped('Hard-link fixture unavailable.');
+        }
+        $unrelated = $this->home.'/other-secret.txt';
+        file_put_contents($unrelated, 'DO_NOT_MODIFY');
+        $lockPath = $this->paths['backup_vault'].'/.trusted-update.lock';
+        if (! @link($unrelated, $lockPath)) {
+            self::markTestSkipped('Host disallows hard-link fixture.');
+        }
+
+        try {
+            $this->update($this->signedZip());
+            self::fail('Hard-linked update lock was trusted.');
+        } catch (DomainException $error) {
+            self::assertStringContainsString('lock path or inode', $error->getMessage());
+            self::assertSame('DO_NOT_MODIFY', file_get_contents($unrelated));
+            self::assertSame('LIVE-vA', file_get_contents($this->paths['public'].'/index.php'));
+            self::assertSame([], glob($this->paths['backup_vault'].'/mariadb-*') ?: []);
+        }
+    }
+
+    public function test_swapped_trusted_lock_during_maintenance_blocks_update_before_promotion(): void
+    {
+        if (PHP_OS_FAMILY === 'Windows') {
+            self::markTestSkipped('POSIX lock rename required.');
+        }
+        $signed = $this->signedZip();
+        $lock = $this->paths['backup_vault'].'/.trusted-update.lock';
+        $displaced = $this->paths['backup_vault'].'/.displaced-lock';
+        $writes = static function () use ($lock, $displaced): bool {
+            if (! rename($lock, $displaced)
+                || file_put_contents($lock, 'replacement') === false) {
+                throw new RuntimeException('Cannot arrange controlled lock swap.');
+            }
+            return true;
+        };
+        try {
+            $this->update($signed, $writes);
+            self::fail('Replaced lock identity was accepted during update.');
+        } catch (DomainException $error) {
+            self::assertStringContainsString('lock path or inode', $error->getMessage());
+            self::assertSame('replacement', file_get_contents($lock));
+            self::assertSame('LIVE-vA', file_get_contents($this->paths['public'].'/index.php'));
+            self::assertSame('APP_KEY=keep-existing-secret', file_get_contents($this->paths['environment']));
+            self::assertSame([], glob($this->paths['backup_vault'].'/mariadb-*') ?: []);
+            self::assertSame([], glob($this->paths['releases'].'/v1.2*') ?: []);
+        }
+    }
+
     public function test_second_offline_update_is_rejected_before_promoting_or_backing_up(): void
     {
         $signed = $this->signedZip();
