@@ -260,6 +260,34 @@ void main() {
     );
   });
 
+
+  test('ambiguous article Save confirmation has one total deadline', () async {
+    final neverReplies = Completer<MobileSavedPage>();
+    var queries = 0;
+    await expectLater(
+      MobileAccountClient.confirmArticleInSavedList(
+        'same-account-bearer',
+        articleId,
+        (_, __, ___) {
+          queries++;
+          return neverReplies.future;
+        },
+        totalDeadline: const Duration(milliseconds: 5),
+      ),
+      throwsA(isA<TimeoutException>()),
+    );
+    expect(queries, 1, reason: 'Never issue another POST or unbounded page read');
+    await expectLater(
+      MobileAccountClient.confirmArticleInSavedList(
+        'same-account-bearer',
+        articleId,
+        (_, __, ___) async => fail('Invalid deadline must not fetch Saved'),
+        totalDeadline: Duration.zero,
+      ),
+      throwsFormatException,
+    );
+  });
+
   test('bookmarks need exact positive HTTP 200 body, UUID and resource type', () {
     final receipt = jsonEncode({
       'data': {
