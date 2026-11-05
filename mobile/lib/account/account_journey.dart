@@ -99,7 +99,9 @@ class MobileSavedPage {
   final bool hasMore;
 
   static MobileSavedPage parse(String raw, int requestedPage) {
-    if (raw.length > 512 * 1024 || requestedPage < 1 || requestedPage > 10000) {
+    if (raw.length > 512 * 1024 ||
+        utf8.encode(raw).length > 512 * 1024 ||
+        requestedPage < 1 || requestedPage > 10000) {
       throw const FormatException('Saved catalog limit exceeded');
     }
     final json = jsonDecode(raw);
@@ -620,10 +622,18 @@ class _MobileAccountJourneyState extends State<MobileAccountJourney> {
     final token = _epoch;
     setState(() { _loadingMore = true; _message = null; });
     try {
-      final next = await _readSaved(_session!.token, widget.arabic, _page + 1);
+      final expectedPage = _page + 1;
+      final next = await _readSaved(_session!.token, widget.arabic, expectedPage);
       if (!mounted || token != _epoch) return;
-      final seen = _saved.map((item) => '${item.type}:${item.id}').toSet();
-      if (next.items.any((item) => !seen.add('${item.type}:${item.id}'))) {
+      // A mismatched page or a UUID with changed letter case is not a new
+      // account-owned bookmark. Preserve the prior verified page on failure.
+      if (next.page != expectedPage || (next.hasMore && next.items.isEmpty)) {
+        throw const FormatException('Invalid saved page continuation');
+      }
+      final seen = _saved.map((item) =>
+          '${item.type}:${item.id.toLowerCase()}').toSet();
+      if (next.items.any((item) =>
+          !seen.add('${item.type}:${item.id.toLowerCase()}'))) {
         throw const FormatException('Repeated saved item');
       }
       setState(() {
