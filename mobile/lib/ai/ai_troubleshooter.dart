@@ -47,7 +47,11 @@ class MobileAiJob {
   static bool isValidId(String value) => _uuid.hasMatch(value);
 
   static MobileAiJob parse(String raw) {
-    if (raw.length > 128 * 1024) {
+    // A decoded Dart string can represent far more UTF-8 bytes than its
+    // length implies. Enforce the authenticated status payload budget before
+    // jsonDecode, including direct callers outside the bounded HTTP reader.
+    if (raw.length > 128 * 1024 ||
+        utf8.encode(raw).length > 128 * 1024) {
       throw const FormatException('Oversized diagnosis response');
     }
     final decoded = jsonDecode(raw);

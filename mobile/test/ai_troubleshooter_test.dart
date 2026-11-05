@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -111,6 +112,40 @@ void main() {
     }
   }));
 
+
+  test('MOBILE-03 job JSON rejects oversized multibyte bytes before decode', () {
+    const limit = 128 * 1024;
+    final raw = jsonEncode({
+      'data': {
+        'id': '11111111-1111-4111-8111-111111111111',
+        'status': 'completed',
+        'progress_percent': 100,
+        'result_url': null,
+        'retry_after_seconds': null,
+        'padding': 'é' * (70 * 1024),
+      },
+    });
+    expect(raw.length, lessThan(limit),
+        reason: 'Dart UTF-16 length would incorrectly pass the limit');
+    expect(utf8.encode(raw).length, greaterThan(limit));
+    expect(
+      () => MobileAiJob.parse(raw),
+      throwsA(isA<FormatException>().having(
+          (error) => error.message, 'message',
+          'Oversized diagnosis response')),
+    );
+
+    final valid = jsonEncode({
+      'data': {
+        'id': '11111111-1111-4111-8111-111111111111',
+        'status': 'completed',
+        'progress_percent': 100,
+        'result_url': null,
+        'retry_after_seconds': null,
+      },
+    });
+    expect(MobileAiJob.parse(valid).status, 'completed');
+  });
 
   test('MOBILE-03 total HTTP deadline rejects a never-ending body', () async {
     final pending = Completer<void>();
