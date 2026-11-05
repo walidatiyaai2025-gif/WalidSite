@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -227,29 +228,55 @@ class AccountPrivacyClient {
         }.contains(path)) {
       throw const FormatException('Privacy API not configured');
     }
+
+    // Only the pinned build-time HTTPS API origin is used in production.
+    return boundedExchange(method, origin.replace(path: path), token,
+        payload: payload);
+  }
+
+  /// Total deadline covers socket connection, headers, every body byte and
+  /// strict decoding. Per-chunk timeouts can be reset by a slow-drip peer.
+  /// This test seam is never used to choose a production URL: _request
+  /// validates the compile-time origin before calling it.
+  @visibleForTesting
+  static Future<String> boundedExchange(
+    String method, Uri url, String token, {
+    Map<String, Object?>? payload,
+    Duration totalTimeout = const Duration(seconds: 12),
+  }) async {
+    if (token.isEmpty || token.length > 8192 ||
+        totalTimeout <= Duration.zero) {
+      throw const FormatException('Invalid privacy request');
+    }
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
     try {
-      final request = await client.openUrl(method, origin.replace(path: path))
-          .timeout(const Duration(seconds: 8));
-      request.followRedirects = false;
-      request.headers.set(HttpHeaders.acceptHeader, 'application/json');
-      request.headers.set(HttpHeaders.authorizationHeader, 'Bearer ' + token);
-      if (payload != null) {
-        request.headers.set(HttpHeaders.contentTypeHeader, 'application/json');
-        request.add(utf8.encode(jsonEncode(payload)));
-      }
-      final response = await request.close().timeout(const Duration(seconds: 8));
-      if (response.statusCode != HttpStatus.ok) {
-        throw MobileAiHttpException(response.statusCode);
-      }
-      final buffer = BytesBuilder(copy: false);
-      await for (final chunk in response.timeout(const Duration(seconds: 8))) {
-        if (buffer.length + chunk.length > 2 * 1024 * 1024) {
-          throw const FormatException('Privacy response too large');
+      return await Future<String>.sync(() async {
+        final request = await client.openUrl(method, url);
+        request.followRedirects = false;
+        request.headers.set(HttpHeaders.acceptHeader, 'application/json');
+        request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $token');
+        if (payload != null) {
+          request.headers.set(HttpHeaders.contentTypeHeader, 'application/json');
+          request.add(utf8.encode(jsonEncode(payload)));
         }
-        buffer.add(chunk);
-      }
-      return utf8.decode(buffer.takeBytes(), allowMalformed: false);
+        final response = await request.close();
+        if (response.statusCode != HttpStatus.ok) {
+          throw MobileAiHttpException(response.statusCode);
+        }
+        final buffer = BytesBuilder(copy: false);
+        await for (final chunk in response) {
+          if (buffer.length + chunk.length > 2 * 1024 * 1024) {
+            throw const FormatException('Privacy response too large');
+          }
+          buffer.add(chunk);
+        }
+        return utf8.decode(buffer.takeBytes(), allowMalformed: false);
+      }).timeout(totalTimeout, onTimeout: () {
+        // Never keep a socket alive after an ambiguous consent or DELETE.
+        // Callers retain fail-closed acknowledgement parsing; no auto retry.
+        client.close(force: true);
+        throw TimeoutException('Privacy API total request deadline exceeded');
+      });
     } finally {
       client.close(force: true);
     }
