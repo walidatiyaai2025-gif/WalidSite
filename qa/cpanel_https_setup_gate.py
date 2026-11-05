@@ -22,7 +22,8 @@ from html.parser import HTMLParser
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urlsplit
-from urllib.request import HTTPSHandler, HTTPCookieProcessor, HTTPRedirectHandler, Request, build_opener
+from urllib.request import (HTTPSHandler, HTTPCookieProcessor, HTTPRedirectHandler,
+                            ProxyHandler, Request, build_opener)
 
 MAX_BODY = 128 * 1024
 PRIVATE_PATHS = (
@@ -90,12 +91,43 @@ def private_token(account_home: Path) -> str:
     path = account_home / "application/storage/app/site-first-run.json"
     if any(item.is_symlink() for item in [path, *path.parents] if item != Path("/")):
         raise AcceptanceError("Private bootstrap symlink refused")
-    if not path.is_file() or path.stat().st_size > 4096:
+    # A hard link exposes the same private possession token under another
+    # pathname (including an arbitrary name in public_html), which fixed
+    # web-path probes cannot enumerate. The token must have one regular inode,
+    # held open with O_NOFOLLOW while reading. Compare opened versus named
+    # identity before and after the read to reject a concurrent pathname swap.
+    if not path.is_file():
         raise AcceptanceError("Missing or oversized private bootstrap")
-    if stat.S_IMODE(path.stat().st_mode) & 0o077:
-        raise AcceptanceError("Private bootstrap is accessible by group or others")
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
+        before = path.lstat()
+        if (not stat.S_ISREG(before.st_mode) or before.st_nlink != 1
+                or not 0 < before.st_size <= 4096):
+            raise AcceptanceError("Unsafe private bootstrap file identity")
+        if stat.S_IMODE(before.st_mode) & 0o077:
+            raise AcceptanceError("Private bootstrap is accessible by group or others")
+        flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+        flags |= getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NONBLOCK", 0)
+        fd = os.open(path, flags)
+        try:
+            identity = lambda st: (st.st_dev, st.st_ino, st.st_mode, st.st_nlink,
+                                   st.st_size, st.st_mtime_ns, st.st_ctime_ns)
+            if identity(os.fstat(fd)) != identity(before):
+                raise AcceptanceError("Private bootstrap changed before reading")
+            chunks = []
+            length = 0
+            while length < before.st_size:
+                part = os.read(fd, before.st_size - length)
+                if not part:
+                    raise AcceptanceError("Truncated private bootstrap")
+                chunks.append(part)
+                length += len(part)
+            if (os.read(fd, 1)
+                    or identity(os.fstat(fd)) != identity(before)
+                    or identity(path.lstat()) != identity(before)):
+                raise AcceptanceError("Private bootstrap changed while reading")
+        finally:
+            os.close(fd)
+        payload = json.loads(b"".join(chunks).decode("utf-8"))
         value = payload["token"]
     except (ValueError, UnicodeError, KeyError, TypeError, OSError) as exc:
         raise AcceptanceError("Invalid private bootstrap contents") from exc
@@ -132,7 +164,12 @@ class Client:
             context = ssl.create_default_context(cafile=str(ca_file))
         except (OSError, ssl.SSLError) as exc:
             raise AcceptanceError("Invalid local CA certificate") from exc
-        self.opener = build_opener(HTTPSHandler(context=context),
+        # This acceptance harness sends the private possession token to
+        # explicit localhost HTTPS only. Never inherit HTTPS_PROXY,
+        # ALL_PROXY or CGI proxy variables from the CI/operator machine:
+        # urllib's default ProxyHandler could tunnel token-bearing POSTs
+        # through an unrelated proxy even for an approved localhost origin.
+        self.opener = build_opener(ProxyHandler({}), HTTPSHandler(context=context),
                                    HTTPCookieProcessor(self.cookies), NoRedirect())
         self.timeout = timeout
 
