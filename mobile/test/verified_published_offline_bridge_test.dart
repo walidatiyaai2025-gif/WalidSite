@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:cryptography/cryptography.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:waleed_tech_companion/runbooks/offline_runbooks.dart';
 import 'package:waleed_tech_companion/runbooks/signed_runbook_sync.dart';
 import 'package:waleed_tech_companion/runbooks/verified_online_runbooks.dart';
 
@@ -272,6 +273,48 @@ void main() {
     expect(store.pins[publishedId], newerPublished);
     expect(store.global, laterResignedOld);
     expect(fetches, 0, reason: 'Offline reopen must not contact publisher');
+  });
+
+  test('cold start hides conflicting signed same-version public UUID', () async {
+    final keys = await _keys();
+    final now = DateTime.now().toUtc();
+    final approved = await _envelope(keys.pair, version: 3,
+        signedAt: now.subtract(const Duration(minutes: 3)));
+    final redefined = await _envelope(keys.pair, version: 3,
+        markdown: '# Different content under the same published version',
+        signedAt: now.subtract(const Duration(minutes: 1)));
+    final store = _PinnedMemoryStore()
+      ..global = approved
+      ..pins[publishedId] = redefined;
+    var fallbackReads = 0;
+    var fetches = 0;
+    final repository = OfflineRunbookRepository(
+      source: SignedRunbookSource(
+        url: 'https://updates.example.org/reviewed-pack.json',
+        publicKeyBase64: keys.publicKey,
+        transport: (_) async {
+          fetches++;
+          return redefined;
+        },
+      ),
+      store: store,
+      bundled: () async {
+        fallbackReads++;
+        return const OfflineRunbookPack(
+          version: 'bundled', source: 'Bundled offline guidance',
+          lastSynced: null, verifiedAt: null, items: [],
+        );
+      },
+    );
+    final offline = await repository.load();
+    expect(offline.items, isEmpty,
+        reason: 'Neither disputed signed revision may appear as verified');
+    expect(offline.signedVerified, isFalse);
+    expect(fallbackReads, 1);
+    expect(fetches, 0, reason: 'Cold-start conflict must not phone home');
+    expect(store.global, approved);
+    expect(store.pins[publishedId], redefined);
+    expect(store.writes, 0);
   });
 
   test('global signed snapshot rejects newer signed timestamp with older publication',

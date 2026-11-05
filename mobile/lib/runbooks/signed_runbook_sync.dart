@@ -464,6 +464,18 @@ class OfflineRunbookRepository {
         // higher published version on a subsequent cold start.
         final version = item.publishedVersion ?? 0;
         final previousVersion = prior?.item.publishedVersion ?? 0;
+        if (prior != null && version == previousVersion &&
+            (item.publishedMarkdown != prior.item.publishedMarkdown ||
+             item.publishedBodySha256 != prior.item.publishedBodySha256 ||
+             item.publishedValidatedAt?.isAtSameMomentAs(
+                 prior.item.publishedValidatedAt ?? DateTime.fromMillisecondsSinceEpoch(0, isUtc: true)) != true)) {
+          // Two correctly signed envelopes cannot silently redefine the
+          // same publication version. Hide this UUID until the conflict is
+          // resolved rather than selecting by the newer signing timestamp.
+          entries.remove(item.id);
+          conflicts.add(item.id);
+          continue;
+        }
         if (prior == null || version > previousVersion ||
             (version == previousVersion && time.isAfter(prior.time))) {
           entries[item.id] = (item: item, time: time, envelope: envelope);
@@ -497,7 +509,11 @@ class OfflineRunbookRepository {
     } catch (_) {
       // Corrupted index is not trusted. A valid global snapshot is unchanged.
     }
-    if (entries.isEmpty) return global?.pack ?? await bundled();
+    // A conflicting signed publication must not re-enter through the
+    // legacy global-pack fallback after being deliberately excluded.
+    if (entries.isEmpty) {
+      return conflicts.isEmpty ? (global?.pack ?? await bundled()) : await bundled();
+    }
     final ids = entries.keys.toList()..sort();
     final copies = ids.map((id) => entries[id]!).toList();
     final oldest = copies.map((copy) => copy.time)
