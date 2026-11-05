@@ -1,11 +1,13 @@
 """W10 real-HTTP gate unit regressions; live Apache is tested separately."""
 import io
 import json
+import os
 import tempfile
 import unittest
 from contextlib import redirect_stderr
 from pathlib import Path
 from unittest.mock import patch
+from urllib.request import ProxyHandler, getproxies
 
 from qa.cpanel_https_setup_gate import (
     AcceptanceError, Client, Response, accept, csrf_from_html,
@@ -64,6 +66,81 @@ class FirstRunHttpGateTest(unittest.TestCase):
         self.private.symlink_to(moved)
         with self.assertRaises(AcceptanceError):
             private_token(self.home)
+
+    def test_private_token_rejects_public_hardlink_without_http_or_token_leak(self):
+        self.assertEqual(private_token(self.home), TOKEN)
+        public_alias = self.home / "public_html" / "innocent-name.txt"
+        try:
+            os.link(self.private, public_alias)
+        except (OSError, NotImplementedError):
+            self.skipTest("Hard links unsupported by this test filesystem")
+        try:
+            with self.assertRaises(AcceptanceError) as denied:
+                private_token(self.home)
+            self.assertNotIn(TOKEN, str(denied.exception))
+        finally:
+            public_alias.unlink()
+        self.assertEqual(private_token(self.home), TOKEN)
+
+    def test_private_token_pathname_swap_during_read_fails_closed(self):
+        # The attacker can write a replacement with the exact same token,
+        # size and permissions. Pinning the file alone is insufficient: its
+        # original *named inode* must still be present after the read.
+        real_read = os.read
+        moved = self.home / "former-private-token.json"
+        swapped = False
+
+        def swap_after_first_read(fd, amount):
+            nonlocal swapped
+            payload = real_read(fd, amount)
+            if payload and not swapped:
+                swapped = True
+                self.private.rename(moved)
+                self.private.write_bytes(moved.read_bytes())
+                self.private.chmod(0o600)
+            return payload
+
+        try:
+            with patch("qa.cpanel_https_setup_gate.os.read",
+                       side_effect=swap_after_first_read):
+                with self.assertRaises(AcceptanceError):
+                    private_token(self.home)
+            self.assertTrue(swapped)
+        finally:
+            if moved.exists():
+                self.private.unlink()
+                moved.rename(self.private)
+        self.assertEqual(private_token(self.home), TOKEN)
+
+    def test_loopback_installer_never_inherits_environment_proxy(self):
+        ca = self.home / "local-only-ca.pem"
+        ca.write_text("synthetic test context; no network opened")
+        environment = {
+            "HTTPS_PROXY": "http://attacker-proxy.example:8080",
+            "HTTP_PROXY": "http://attacker-proxy.example:8080",
+            "ALL_PROXY": "http://attacker-proxy.example:8080",
+            "NO_PROXY": "",
+            "https_proxy": "http://attacker-proxy.example:8080",
+            "all_proxy": "http://attacker-proxy.example:8080",
+            "no_proxy": "",
+        }
+        with patch.dict(os.environ, environment), patch(
+                "qa.cpanel_https_setup_gate.ssl.create_default_context") as context:
+            client = Client("https://localhost:18966", ca)
+            # Confirm a hostile proxy is actually visible to urllib.
+            # Handler enumeration is not portable for localhost bypass rules.
+            ambient_proxies = getproxies()
+        context.assert_called_once_with(cafile=str(ca))
+        handlers = [handler for handler in client.opener.handlers
+                    if isinstance(handler, ProxyHandler)]
+        # Python's OpenerDirector omits the deliberately empty
+        # ProxyHandler({}) instance from its handler list. Passing it to
+        # build_opener still suppresses the implicit ENV-based handler.
+        self.assertEqual(handlers, [])
+        self.assertEqual(ambient_proxies.get("https"),
+                         environment["https_proxy"])
+        self.assertEqual(client.origin, "https://localhost:18966")
+        self.assertEqual(private_token(self.home), TOKEN)
 
     def test_public_html_symlink_to_private_tree_is_rejected_before_http(self):
         public = self.home / "public_html"
