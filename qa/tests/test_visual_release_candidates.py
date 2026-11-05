@@ -179,8 +179,8 @@ class ReleaseCandidateTest(unittest.TestCase):
     def test_composer_provenance_rejects_control_and_bidi_versions(self):
         # Source checksum verification is separate from safe presentation
         # of publisher-facing package version metadata in Build Info.
-        for invalid in ('v1.2.3\\nINJECTED', 'dev-main\\t', 'v1.0.0\\u202e',
-                        'dev-main\\u200b', 'v1.0.0\\x7f'):
+        for invalid in ('v1.2.3\nINJECTED', 'dev-main\t', 'v1.0.0\u202e',
+                        'dev-main\u200b', 'v1.0.0\x7f'):
             with self.subTest(version=repr(invalid)):
                 self.entries['application/composer.lock'] = json.dumps({
                     'packages': [{'name': 'laravel/framework', 'version': invalid}],
