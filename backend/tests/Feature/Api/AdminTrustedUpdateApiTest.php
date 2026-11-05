@@ -107,11 +107,14 @@ final class AdminTrustedUpdateApiTest extends TestCase
         $this->app->instance(TrustedReleaseCatalog::class, new TrustedReleaseCatalog(
             static function () use (&$calls): int {
                 $calls++;
-                throw new \\LogicException('Network should not be reached for a stale installed version');
+                throw new \LogicException('Network should not be reached for a stale installed version');
             },
         ));
         $this->withToken($this->token());
         $realVersion = trim((string) file_get_contents(base_path('VERSION')));
+        if (! function_exists('sodium_crypto_sign_keypair')) {
+            self::markTestSkipped('Ed25519 required for trusted-release fixtures.');
+        }
         $realKey = base64_encode(sodium_crypto_sign_publickey(sodium_crypto_sign_keypair()));
         foreach (['0.0.0', '9.9.9', 'unidentified', ''] as $incorrectVersion) {
             $this->configuration($realKey, $incorrectVersion);
