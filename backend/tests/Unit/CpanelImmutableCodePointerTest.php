@@ -442,6 +442,41 @@ final class CpanelImmutableCodePointerTest extends TestCase
         }
     }
 
+    public function test_health_probe_cannot_mutate_signed_php_and_leave_pointer_active(): void
+    {
+        $bootstrap = $this->candidate.'/application/bootstrap/app.php';
+        $originalDigest = hash_file('sha256', $bootstrap);
+        $checks = 0;
+        $signed = static function () use ($bootstrap, $originalDigest, &$checks): bool {
+            ++$checks;
+            return hash_equals($originalDigest, (string) hash_file('sha256', $bootstrap));
+        };
+        $health = function () use ($bootstrap): bool {
+            $this->assertFileExists($this->home.'/.walidsite-active-release.json');
+            file_put_contents($bootstrap, '<?php // modified after signed validation');
+            return true;
+        };
+
+        try {
+            (new CpanelImmutableCodePointer())->activate(...$this->args(
+                signed: $signed,
+                health: $health,
+            ));
+            $this->fail('Mutated release PHP was accepted after health validation.');
+        } catch (RuntimeException $failure) {
+            $this->assertStringContainsString('old code pointer restored', $failure->getMessage());
+        }
+
+        $this->assertSame(3, $checks);
+        $this->assertFileDoesNotExist($this->home.'/.walidsite-active-release.json');
+        $this->assertSame('KEEP_MY_PRIVATE_APP_KEY', file_get_contents(
+            $this->home.'/application/.env',
+        ));
+        $this->assertSame('PRIVATE_UPLOAD', file_get_contents(
+            $this->home.'/application/storage/app/photo.txt',
+        ));
+    }
+
     public function test_changed_public_router_or_htaccess_blocks_unsafe_cutover(): void
     {
         file_put_contents($this->candidate.'/public_html/.htaccess', 'RewriteEngine Off');

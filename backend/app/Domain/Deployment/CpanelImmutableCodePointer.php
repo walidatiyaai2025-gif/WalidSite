@@ -148,6 +148,12 @@ final class CpanelImmutableCodePointer
                 // changes runtime dependencies, restore the old pointer
                 // rather than reporting the unverified code as installed.
                 $this->assertComposerParity($oldRoot, $candidate);
+                // The HTTP health callback may have altered non-Composer PHP
+                // code while the new pointer was provisionally active. Recheck
+                // the complete signed candidate identity before accepting it.
+                if ($signedCandidateVerified() !== true) {
+                    throw new RuntimeException('Signed release identity changed during health verification.');
+                }
                 // The HTTP health probe may consume the last seconds of the
                 // private maintenance lease. Never return "switched" after
                 // its expiration: the stable dispatcher would serve old code
