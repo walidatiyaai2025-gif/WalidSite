@@ -110,7 +110,7 @@ void main() {
         throwsA(isA<TimeoutException>()));
     expect(client.requests, 1);
     expect(client.requestedUri!.scheme, 'https');
-    expect(client.requestedUri!.path, '/api/v1/public/articles');
+    expect(client.requestedUri!.path, '/api/v1/mobile/articles');
     expect(client.request.followRedirects, isFalse);
     expect(client.forciblyClosed, isTrue);
     expect(client.connectionTimeout, const Duration(seconds: 8));
