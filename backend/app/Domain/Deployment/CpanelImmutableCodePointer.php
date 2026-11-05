@@ -205,8 +205,12 @@ final class CpanelImmutableCodePointer
             if (! is_dir($parent) && ! @mkdir($parent, 0755, true)) {
                 throw new RuntimeException('Cannot stage public asset directory.');
             }
-            if (is_link($target) || is_link($parent) || realpath($parent) === false
-                || ! str_starts_with(realpath($parent).'/', $publicRoot.'/')) {
+            // A symlink at ANY ancestor is unsafe, even if it currently
+            // resolves back inside public_html. Require the literal parent
+            // to be the resolved directory before writing a release asset.
+            clearstatcache(true, $parent);
+            if (is_link($target) || realpath($parent) !== $parent
+                || ! str_starts_with($parent.'/', $publicRoot.'/')) {
                 throw new DomainException('Asset destination is linked or escapes web root.');
             }
             $sourceHash = hash_file('sha256', $entry->getPathname());
@@ -228,9 +232,16 @@ final class CpanelImmutableCodePointer
                 @unlink($temporary);
                 throw new RuntimeException('Failed staging immutable public asset.');
             }
-            if (! @rename($temporary, $target)) {
+            // rename() overwrites an existing target on POSIX. Publish
+            // atomically without replacement: another writer creating the
+            // path between the existence check and activation must not lose
+            // its file. cPanel/Linux supports same-directory hard links.
+            try {
+                if (! @link($temporary, $target)) {
+                    throw new RuntimeException('Unable to publish immutable asset without overwriting an existing file.');
+                }
+            } finally {
                 @unlink($temporary);
-                throw new RuntimeException('Failed activating immutable public asset.');
             }
         }
     }
