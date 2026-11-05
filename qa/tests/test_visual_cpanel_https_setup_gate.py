@@ -7,7 +7,7 @@ import unittest
 from contextlib import redirect_stderr
 from pathlib import Path
 from unittest.mock import patch
-from urllib.request import ProxyHandler, build_opener
+from urllib.request import ProxyHandler, getproxies
 
 from qa.cpanel_https_setup_gate import (
     AcceptanceError, Client, Response, accept, csrf_from_html,
@@ -127,11 +127,9 @@ class FirstRunHttpGateTest(unittest.TestCase):
         with patch.dict(os.environ, environment), patch(
                 "qa.cpanel_https_setup_gate.ssl.create_default_context") as context:
             client = Client("https://localhost:18966", ca)
-            # Construct the *default* control while the hostile proxy
-            # environment is active. Leaving the context first restores the
-            # runner's normal env and invalidates this control assertion.
-            default_handlers = [handler for handler in build_opener().handlers
-                                if isinstance(handler, ProxyHandler)]
+            # Confirm a hostile proxy is actually visible to urllib.
+            # Handler enumeration is not portable for localhost bypass rules.
+            ambient_proxies = getproxies()
         context.assert_called_once_with(cafile=str(ca))
         handlers = [handler for handler in client.opener.handlers
                     if isinstance(handler, ProxyHandler)]
@@ -139,9 +137,8 @@ class FirstRunHttpGateTest(unittest.TestCase):
         # ProxyHandler({}) instance from its handler list. Passing it to
         # build_opener still suppresses the implicit ENV-based handler.
         self.assertEqual(handlers, [])
-        self.assertEqual(len(default_handlers), 1)
-        self.assertEqual(default_handlers[0].proxies.get("https"),
-                         environment["HTTPS_PROXY"])
+        self.assertEqual(ambient_proxies.get("https"),
+                         environment["https_proxy"])
         self.assertEqual(client.origin, "https://localhost:18966")
         self.assertEqual(private_token(self.home), TOKEN)
 
