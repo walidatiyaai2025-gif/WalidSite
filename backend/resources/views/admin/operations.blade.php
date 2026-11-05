@@ -355,10 +355,21 @@ summary{cursor:pointer;min-height:44px;padding:8px}
 <div><label for="channel">{{ $ar ? 'القناة' : 'Channel' }}</label><select id="channel" name="channel">@foreach(['email','push'] as $option)<option value="{{ $option }}" @selected($channel===$option)>{{ $channelLabels[$option][$ar ? 1 : 0] }}</option>@endforeach</select></div>
 <div><button type="submit">{{ $ar ? 'معاينة الموافقات' : 'Preview consented segment' }}</button></div>
 </form>
-<div class="cards" style="margin-top:20px">
-<div class="card"><span>{{ $ar ? 'حسابات نشطة' : 'Active accounts' }}</span><strong>{{ $activeAccounts }}</strong></div>
-<div class="card"><span>{{ $ar ? 'مستلمون موافقون' : 'Consented recipients' }}</span><strong>{{ $consented }}</strong></div>
+<div class="cards" style="margin-top:20px" aria-label="{{ $ar ? 'ملخص أهلية الجمهور' : 'Audience eligibility summary' }}">
+<div class="card"><span>{{ $ar ? 'حسابات نشطة' : 'Active accounts' }}</span><strong data-testid="audience-active">{{ $activeAccounts }}</strong></div>
+<div class="card"><span>{{ $ar ? 'مستلمون موافقون' : 'Consented recipients' }}</span><strong data-testid="audience-consented">{{ $consented }}</strong></div>
+<div class="card"><span>{{ $ar ? 'مستبعدون من هذا الجمهور' : 'Excluded from this audience' }}</span><strong data-testid="audience-suppressed">{{ $audienceStates['suppressed'] }}</strong></div>
 </div>
+<section class="panel" aria-labelledby="audience-exclusions">
+<h3 id="audience-exclusions">{{ $ar ? 'لماذا لا يتلقى الآخرون إشعارًا؟' : 'Why other accounts are ineligible' }}</h3>
+<p class="muted">{{ $ar ? 'فئات حصرية لا تشمل بيانات شخصية أو رموز أجهزة. الحسابات الموقوفة ليست ضمن عدد الحسابات النشطة. تظل هذه النتائج معاينة لا تُرسل إشعارات.' : 'Mutually exclusive counts, with no personal information or device tokens. Suspended accounts are outside the active total. These numbers are a preview, not notifications sent.' }}</p>
+<dl class="cards">
+<div class="card"><dt>{{ $ar ? 'ألغى الموافقة' : 'Consent revoked' }}</dt><dd><strong data-testid="audience-revoked">{{ $audienceStates['revoked'] }}</strong></dd></div>
+<div class="card"><dt>{{ $ar ? 'التفضيل معطّل' : 'Preference disabled' }}</dt><dd><strong data-testid="audience-disabled">{{ $audienceStates['disabled'] }}</strong></dd></div>
+<div class="card"><dt>{{ $ar ? 'موافقة مؤرخة بالمستقبل' : 'Future-dated consent' }}</dt><dd><strong data-testid="audience-future">{{ $audienceStates['future'] }}</strong></dd></div>
+<div class="card"><dt>{{ $ar ? 'لم تُمنح موافقة فعّالة' : 'No effective consent granted' }}</dt><dd><strong data-testid="audience-missing">{{ $audienceStates['missing'] }}</strong></dd></div>
+</dl>
+</section>
 <div class="panel alert" role="status">
 <strong>{{ $ar ? 'الإرسال معطّل بأمان' : 'Delivery is disabled' }}</strong>
 <p>{{ $ar ? 'لا توجد عملية إرسال اختبار أو حملة بدون خدمة دفع مرخصة وإيصالات تسليم. تغيير التفضيلات يتم من حساب المستخدم، وليس من هذه الشاشة.' : 'No test push or campaign is submitted without a configured delivery service and verified receipts. Users manage their own consent; admins cannot silently opt them in.' }}</p>

@@ -228,13 +228,16 @@ ORPHANED_480 = (
 
 # If unrelated routes change, a full web.php blob witness is too broad.
 # Pin the *whole audited route closure* as a Git blob, not just selected
-# keywords. These SHAs were computed from the code reviewed on main for #718
-# and rechecked against the subsequent audit-logging-only route change.
+# keywords. Contact/privacy SHAs were reviewed on main for #718. ADMIN-10
+# was independently re-audited with the real Mobile consent -> aggregate
+# Admin suppression acceptance (#476): keep authorization, strict filters,
+# active-account / revoked / future-grant semantics, and no send capability.
+# A fresh literal-scope digest is required whenever its source changes.
 ORPHAN_480_ROUTE_SCOPES = {
     "fix/480-admin-audience-consent-time-parity": (
-        "    Route::get('/audience', function (Request $request) {",
+        "    Route::get('/audience', function (",
         "    Route::get('/analytics', function (Request $request) {",
-        "482bcb3e4f4fc332ac08879a47d3b7f50427f053",
+        "901c465f4946e520d0464f13e6ff47db79f3f8bf",
     ),
     "feat/480-privacy-rights-requests": (
         "Route::get('/contact', function (Request $request) {",
