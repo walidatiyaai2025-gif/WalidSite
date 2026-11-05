@@ -477,6 +477,71 @@ final class CpanelImmutableCodePointerTest extends TestCase
         ));
     }
 
+    public function test_health_callback_cannot_replace_active_pointer_and_trigger_unsafe_rollback(): void
+    {
+        $pointer = $this->home.'/.walidsite-active-release.json';
+        // A third party may replace the pointer with an invalid or different
+        // release during an external HTTP health callback. Do not overwrite it.
+        $health = function () use ($pointer): bool {
+            $this->assertFileExists($pointer);
+            file_put_contents($pointer, '{"foreign":"pointer"}');
+            return true;
+        };
+
+        try {
+            (new CpanelImmutableCodePointer())->activate(...$this->args(
+                health: $health,
+            ));
+            $this->fail('Changed active pointer was reported as switched.');
+        } catch (RuntimeException $failure) {
+            $this->assertStringContainsString('manual recovery required', $failure->getMessage());
+        }
+
+        $this->assertSame('{"foreign":"pointer"}', file_get_contents($pointer));
+        $this->assertSame('KEEP_MY_PRIVATE_APP_KEY', file_get_contents(
+            $this->home.'/application/.env',
+        ));
+        $this->assertSame('PRIVATE_UPLOAD', file_get_contents(
+            $this->home.'/application/storage/app/photo.txt',
+        ));
+    }
+
+    public function test_health_callback_cannot_swap_lock_and_report_success_or_rollback(): void
+    {
+        if (PHP_OS_FAMILY === 'Windows') {
+            self::markTestSkipped('POSIX rename semantics required.');
+        }
+        $lock = $this->home.'/.walidsite-active-release.lock';
+        $orphan = $this->home.'/.orphaned-health-release.lock';
+        $pointer = $this->home.'/.walidsite-active-release.json';
+        $health = function () use ($lock, $orphan, $pointer): bool {
+            $this->assertFileExists($pointer);
+            if (! rename($lock, $orphan)
+                || file_put_contents($lock, 'another updater') === false) {
+                throw new RuntimeException('Unable to arrange health lock swap fixture.');
+            }
+            return true;
+        };
+
+        try {
+            (new CpanelImmutableCodePointer())->activate(...$this->args(
+                health: $health,
+            ));
+            $this->fail('Swapped release lock was accepted.');
+        } catch (RuntimeException $failure) {
+            $this->assertStringContainsString('manual recovery required', $failure->getMessage());
+        }
+
+        $this->assertSame('another updater', file_get_contents($lock));
+        $this->assertFileExists($pointer); // Never unlink under a foreign lock.
+        $this->assertSame('KEEP_MY_PRIVATE_APP_KEY', file_get_contents(
+            $this->home.'/application/.env',
+        ));
+        $this->assertSame('PRIVATE_UPLOAD', file_get_contents(
+            $this->home.'/application/storage/app/photo.txt',
+        ));
+    }
+
     public function test_changed_public_router_or_htaccess_blocks_unsafe_cutover(): void
     {
         file_put_contents($this->candidate.'/public_html/.htaccess', 'RewriteEngine Off');
