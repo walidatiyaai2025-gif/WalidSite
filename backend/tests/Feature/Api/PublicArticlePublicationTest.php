@@ -128,6 +128,62 @@ class PublicArticlePublicationTest extends TestCase
         $this->assertSame($database->slug, $detail->json('data.slug'));
     }
 
+    public function test_verified_mobile_article_taxonomy_never_exceeds_client_limits(): void
+    {
+        // A legacy editor can attach 31+ valid taxonomy terms and labels
+        // longer than Flutter's verified parser accepts. The API must not
+        // make the complete published feed unavailable in that situation.
+        $published = $this->article('many-reviewed-categories');
+        $this->revision($published);
+        $published->publishVerified();
+
+        for ($i = 0; $i < 33; $i++) {
+            $category = Category::create([
+                'slug' => sprintf('safe-cat-%02d', $i),
+                'name_en' => 'Verified category '.$i,
+                'name_ar' => 'تصنيف موثق '.$i,
+            ]);
+            $published->categories()->attach($category);
+        }
+        foreach ([
+            ['slug' => 'unroutable-'.str_repeat('x', 60),
+                'name_en' => 'Long slug', 'name_ar' => 'معرّف طويل'],
+            ['slug' => 'unbounded-label',
+                'name_en' => str_repeat('A', 161), 'name_ar' => 'اسم طويل'],
+            ['slug' => 'unbounded-arabic',
+                'name_en' => 'Long Arabic label', 'name_ar' => str_repeat('ب', 100)],
+        ] as $data) {
+            $published->categories()->attach(Category::create($data));
+        }
+
+        foreach (['/api/v1/public/articles', '/api/v1/mobile/articles'] as $url) {
+            foreach (['ar', 'en'] as $locale) {
+                $list = $this->getJson($url.'?lang='.$locale)
+                    ->assertOk()
+                    ->assertJsonCount(1, 'data')
+                    ->assertJsonCount(30, 'meta.categories')
+                    ->assertJsonCount(30, 'data.0.categories')
+                    ->assertJsonPath('data.0.slug', 'many-reviewed-categories')
+                    ->assertJsonPath('meta.categories.0.slug', 'safe-cat-00')
+                    ->assertJsonPath('meta.categories.29.slug', 'safe-cat-29');
+                $this->assertSame(
+                    array_column($list->json('meta.categories'), 'slug'),
+                    array_column($list->json('data.0.categories'), 'slug')
+                );
+                $this->assertNotContains('unbounded-label',
+                    array_column($list->json('meta.categories'), 'slug'));
+                $this->assertNotContains('unbounded-arabic',
+                    array_column($list->json('data.0.categories'), 'slug'));
+            }
+        }
+
+        // Even categories beyond the UI's bounded selector remain server-side
+        // filterable; the bound must not change reviewed publication state.
+        $this->getJson('/api/v1/mobile/articles?category=safe-cat-32')
+            ->assertOk()->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.slug', 'many-reviewed-categories');
+    }
+
     public function test_category_list_does_not_disclose_revoked_or_unroutable_articles(): void
     {
         $revokedCategory = Category::create([

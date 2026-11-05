@@ -128,6 +128,11 @@ class PublicArticleController extends Controller
                     continue;
                 }
                 $options[] = $this->categoryData($category, $locale);
+                // Flutter accepts at most 30 taxonomy options per response.
+                // A 31st verified category must not invalidate all articles.
+                if (count($options) >= 30) {
+                    break 2;
+                }
                 break;
             }
         }
@@ -142,6 +147,9 @@ class PublicArticleController extends Controller
         foreach ($article->categories()->orderBy('slug')->get() as $category) {
             if ($this->validCategory($category)) {
                 $result[] = $this->categoryData($category, $locale);
+                if (count($result) >= 30) {
+                    break;
+                }
             }
         }
         return $result;
@@ -149,9 +157,17 @@ class PublicArticleController extends Controller
 
     private function validCategory(Category $category): bool
     {
-        return preg_match('/\A[a-z0-9]+(?:-[a-z0-9]+)*\z/D', (string) $category->slug) === 1
-            && trim((string) $category->name_en) !== ''
-            && trim((string) $category->name_ar) !== '';
+        $slug = (string) $category->slug;
+        $en = (string) $category->name_en;
+        $ar = (string) $category->name_ar;
+
+        // Honor the Flutter verified category parser for legacy editorial
+        // rows as well as current data. UTF-8 byte length is deliberately
+        // conservative relative to the UI's UTF-16 string length.
+        return strlen($slug) <= 60
+            && preg_match('/\A[a-z0-9]+(?:-[a-z0-9]+)*\z/D', $slug) === 1
+            && trim($en) !== '' && strlen($en) <= 160
+            && trim($ar) !== '' && strlen($ar) <= 160;
     }
 
     /** @return array{slug:string,name:string} */
