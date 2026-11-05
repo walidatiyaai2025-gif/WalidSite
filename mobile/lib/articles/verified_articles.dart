@@ -386,6 +386,20 @@ class VerifiedArticleReader {
     }
   }
 
+  /// MOBILE-07's guest feed uses Laravel's canonical mobile alias. The
+  /// backend routes it through the same reviewed public publication gate as
+  /// /public/articles, without a bearer or user-specific response.
+  @visibleForTesting
+  static Uri mobileArticleFeedUri(
+      Uri origin, bool arabic, int page, String? category) => origin.replace(
+    path: '/api/v1/mobile/articles',
+    queryParameters: {
+      'lang': arabic ? 'ar' : 'en',
+      'page': '$page',
+      if (category != null) 'category': category,
+    },
+  );
+
   Future<VerifiedArticlePage> loadPage(bool arabic, int page, {String? category}) async {
     if (page < 1 || page > 10000 ||
         (category != null &&
@@ -396,14 +410,7 @@ class VerifiedArticleReader {
     if (origin == null) {
       throw const FormatException('Article API not configured');
     }
-    final url = origin.replace(
-      path: '/api/v1/public/articles',
-      queryParameters: {
-        'lang': arabic ? 'ar' : 'en',
-        'page': '$page',
-        if (category != null) 'category': category,
-      },
-    );
+    final url = mobileArticleFeedUri(origin, arabic, page, category);
 
     final client = _newClient();
     try {
