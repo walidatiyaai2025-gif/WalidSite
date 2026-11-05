@@ -12,6 +12,7 @@ import datetime as dt
 import ipaddress
 import json
 import re
+import threading
 import time
 import sys
 from dataclasses import dataclass
@@ -110,16 +111,20 @@ class JsonBodyDeadlineExceeded(TimeoutError):
     """The staging response has exceeded its allowed JSON-body wall time."""
 
 
-def _read_bounded_json_body(response: object, timeout: int) -> bytes:
+def _read_bounded_json_body(
+    response: object, timeout: int, *, deadline: float | None = None,
+) -> bytes:
     """Consume JSON without waiting for a fixed-size exact-byte socket read.
 
     HTTPResponse.read(n) can wait for all n bytes and a slow-drip peer can
     prolong that indefinitely under a per-socket inactivity timeout. read1()
     performs at most one buffered read, permitting monotonic deadline checks
-    between fragments. This covers the JSON body only: opening the HTTPS
-    connection and parsing headers still use the opener's socket timeout.
+    between fragments. The caller passes the original GET deadline, so
+    DNS/TLS/headers cannot grant a fresh body budget. A separate outer guard
+    also bounds a single stuck read or response close.
     """
-    deadline = time.monotonic() + timeout
+    if deadline is None:
+        deadline = time.monotonic() + timeout
     body = bytearray()
     read_once = getattr(response, "read1", None)
     while len(body) <= MAX_JSON_BYTES:
@@ -142,7 +147,9 @@ def _read_bounded_json_body(response: object, timeout: int) -> bytes:
     return bytes(body)
 
 
-def _check_one(origin: str, spec: Check, opener: Opener, timeout: int) -> dict:
+def _check_one_transaction(origin: str, spec: Check, opener: Opener, timeout: int) -> dict:
+    """One read-only probe; outer deadline protects even blocking HTTPS open."""
+    deadline = time.monotonic() + timeout
     request = Request(
         origin + spec.path,
         headers={"Accept": "application/json" if spec.kind == "json" else "text/html"},
@@ -158,7 +165,9 @@ def _check_one(origin: str, spec: Check, opener: Opener, timeout: int) -> dict:
             # Deliberate HTTP 401/404 responses are exceptions in urllib.
             response = error
         observed = int(response.status if hasattr(response, "status") else response.code)
-        if observed != spec.status:
+        if time.monotonic() >= deadline:
+            reason = "request_deadline_exceeded"
+        elif observed != spec.status:
             reason = "unexpected_http_status"
         elif spec.kind == "redirect":
             # A 302 to an attacker-controlled origin must never pass a guest
@@ -173,7 +182,7 @@ def _check_one(origin: str, spec: Check, opener: Opener, timeout: int) -> dict:
                 reason = "non_json_response"
             else:
                 try:
-                    payload = _read_bounded_json_body(response, timeout)
+                    payload = _read_bounded_json_body(response, timeout, deadline=deadline)
                 except JsonBodyDeadlineExceeded:
                     reason = "json_body_deadline_exceeded"
                 else:
@@ -202,6 +211,45 @@ def _check_one(origin: str, spec: Check, opener: Opener, timeout: int) -> dict:
         "passed": reason == "",
         "reason": reason or None,
     }
+
+
+def _check_one(origin: str, spec: Check, opener: Opener, timeout: int) -> dict:
+    """Bound the *entire* HTTPS GET, including DNS, TLS and response headers.
+
+    urllib's per-socket timeout is an inactivity limit; a slow header stream
+    may otherwise keep a smoke audit alive indefinitely. One short-lived
+    daemon worker handles this GET-only probe. If it fails to finish within
+    the wall budget the report fails closed immediately, never using late
+    response data. Its response is closed by the worker if it later returns;
+    the thread itself is not falsely described as a cancelled network call.
+    At most len(CHECKS) worker requests can be outstanding in one run.
+    """
+    completed = threading.Event()
+    result: list[dict] = []
+    error: list[BaseException] = []
+
+    def readonly_probe() -> None:
+        try:
+            result.append(_check_one_transaction(origin, spec, opener, timeout))
+        except BaseException as exc:
+            error.append(exc)
+        finally:
+            completed.set()
+
+    threading.Thread(
+        target=readonly_probe, name="walidsite-staging-readonly-get", daemon=True,
+    ).start()
+    if not completed.wait(timeout):
+        return {
+            "path": spec.path,
+            "expected_status": spec.status,
+            "observed_status": None,
+            "passed": False,
+            "reason": "request_deadline_exceeded",
+        }
+    if error:
+        raise error[0]
+    return result[0]
 
 
 def run(origin: str, opener: Opener | None = None, timeout: int = 8,
