@@ -281,6 +281,55 @@ final class AtomicReleaseSwitcherTest extends TestCase
         self::assertSame('v2', file_get_contents($this->docroot.'/index.php'));
     }
 
+    public function test_backup_callback_replacing_public_document_root_blocks_cutover(): void
+    {
+        $healthCalls = 0;
+        try {
+            (new AtomicReleaseSwitcher())->switch(
+                $this->releases, $this->current, $this->docroot, $this->next,
+                function (): bool {
+                    self::assertTrue(unlink($this->docroot));
+                    self::assertTrue(symlink($this->old.'/public_html', $this->docroot));
+                    return true;
+                },
+                static function () use (&$healthCalls): bool {
+                    ++$healthCalls;
+                    return true;
+                },
+            );
+            self::fail('Replaced public document root must not authorize any cutover.');
+        } catch (DomainException $error) {
+            self::assertStringContainsString('public document root', $error->getMessage());
+        }
+        self::assertSame(0, $healthCalls);
+        self::assertSame($this->old, realpath($this->current));
+        self::assertSame($this->old.'/public_html', realpath($this->docroot));
+    }
+
+    public function test_health_callback_replacing_public_document_root_requires_manual_recovery(): void
+    {
+        try {
+            (new AtomicReleaseSwitcher())->switch(
+                $this->releases, $this->current, $this->docroot, $this->next,
+                static fn (): bool => true,
+                function (): bool {
+                    self::assertSame('v2', file_get_contents($this->docroot.'/index.php'));
+                    self::assertTrue(unlink($this->docroot));
+                    self::assertTrue(symlink($this->old.'/public_html', $this->docroot));
+                    return true;
+                },
+            );
+            self::fail('A changed public document root must not produce a successful cutover.');
+        } catch (RuntimeException $error) {
+            self::assertStringContainsString('manual recovery required', $error->getMessage());
+        }
+        // The original update lock does not authorize clobbering a public
+        // symlink changed by another actor. Leave both paths for inspection.
+        self::assertSame($this->next, realpath($this->current));
+        self::assertSame($this->old.'/public_html', realpath($this->docroot));
+        self::assertSame('v1', file_get_contents($this->docroot.'/index.php'));
+    }
+
     private function reject(?string $candidate = null): void
     {
         try {

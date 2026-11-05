@@ -73,8 +73,9 @@ final class AtomicReleaseSwitcher
             }
             // Verify lock identity and current code under the same exclusive
             // lease immediately before any irreversible pointer mutation.
-            if (realpath($currentLink) !== $previous) {
-                throw new DomainException('Concurrent release change detected.');
+            if (realpath($currentLink) !== $previous
+                || ! $this->publicLinkMatches($publicDocumentRoot, $currentLink, $previous)) {
+                throw new DomainException('Concurrent release or public document root change detected.');
             }
             $this->assertSecureLockIdentity($lock, $lockFile);
 
@@ -88,7 +89,7 @@ final class AtomicReleaseSwitcher
                 // solely on the state observed before calling it.
                 $this->assertSecureLockIdentity($lock, $lockFile);
                 if (realpath($currentLink) !== $candidate
-                    || realpath($publicDocumentRoot) !== $candidate.'/public_html') {
+                    || ! $this->publicLinkMatches($publicDocumentRoot, $currentLink, $candidate)) {
                     throw new RuntimeException('Release pointer changed during health verification.');
                 }
             } catch (Throwable $problem) {
@@ -97,8 +98,9 @@ final class AtomicReleaseSwitcher
                 // newer release. Stop and require verified manual recovery.
                 try {
                     $this->assertSecureLockIdentity($lock, $lockFile);
-                    if (realpath($currentLink) !== $candidate) {
-                        throw new DomainException('Release pointer ownership lost during health check.');
+                    if (realpath($currentLink) !== $candidate
+                        || ! $this->publicLinkMatches($publicDocumentRoot, $currentLink, $candidate)) {
+                        throw new DomainException('Release or public root ownership lost during health check.');
                     }
                 } catch (Throwable $ownershipFailure) {
                     throw new RuntimeException(
@@ -122,6 +124,21 @@ final class AtomicReleaseSwitcher
             flock($lock, LOCK_UN);
             fclose($lock);
         }
+    }
+
+    /**
+     * The live public entrypoint must still use the approved stable chain,
+     * not merely resolve to the expected files via a replacement direct
+     * symlink. No rollback is safe after the external health callback
+     * changes the public routing independently of the locked code pointer.
+     */
+    private function publicLinkMatches(string $publicDocumentRoot, string $currentLink, string $release): bool
+    {
+        clearstatcache(true, $publicDocumentRoot);
+
+        return is_link($publicDocumentRoot)
+            && readlink($publicDocumentRoot) === $currentLink.'/public_html'
+            && realpath($publicDocumentRoot) === $release.'/public_html';
     }
 
     private function replacePointer(string $link, string $target): void
