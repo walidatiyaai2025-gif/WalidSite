@@ -93,12 +93,19 @@ final class OwnerUpdateRecoveryBackup
         }
 
         try {
+            $this->assertSecureLockIdentity($lock, $lockFile);
             if (! flock($lock, LOCK_EX | LOCK_NB)) {
                 throw new DomainException('Another recovery operation is running.');
             }
+            // Do not trust the pathname after acquiring a lock on an inode:
+            // another local actor can replace it or create a hard-link alias.
+            $this->assertSecureLockIdentity($lock, $lockFile);
             if ($writesQuiesced() !== true) {
                 throw new DomainException('Maintenance changed after recovery lock.');
             }
+            // The maintenance callback itself may have switched the named
+            // lock. Fail before creating ANY private/file/SQL snapshot.
+            $this->assertSecureLockIdentity($lock, $lockFile);
 
             $files = (new PrivateRecoverySnapshot())->create(
                 $environment, $data, $uploads, $vault,
@@ -152,6 +159,29 @@ final class OwnerUpdateRecoveryBackup
         } finally {
             flock($lock, LOCK_UN);
             fclose($lock);
+        }
+    }
+
+    /**
+     * Require both the open descriptor and the named lock to be the same
+     * single-linked regular inode. is_link() alone does not prevent hard-link
+     * aliasing or a lock pathname swap before the protected operation.
+     *
+     * @param resource $stream
+     */
+    private function assertSecureLockIdentity($stream, string $path): void
+    {
+        clearstatcache(true, $path);
+        $opened = @fstat($stream);
+        $named = @lstat($path);
+        if (! is_array($opened) || ! is_array($named)
+            || ($opened['mode'] & 0170000) !== 0100000
+            || ($named['mode'] & 0170000) !== 0100000
+            || $opened['nlink'] !== 1 || $named['nlink'] !== 1
+            || $opened['dev'] !== $named['dev']
+            || $opened['ino'] !== $named['ino']
+            || is_link($path)) {
+            throw new DomainException('Unsafe owner backup lock identity; no backup was performed.');
         }
     }
 
