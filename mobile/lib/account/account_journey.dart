@@ -252,6 +252,60 @@ class MobileAccountClient {
     }
   }
 
+  /// A POST timeout does not mean the server failed to commit the Save.
+  /// Query this same authenticated account before offering any retry. An
+  /// unrelated bookmark, another account or an incomplete page proves nothing.
+  /// A bounded scan is deliberately conservative: no match remains ambiguous.
+  @visibleForTesting
+  static Future<bool> confirmArticleInSavedList(
+    String bearer,
+    String articleId,
+    AccountReadSaved readSaved,
+  ) async {
+    if (bearer.isEmpty || bearer.length > 8192 || !_uuid.hasMatch(articleId)) {
+      throw const FormatException('Invalid saved reconciliation identity');
+    }
+    for (var page = 1; page <= 20; page++) {
+      final result = await readSaved(bearer, false, page);
+      if (result.page != page) {
+        throw const FormatException('Mismatched saved reconciliation page');
+      }
+      if (result.items.any((item) =>
+          item.type == 'article' && item.id == articleId)) {
+        return true;
+      }
+      if (!result.hasMore) return false;
+    }
+    return false; // Never claim a Save from an unverified later page.
+  }
+
+  Future<void> _resolveAmbiguousArticleSave(
+    String bearer,
+    String articleId,
+  ) async {
+    try {
+      final confirmed = await confirmArticleInSavedList(
+        bearer, articleId, saved,
+      );
+      if (!confirmed) {
+        throw TimeoutException('Article Save acknowledgement is unverified');
+      }
+    } on MobileAiHttpException catch (error) {
+      if (error.statusCode == 401 || error.statusCode == 403) {
+        throw const ArticleSaveAuthorizationException();
+      }
+      throw TimeoutException('Article Save acknowledgement is unverified');
+    } on ArticleSaveAuthorizationException {
+      rethrow;
+    } on TimeoutException {
+      rethrow;
+    } catch (_) {
+      // A malformed, offline or unavailable saved-list response cannot
+      // authorize success, and must never cause another POST automatically.
+      throw TimeoutException('Article Save acknowledgement is unverified');
+    }
+  }
+
   Future<void> saveArticle(String bearer, String articleId) async {
     if (!_uuid.hasMatch(articleId)) {
       throw const FormatException('Invalid published article identity');
@@ -262,6 +316,10 @@ class MobileAccountClient {
         body: {'resource_type': 'article', 'resource_id': articleId},
       );
       verifyArticleSaved(raw, articleId);
+    } on TimeoutException {
+      await _resolveAmbiguousArticleSave(bearer, articleId);
+    } on SocketException {
+      await _resolveAmbiguousArticleSave(bearer, articleId);
     } on MobileAiHttpException catch (error) {
       if (error.statusCode == 401 || error.statusCode == 403) {
         throw const ArticleSaveAuthorizationException();
