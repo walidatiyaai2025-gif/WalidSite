@@ -539,7 +539,7 @@ final class AdminCanonicalProductApiTest extends TestCase
                 ->assertJsonPath('meta.verified_count', 0)
                 ->assertJsonPath('meta.external_available', false)
                 ->assertJsonPath('meta.configuration_status', 'not_configured')
-                ->assertHeader('Cache-Control', 'no-store');
+                ->assertHeader('Cache-Control', 'no-store, private');
             $this->assertArrayNotHasKey('synced_at', $response->json('meta'));
             $this->assertStringNotContainsString('owner/../private', $response->getContent());
         }
