@@ -107,6 +107,81 @@ final class ReleaseSchemaCompatibilityTest extends TestCase
         $this->denies(fn () => (new ReleaseSchemaCompatibility())->assertCompatible($this->current, $this->next));
     }
 
+    public function test_hardlinked_migration_is_not_a_valid_code_only_update(): void
+    {
+        $filename = '2026_11_05_000000_create_restricted.php';
+        $this->migration($this->old, $filename, '<?php return "stable";');
+        $this->migration($this->next, $filename, '<?php return "stable";');
+        $migration = $this->next.'/application/database/migrations/'.$filename;
+        $alias = $this->root.'/outside-migration-alias.php';
+        self::assertTrue(link($migration, $alias));
+        $this->denies(fn () => (new ReleaseSchemaCompatibility())
+            ->assertCompatible($this->current, $this->next));
+        self::assertSame('<?php return "stable";', file_get_contents($alias));
+    }
+
+    public function test_migration_named_path_swap_is_rejected_even_with_identical_bytes(): void
+    {
+        $file = $this->next.'/application/database/migrations/2026_11_05_000001_verified.php';
+        file_put_contents($file, '<?php return "same bytes";');
+        $handle = fopen($file, 'rb');
+        self::assertIsResource($handle);
+        $baseline = fstat($handle);
+        self::assertIsArray($baseline);
+        $guard = new \ReflectionMethod(ReleaseSchemaCompatibility::class, 'assertStableMigration');
+        try {
+            $guard->invoke(new ReleaseSchemaCompatibility(), $handle, $file, $baseline);
+            $old = $this->root.'/old-migration-inode.php';
+            self::assertTrue(rename($file, $old));
+            self::assertSame(strlen('<?php return "same bytes";'),
+                file_put_contents($file, '<?php return "same bytes";'));
+            self::assertNotSame(fstat($handle)['ino'], lstat($file)['ino']);
+            try {
+                $guard->invoke(new ReleaseSchemaCompatibility(), $handle, $file, $baseline);
+                self::fail('A replaced migration pathname must not pass the signed release gate.');
+            } catch (DomainException $error) {
+                self::assertStringContainsString('inode changed', $error->getMessage());
+            }
+        } finally {
+            fclose($handle);
+        }
+    }
+
+    public function test_migration_symlink_swap_and_in_place_mutation_are_rejected(): void
+    {
+        $file = $this->next.'/application/database/migrations/2026_11_05_000002_verified.php';
+        file_put_contents($file, '<?php return true;');
+        $handle = fopen($file, 'rb');
+        self::assertIsResource($handle);
+        $baseline = fstat($handle);
+        self::assertIsArray($baseline);
+        $guard = new \ReflectionMethod(ReleaseSchemaCompatibility::class, 'assertStableMigration');
+        try {
+            // A same-inode timestamp change still invalidates the snapshot.
+            self::assertTrue(touch($file, $baseline['mtime'] - 120));
+            try {
+                $guard->invoke(new ReleaseSchemaCompatibility(), $handle, $file, $baseline);
+                self::fail('Changed migration metadata accepted.');
+            } catch (DomainException $error) {
+                self::assertStringContainsString('changed', $error->getMessage());
+            }
+
+            // Even an original descriptor still open after symlink replacement
+            // cannot authenticate a different path or externally linked file.
+            $original = $this->root.'/migration-original.php';
+            self::assertTrue(rename($file, $original));
+            self::assertTrue(symlink($original, $file));
+            try {
+                $guard->invoke(new ReleaseSchemaCompatibility(), $handle, $file, $baseline);
+                self::fail('A symlink-swapped migration source was accepted.');
+            } catch (DomainException $error) {
+                self::assertStringContainsString('inode changed', $error->getMessage());
+            }
+        } finally {
+            fclose($handle);
+        }
+    }
+
     public function test_missing_and_empty_migration_trees_are_equivalent(): void
     {
         self::assertTrue(rmdir($this->next.'/application/database/migrations'));
