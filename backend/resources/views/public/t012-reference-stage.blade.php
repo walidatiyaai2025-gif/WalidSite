@@ -301,6 +301,15 @@ html[dir="rtl"] .t012-screen-blog .t012-visual-stack{left:55px;right:auto}
                             <a href="{{ route('public.lab', ['lang' => $locale]) }}">{{ $t012Ar ? 'تصفح المختبر التقني' : 'Browse technical lab' }}</a>
                         </div>
                     @else
+                    {{-- Keep WEB-07 first-viewport article destinations aligned
+                         with the lower article grid. Values come exclusively
+                         from the already validated blog route, never from an
+                         arbitrary return URL or raw query parameters. --}}
+                    @php($t012BlogContext = ($search !== '' || $category !== '' || $paginated->currentPage() > 1)
+                        ? array_filter(['source' => 'blog', 'q' => $search, 'category' => $category,
+                            'page' => $paginated->currentPage() > 1 ? $paginated->currentPage() : null],
+                            fn ($value) => $value !== '' && $value !== null)
+                        : [])
                     @foreach($entries->take(3)->values() as $index => $entry)
                         @php($cardArticle = $entry['article']) @php($cardRevision = $entry['revision'])
                         <article class="t012-reference-card">
@@ -308,7 +317,7 @@ html[dir="rtl"] .t012-screen-blog .t012-visual-stack{left:55px;right:auto}
                             <h2>{{ $t012Ar ? $cardArticle->title_ar : $cardArticle->title_en }}</h2>
                             <p>{{ \Illuminate\Support\Str::limit(trim(preg_replace('/[#*>\x60]+/u', '', $cardRevision->body_md)), 70) }}</p>
                             <div class="t012-card-rule" aria-hidden="true"></div>
-                            <a class="t012-card-link" href="{{ route('public.article', ['slug'=>$cardArticle->slug,'lang'=>$locale]) }}">{{ $t012Ar ? 'عرض التفاصيل' : 'View details' }} &nbsp;&gt;</a>
+                            <a class="t012-card-link" href="{{ route('public.article', array_merge(['slug' => $cardArticle->slug, 'lang' => $locale], $t012BlogContext)) }}">{{ $t012Ar ? 'عرض التفاصيل' : 'View details' }} &nbsp;&gt;</a>
                         </article>
                     @endforeach
                     @endif

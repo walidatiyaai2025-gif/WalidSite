@@ -3,6 +3,7 @@
 namespace Tests\Feature\Web;
 
 use App\Models\Article;
+use App\Models\Category;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -16,10 +17,10 @@ final class Web07BlogScreenParityTest extends TestCase
 {
     use RefreshDatabase;
 
-    private function publishedGuide(): Article
+    private function publishedGuide(string $slug = 'web07-reviewed-guide'): Article
     {
         $article = Article::query()->create([
-            'slug' => 'web07-reviewed-guide',
+            'slug' => $slug,
             'title_en' => 'WEB07 Reviewed live guide',
             'title_ar' => 'دليل موثق ومتاح',
             'canonical_lang' => 'en',
@@ -40,6 +41,89 @@ final class Web07BlogScreenParityTest extends TestCase
         $article->publishVerified();
 
         return $article;
+    }
+
+    public function test_filtered_second_page_first_viewport_article_returns_to_same_blog_results(): void
+    {
+        $category = Category::query()->create([
+            'slug' => 'verified-web07-guides',
+            'name_en' => 'Verified WEB07 guides',
+            'name_ar' => 'أدلة موثقة للمدونة',
+        ]);
+        for ($i = 1; $i <= 11; $i++) {
+            $article = $this->publishedGuide('web07-paged-guide-'.$i);
+            $article->categories()->attach($category->id);
+        }
+        $draft = Article::query()->create([
+            'slug' => 'web07-private-paged-draft',
+            'title_en' => 'WEB07 PRIVATE PAGED DRAFT',
+            'title_ar' => 'مسودة خاصة غير منشورة',
+            'canonical_lang' => 'en',
+        ]);
+        $draft->categories()->attach($category->id);
+
+        foreach (['en', 'ar'] as $locale) {
+            $filters = [
+                'lang' => $locale,
+                'q' => 'WEB07',
+                'category' => $category->slug,
+                'page' => 2,
+            ];
+            $listing = $this->get(route('public.blog', $filters))->assertOk()
+                ->assertDontSee('WEB07 PRIVATE PAGED DRAFT')
+                ->assertDontSee('web07-private-paged-draft');
+
+            // Page two has two verified cards in BOTH the reference viewport
+            // and the lower functional grid. The records are UUID keyed;
+            // derive the actual page-two slugs instead of assuming SQL UUID
+            // ordering corresponds to their insertion sequence.
+            preg_match_all('/class="t012-card-link" href="([^"]+)"/',
+                $listing->getContent(), $viewportLinks);
+            self::assertCount(2, $viewportLinks[1]);
+            $slugs = [];
+            foreach ($viewportLinks[1] as $encodedUrl) {
+                $href = html_entity_decode($encodedUrl, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                $slug = basename((string) parse_url($href, PHP_URL_PATH));
+                self::assertMatchesRegularExpression('/\Aweb07-paged-guide-\d+\z/D', $slug);
+                $slugs[] = $slug;
+                $articleUrl = route('public.article', [
+                    'slug' => $slug,
+                    'lang' => $locale,
+                    'source' => 'blog',
+                    'q' => 'WEB07',
+                    'category' => $category->slug,
+                    'page' => 2,
+                ]);
+                self::assertSame($articleUrl, $href);
+                self::assertSame(2, substr_count(
+                    $listing->getContent(), 'href="'.e($articleUrl).'"',
+                ), 'Both article links must preserve validated blog context');
+
+                $detail = $this->get($articleUrl)->assertOk()
+                    ->assertSee(
+                        'href="'.e(route('public.blog', $filters)).'"',
+                        false,
+                    );
+                $detail->assertDontSee('WEB07 PRIVATE PAGED DRAFT');
+                $this->get(route('public.blog', $filters))->assertOk();
+            }
+            self::assertCount(2, array_unique($slugs));
+        }
+
+        // No filter => no source, q, category or page on otherwise public
+        // article links. Canonical SEO URLs remain clean and direct.
+        $plain = $this->get(route('public.blog', ['lang' => 'en']))->assertOk();
+        preg_match('/class="t012-card-link" href="([^"]+)"/',
+            $plain->getContent(), $plainLink);
+        self::assertNotEmpty($plainLink[1] ?? null);
+        $plainUrl = html_entity_decode($plainLink[1], ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $plainQuery = [];
+        parse_str((string) parse_url($plainUrl, PHP_URL_QUERY), $plainQuery);
+        self::assertSame(['lang' => 'en'], $plainQuery);
+        self::assertStringNotContainsString('source=', $plainUrl);
+        self::assertStringNotContainsString('category=', $plainUrl);
+        self::assertStringNotContainsString('page=', $plainUrl);
+        self::assertStringNotContainsString('q=', $plainUrl);
     }
 
     public function test_empty_reference_viewport_is_explained_and_recoverable_in_both_languages(): void
