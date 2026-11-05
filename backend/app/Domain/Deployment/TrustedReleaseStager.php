@@ -59,10 +59,25 @@ final class TrustedReleaseStager
             throw new RuntimeException('Cannot create isolated release candidate.');
         }
 
+        $snapshotDirectory = $base.'/verified-archive-'.bin2hex(random_bytes(16));
         try {
+            if (! mkdir($snapshotDirectory, 0700)) {
+                throw new RuntimeException('Cannot create private archive snapshot.');
+            }
+            $snapshotFile = $snapshotDirectory.'/'.basename($archiveFile);
+            // ZipArchive accepts only a pathname, not a pinned descriptor.
+            // First freeze a bounded private copy, then verify the signed
+            // SHA-256 and archive structure of that *exact* copy.
+            $this->freezeArchive($archiveFile, $snapshotFile, $signedRelease['artifact_size']);
+            $frozenInventory = (new TrustedReleaseArchive())->inspect(
+                $signedRelease, $snapshotDirectory, $snapshotFile,
+            );
+            if ($frozenInventory !== $inventory) {
+                throw new DomainException('Frozen release inventory changed.');
+            }
             $zip = new ZipArchive();
-            if ($zip->open($archiveFile, ZipArchive::RDONLY | ZipArchive::CHECKCONS) !== true) {
-                throw new DomainException('Verified ZIP could not be reopened.');
+            if ($zip->open($snapshotFile, ZipArchive::RDONLY | ZipArchive::CHECKCONS) !== true) {
+                throw new DomainException('Verified private ZIP could not be opened.');
             }
 
             try {
@@ -135,9 +150,11 @@ final class TrustedReleaseStager
                 $zip->close();
             }
 
-            // Fail closed if the input has been replaced or modified mid-read.
+            // Reverify the exact private archive used by ZipArchive,
+            // not the mutable incoming path. Never stage bytes from an
+            // archive different from the publisher-signed digest.
             (new TrustedReleaseMetadata())->verifyStagedArchive(
-                $signedRelease, $archiveDirectory, $archiveFile,
+                $signedRelease, $snapshotDirectory, $snapshotFile,
             );
             if ($files !== $inventory['files'] || $bytes !== $inventory['uncompressed_bytes']) {
                 throw new DomainException('Staged files do not match verified ZIP inventory.');
@@ -147,6 +164,39 @@ final class TrustedReleaseStager
         } catch (Throwable $failure) {
             $this->eraseCandidate($stage);
             throw $failure;
+        } finally {
+            // Archive snapshots are never part of the staged release tree.
+            // Preserve no executable duplicate or untrusted temporary ZIP.
+            if (is_dir($snapshotDirectory)) {
+                $this->eraseCandidate($snapshotDirectory);
+            }
+        }
+    }
+
+    private function freezeArchive(string $incoming, string $snapshot, int $signedSize): void
+    {
+        $source = @fopen($incoming, 'rb');
+        if ($source === false) {
+            throw new DomainException('Signed archive cannot be opened for freezing.');
+        }
+        try {
+            $target = @fopen($snapshot, 'xb');
+            if ($target === false) {
+                throw new DomainException('Private signed archive snapshot cannot be created.');
+            }
+            try {
+                $copied = @stream_copy_to_stream($source, $target, $signedSize + 1);
+                if ($copied !== $signedSize || ! fflush($target)) {
+                    throw new DomainException('Signed archive changed during snapshot.');
+                }
+            } finally {
+                fclose($target);
+            }
+        } finally {
+            fclose($source);
+        }
+        if (! chmod($snapshot, 0600)) {
+            throw new DomainException('Private archive snapshot permissions are unsafe.');
         }
     }
 
