@@ -90,6 +90,12 @@ class VerifiedArticle {
   }
 
   static List<VerifiedArticle> parseList(String json) {
+    // Reject oversized API JSON before decoding untrusted nested structures.
+    // This also protects callers outside the HTTP reader (e.g. detail views).
+    if (json.length > 2 * 1024 * 1024 ||
+        utf8.encode(json).length > 2 * 1024 * 1024) {
+      throw const FormatException('Article response too large');
+    }
     final value = jsonDecode(json);
     if (value is! Map<String, dynamic> || value['data'] is! List) {
       throw const FormatException('Invalid article response');
@@ -221,6 +227,10 @@ class VerifiedArticlePage {
   final bool hasMorePages;
 
   static VerifiedArticlePage parse(String json, int requestedPage) {
+    if (json.length > 2 * 1024 * 1024 ||
+        utf8.encode(json).length > 2 * 1024 * 1024) {
+      throw const FormatException('Article page too large');
+    }
     if (requestedPage < 1 || requestedPage > 10000) {
       throw const FormatException('Invalid article page');
     }
