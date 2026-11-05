@@ -748,6 +748,119 @@ final class CpanelImmutableCodePointerTest extends TestCase
         ));
     }
 
+    public function test_hardlinked_code_identity_is_rejected_before_any_pointer_change(): void
+    {
+        if (! function_exists('link') || PHP_OS_FAMILY === 'Windows') {
+            self::markTestSkipped('POSIX hardlink fixture required.');
+        }
+        foreach ([
+            $this->home.'/application/VERSION',
+            $this->candidate.'/application/VERSION',
+            $this->home.'/public_html/index.php',
+            $this->candidate.'/public_html/index.php',
+            $this->home.'/public_html/.htaccess',
+            $this->candidate.'/public_html/.htaccess',
+        ] as $source) {
+            $alias = $this->home.'/linked-identity-alias';
+            if (! @link($source, $alias)) {
+                self::markTestSkipped('Hardlink creation unavailable.');
+            }
+            try {
+                (new CpanelImmutableCodePointer())->activate(...$this->args());
+                $this->fail('Hardlinked release identity unexpectedly authorized code cutover.');
+            } catch (DomainException $error) {
+                $this->assertStringContainsString('physical release', strtolower($error->getMessage()));
+            } finally {
+                @unlink($alias);
+            }
+            $this->assertFileDoesNotExist($this->home.'/.walidsite-active-release.json');
+            $this->assertSame('KEEP_MY_PRIVATE_APP_KEY',
+                file_get_contents($this->home.'/application/.env'));
+            $this->assertSame('PRIVATE_UPLOAD',
+                file_get_contents($this->home.'/application/storage/app/photo.txt'));
+        }
+    }
+
+    public function test_group_writable_version_or_public_router_is_not_a_trusted_code_identity(): void
+    {
+        foreach ([
+            $this->home.'/application/VERSION',
+            $this->candidate.'/application/VERSION',
+            $this->home.'/public_html/index.php',
+            $this->candidate.'/public_html/index.php',
+            $this->home.'/public_html/.htaccess',
+            $this->candidate.'/public_html/.htaccess',
+        ] as $source) {
+            $previous = fileperms($source) & 0777;
+            $this->assertTrue(chmod($source, 0666));
+            try {
+                (new CpanelImmutableCodePointer())->activate(...$this->args());
+                $this->fail('Group/world writable trusted code identity was accepted.');
+            } catch (DomainException $error) {
+                $this->assertStringContainsString('physical release', strtolower($error->getMessage()));
+            } finally {
+                chmod($source, $previous);
+            }
+            $this->assertFileDoesNotExist($this->home.'/.walidsite-active-release.json');
+        }
+    }
+
+    public function test_maintenance_inode_swap_with_identical_router_bytes_fails_closed(): void
+    {
+        $live = $this->home.'/public_html/index.php';
+        $calls = 0;
+        $maintenance = function () use ($live, &$calls): bool {
+            ++$calls;
+            if ($calls === 1) {
+                $original = file_get_contents($live);
+                $this->assertTrue(rename($live, $live.'.previous-inode'));
+                $this->assertSame(strlen($original), file_put_contents($live, $original));
+                $this->assertNotSame(
+                    lstat($live)['ino'], lstat($live.'.previous-inode')['ino'],
+                );
+            }
+            return true;
+        };
+        try {
+            (new CpanelImmutableCodePointer())->activate(...$this->args(
+                maintenance: $maintenance,
+            ));
+            $this->fail('Same bytes in a new router inode incorrectly authorized an update.');
+        } catch (DomainException $error) {
+            $this->assertStringContainsString('Physical cPanel release identity changed', $error->getMessage());
+        }
+        $this->assertSame(1, $calls);
+        $this->assertFileDoesNotExist($this->home.'/.walidsite-active-release.json');
+        $this->assertSame('KEEP_MY_PRIVATE_APP_KEY',
+            file_get_contents($this->home.'/application/.env'));
+        $this->assertSame('PRIVATE_UPLOAD',
+            file_get_contents($this->home.'/application/storage/app/photo.txt'));
+    }
+
+    public function test_health_callback_cannot_change_stable_webserver_policy_and_report_success(): void
+    {
+        $htaccess = $this->home.'/public_html/.htaccess';
+        $health = function () use ($htaccess): bool {
+            $this->assertFileExists($this->home.'/.walidsite-active-release.json');
+            file_put_contents($htaccess, 'RewriteEngine Off');
+            return true;
+        };
+        try {
+            (new CpanelImmutableCodePointer())->activate(...$this->args(
+                health: $health,
+            ));
+            $this->fail('Changed webserver policy incorrectly left the new release active.');
+        } catch (RuntimeException $error) {
+            $this->assertStringContainsString('old code pointer restored', $error->getMessage());
+        }
+        $this->assertFileDoesNotExist($this->home.'/.walidsite-active-release.json');
+        $this->assertFileExists($this->home.'/.walidsite-update-maintenance.json');
+        $this->assertSame('KEEP_MY_PRIVATE_APP_KEY',
+            file_get_contents($this->home.'/application/.env'));
+        $this->assertSame('PRIVATE_UPLOAD',
+            file_get_contents($this->home.'/application/storage/app/photo.txt'));
+    }
+
     public function test_candidate_must_be_the_exact_immutable_version_and_sha(): void
     {
         $bad = $this->args();
