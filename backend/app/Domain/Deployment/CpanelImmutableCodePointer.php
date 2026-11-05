@@ -121,6 +121,9 @@ final class CpanelImmutableCodePointer
             if ($schema->inventory($oldRoot) !== $schema->inventory($candidate)) {
                 throw new DomainException('Changed migrations require a separately tested database upgrade.');
             }
+            // The archive-only check is advisory. Revalidate the physical
+            // dependency graph at the final trusted cutover entrypoint too.
+            $this->assertComposerParity($oldRoot, $candidate);
             // Preload only non-executable static assets before pointer switch.
             // Public name collisions with different bytes fail closed.
             $this->preloadImmutableAssets($candidate.'/public_html', $home.'/public_html');
@@ -129,6 +132,9 @@ final class CpanelImmutableCodePointer
                 throw new DomainException('Maintenance or candidate identity changed during update.');
             }
             $this->assertLockIdentity($lock, $lockPath);
+            // Maintenance and candidate callbacks may have changed files
+            // after the first check. Never publish a different runtime graph.
+            $this->assertComposerParity($oldRoot, $candidate);
 
             $next = ['schema' => 1, 'version' => $version,
                 'root' => '.walidsite-releases/v'.$version.'-'.$sourceSha];
@@ -159,6 +165,65 @@ final class CpanelImmutableCodePointer
         } finally {
             flock($lock, LOCK_UN);
             fclose($lock);
+        }
+    }
+
+    /**
+     * A physical code-only cutover must not change Composer requirements or
+     * dependency lockfile. A different graph needs its own tested full-runtime
+     * upgrade path; a signed archive compatibility result is not sufficient.
+     */
+    private function assertComposerParity(string $installedRoot, string $candidateRoot): void
+    {
+        foreach (['composer.json' => 1048576, 'composer.lock' => 8388608] as $file => $maximumBytes) {
+            $relative = '/application/'.$file;
+            $old = $this->composerDigest($installedRoot.$relative, $maximumBytes);
+            $next = $this->composerDigest($candidateRoot.$relative, $maximumBytes);
+            if (! hash_equals($old, $next)) {
+                throw new DomainException('Changed Composer dependencies require a verified full-runtime upgrade.');
+            }
+        }
+    }
+
+    /**
+     * Read a bounded, real, single-link Composer metadata file without
+     * trusting a symlink, hard-link alias, or a swapped pathname after open.
+     */
+    private function composerDigest(string $path, int $maximumBytes): string
+    {
+        clearstatcache(true, $path);
+        if (is_link($path) || ! is_file($path) || realpath($path) !== $path) {
+            throw new DomainException('Unsafe Composer dependency identity at release cutover.');
+        }
+        $stream = @fopen($path, 'rb');
+        if ($stream === false) {
+            throw new DomainException('Unreadable Composer dependency metadata at release cutover.');
+        }
+        try {
+            $opened = @fstat($stream);
+            if (! is_array($opened)
+                || ($opened['mode'] & 0170000) !== 0100000
+                || $opened['nlink'] !== 1
+                || $opened['size'] < 1 || $opened['size'] > $maximumBytes) {
+                throw new DomainException('Unsupported Composer dependency metadata at release cutover.');
+            }
+            $contents = stream_get_contents($stream);
+            clearstatcache(true, $path);
+            $named = @lstat($path);
+            if (! is_string($contents) || strlen($contents) !== $opened['size']
+                || ! is_array($named)
+                || ($named['mode'] & 0170000) !== 0100000
+                || $named['nlink'] !== 1 || is_link($path)
+                || $named['dev'] !== $opened['dev']
+                || $named['ino'] !== $opened['ino']
+                || realpath($path) !== $path
+                || ! is_array(json_decode($contents, true))) {
+                throw new DomainException('Composer dependency identity changed during release cutover.');
+            }
+
+            return hash('sha256', $contents);
+        } finally {
+            fclose($stream);
         }
     }
 
