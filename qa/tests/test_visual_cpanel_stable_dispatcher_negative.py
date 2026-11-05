@@ -117,14 +117,75 @@ class StableDispatcherFailClosedHTTPTests(unittest.TestCase):
             "previous_version": "0.1.1",
             "probe_sha256": hashlib.sha256(token.encode()).hexdigest(),
         }
-        (self.home / ".walidsite-update-maintenance.json").write_text(
-            json.dumps(marker), encoding="utf-8"
-        )
+        maintenance = self.home / ".walidsite-update-maintenance.json"
+        maintenance.write_text(json.dumps(marker), encoding="utf-8")
+        maintenance.chmod(0o600)
         status, body = self.get("0" * 64)
         self.assertEqual(503, status)
         self.assertIn(b"maintenance in progress", body.lower())
         self.assertNotIn(token.encode(), body)
         self.assertNotIn(marker["probe_sha256"].encode(), body)
+
+    def test_exposed_or_hardlinked_maintenance_marker_refuses_correct_probe(self):
+        token = "f" * 64
+        lease = self.home / ".walidsite-update-maintenance.json"
+        lease.write_text(json.dumps({
+            "schema": 1,
+            "expires_at": int(time.time()) + 120,
+            "previous_root": "legacy",
+            "previous_version": "0.1.2",
+            "probe_sha256": hashlib.sha256(token.encode()).hexdigest(),
+        }), encoding="utf-8")
+
+        # An accidentally exposed 0644 marker must not authorize an otherwise
+        # correct private health token or fall through to Laravel.
+        for scenario in ("exposed_mode", "hardlink"):
+            if scenario == "hardlink":
+                lease.chmod(0o600)
+                second_link = self.home / "maintenance-hardlink.json"
+                second_link.hardlink_to(lease)
+            status, body = self.get(token)
+            self.assertEqual(503, status)
+            self.assertIn(b"maintenance is unavailable", body.lower())
+            self.assertNotIn(token.encode(), body)
+            if scenario == "hardlink":
+                second_link.unlink()
+
+        # Restore the legitimate single-link 0600 control-file shape. Its
+        # actual presence must be honored and block normal visitors.
+        status, body = self.get("0" * 64)
+        self.assertEqual(503, status)
+        self.assertIn(b"maintenance in progress", body.lower())
+        self.assertNotIn(token.encode(), body)
+
+    def test_private_release_pointer_mode_and_hardlink_fail_before_release_probe(self):
+        pointer = self.home / ".walidsite-active-release.json"
+        pointer.write_text(json.dumps({
+            "schema": 1,
+            "version": "0.1.2",
+            "root": ".walidsite-releases/v0.1.2-" + "a" * 40,
+        }), encoding="utf-8")
+
+        # The pointer is syntactically valid, but no release directory exists.
+        # Enforce filesystem identity BEFORE looking for executable code.
+        self.assert_denied(b"release pointer unavailable")
+        pointer.chmod(0o600)
+        second_link = self.home / "pointer-hardlink.json"
+        second_link.hardlink_to(pointer)
+        self.assert_denied(b"release pointer unavailable")
+        second_link.unlink()
+
+        # Legitimate single-link 0600 pointer passes the inode guard and
+        # fails at the *next* trust gate because code is intentionally absent.
+        self.assert_denied(b"release files unavailable")
+
+    def test_shipped_dispatcher_reads_no_control_file_by_reopening_its_path(self):
+        source = DISPATCHER.read_text(encoding="utf-8")
+        self.assertNotIn("file_get_contents($maintenance)", source)
+        self.assertNotIn("file_get_contents($pointer)", source)
+        self.assertIn("stream_get_contents($stream, $maximum + 1)", source)
+        self.assertIn("$readPrivateControl($maintenance, 1024", source)
+        self.assertIn("$readPrivateControl($pointer, 512", source)
 
     def test_hostile_previous_release_denied_before_bootstrap(self):
         marker = {
