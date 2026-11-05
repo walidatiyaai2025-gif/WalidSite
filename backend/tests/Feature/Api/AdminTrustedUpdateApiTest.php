@@ -32,10 +32,13 @@ final class AdminTrustedUpdateApiTest extends TestCase
             ->plainTextToken;
     }
 
-    private function configuration(string $key, string $version = '1.0.0'): void
+    private function configuration(string $key, ?string $version = null): void
     {
         config()->set('site.updates_enabled', true);
-        config()->set('site.trusted_installed_version', $version);
+        // A signed update is eligible only against the actual deployed code.
+        config()->set('site.trusted_installed_version', $version ?? trim(
+            (string) file_get_contents(base_path('VERSION')),
+        ));
         config()->set('site.trusted_release_origin', 'https://updates.example.test');
         config()->set('site.trusted_release_public_key', $key);
     }
@@ -80,7 +83,7 @@ final class AdminTrustedUpdateApiTest extends TestCase
         $this->withToken($this->token());
         $response = $this->getJson('/api/v1/admin/system/updates/check?lang=ar')
             ->assertOk()
-            ->assertJsonPath('data.current_version', '1.0.0')
+            ->assertJsonPath('data.current_version', trim((string) file_get_contents(base_path('VERSION'))))
             ->assertJsonPath('data.available_version', '1.2.0')
             ->assertJsonPath('data.source_sha', str_repeat('a', 40))
             ->assertJsonPath('data.artifact_sha256', str_repeat('b', 64))
@@ -94,6 +97,36 @@ final class AdminTrustedUpdateApiTest extends TestCase
         foreach ([$publicKey, $envelope, 'updates.example.test'] as $secretOrEndpoint) {
             self::assertStringNotContainsString($secretOrEndpoint, $response->getContent());
         }
+    }
+
+    public function test_stale_or_foreign_configured_version_never_checks_publisher_or_claims_installed_code(): void
+    {
+        // Signature verification alone cannot repair a false source-version
+        // identity, even if the configured publisher key is legitimate.
+        $calls = 0;
+        $this->app->instance(TrustedReleaseCatalog::class, new TrustedReleaseCatalog(
+            static function () use (&$calls): int {
+                $calls++;
+                throw new \\LogicException('Network should not be reached for a stale installed version');
+            },
+        ));
+        $this->withToken($this->token());
+        $realVersion = trim((string) file_get_contents(base_path('VERSION')));
+        $realKey = base64_encode(sodium_crypto_sign_publickey(sodium_crypto_sign_keypair()));
+        foreach (['0.0.0', '9.9.9', 'unidentified', ''] as $incorrectVersion) {
+            $this->configuration($realKey, $incorrectVersion);
+            $response = $this->getJson('/api/v1/admin/system/updates/check?lang=ar')
+                ->assertOk()
+                ->assertJsonPath('data.current_version', $realVersion)
+                ->assertJsonPath('data.available_version', null)
+                ->assertJsonPath('data.status', 'not_configured')
+                ->assertJsonPath('data.apply_available', false)
+                ->assertJsonPath('data.code_update_ready', false)
+                ->assertJsonPath('meta.publisher_verified', false);
+            self::assertStringContainsString('no-store', (string) $response->headers->get('Cache-Control'));
+            self::assertStringNotContainsString($realKey, $response->getContent());
+        }
+        self::assertSame(0, $calls);
     }
 
     public function test_unconfigured_or_disabled_release_check_has_no_network_and_no_false_update_claim(): void
