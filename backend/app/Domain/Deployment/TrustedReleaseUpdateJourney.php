@@ -355,26 +355,86 @@ final class TrustedReleaseUpdateJourney
             }
             $full = $item->getPathname();
             $relative = substr($full, strlen($root) + 1);
+            // The seal serializes records with newlines/colons: names outside
+            // the signed ZIP grammar can create ambiguous inventory records.
+            if (strlen($relative) > 512
+                || preg_match('#\\A(?:application|public_html|contracts)(?:/[A-Za-z0-9_.@+ -]+)*\\z#D', $relative) !== 1
+                || str_contains($relative, '//')) {
+                throw new DomainException('Signed candidate contains an unsafe inventory path.');
+            }
             if ($item->isDir()) {
+                if (realpath($full) !== $full || count($items) >= 50000) {
+                    throw new DomainException('Signed candidate directory identity or count is unsafe.');
+                }
                 $items[] = 'd:'.$relative;
                 continue;
             }
             if (! $item->isFile() || realpath($full) !== $full) {
                 throw new DomainException('Signed candidate contains an unsafe entry.');
             }
-            $size = filesize($full);
-            $stats = stat($full);
-            if ($size === false || $stats === false || ($stats['nlink'] ?? 0) !== 1
-                || ($bytes += $size) > 1073741824 || count($items) > 50000) {
+            [$size, $hash] = $this->sealedFileDigest($full);
+            if (($bytes += $size) > 1073741824 || count($items) >= 50000) {
                 throw new DomainException('Signed candidate exceeds safe file inventory limits.');
-            }
-            $hash = hash_file('sha256', $full);
-            if (! is_string($hash)) {
-                throw new DomainException('Cannot attest signed candidate bytes.');
             }
             $items[] = 'f:'.$relative.':'.$size.':'.$hash;
         }
         sort($items, SORT_STRING);
         return hash('sha256', implode("\n", $items));
     }
+
+    /** @return array{int,string} */
+    private function sealedFileDigest(string $path): array
+    {
+        clearstatcache(true, $path);
+        if (is_link($path) || ! is_file($path) || realpath($path) !== $path) {
+            throw new DomainException('Untrusted signed candidate file identity.');
+        }
+        $stream = @fopen($path, 'rb');
+        if ($stream === false) {
+            throw new DomainException('Cannot securely open signed candidate file.');
+        }
+        try {
+            $baseline = @fstat($stream);
+            if (! is_array($baseline)
+                || ! is_int($baseline['size']) || $baseline['size'] < 0
+                || $baseline['size'] > 134217728) {
+                throw new DomainException('Signed candidate file exceeds safe size limits.');
+            }
+            $this->assertStableCandidateFile($stream, $path, $baseline);
+            $hasher = hash_init('sha256');
+            // Hash the opened regular inode, never re-open a possibly swapped
+            // pathname with hash_file(). Exact-length read rejects growth.
+            $read = hash_update_stream($hasher, $stream, $baseline['size'] + 1);
+            if ($read !== $baseline['size']) {
+                throw new DomainException('Signed candidate bytes changed during attestation.');
+            }
+            $this->assertStableCandidateFile($stream, $path, $baseline);
+            return [$baseline['size'], hash_final($hasher)];
+        } finally {
+            fclose($stream);
+        }
+    }
+
+    /** @param resource $stream @param array<string|int,mixed> $baseline */
+    private function assertStableCandidateFile($stream, string $path, array $baseline): void
+    {
+        clearstatcache(true, $path);
+        $opened = @fstat($stream);
+        $named = @lstat($path);
+        if (! is_array($opened) || ! is_array($named)
+            || ($opened['mode'] & 0170000) !== 0100000
+            || ($named['mode'] & 0170000) !== 0100000
+            || ($opened['nlink'] ?? 0) !== 1 || ($named['nlink'] ?? 0) !== 1
+            || is_link($path) || realpath($path) !== $path) {
+            throw new DomainException('Signed candidate file link or type changed during attestation.');
+        }
+        foreach (['dev', 'ino', 'size', 'mtime', 'ctime'] as $field) {
+            if (! isset($opened[$field], $named[$field], $baseline[$field])
+                || $opened[$field] !== $baseline[$field]
+                || $named[$field] !== $baseline[$field]) {
+                throw new DomainException('Signed candidate file identity changed during attestation.');
+            }
+        }
+    }
+
 }
