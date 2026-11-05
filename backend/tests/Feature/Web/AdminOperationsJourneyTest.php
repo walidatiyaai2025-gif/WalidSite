@@ -220,6 +220,71 @@ final class AdminOperationsJourneyTest extends TestCase
             ->assertDontSee('owner/nonexistent');
     }
 
+    public function test_admin_github_cards_count_only_valid_unique_allowlist_sources_in_both_locales(): void
+    {
+        $this->withoutMiddleware(\Illuminate\Routing\Middleware\ThrottleRequests::class);
+        config(['portfolio.github_public_repos' => array_merge(
+            ['owner/verified', 'OWNER/VERIFIED'],
+            array_fill(0, 21, 'invalid!'),
+            ['owner/unavailable']
+        )]);
+        Http::fake([
+            'api.github.com/repos/owner/verified' => Http::response([
+                'full_name' => 'owner/verified',
+                'html_url' => 'https://github.com/owner/verified',
+                'description' => 'Verified source',
+                'private' => false, 'visibility' => 'public',
+            ]),
+            'api.github.com/repos/owner/unavailable' => Http::response([], 404),
+        ]);
+        $this->actingAs($this->account('admin'), 'web');
+
+        foreach (['en' => 'Configured entries', 'ar' => 'إعدادات القائمة'] as $lang => $label) {
+            $response = $this->get('/admin/github?lang='.$lang)->assertOk()
+                ->assertHeader('Cache-Control', 'no-store, private')
+                ->assertSee('owner/verified')
+                ->assertDontSee('owner/unavailable')
+                ->assertDontSee('invalid!');
+            $this->assertStringContainsString(
+                '<span>'.$label.'</span><strong>2</strong>',
+                $response->getContent()
+            );
+        }
+
+        $this->post('/admin/github/refresh?lang=en', [])
+            ->assertRedirect(route('admin.operations.github', ['lang' => 'en']))
+            ->assertSessionHas('status', 'Verified public repositories: 1');
+        Http::assertNotSent(fn ($request) => str_contains($request->url(), 'invalid!'));
+    }
+
+    public function test_empty_admin_github_allowlist_reports_no_external_sync_in_arabic_and_english(): void
+    {
+        $this->withoutMiddleware(\Illuminate\Routing\Middleware\ThrottleRequests::class);
+        config(['portfolio.github_public_repos' => ['invalid!', 'owner/../private']]);
+        Http::fake();
+        $this->actingAs($this->account('admin'), 'web');
+
+        $english = $this->get('/admin/github?lang=en')->assertOk()
+            ->assertSee('No repositories are configured.')
+            ->assertDontSee('owner/../private');
+        $this->assertStringContainsString(
+            '<span>Configured entries</span><strong>0</strong>', $english->getContent()
+        );
+        $arabic = $this->get('/admin/github?lang=ar')->assertOk()
+            ->assertSee('لا توجد مستودعات مهيأة.');
+        $this->assertStringContainsString(
+            '<span>إعدادات القائمة</span><strong>0</strong>', $arabic->getContent()
+        );
+
+        $this->post('/admin/github/refresh?lang=en', [])
+            ->assertRedirect(route('admin.operations.github', ['lang' => 'en']))
+            ->assertSessionHas('warning', 'No valid public GitHub repositories are configured.');
+        $this->post('/admin/github/refresh?lang=ar', [])
+            ->assertRedirect(route('admin.operations.github', ['lang' => 'ar']))
+            ->assertSessionHas('warning', 'لا توجد مستودعات عامة صالحة مهيأة للتحقق.');
+        Http::assertNothingSent();
+    }
+
     public function test_projects_filter_paginates_real_evidence_and_only_owner_can_edit_private_drafts(): void
     {
         Http::fake();
