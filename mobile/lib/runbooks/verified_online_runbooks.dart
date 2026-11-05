@@ -83,6 +83,7 @@ class ReviewedRunbook {
     if (id is! String || !_uuid.hasMatch(id) ||
         title is! String || title.trim().isEmpty || title.length > 220 ||
         body is! String || body.trim().isEmpty || body.length > 65536 ||
+        utf8.encode(body).length > 65536 ||
         version is! int || version < 1 || version > 1000000000 ||
         timestamp is! String || timestamp.length > 50 ||
         !RegExp(r'(?:Z|[+-][0-9]{2}:[0-9]{2})$').hasMatch(timestamp) ||

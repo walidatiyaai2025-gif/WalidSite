@@ -182,6 +182,25 @@ void main() {
     expect(ReviewedRunbookPage.parse(raw, 1).items, hasLength(1));
   });
 
+  test('reviewed Markdown is bounded by encoded UTF-8 bytes', () {
+    const maxBytes = 65536;
+    final multibyte = 'é' * 33000;
+    expect(multibyte.length, lessThan(maxBytes));
+    expect(utf8.encode(multibyte).length, greaterThan(maxBytes));
+    // A code-unit-only check would accept this as a published runbook.
+    expect(
+      () => ReviewedRunbook.fromJson(guide(body: multibyte)),
+      throwsFormatException,
+    );
+    expect(
+      () => ReviewedRunbookPage.parse(response(1, [guide(body: multibyte)]), 1),
+      throwsFormatException,
+    );
+    final valid = 'دليل ' + ('é' * 16000);
+    expect(utf8.encode(valid).length, lessThan(maxBytes));
+    expect(ReviewedRunbook.fromJson(guide(body: valid)).markdown, valid);
+  });
+
   test('rejects untrusted, malformed and oversized runbook data', () {
     final invalid = <String>[
       '{}',
