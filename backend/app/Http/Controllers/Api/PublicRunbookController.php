@@ -36,7 +36,10 @@ final class PublicRunbookController extends Controller
             ->select(
                 'r.id', 'r.slug', 'r.title', 'r.body_md', 'r.version',
                 'r.validated_at', 'v.body_md as reviewed_body_md',
-                'v.reviewed_title', 'v.checksum'
+                'v.reviewed_title', 'v.checksum',
+                'v.reviewed_category_slug',
+                'v.reviewed_category_name_en',
+                'v.reviewed_category_name_ar'
             );
     }
 
@@ -60,7 +63,46 @@ final class PublicRunbookController extends Controller
             return false;
         }
 
-        return hash_equals($row->checksum, hash('sha256', $row->body_md));
+        return hash_equals($row->checksum, hash('sha256', $row->body_md))
+            && $this->reviewedCategoryValid($row);
+    }
+
+    /**
+     * A partial/malformed category cannot inherit the exact revision's
+     * editorial approval. All-null legacy metadata is intentionally allowed.
+     */
+    private function reviewedCategoryValid(stdClass $row): bool
+    {
+        $slug = $row->reviewed_category_slug;
+        $en = $row->reviewed_category_name_en;
+        $ar = $row->reviewed_category_name_ar;
+        if ($slug === null && $en === null && $ar === null) {
+            return true;
+        }
+
+        return is_string($slug) && strlen($slug) <= 60
+            && preg_match('/\\A[a-z0-9]+(?:-[a-z0-9]+)*\\z/D', $slug) === 1
+            && is_string($en) && trim($en) !== ''
+            && mb_strlen($en) <= 160
+            && is_string($ar) && trim($ar) !== ''
+            && mb_strlen($ar) <= 160
+            && preg_match('/[\\x00-\\x1F\\x7F]/', $en) !== 1
+            && preg_match('/[\\x00-\\x1F\\x7F]/', $ar) !== 1;
+    }
+
+    /** @return ?array{slug:string,name:string} */
+    private function reviewedCategory(stdClass $row, string $locale): ?array
+    {
+        if ($row->reviewed_category_slug === null) {
+            return null;
+        }
+
+        return [
+            'slug' => $row->reviewed_category_slug,
+            'name' => $locale === 'ar'
+                ? $row->reviewed_category_name_ar
+                : $row->reviewed_category_name_en,
+        ];
     }
 
     private function serialize(stdClass $row): array
@@ -82,36 +124,58 @@ final class PublicRunbookController extends Controller
     {
         $input = $request->validate([
             'page' => ['sometimes', 'integer', 'min:1', 'max:10000'],
+            'lang' => ['sometimes', 'in:ar,en'],
+            'category' => [
+                'sometimes', 'string', 'max:60',
+                'regex:/^[a-z0-9]+(?:-[a-z0-9]+)*$/D',
+            ],
         ]);
         $page = (int) ($input['page'] ?? 1);
+        $locale = ($input['lang'] ?? 'en') === 'ar' ? 'ar' : 'en';
+        $selectedCategory = $input['category'] ?? null;
         $offset = ($page - 1) * self::PAGE_SIZE;
         $eligible = 0;
         $data = [];
         $hasMore = false;
+        $categories = [];
 
-        // Pagination happens AFTER immutable version and current checksum
-        // validation so revoked or edited rows cannot leave sparse pages or
-        // reveal their existence in has_more_pages. Chunked traversal bounds
-        // memory and stops once one more eligible entry has been established.
+        // The source of each category is the exact, currently approved
+        // version. Scan all independently verified guides so filter choices
+        // are not confined to the first page, and never reveal draft-only
+        // categories. Filter BEFORE offset accounting, not in Flutter.
+        // lazy(100) caps DB memory; the result retains only page slots and
+        // distinct reviewed category labels, no unreleased document bodies.
         foreach ($this->candidates()->orderBy('r.slug')->orderBy('r.id')->lazy(100) as $row) {
             if (! $this->independentlyVerified($row)) {
                 continue;
             }
+            $category = $this->reviewedCategory($row, $locale);
+            if ($category !== null) {
+                $categories[$category['slug']] ??= $category;
+            }
+            if ($selectedCategory !== null && ($category['slug'] ?? null) !== $selectedCategory) {
+                continue;
+            }
             if ($eligible >= $offset + self::PAGE_SIZE) {
                 $hasMore = true;
-                break;
+                continue;
             }
             if ($eligible >= $offset) {
                 $data[] = $this->serialize($row);
             }
             $eligible++;
         }
+        ksort($categories, SORT_STRING);
 
-        // Approval and rights can be revoked after this request. An HTTP
+        // Approval and rights may be revoked after this request. An HTTP
         // intermediary must never replay a previously reviewed runbook.
         return response()->json([
             'data' => $data,
-            'meta' => ['current_page' => $page, 'has_more_pages' => $hasMore],
+            'meta' => [
+                'current_page' => $page,
+                'has_more_pages' => $hasMore,
+                'categories' => array_values($categories),
+            ],
         ])->header('Cache-Control', 'no-store');
     }
 
