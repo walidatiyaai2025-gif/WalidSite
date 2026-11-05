@@ -301,7 +301,7 @@ class ReleaseCandidateTest(unittest.TestCase):
         self.assertEqual(receipt['version'], '1.2.3')
         self.assertEqual(receipt['artifact_sha256'], candidate['update']['sha256'])
         self.assertGreaterEqual(receipt['verified_files'], 4)
-        self.assertEqual(receipt['negative_rejections'], 4)
+        self.assertEqual(receipt['negative_rejections'], 7)
         self.assertTrue(receipt['test_only_ephemeral_key'])
         self.assertFalse(receipt['publisher_signature_verified'])
         self.assertFalse(receipt['code_update_performed'])
