@@ -120,6 +120,36 @@ final class TrustedReleaseDownloaderTest extends TestCase
         self::assertSame([], glob($this->private.'/.release-*.partial') ?: []);
     }
 
+    public function test_valid_signature_never_authorizes_local_or_malformed_publisher_network(): void
+    {
+        foreach ([
+            'https://127.0.0.1',
+            'https://localhost',
+            'https://internal',
+            'https://updates..example.test',
+            'https://updates.example.test.',
+            'https://updates.example.test:443',
+        ] as $origin) {
+            $called = false;
+            try {
+                (new TrustedReleaseDownloader(
+                    static function () use (&$called): int {
+                        $called = true;
+                        return 200;
+                    },
+                ))->download(
+                    $this->signed(), $this->publicKey, $origin,
+                    '1.0.0', $this->private, $this->public,
+                );
+                self::fail('Unsafe pinned publisher origin accepted: '.$origin);
+            } catch (DomainException) {
+                self::assertFalse($called, $origin);
+                self::assertSame([], glob($this->private.'/.release-*.partial') ?: []);
+                self::assertSame([], glob($this->private.'/WalidSite-update-*.zip') ?: []);
+            }
+        }
+    }
+
     public function test_wrong_publisher_does_not_invoke_network_transport(): void
     {
         $otherPair = sodium_crypto_sign_keypair();

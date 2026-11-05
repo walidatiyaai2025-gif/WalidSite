@@ -29,12 +29,7 @@ final class TrustedReleaseCatalog
         string $installedVersion,
     ): array {
         // Reject invalid destinations BEFORE making a network request.
-        $pattern = '~\Ahttps://((?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63})\z~iD';
-        if (! preg_match($pattern, $approvedOrigin, $matches)
-            || strlen($matches[1]) > 253
-            || filter_var($matches[1], FILTER_VALIDATE_IP) !== false) {
-            throw new DomainException('Trusted release catalog requires a pinned public HTTPS hostname.');
-        }
+        TrustedReleaseMetadata::assertPinnedHttpsOrigin($approvedOrigin);
 
         $url = $approvedOrigin.'/releases/latest.json';
         $content = '';

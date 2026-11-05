@@ -57,6 +57,33 @@ final class TrustedReleaseMetadataTest extends TestCase
         self::assertSame(str_repeat('b', 64), $result['artifact_sha256']);
     }
 
+    public function test_signed_metadata_rejects_unsafe_origin_even_without_catalog_discovery(): void
+    {
+        // A signed manifest must not turn a directly invoked updater into an
+        // HTTP client for localhost, literal IPs or malformed publisher hosts.
+        $signed = $this->signed();
+        foreach ([
+            'https://localhost',
+            'https://127.0.0.1',
+            'https://10.0.0.7',
+            'https://internal',
+            'https://updates..example.test',
+            'https://-updates.example.test',
+            'https://updates.example.test.',
+            'https://updates.example.test:443',
+            'https://user@updates.example.test',
+            'https://updates.example.test/redirect',
+        ] as $origin) {
+            $this->assertRejected($signed, $origin);
+        }
+
+        $valid = $this->verify($signed, 'https://cdn-1.updates.example.test');
+        self::assertSame(
+            'https://cdn-1.updates.example.test/releases/WalidSite-update-v1.2.0.zip',
+            $valid['artifact_url'],
+        );
+    }
+
     public function test_modified_or_unknown_signatures_are_rejected(): void
     {
         $envelope = json_decode($this->signed(), true, 16, JSON_THROW_ON_ERROR);

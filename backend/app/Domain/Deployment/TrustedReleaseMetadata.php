@@ -81,14 +81,9 @@ final class TrustedReleaseMetadata
             throw new DomainException('Release artifact path is not approved.');
         }
 
-        $parts = parse_url($approvedOrigin);
-        if ($parts === false || ($parts['scheme'] ?? '') !== 'https'
-            || ! isset($parts['host']) || ! preg_match('/^[a-z0-9.-]+$/iD', $parts['host'])
-            || isset($parts['user']) || isset($parts['pass']) || isset($parts['query'])
-            || isset($parts['fragment']) || isset($parts['path'])
-            || isset($parts['port']) || str_contains($approvedOrigin, '\\')) {
-            throw new DomainException('Release origin must be a pinned HTTPS host.');
-        }
+        // The catalog and direct archive downloader must reject the same
+        // unsafe hostnames, even if an envelope has a valid signature.
+        self::assertPinnedHttpsOrigin($approvedOrigin);
 
         return [
             'product' => $metadata['product'],
@@ -99,6 +94,21 @@ final class TrustedReleaseMetadata
             'min_php' => $metadata['min_php'],
             'artifact_url' => $approvedOrigin.'/releases/'.$filename,
         ];
+    }
+
+    /**
+     * Shared pinned publisher origin rule for both signed metadata and catalog
+     * verification. Kept in this file because stand-alone PHP release
+     * verifiers load TrustedReleaseMetadata directly without Composer.
+     */
+    public static function assertPinnedHttpsOrigin(string $origin): void
+    {
+        $pattern = '~\Ahttps://((?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63})\z~iD';
+        if (! preg_match($pattern, $origin, $matches)
+            || strlen($matches[1]) > 253
+            || filter_var($matches[1], FILTER_VALIDATE_IP) !== false) {
+            throw new DomainException('Trusted release origin requires a pinned public HTTPS hostname.');
+        }
     }
 
     /**

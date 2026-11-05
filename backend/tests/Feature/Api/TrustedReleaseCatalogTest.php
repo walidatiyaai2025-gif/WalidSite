@@ -87,6 +87,31 @@ final class TrustedReleaseCatalogTest extends TestCase
         }
     }
 
+    public function test_catalog_and_signed_metadata_share_exact_publisher_origin_policy(): void
+    {
+        $envelope = $this->envelope();
+        foreach ([
+            'https://internal',
+            'https://10.0.0.9',
+            'https://updates.example.test.',
+            'https://-updates.example.test',
+            'https://updates.example.test:443',
+        ] as $origin) {
+            $called = false;
+            try {
+                (new TrustedReleaseCatalog(
+                    static function () use (&$called): int {
+                        $called = true;
+                        return 200;
+                    },
+                ))->check($origin, $this->publisherPublicKey, '1.0.0');
+                self::fail('Unsafe publisher origin accepted: '.$origin);
+            } catch (DomainException) {
+                self::assertFalse($called, $origin);
+            }
+        }
+    }
+
     public function test_redirect_http_error_and_oversize_catalog_are_rejected(): void
     {
         $envelope = $this->envelope();
