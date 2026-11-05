@@ -192,6 +192,40 @@ final class AtomicReleaseSwitcherTest extends TestCase
         self::assertSame('v1', file_get_contents($this->docroot.'/index.php'));
     }
 
+    public function test_backup_callback_cannot_swap_release_lock_before_code_cutover(): void
+    {
+        if (PHP_OS_FAMILY === 'Windows') {
+            self::markTestSkipped('POSIX lock replacement fixture required.');
+        }
+        $lockPath = $this->releases.'/.release-switch.lock';
+        $orphaned = $this->releases.'/.release-switch-old.lock';
+        $calls = 0;
+
+        try {
+            (new AtomicReleaseSwitcher())->switch(
+                $this->releases, $this->current, $this->docroot, $this->next,
+                static function () use ($lockPath, $orphaned, &$calls): bool {
+                    $calls++;
+                    if (! rename($lockPath, $orphaned)
+                        || file_put_contents($lockPath, 'replacement') === false) {
+                        throw new RuntimeException('Failed to arrange lock swap test.');
+                    }
+                    return true;
+                },
+                static fn (): bool => true,
+            );
+            self::fail('A lock pathname swap must not authorize a release cutover.');
+        } catch (DomainException $error) {
+            self::assertStringContainsString('lock identity', $error->getMessage());
+        }
+
+        self::assertSame(1, $calls);
+        self::assertSame('replacement', file_get_contents($lockPath));
+        self::assertSame($this->old, realpath($this->current));
+        self::assertSame('v1', file_get_contents($this->docroot.'/index.php'));
+        self::assertSame('v2', file_get_contents($this->next.'/public_html/index.php'));
+    }
+
     private function reject(?string $candidate = null): void
     {
         try {
