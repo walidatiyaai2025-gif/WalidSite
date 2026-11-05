@@ -590,7 +590,7 @@ jobs:
           assert proof["version"] == os.environ["VERSION"]
           assert proof["artifact_sha256"] == manifest["update"]["sha256"]
           assert proof["verified_files"] >= 4
-          assert proof["negative_rejections"] == 4
+          assert proof["negative_rejections"] == 7
           assert proof["test_only_ephemeral_key"] is True
           assert proof["publisher_signature_verified"] is False
           assert proof["code_update_performed"] is False
