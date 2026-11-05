@@ -29,7 +29,7 @@ EXPECTED = {APK_NAME, PROOF_NAME, IDENTITY_NAME, CHECKSUM_NAME}
 MAX_APK_BYTES = 536870912
 MAX_JSON_BYTES = 65536
 MAX_RELEASE_ZIP_BYTES = 1073741824
-SEMVER = re.compile(r"(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\Z")
+SEMVER = re.compile(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\Z")
 
 
 def site_release_version(checkout: Path) -> str:
@@ -214,7 +214,7 @@ def verify_bundle(directory: Path, checkout: Path, source_sha: str,
             _, digest, size = read_verified(fd, name, MAX_RELEASE_ZIP_BYTES, verify_zip=True)
             checksum_bytes, _, _ = read_verified(fd, name + ".sha256", 256)
             if (digest != info["sha256"] or size != info["bytes"]
-                    or checksum_bytes != f"{digest}  {name}\\n".encode("ascii")):
+                    or checksum_bytes != f"{digest}  {name}\n".encode("ascii")):
                 raise ValueError("Release ZIP identity differs from manifest or sidecar")
             digests[kind] = digest
         if (php.get("schema") != "walidsite.signed-zip-ci-acceptance.v1"
