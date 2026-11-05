@@ -13,6 +13,38 @@ import 'reviewed_runbook_actions.dart';
 import 'offline_runbooks.dart';
 import 'signed_runbook_sync.dart';
 
+/// Categories are version-reviewed labels, never inferred from drafts.
+class ReviewedRunbookCategory {
+  const ReviewedRunbookCategory({required this.slug, required this.name});
+  final String slug;
+  final String name;
+  static final RegExp validSlug = RegExp(r'^[a-z0-9]+(?:-[a-z0-9]+)*$');
+
+  static List<ReviewedRunbookCategory> parse(Object? source) {
+    if (source == null) return const [];
+    if (source is! List || source.length > 200) {
+      throw const FormatException('Invalid reviewed category list');
+    }
+    final seen = <String>{};
+    final categories = <ReviewedRunbookCategory>[];
+    for (final entry in source) {
+      if (entry is! Map<String, dynamic> || entry.length != 2 ||
+          entry['slug'] is! String || entry['name'] is! String) {
+        throw const FormatException('Invalid reviewed category');
+      }
+      final slug = entry['slug'] as String;
+      final name = entry['name'] as String;
+      if (slug.length > 60 || !validSlug.hasMatch(slug) || !seen.add(slug) ||
+          name.trim().isEmpty || name.length > 160 ||
+          name.runes.any((ch) => ch < 32 || ch == 127)) {
+        throw const FormatException('Untrusted reviewed category');
+      }
+      categories.add(ReviewedRunbookCategory(slug: slug, name: name));
+    }
+    return List.unmodifiable(categories);
+  }
+}
+
 /// This is the live public *reviewed* catalog. It is not a cryptographically
 /// signed offline download; the independent Ed25519 pack has its own UI.
 class ReviewedRunbook {
@@ -72,9 +104,11 @@ class ReviewedRunbookPage {
     required this.items,
     required this.currentPage,
     required this.hasMorePages,
+    this.categories = const [],
   });
 
   final List<ReviewedRunbook> items;
+  final List<ReviewedRunbookCategory> categories;
   final int currentPage;
   final bool hasMorePages;
 
@@ -110,6 +144,7 @@ class ReviewedRunbookPage {
       items: List.unmodifiable(items),
       currentPage: requestedPage,
       hasMorePages: meta['has_more_pages'] as bool,
+      categories: ReviewedRunbookCategory.parse(meta['categories']),
     );
   }
 }
@@ -156,9 +191,14 @@ class ReviewedRunbookReader {
     }
   }
 
-  Future<ReviewedRunbookPage> loadPage(int page) async {
-    if (page < 1 || page > 10000) {
-      throw const FormatException('Invalid runbook page');
+  Future<ReviewedRunbookPage> loadPage(
+    int page, {String? category, bool arabic = false}
+  ) async {
+    if (page < 1 || page > 10000 ||
+        (category != null &&
+            (category.length > 60 ||
+                !ReviewedRunbookCategory.validSlug.hasMatch(category)))) {
+      throw const FormatException('Invalid reviewed runbook filter');
     }
     final origin = configuredOrigin();
     if (origin == null) {
@@ -166,7 +206,11 @@ class ReviewedRunbookReader {
     }
     final url = origin.replace(
       path: '/api/v1/mobile/runbooks',
-      queryParameters: {'page': '$page'},
+      queryParameters: {
+        'page': '$page',
+        'lang': arabic ? 'ar' : 'en',
+        if (category != null) 'category': category,
+      },
     );
     return ReviewedRunbookPage.parse(await _fetch(url), page);
   }
@@ -232,10 +276,14 @@ Future<({OfflineRunbookPack pack, OfflineRunbook item})> downloadReviewedPublica
 
 /// MOBILE-05: live reviewed catalog with deterministic load-more and local
 /// search. Never silently substitute an unsigned offline draft after failure.
+typedef ReviewedRunbookCategoryPageLoader =
+    Future<ReviewedRunbookPage> Function(int page, String? category);
+
 class ReviewedRunbookLibrary extends StatefulWidget {
   const ReviewedRunbookLibrary({
     required this.arabic,
     this.pageLoader,
+    this.categoryPageLoader,
     this.detailLoader,
     this.offlineRepository,
     super.key,
@@ -243,6 +291,7 @@ class ReviewedRunbookLibrary extends StatefulWidget {
 
   final bool arabic;
   final Future<ReviewedRunbookPage> Function(int page)? pageLoader;
+  final ReviewedRunbookCategoryPageLoader? categoryPageLoader;
   final Future<ReviewedRunbook> Function(String id)? detailLoader;
   final OfflineRunbookRepository? offlineRepository;
 
@@ -258,6 +307,7 @@ class _ReviewedRunbookLibraryState extends State<ReviewedRunbookLibrary> {
   bool _loadingMore = false;
   bool _hasMore = false;
   String _query = '';
+  String? _category;
   String? _moreError;
   final OfflineRunbookRepository _defaultOfflineRepository =
       OfflineRunbookRepository();
@@ -267,12 +317,20 @@ class _ReviewedRunbookLibraryState extends State<ReviewedRunbookLibrary> {
   OfflineRunbookRepository get _repository =>
       widget.offlineRepository ?? _defaultOfflineRepository;
 
-  bool get _configured => widget.pageLoader != null ||
+  bool get _configured => widget.categoryPageLoader != null ||
+      widget.pageLoader != null ||
       ReviewedRunbookReader.configuredOrigin() != null;
 
+  bool get _supportsCategoryFilter => widget.categoryPageLoader != null ||
+      (widget.pageLoader == null &&
+          ReviewedRunbookReader.configuredOrigin() != null);
+
   Future<ReviewedRunbookPage> _fetch(int page) =>
+      widget.categoryPageLoader?.call(page, _category) ??
       widget.pageLoader?.call(page) ??
-      const ReviewedRunbookReader().loadPage(page);
+      const ReviewedRunbookReader().loadPage(
+        page, category: _category, arabic: widget.arabic,
+      );
 
   @override
   void initState() {
@@ -284,7 +342,12 @@ class _ReviewedRunbookLibraryState extends State<ReviewedRunbookLibrary> {
   void didUpdateWidget(covariant ReviewedRunbookLibrary oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.arabic != widget.arabic ||
-        oldWidget.pageLoader != widget.pageLoader) {
+        oldWidget.pageLoader != widget.pageLoader ||
+        oldWidget.categoryPageLoader != widget.categoryPageLoader) {
+      if (oldWidget.pageLoader != widget.pageLoader ||
+          oldWidget.categoryPageLoader != widget.categoryPageLoader) {
+        _category = null;
+      }
       _reset();
     }
   }
@@ -440,6 +503,38 @@ class _ReviewedRunbookLibraryState extends State<ReviewedRunbookLibrary> {
                           ? 'يُعاد التحقق من اعتماد الدليل عند فتحه. هذه ليست نسخة دون إنترنت.'
                           : 'Each guide is rechecked before opening. This is not an offline signed copy.'),
                       const SizedBox(height: 12),
+                      if (_supportsCategoryFilter && first.categories.isNotEmpty) ...[
+                        DropdownButtonFormField<String>(
+                          key: const Key('online-runbook-category-filter'),
+                          initialValue: first.categories.any((category) =>
+                              category.slug == _category) ? _category : '',
+                          decoration: InputDecoration(
+                            labelText: ar ? 'تصنيف الأدلة' : 'Runbook category',
+                            border: const OutlineInputBorder(),
+                          ),
+                          items: [
+                            DropdownMenuItem(
+                              value: '',
+                              child: Text(ar ? 'كل التصنيفات' : 'All categories'),
+                            ),
+                            for (final category in first.categories)
+                              DropdownMenuItem(
+                                value: category.slug,
+                                child: Text(category.name),
+                              ),
+                          ],
+                          onChanged: _downloadingId != null ? null : (value) {
+                            final selected = value == null || value.isEmpty
+                                ? null : value;
+                            if (selected == _category) return;
+                            setState(() {
+                              _category = selected;
+                              _reset();
+                            });
+                          },
+                        ),
+                        const SizedBox(height: 12),
+                      ],
                       TextField(
                         key: const Key('online-runbook-search'),
                         onChanged: (value) => setState(() => _query = value),
@@ -458,8 +553,13 @@ class _ReviewedRunbookLibraryState extends State<ReviewedRunbookLibrary> {
                         ),
                       if (items.isEmpty)
                         Text(
-                          ar ? 'لا توجد أدلة منشورة ومعتمدة حاليًا.'
-                              : 'No reviewed runbooks have been published yet.',
+                          ar
+                              ? (_category == null
+                                  ? 'لا توجد أدلة منشورة ومعتمدة حاليًا.'
+                                  : 'لا توجد أدلة معتمدة ضمن هذا التصنيف.')
+                              : (_category == null
+                                  ? 'No reviewed runbooks have been published yet.'
+                                  : 'No reviewed runbooks in this category.'),
                           key: const Key('online-runbook-empty'),
                         )
                       else if (visible.isEmpty)
