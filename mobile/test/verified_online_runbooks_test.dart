@@ -60,6 +60,99 @@ void main() {
     );
   });
 
+  test('MOBILE-04 real HTTP slow-drip response cannot extend total deadline', () async {
+    final previous = HttpOverrides.current;
+    HttpOverrides.global = null;
+    HttpServer? server;
+    final stop = Completer<void>();
+    var requests = 0;
+    try {
+      server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      server.listen((request) async {
+        requests++;
+        try {
+          request.response.headers.contentType = ContentType.json;
+          request.response.write('{"data":');
+          await request.response.flush();
+          while (!stop.isCompleted) {
+            await Future<void>.delayed(const Duration(milliseconds: 20));
+            if (stop.isCompleted) break;
+            request.response.write(' ');
+            await request.response.flush();
+          }
+        } catch (_) {
+          // The expected forced socket close ends this response.
+        }
+      });
+      await expectLater(
+        ReviewedRunbookReader.fetchHttp(
+          Uri.parse('http://127.0.0.1:${server.port}/api/v1/mobile/solutions/$firstId'),
+          timeout: const Duration(milliseconds: 350),
+        ),
+        throwsA(isA<TimeoutException>()),
+      );
+      expect(requests, 1, reason: 'A stalled download must not be retried');
+    } finally {
+      stop.complete();
+      await server?.close(force: true);
+      HttpOverrides.global = previous;
+    }
+  });
+
+  test('MOBILE-04 real HTTP stalled headers obey whole-request deadline', () async {
+    final previous = HttpOverrides.current;
+    HttpOverrides.global = null;
+    HttpServer? server;
+    final release = Completer<void>();
+    var requests = 0;
+    try {
+      server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      server.listen((request) async {
+        requests++;
+        await release.future;
+        try {
+          await request.response.close();
+        } catch (_) {
+          // Expected: the client aborted the timed-out connection.
+        }
+      });
+      await expectLater(
+        ReviewedRunbookReader.fetchHttp(
+          Uri.parse('http://127.0.0.1:${server.port}/api/v1/mobile/solutions/$firstId'),
+          timeout: const Duration(milliseconds: 350),
+        ),
+        throwsA(isA<TimeoutException>()),
+      );
+      expect(requests, 1);
+    } finally {
+      release.complete();
+      await server?.close(force: true);
+      HttpOverrides.global = previous;
+    }
+  });
+
+  test('MOBILE-04 real HTTP quick reviewed response preserves UTF-8', () async {
+    final previous = HttpOverrides.current;
+    HttpOverrides.global = null;
+    HttpServer? server;
+    try {
+      server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      server.listen((request) async {
+        request.response.headers.contentType = ContentType.json;
+        request.response.write('{"data":"حل تمت مراجعته"}');
+        await request.response.close();
+      });
+      final body = await ReviewedRunbookReader.fetchHttp(
+        Uri.parse('http://127.0.0.1:${server.port}/api/v1/mobile/solutions/$firstId'),
+        timeout: const Duration(seconds: 2),
+      );
+      expect(body, '{"data":"حل تمت مراجعته"}');
+    } finally {
+      await server?.close(force: true);
+      HttpOverrides.global = previous;
+    }
+  });
+
   test('parses reviewed UUID guide, version, UTC timestamp and bounded pages', () {
     final page = ReviewedRunbookPage.parse(response(1, [
       guide(title: 'إدارة النسخ الاحتياطية', body: '# مراجعة نسخة موثقة'),
