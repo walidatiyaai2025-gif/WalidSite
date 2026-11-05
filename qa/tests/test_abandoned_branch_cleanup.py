@@ -424,6 +424,45 @@ class Orphan480BranchCleanupTest(unittest.TestCase):
                     "Route logic changed: a deliberate re-audit is required before branch deletion",
                 )
 
+    def test_admin_consent_route_reaudit_keeps_authorization_source_and_privacy(self):
+        """Changing the pinned route requires preserved consent gates, not only a new hash."""
+        root = Path(__file__).resolve().parents[2]
+        source = (root / "backend/routes/web.php").read_text(encoding="utf-8")
+        start, end, _ = ORPHAN_480_ROUTE_SCOPES[
+            "fix/480-admin-audience-consent-time-parity"
+        ]
+        self.assertEqual(source.count(start), 1)
+        self.assertEqual(source.count(end), 1)
+        scoped = source.split(start, 1)[1].split(end, 1)[0]
+        for mandatory in (
+            "abort_unless($request->user()?->canAccessAdmin(), 403)",
+            "'purpose' => ['sometimes', 'in:account_activity,editorial_updates,product_updates']",
+            "'channel' => ['sometimes', 'in:email,push']",
+            "$preview->forSegment($purpose, $channel)",
+            "'consented' => $audience['consented']",
+            "'activeAccounts' => $audience['active_accounts']",
+            "'audienceStates' => $audience",
+            "no-store, private",
+        ):
+            with self.subTest(contract=mandatory):
+                self.assertIn(mandatory, scoped)
+        self.assertNotIn("Mail::", scoped)
+        self.assertNotIn("Notification::send", scoped)
+
+        service = (root / "backend/app/Domain/Privacy/AudienceConsentPreview.php"
+                   ).read_text(encoding="utf-8")
+        for invariant in (
+            "NotificationConsentGate::PURPOSES",
+            "NotificationConsentGate::CHANNELS",
+            "->where('account.status', 'active')",
+            "preference.revoked_at IS NOT NULL",
+            "preference.consented_at <= ?",
+            "preference.consented_at > ?",
+            "->groupBy('consent_bucket')",
+        ):
+            with self.subTest(invariant=invariant):
+                self.assertIn(invariant, service)
+
     def test_unrelated_route_change_preserves_exact_audited_closure(self):
         for candidate in ORPHANED_480:
             with self.subTest(branch=candidate.branch):
