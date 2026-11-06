@@ -2,6 +2,7 @@
 
 namespace App\Integrations\GitHub;
 
+use App\Models\GithubAllowlistProposal;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Throwable;
@@ -42,8 +43,38 @@ final class PublicRepositoryDirectory
             $seen[$normalized] = true;
             $slugs[] = $candidate;
             if (count($slugs) === 20) {
-                break;
+                return $slugs;
             }
+        }
+
+        // Existing environment entries stay first and retain their prior
+        // behavior. Only independently owner-approved DB candidates with a
+        // real verification receipt can fill remaining slots. A pending or
+        // rejected proposal is never permission for public disclosure.
+        // Do not query the database when all 20 env slots are occupied.
+        try {
+            foreach (GithubAllowlistProposal::query()
+                ->where('status', 'approved')
+                ->whereNotNull('verified_at')
+                ->where('verified_at', '<=', now('UTC'))
+                ->orderBy('created_at')->orderBy('id')
+                ->limit(200)->pluck('repository_slug') as $candidate) {
+                if (! is_string($candidate) || ! $this->validSlug($candidate)) {
+                    continue;
+                }
+                $normalized = strtolower($candidate);
+                if (isset($seen[$normalized])) {
+                    continue;
+                }
+                $seen[$normalized] = true;
+                $slugs[] = $normalized;
+                if (count($slugs) === 20) {
+                    break;
+                }
+            }
+        } catch (Throwable) {
+            // During first-install migrations or a database outage, preserve
+            // configured entries without claiming unverified DB approvals.
         }
 
         return $slugs;
