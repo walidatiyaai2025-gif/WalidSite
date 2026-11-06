@@ -97,6 +97,13 @@ final class CpanelOwnerBackupCoordinator
                 throw new DomainException('Host writer isolation changed before maintenance.');
             }
 
+            // Backup Now is a separate entrypoint from signed code install.
+            // Validate the ACTUAL PDO connections under the exclusive writer
+            // lease before even creating a maintenance marker or recovery
+            // vault. A same-schema, populated, or non-MariaDB restore target
+            // must never begin a destructive recovery rehearsal.
+            (new CpanelDisposableMariaDbGuard())->assertIndependentAndEmpty($live, $disposable);
+
             $barrier = $maintenance->begin($home, $previousRoot, $installedVersion, 300);
             $token = $barrier['token'];
             $assertQuiesced = static function () use (
