@@ -294,12 +294,12 @@ final class OwnerUpdateRecoveryBackupSafetyTest extends TestCase
         file_put_contents($target, 'existing trusted receipt');
         self::assertTrue(symlink($target, $path));
 
-        $method = new \\ReflectionMethod(OwnerUpdateRecoveryBackup::class, 'saveReceipt');
+        $method = new \ReflectionMethod(OwnerUpdateRecoveryBackup::class, 'saveReceipt');
 
         try {
             $method->invoke(new OwnerUpdateRecoveryBackup(), $path, ['id' => 'FORGED']);
             self::fail('An existing symlink receipt must be rejected.');
-        } catch (\\RuntimeException $error) {
+        } catch (\RuntimeException $error) {
             self::assertStringContainsString('Cannot create private recovery receipt', $error->getMessage());
         }
 
