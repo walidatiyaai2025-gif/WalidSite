@@ -8,6 +8,7 @@ use App\Domain\Deployment\CpanelOwnerBackupHost;
 use App\Domain\Deployment\CpanelOwnerBackupCoordinator;
 use App\Domain\Deployment\CpanelOwnerCodeUpdateHost;
 use App\Domain\Deployment\CpanelOwnerCodeInstallCoordinator;
+use App\Domain\Deployment\CpanelDisposableMariaDbGuard;
 use Illuminate\Support\Facades\DB;
 use App\Domain\Deployment\CpanelPhysicalHostPreflight;
 use App\Domain\Deployment\CpanelTrustedCodeStager;
@@ -572,32 +573,8 @@ final class AdminUpdateController extends Controller
             }
             $live = DB::connection()->getPdo();
             $disposable = $host->disposableRestoreConnection();
-            if ($live === $disposable
-                || $live->getAttribute(\PDO::ATTR_DRIVER_NAME) !== 'mysql'
-                || $disposable->getAttribute(\PDO::ATTR_DRIVER_NAME) !== 'mysql') {
-                throw new \DomainException('Separate MariaDB recovery environment required.');
-            }
-            // Never allow the host adapter to hand us the live DB (including
-            // through a second PDO handle). Compare server identity and schema;
-            // also require an empty restore target, which the drill populates.
-            $identity = static function (\PDO $db): array {
-                $row = $db->query('SELECT @@hostname AS host, @@port AS port, DATABASE() AS db')
-                    ->fetch(\PDO::FETCH_ASSOC);
-                if (! is_array($row) || ! is_string($row['host'] ?? null)
-                    || ! is_string($row['db'] ?? null) || $row['db'] === '') {
-                    throw new \DomainException('Recovery database identity unavailable.');
-                }
-                return [$row['host'], (string) $row['port'], $row['db']];
-            };
-            if ($identity($live) === $identity($disposable)) {
-                throw new \DomainException('Production database cannot be its own restore target.');
-            }
-            $tables = $disposable->query(
-                'SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE()'
-            )->fetchColumn();
-            if (! is_numeric($tables) || (int) $tables !== 0) {
-                throw new \DomainException('Recovery target must be an empty database.');
-            }
+            (new CpanelDisposableMariaDbGuard())
+                ->assertIndependentAndEmpty($live, $disposable);
 
             $receipt = $coordinator->prove(
                 $live, $disposable, $application.'/.env',
@@ -704,29 +681,8 @@ final class AdminUpdateController extends Controller
             }
             $live = DB::connection()->getPdo();
             $disposable = $host->disposableRestoreConnection();
-            if ($live === $disposable
-                || $live->getAttribute(\PDO::ATTR_DRIVER_NAME) !== 'mysql'
-                || $disposable->getAttribute(\PDO::ATTR_DRIVER_NAME) !== 'mysql') {
-                throw new \DomainException('An independent MariaDB recovery environment is required.');
-            }
-            $databaseIdentity = static function (\PDO $db): array {
-                $row = $db->query('SELECT @@hostname AS host, @@port AS port, DATABASE() AS db')
-                    ->fetch(\PDO::FETCH_ASSOC);
-                if (! is_array($row) || ! is_string($row['host'] ?? null)
-                    || ! is_string($row['db'] ?? null) || $row['db'] === '') {
-                    throw new \DomainException('Database identity is unavailable.');
-                }
-                return [$row['host'], (string) $row['port'], $row['db']];
-            };
-            if ($databaseIdentity($live) === $databaseIdentity($disposable)) {
-                throw new \DomainException('Live database cannot be a restore target.');
-            }
-            $count = $disposable->query(
-                'SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE()'
-            )->fetchColumn();
-            if (! is_numeric($count) || (int) $count !== 0) {
-                throw new \DomainException('Isolated restore target is not empty.');
-            }
+            (new CpanelDisposableMariaDbGuard())
+                ->assertIndependentAndEmpty($live, $disposable);
             $result = $installer->install(
                 $host, app(\App\Domain\Deployment\CpanelConsoleWriterLease::class),
                 $live, $disposable, $verified['envelope'],

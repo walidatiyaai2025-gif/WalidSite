@@ -49,6 +49,11 @@ final class CpanelOwnerCodeInstallCoordinator
         if ($host->externalWritersStopped() !== true) {
             throw new DomainException('Independent host writer isolation is unavailable.');
         }
+        // Validate the actual PDO objects in the core orchestrator, even
+        // when it is called without the Admin HTTP controller's preflight.
+        // A duplicate PDO connection pointed at production is not a restore
+        // sandbox. Validate BEFORE any maintenance marker or backup is made.
+        (new CpanelDisposableMariaDbGuard())->assertIndependentAndEmpty($live, $disposable);
 
         $signed = (new TrustedReleaseMetadata())->verify(
             $envelope, $publisherKey, $origin, $installedVersion,
