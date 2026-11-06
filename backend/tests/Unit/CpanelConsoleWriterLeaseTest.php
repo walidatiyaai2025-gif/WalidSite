@@ -188,6 +188,132 @@ final class CpanelConsoleWriterLeaseTest extends TestCase
         }
     }
 
+    public function test_owner_http_handoff_excludes_new_web_and_console_writers_until_request_ends(): void
+    {
+        $ownerRequest = new CpanelConsoleWriterLease();
+        $ownerRequest->beginForConsole($this->home.'/application');
+        $ownerRequest->promoteSharedForUpdate($this->home);
+        $ownerRequest->assertExclusiveHeld();
+
+        $otherRequest = new CpanelConsoleWriterLease();
+        try {
+            $otherRequest->beginForConsole($this->home.'/application');
+            $this->fail('New HTTP/Artisan writer crossed an owner exclusive lease.');
+        } catch (DomainException) {
+            $ownerRequest->assertExclusiveHeld();
+        }
+
+        $ownerRequest->end();
+        $otherRequest->beginForConsole($this->home.'/application');
+        $otherRequest->end();
+    }
+
+    public function test_contended_handoff_aborts_without_exclusive_or_stale_shared_proof(): void
+    {
+        $ownerRequest = new CpanelConsoleWriterLease();
+        $otherRequest = new CpanelConsoleWriterLease();
+        $ownerRequest->beginForConsole($this->home.'/application');
+        $otherRequest->beginForConsole($this->home.'/application');
+
+        try {
+            $ownerRequest->promoteSharedForUpdate($this->home);
+            $this->fail('Owner update crossed an in-flight HTTP reader.');
+        } catch (DomainException) {
+            $this->assertFileExists($this->home.'/.walidsite-writer-drain.lock');
+        }
+        try {
+            $ownerRequest->assertExclusiveHeld();
+            $this->fail('Failed OS upgrade falsely retained exclusive authority.');
+        } catch (DomainException) {
+            // Failed lock conversion is terminal for this owner attempt.
+        }
+
+        $otherRequest->end();
+        $nextOwner = new CpanelConsoleWriterLease();
+        $nextOwner->beginExclusiveForUpdate($this->home);
+        $nextOwner->assertExclusiveHeld();
+        $nextOwner->end();
+    }
+
+    public function test_wrong_home_and_nested_writer_depth_cannot_be_promoted(): void
+    {
+        $ownerRequest = new CpanelConsoleWriterLease();
+        $ownerRequest->beginForConsole($this->home.'/application');
+
+        try {
+            $ownerRequest->promoteSharedForUpdate(sys_get_temp_dir());
+            $this->fail('A different installation home was accepted.');
+        } catch (DomainException) {
+            // The original shared lease must remain held.
+        }
+        try {
+            (new CpanelConsoleWriterLease())->beginExclusiveForUpdate($this->home);
+            $this->fail('Wrong-home call silently released the real writer.');
+        } catch (DomainException) {
+            // Still protected.
+        }
+
+        $ownerRequest->beginForConsole($this->home.'/application');
+        try {
+            $ownerRequest->promoteSharedForUpdate($this->home);
+            $this->fail('Nested in-flight command depth allowed owner conversion.');
+        } catch (DomainException) {
+            $ownerRequest->end(); // Nested command finishes.
+        }
+        $ownerRequest->promoteSharedForUpdate($this->home);
+        $ownerRequest->assertExclusiveHeld();
+        $ownerRequest->end();
+    }
+
+    public function test_maintenance_marker_or_untrusted_home_never_authorizes_handoff(): void
+    {
+        $ownerRequest = new CpanelConsoleWriterLease();
+        $ownerRequest->beginForConsole($this->home.'/application');
+        $marker = $this->home.'/.walidsite-update-maintenance.json';
+        file_put_contents($marker, '{"schema":1,"expires_at":0}');
+
+        try {
+            $ownerRequest->promoteSharedForUpdate($this->home);
+            $this->fail('Expired maintenance marker authorized a new owner cutover.');
+        } catch (DomainException) {
+            $this->assertFileExists($marker);
+        }
+        unlink($marker);
+
+        chmod($this->home, 0777);
+        clearstatcache(true, $this->home);
+        try {
+            $ownerRequest->promoteSharedForUpdate($this->home);
+            $this->fail('Foreign-writable cPanel home allowed privileged handoff.');
+        } catch (DomainException) {
+            $this->assertSame(0777, fileperms($this->home) & 0777);
+        } finally {
+            chmod($this->home, 0700);
+            clearstatcache(true, $this->home);
+        }
+
+        $ownerRequest->promoteSharedForUpdate($this->home);
+        $ownerRequest->assertExclusiveHeld();
+        $ownerRequest->end();
+    }
+
+    public function test_maintenance_created_after_owner_promotion_does_not_release_exclusive_lock(): void
+    {
+        $ownerRequest = new CpanelConsoleWriterLease();
+        $ownerRequest->beginForConsole($this->home.'/application');
+        $ownerRequest->promoteSharedForUpdate($this->home);
+        file_put_contents($this->home.'/.walidsite-update-maintenance.json', '{"expires_at":9999999999}');
+
+        $ownerRequest->assertExclusiveHeld();
+        try {
+            (new CpanelConsoleWriterLease())->beginForConsole($this->home.'/application');
+            $this->fail('Background writer resumed while release maintenance was marked.');
+        } catch (DomainException) {
+            $ownerRequest->assertExclusiveHeld();
+        }
+        $ownerRequest->end();
+    }
+
     public function test_local_checkout_does_not_create_or_require_cpanel_writer_lock(): void
     {
         $checkout = $this->home.'/checkout';
