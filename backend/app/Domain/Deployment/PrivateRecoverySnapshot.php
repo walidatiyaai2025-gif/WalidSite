@@ -131,10 +131,9 @@ final class PrivateRecoverySnapshot
             // must survive the isolated restore rehearsal before a code update.
             $json = json_encode(['schema' => 2, 'files' => $manifest, 'directories' => $directories],
                 JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
-            if (file_put_contents($working.'/manifest.json', $json, LOCK_EX) !== strlen($json)
-                || ! chmod($working.'/manifest.json', 0600)) {
-                throw new RuntimeException('Recovery inventory could not be made private.');
-            }
+            // Keep restore authority on one exclusively-created, private
+            // fsynced inode, not a path reopened after writing its digest.
+            (new DurableRecoveryManifest())->write($working.'/manifest.json', $json);
             if (! rename($working, $completed)) {
                 throw new RuntimeException('Cannot commit private recovery snapshot.');
             }
@@ -329,8 +328,8 @@ final class PrivateRecoverySnapshot
                         $offset += $written;
                     }
                 }
-                if (! fflush($output)) {
-                    throw new RuntimeException('Cannot flush private recovery snapshot.');
+                if (! fflush($output) || ! @fsync($output)) {
+                    throw new RuntimeException('Cannot durably flush private recovery snapshot.');
                 }
             } finally {
                 fclose($output);

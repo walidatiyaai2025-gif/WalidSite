@@ -90,6 +90,27 @@ final class CpanelPhysicalHostPreflightTest extends TestCase
         self::assertSame('DO_NOT_READ_OR_REPORT_APP_KEY', file_get_contents($this->home.'/application/.env'));
     }
 
+    public function test_existing_exposed_private_release_root_blocks_preflight_without_mutation(): void
+    {
+        $root = $this->home.'/.walidsite-releases';
+        self::assertTrue(mkdir($root, 0700));
+        foreach ([0755, 0750, 0777] as $mode) {
+            self::assertTrue(chmod($root, $mode));
+            clearstatcache(true, $root);
+            try {
+                $this->inspect();
+                self::fail('A publicly accessible code release root must never pass hosting preflight.');
+            } catch (DomainException) {
+                self::assertSame($mode, fileperms($root) & 0777);
+                self::assertFileDoesNotExist($this->home.'/.walidsite-update-maintenance.json');
+                self::assertSame('DO_NOT_READ_OR_REPORT_APP_KEY', file_get_contents($this->home.'/application/.env'));
+            }
+        }
+        self::assertTrue(chmod($root, 0700));
+        clearstatcache(true, $root);
+        self::assertSame('hosting_layout_verified', $this->inspect()['state']);
+    }
+
     public function test_after_code_pointer_switch_uses_versioned_code_not_original_version(): void
     {
         $sha = str_repeat('a', 40);

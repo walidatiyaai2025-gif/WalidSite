@@ -98,6 +98,7 @@ class CpanelPhysicalPreflightSecurity(unittest.TestCase):
     def test_valid_pointer_is_bound_to_immutable_release_version(self):
         release = self.home / ".walidsite-releases" / ("v0.1.2-" + "a" * 40)
         (release / "application").mkdir(parents=True)
+        (self.home / ".walidsite-releases").chmod(0o700)
         (release / "application" / "VERSION").write_text("0.1.2\n")
         pointer = self.home / ".walidsite-active-release.json"
         pointer.write_text(json.dumps({
@@ -112,6 +113,7 @@ class CpanelPhysicalPreflightSecurity(unittest.TestCase):
     def test_pointer_private_inode_mode_hardlink_and_symlink_fail_closed(self):
         release = self.home / ".walidsite-releases" / ("v0.1.2-" + "a" * 40)
         (release / "application").mkdir(parents=True)
+        (self.home / ".walidsite-releases").chmod(0o700)
         (release / "application" / "VERSION").write_text("0.1.2\n")
         pointer = self.home / ".walidsite-active-release.json"
         pointer.write_text(json.dumps({

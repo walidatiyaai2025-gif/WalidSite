@@ -14,6 +14,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        // One shared lease per console process; nested Artisan calls must
+        // not release the outer scheduler/worker's lock prematurely.
+        $this->app->singleton(\App\Domain\Deployment\CpanelConsoleWriterLease::class);
         // T011/T014: construct the trusted handler allowlist once per app
         // container. Plain schedule:run / ai:tick must not require a manual
         // test-only registration step before editorial work can run.
@@ -35,6 +38,25 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        if ($this->app->runningInConsole()) {
+            // On a physical cPanel install, all Laravel CLI writers (including
+            // schedule:run, queue:work and nested commands) hold a shared
+            // process-lifetime lock. The owner updater will need its exclusive
+            // counterpart before a real recoverable backup/cutover.
+            \Illuminate\Support\Facades\Event::listen(
+                \Illuminate\Console\Events\CommandStarting::class,
+                static function (): void {
+                    app(\App\Domain\Deployment\CpanelConsoleWriterLease::class)
+                        ->beginForConsole(base_path());
+                },
+            );
+            \Illuminate\Support\Facades\Event::listen(
+                \Illuminate\Console\Events\CommandFinished::class,
+                static function (): void {
+                    app(\App\Domain\Deployment\CpanelConsoleWriterLease::class)->end();
+                },
+            );
+        }
         // Authentication attempts must not consume the database/owner step
         // throttle budget or block a legitimate first-time installation.
         RateLimiter::for('site-setup-unlock', static fn (Request $request) =>
