@@ -553,17 +553,25 @@ final class AdminUpdateController extends Controller
             return back()->withErrors(['backup' => 'Unexpected backup parameter.']);
         }
 
-        // The physical legacy layout is the only recovery transaction that
-        // CpanelOwnerBackupCoordinator currently proves. Switched code needs
-        // a separate chain-aware implementation; never certify the wrong root.
+        // The cPanel document root and original private data remain stable
+        // across signed code-only switches. Only the server-derived running
+        // Laravel base_path() may attest a later active release, never a
+        // browser version or pointer path.
         $home = dirname(public_path());
         $application = $home.'/application';
+        $runningApplication = base_path();
         $version = $this->pinnedInstalledVersion();
-        if ($version === null || base_path() !== $application
+        $firstVersion = (new TrustedInstalledVersion())->read($application.'/VERSION');
+        if ($version === null || $firstVersion === null
             || public_path() !== $home.'/public_html'
+            || (new TrustedInstalledReleasePin())->read(
+                $runningApplication, public_path(), $firstVersion,
+            ) !== $version
             || ! app()->bound(CpanelOwnerBackupHost::class)) {
             return back()->withErrors(['backup' => 'Backup blocked: verified host isolation or installed code identity is unavailable.']);
         }
+        $previousRoot = $runningApplication === $application
+            ? 'legacy' : substr(dirname($runningApplication), strlen($home) + 1);
 
         try {
             /** @var CpanelOwnerBackupHost $host */
@@ -581,9 +589,10 @@ final class AdminUpdateController extends Controller
                 $application.'/storage/app', $home.'/public_html/uploads',
                 $application, $home.'/public_html',
                 $home.'/.walidsite-backups', $home.'/.walidsite-restore-drills',
-                $version, 'legacy',
+                $version, $previousRoot,
                 static fn (): bool => $host->externalWritersStopped() === true,
                 app(\App\Domain\Deployment\CpanelConsoleWriterLease::class),
+                $runningApplication,
             );
         } catch (Throwable $error) {
             // Driver errors may carry passwords, SQL or private filesystem
