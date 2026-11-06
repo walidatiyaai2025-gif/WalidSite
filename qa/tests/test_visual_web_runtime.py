@@ -173,6 +173,28 @@ class WebRuntimeAuditTest(unittest.TestCase):
                           playwright_manager=manager)
         self.assertEqual(contexts, [])
 
+    def test_cli_persists_complete_report_even_when_accessibility_defects_exist(self):
+        report = {
+            "schema": 1, "tested_sha": SHA,
+            "scope": "anonymous_public_web_runtime_accessibility_diagnostics_only",
+            "visual_parity": "not_attested", "evidence_admitted": False,
+            "dynamic_web_pending": ["WEB-05", "WEB-08"],
+            "screen_checks": 48, "failed_checks": 1,
+            "fatal_checks": 0, "results": [
+                {"screen": "WEB-07", "locale": "ar", "viewport": "mobile",
+                 "status": "defect", "defects": ["multiple_visible_h1"]},
+            ],
+        }
+        with tempfile.TemporaryDirectory() as folder:
+            output = Path(folder) / "web-a11y.json"
+            with patch("qa.audit_web_runtime.audit_web", return_value=report), \
+                 redirect_stdout(io.StringIO()):
+                code = main(["--commit", SHA, "--output", str(output)])
+            self.assertEqual(code, 1)
+            self.assertTrue(output.is_file())
+            self.assertEqual(json.loads(output.read_text())["screen_checks"], 48)
+            self.assertEqual(json.loads(output.read_text())["failed_checks"], 1)
+
     def test_failed_cli_redacts_runtime_exceptions_and_writes_no_report(self):
         with tempfile.TemporaryDirectory() as folder:
             output = Path(folder) / "web.json"
