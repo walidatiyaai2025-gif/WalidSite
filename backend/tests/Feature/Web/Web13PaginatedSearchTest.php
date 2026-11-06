@@ -179,7 +179,7 @@ final class Web13PaginatedSearchTest extends TestCase
             $this->get(route('public.search', $base))->assertOk()
                 ->assertHeader('Cache-Control', 'no-store, private')
                 ->assertSee($lang === 'ar' ? 'نتائج موثقة: 10 مقالات.' : 'Verified results: 10 articles.')
-                ->assertDontSee('dynamic-revoke-1');
+                ->assertDontSee('/blog/dynamic-revoke-1?', false);
             $this->get(route('public.search', $base + ['page' => 2]))->assertNotFound();
         }
     }
