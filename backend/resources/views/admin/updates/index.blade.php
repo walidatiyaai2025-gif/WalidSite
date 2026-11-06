@@ -60,12 +60,21 @@ button:disabled{background:#718096;cursor:not-allowed}
 
 <section class="panel" aria-labelledby="code-updates-title">
 <h2 id="code-updates-title">{{ $locale === 'ar' ? 'تحديث ملفات الموقع كاملة' : 'Complete application code update' }}</h2>
+@if(!$hostCodeUpdateAvailable)
 <div class="blocked" role="status" data-testid="trusted-code-update-unavailable">
 <strong>{{ $locale === 'ar' ? 'التحديث الآمن للكود غير متاح بعد.' : 'Trusted code updates are not yet available.' }}</strong>
 <p>{{ $locale === 'ar'
     ? 'يمكن فحص كتالوج الإصدارات الموقّعة بمفتاح ناشر مثبت على الخادم. لكن تثبيت الكود يتطلب إثبات النسخ الاحتياطي والاستعادة والتبديل الآمن وفحص السلامة؛ لذلك لا يوجد زر تثبيت غير آمن.'
     : 'You can check the publisher-signed release catalog using server-pinned trust settings. Full-code Apply remains unavailable until recoverable backups, controlled cutover and health checks are proven.' }}</p>
 </div>
+@else
+<div class="blocked" role="status" data-testid="trusted-code-update-requires-stage">
+<strong>{{ $locale === 'ar' ? 'يتطلب التحديث حزمة موقّعة وتجهيزًا موثقًا.' : 'Install requires an approved signed and attested release.' }}</strong>
+<p>{{ $locale === 'ar'
+    ? 'مزوّد الاستضافة متصل. لا يُقبل التثبيت إلا بعد فحص الحزمة وجميع ملفات الكود وعزل الكتّاب ونجاح الاستعادة وفحص التشغيل عبر HTTPS.'
+    : 'A host update capability is registered. Install is enabled only for a privately staged signed release; live backup/restore, writer isolation and HTTPS health must still pass at execution time.' }}</p>
+</div>
+@endif
 <section aria-labelledby="signed-zip-upload">
 <h3 id="signed-zip-upload">{{ $locale === 'ar' ? 'رفع حزمة تحديث موقّعة والتحقق منها' : 'Upload & Verify Signed Update ZIP' }}</h3>
 <p>{{ $locale === 'ar'
@@ -180,9 +189,26 @@ button:disabled{background:#718096;cursor:not-allowed}
 @endif
 </section>
 <p class="blocked">{{ $locale === 'ar'
-    ? 'Install Update يظل متوقفًا حتى توفر التبديل الآمن والتحقق الكامل من الإصدار وحالة الاستعادة الحالية. نجاح Backup Now لا يصرّح بالتثبيت تلقائيًا.'
-    : 'Install Update remains blocked until signed code cutover and current recovery verification are integrated. A successful Backup Now does not authorize installation.' }}</p>
-<button type="button" disabled aria-describedby="code-updates-title">{{ $locale === 'ar' ? 'تثبيت التحديث — غير متاح بعد' : 'Install Update — Hosting/Recovery Blocked' }}</button>
+    ? 'لا يصرّح نجاح Backup Now بالتثبيت تلقائيًا. يلزم إثبات مستقل جديد للنسخ والاستعادة قبل أي تبديل لكود الإصدار، وإلا يُرفض التحديث.'
+    : 'Backup Now is not an installation permit. Signed-code Install independently repeats backup/restore, exclusive writer and live-health checks and rejects any missing evidence.' }}</p>
+@if($stagedCode && $hostCodeUpdateAvailable)
+<form method="post" action="{{ route('admin.updates.install-signed', ['lang' => $locale]) }}"
+      data-testid="owner-signed-install-form">
+@csrf
+<button type="submit" data-testid="owner-signed-install">
+{{ $locale === 'ar' ? 'تثبيت الإصدار الموقّع بعد اختبار الاستعادة' : 'Install signed release with verified recovery' }}</button>
+<p class="small">{{ $locale === 'ar'
+    ? 'هذه عملية تحديث الكود فقط: تعيد فحص التوقيع وكل الملفات ثم عزل الكتابة والنسخة الاحتياطية والاستعادة والتبديل وفحص HTTPS. أي فشل يوقف التثبيت.'
+    : 'Code-only update: rechecks signed files, exclusive writer isolation, real backup/restore, atomic code pointer and live HTTPS health. Failures block installation.' }}</p>
+</form>
+@else
+<button type="button" disabled aria-describedby="code-updates-title" data-testid="owner-install-host-blocked">{{ $locale === 'ar' ? 'تثبيت التحديث — الاستضافة أو الاستعادة غير جاهزة' : 'Install Update — Hosting/Recovery Blocked' }}</button>
+@endif
+@if($errors->has('install'))
+<p class="error" role="alert" data-testid="owner-signed-install-failed">{{ $locale === 'ar'
+    ? 'توقف تثبيت الكود أو فشل إثبات الاستعادة. لم يتم اعتماد الإصدار الجديد؛ راجع حالة الصيانة الخاصة.'
+    : $errors->first('install') }}</p>
+@endif
 </section>
 
 <form method="post" action="{{ route('admin.updates.check', ['lang' => $locale]) }}">

@@ -41,6 +41,8 @@ Route::middleware('auth:web')->group(function (): void {
         ->middleware('throttle:2,1')->name('admin.updates.preflight');
     Route::post('/admin/updates/stage', [AdminUpdateController::class, 'stage'])
         ->middleware('throttle:1,1')->name('admin.updates.stage');
+    Route::post('/admin/updates/install-signed', [AdminUpdateController::class, 'installSigned'])
+        ->middleware('throttle:1,10')->name('admin.updates.install-signed');
     Route::post('/admin/updates/backup-now', [AdminUpdateController::class, 'backupNow'])
         ->middleware('throttle:1,5')->name('admin.updates.backup-now');
     Route::post('/admin/updates/apply', [AdminUpdateController::class, 'apply'])

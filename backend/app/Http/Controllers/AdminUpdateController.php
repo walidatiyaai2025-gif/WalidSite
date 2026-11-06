@@ -6,6 +6,8 @@ use App\Domain\Deployment\CpanelArchiveCodeOnlyPreflight;
 use App\Domain\Deployment\CpanelOwnerRecoveryHistory;
 use App\Domain\Deployment\CpanelOwnerBackupHost;
 use App\Domain\Deployment\CpanelOwnerBackupCoordinator;
+use App\Domain\Deployment\CpanelOwnerCodeUpdateHost;
+use App\Domain\Deployment\CpanelOwnerCodeInstallCoordinator;
 use Illuminate\Support\Facades\DB;
 use App\Domain\Deployment\CpanelPhysicalHostPreflight;
 use App\Domain\Deployment\CpanelTrustedCodeStager;
@@ -170,8 +172,9 @@ final class AdminUpdateController extends Controller
 
         $recoveryHistory = app(CpanelOwnerRecoveryHistory::class)->inspect(dirname(public_path()));
         $hostBackupAvailable = app()->bound(CpanelOwnerBackupHost::class);
+        $hostCodeUpdateAvailable = app()->bound(CpanelOwnerCodeUpdateHost::class);
         return view('admin.updates.index', compact('status', 'installedVersion',
-            'verifiedUpload', 'hostPreflight', 'stagedCode', 'recoveryHistory', 'hostBackupAvailable'));
+            'verifiedUpload', 'hostPreflight', 'stagedCode', 'recoveryHistory', 'hostBackupAvailable', 'hostCodeUpdateAvailable'));
     }
 
     /**
@@ -623,6 +626,115 @@ final class AdminUpdateController extends Controller
             'tables' => $receipt['tables'],
             'rows' => $receipt['rows'],
         ])->with('status', 'Private backup and separate MariaDB restore rehearsal verified. No code update was performed.');
+    }
+
+    /**
+     * The owner-only code-only update path. This endpoint never accepts
+     * archive paths, version, source SHA, HTTP health URL or host proof from
+     * the browser. Without a trusted host-installed adapter it fails closed.
+     */
+    public function installSigned(
+        Request $request,
+        TrustedOwnerUpdateInbox $inbox,
+        CpanelOwnerCodeInstallCoordinator $installer,
+    ): RedirectResponse {
+        $this->authorizeOwner($request);
+        abort_unless(config('site.updates_enabled') === true, 403);
+        $input = $request->validate(['lang' => ['sometimes', 'in:en,ar']]);
+        if (array_diff(array_keys($request->query()), ['lang']) !== []
+            || array_diff(array_keys($request->request->all()), ['_token']) !== []) {
+            return back()->withErrors(['install' => 'Unexpected installation request parameter.']);
+        }
+        $installed = $this->pinnedInstalledVersion();
+        $id = $request->session()->get('verified_owner_update_inbox');
+        $staged = $request->session()->get('owner_update_staged_code');
+        $preflight = $request->session()->get('owner_update_host_preflight');
+        $home = dirname(public_path());
+        if ($installed === null || ! is_string($id)
+            || ! is_array($staged) || ! is_array($preflight)
+            || ! hash_equals($id, (string) ($staged['id'] ?? ''))
+            || ! hash_equals($id, (string) ($preflight['id'] ?? ''))
+            || ! hash_equals($installed, (string) ($staged['installed_version'] ?? ''))
+            || ! hash_equals($installed, (string) ($preflight['installed_version'] ?? ''))
+            || ! is_int($staged['created_at'] ?? null)
+            || $staged['created_at'] > time() || time() - $staged['created_at'] > 300
+            || ! is_int($preflight['checked_at'] ?? null)
+            || $preflight['checked_at'] > time() || time() - $preflight['checked_at'] > 300
+            || base_path() !== $home.'/application'
+            || public_path() !== $home.'/public_html'
+            || ! app()->bound(CpanelOwnerCodeUpdateHost::class)
+            || ! filled(config('site.trusted_release_origin'))
+            || ! filled(config('site.trusted_release_public_key'))) {
+            return back()->withErrors(['install' => 'BLOCKED HOSTING: current verified stage, private recovery or trusted health capability is unavailable.']);
+        }
+
+        try {
+            $verified = $inbox->getVerified(
+                $id, (string) $request->user()->getKey(),
+                storage_path('app/private/verified-updates'), public_path(),
+                (string) config('site.trusted_release_origin'),
+                (string) config('site.trusted_release_public_key'),
+                $installed,
+            );
+            foreach (['version', 'source_sha', 'artifact_sha256'] as $field) {
+                if (! hash_equals((string) ($verified[$field] ?? ''), (string) ($staged[$field] ?? ''))
+                    || ($field !== 'source_sha'
+                        && ! hash_equals((string) ($verified[$field] ?? ''), (string) ($preflight[$field] ?? '')))) {
+                    throw new \DomainException('Stage or hosting preflight no longer matches the signed release.');
+                }
+            }
+
+            /** @var CpanelOwnerCodeUpdateHost $host */
+            $host = app(CpanelOwnerCodeUpdateHost::class);
+            if ($host->externalWritersStopped() !== true) {
+                throw new \DomainException('Foreign host writers are not isolated.');
+            }
+            $live = DB::connection()->getPdo();
+            $disposable = $host->disposableRestoreConnection();
+            if ($live === $disposable
+                || $live->getAttribute(\PDO::ATTR_DRIVER_NAME) !== 'mysql'
+                || $disposable->getAttribute(\PDO::ATTR_DRIVER_NAME) !== 'mysql') {
+                throw new \DomainException('An independent MariaDB recovery environment is required.');
+            }
+            $databaseIdentity = static function (\PDO $db): array {
+                $row = $db->query('SELECT @@hostname AS host, @@port AS port, DATABASE() AS db')
+                    ->fetch(\PDO::FETCH_ASSOC);
+                if (! is_array($row) || ! is_string($row['host'] ?? null)
+                    || ! is_string($row['db'] ?? null) || $row['db'] === '') {
+                    throw new \DomainException('Database identity is unavailable.');
+                }
+                return [$row['host'], (string) $row['port'], $row['db']];
+            };
+            if ($databaseIdentity($live) === $databaseIdentity($disposable)) {
+                throw new \DomainException('Live database cannot be a restore target.');
+            }
+            $count = $disposable->query(
+                'SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE()'
+            )->fetchColumn();
+            if (! is_numeric($count) || (int) $count !== 0) {
+                throw new \DomainException('Isolated restore target is not empty.');
+            }
+            $result = $installer->install(
+                $host, app(\App\Domain\Deployment\CpanelConsoleWriterLease::class),
+                $live, $disposable, $verified['envelope'],
+                (string) config('site.trusted_release_public_key'),
+                (string) config('site.trusted_release_origin'),
+                $installed, $home, $verified['directory'], $verified['archive'],
+            );
+        } catch (Throwable $error) {
+            // Never expose driver credentials, private recovery locations,
+            // publisher keys or transient maintenance probe secrets.
+            Log::warning('admin.updates.install_blocked', ['type' => $error::class]);
+            return back()->withErrors(['install' => 'Signed code installation or recovery verification failed. Inspect private maintenance and recovery state; no successful update is claimed.']);
+        }
+
+        $request->session()->forget([
+            'verified_owner_update_inbox', 'owner_update_host_preflight',
+            'owner_update_staged_code', 'trusted_release_check',
+        ]);
+        return redirect()->route('admin.updates.index', [
+            'lang' => ($input['lang'] ?? 'en') === 'ar' ? 'ar' : 'en',
+        ])->with('status', 'Signed code release '.$result['version'].' passed independent backup/restore, atomic cutover and live health verification.');
     }
 
     public function apply(Request $request, SiteUpdater $updater): RedirectResponse
