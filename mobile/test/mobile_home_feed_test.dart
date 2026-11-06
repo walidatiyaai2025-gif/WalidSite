@@ -89,11 +89,11 @@ void main() {
       'published_at': '2026-11-02T10:00:00Z',
     };
     for (final malicious in [
-      'Approved\\nFake',
-      'Approved\\rFake',
-      'Approved\\u007fFake',
-      'Approved\\u202eFake',
-      'Approved\\u2066Fake\\u2069',
+      'Approved\nFake',
+      'Approved\rFake',
+      'Approved\u007fFake',
+      'Approved\u202eFake',
+      'Approved\u2066Fake\u2069',
     ]) {
       final project = {...normalProject, 'title': malicious};
       final article = {...normalArticle, 'title': malicious};
