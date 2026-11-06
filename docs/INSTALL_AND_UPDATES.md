@@ -30,7 +30,9 @@ Before each upgrade, preserve an encrypted/offsite **consistent database backup 
 
 A successful cPanel ZIP build or green CI is **not live installation evidence**. T025 requires a genuine authorized HTTPS staging environment, installed release SHA, post-migration health, queue/cron, protected setup endpoints, external integration checks, and real recovery receipts. Use `qa/staging_smoke.py` only with an explicitly approved hostname and controlled network egress; its read-only HTTP observations alone do not attest a deployment or rollback.
 
-## Admin-signed code-only ZIP updates and local update history
+## Trusted patch and migration handling
+
+### Admin-signed code-only ZIP updates and local update history
 
 After one-ZIP cPanel installation, the **owner-only Admin → System Updates** page supports **Check publisher → inspect signed version and release notes → Download or upload publisher-approved ZIP → Verify package → Host preflight → Private code staging → Re-enter owner password → Install signed code**. The publisher origin and Ed25519 public key must be explicitly pinned in the **private server configuration**; a SHA-256 checksum alone is not publisher authentication. Signed release notes are bounded and HTML-escaped. Nothing downloaded or staged is executable merely because its signature was verified.
 
