@@ -215,6 +215,112 @@ final class VerifiedRecoveryCutoverTest extends TestCase
             ->query('SELECT COUNT(*) FROM information_schema.tables WHERE TABLE_SCHEMA=DATABASE()')->fetchColumn());
     }
 
+    public function test_group_writable_recovery_vault_blocks_snapshot_and_cutover(): void
+    {
+        if (PHP_OS_FAMILY === 'Windows') {
+            self::markTestSkipped('POSIX directory permission fixture required.');
+        }
+        self::assertTrue(chmod($this->vault, 0770));
+        try {
+            $this->execute();
+            self::fail('Group-writable private vault cannot protect recovery evidence.');
+        } catch (DomainException $error) {
+            self::assertStringContainsString('private locations', $error->getMessage());
+            self::assertSame($this->old, realpath($this->current));
+            self::assertSame('vA', file_get_contents($this->publicRoot.'/index.php'));
+            self::assertSame([], glob($this->vault.'/mariadb-*') ?: []);
+            self::assertSame([], glob($this->vault.'/recovery-*') ?: []);
+            self::assertSame(1, (int) $this->liveDb->query('SELECT COUNT(*) FROM orders')->fetchColumn());
+        } finally {
+            self::assertTrue(chmod($this->vault, 0700));
+        }
+    }
+
+    public function test_group_writable_recovery_lock_blocks_all_backup_mutations(): void
+    {
+        if (PHP_OS_FAMILY === 'Windows') {
+            self::markTestSkipped('POSIX file permission fixture required.');
+        }
+        $lockPath = $this->vault.'/.verified-cutover.lock';
+        self::assertSame(0, file_put_contents($lockPath, ''));
+        self::assertTrue(chmod($lockPath, 0660));
+        try {
+            $this->execute();
+            self::fail('Group-writable recovery lock cannot authorize a backup.');
+        } catch (DomainException $error) {
+            self::assertStringContainsString('recovery lock identity', $error->getMessage());
+            self::assertSame($this->old, realpath($this->current));
+            self::assertSame('vA', file_get_contents($this->publicRoot.'/index.php'));
+            self::assertSame([], glob($this->vault.'/mariadb-*') ?: []);
+            self::assertSame([], glob($this->vault.'/recovery-*') ?: []);
+        } finally {
+            self::assertTrue(chmod($lockPath, 0600));
+        }
+    }
+
+    public function test_recovery_vault_chmod_during_maintenance_revokes_the_lease(): void
+    {
+        if (PHP_OS_FAMILY === 'Windows') {
+            self::markTestSkipped('POSIX directory permission fixture required.');
+        }
+        $calls = 0;
+        $quiescence = function () use (&$calls): bool {
+            $calls++;
+            if ($calls === 2 && ! chmod($this->vault, 0777)) {
+                throw new RuntimeException('Cannot simulate unsafe recovery vault mode.');
+            }
+            return true;
+        };
+        try {
+            $this->execute($quiescence);
+            self::fail('Backup vault chmod after flock must stop the update.');
+        } catch (DomainException $error) {
+            self::assertStringContainsString('vault identity or permissions', $error->getMessage());
+            self::assertSame(2, $calls);
+            self::assertSame($this->old, realpath($this->current));
+            self::assertSame([], glob($this->vault.'/mariadb-*') ?: []);
+            self::assertSame([], glob($this->vault.'/recovery-*') ?: []);
+            self::assertSame('APP_KEY=preserved', file_get_contents($this->runtime.'/.env'));
+            self::assertSame(1, (int) $this->liveDb->query('SELECT COUNT(*) FROM orders')->fetchColumn());
+        } finally {
+            self::assertTrue(chmod($this->vault, 0700));
+        }
+    }
+
+    public function test_replaced_recovery_vault_during_maintenance_cannot_reuse_old_lock(): void
+    {
+        if (PHP_OS_FAMILY === 'Windows') {
+            self::markTestSkipped('POSIX directory rename fixture required.');
+        }
+        $oldVault = $this->vault.'-displaced';
+        $calls = 0;
+        $quiescence = function () use (&$calls, $oldVault): bool {
+            $calls++;
+            if ($calls === 2
+                && (! rename($this->vault, $oldVault)
+                    || ! mkdir($this->vault, 0700))) {
+                throw new RuntimeException('Cannot simulate recovery vault replacement.');
+            }
+            return true;
+        };
+        try {
+            $this->execute($quiescence);
+            self::fail('A replaced backup vault must never inherit the old lock.');
+        } catch (DomainException $error) {
+            self::assertStringContainsString('vault identity or permissions', $error->getMessage());
+            self::assertSame(2, $calls);
+            self::assertSame($this->old, realpath($this->current));
+            self::assertSame([], glob($this->vault.'/mariadb-*') ?: []);
+            self::assertSame([], glob($this->vault.'/recovery-*') ?: []);
+            self::assertSame(1, (int) $this->liveDb->query('SELECT COUNT(*) FROM orders')->fetchColumn());
+        } finally {
+            if (is_dir($oldVault)) {
+                self::assertTrue(rmdir($this->vault));
+                self::assertTrue(rename($oldVault, $this->vault));
+            }
+        }
+    }
+
     public function test_hard_linked_recovery_lock_rejects_backup_and_code_cutover(): void
     {
         $unrelated = $this->home.'/shared-recovery-lock';

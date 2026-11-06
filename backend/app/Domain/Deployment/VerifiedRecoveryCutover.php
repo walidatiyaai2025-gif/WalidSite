@@ -45,6 +45,7 @@ final class VerifiedRecoveryCutover
         }
 
         $vault = realpath($privateBackupRoot);
+        $vaultStat = $vault === false ? false : @lstat($vault);
         $restoration = realpath($disposableFileRestoreRoot);
         $release = realpath($releaseRoot);
         $public = realpath($publicDocumentRoot);
@@ -55,6 +56,9 @@ final class VerifiedRecoveryCutover
             || $this->overlap($vault, $public) || $this->overlap($restoration, $public)
             || $this->overlap($restoration, $release)
             || ! is_dir($vault) || ! is_writable($vault)
+            || ! is_array($vaultStat)
+            || ($vaultStat['mode'] & 0170000) !== 0040000
+            || ($vaultStat['mode'] & 0022) !== 0
             || ! is_dir($restoration) || ! is_writable($restoration)) {
             throw new DomainException('Backups and restore drills require separate private locations.');
         }
@@ -69,19 +73,34 @@ final class VerifiedRecoveryCutover
         }
 
         try {
-            $this->assertSecureLockIdentity($lock, $lockFile);
+            // The inner recovery lease must protect the directory containing
+            // the verified files and MariaDB backups, not just its lock file.
+            // A chmod or directory rename during a callback revokes authority
+            // before backups or the executable code pointer can be changed.
+            $lockCheck = function () use ($lock, $lockFile, $vault, $vaultStat): bool {
+                clearstatcache(true, $vault);
+                $currentVault = @lstat($vault);
+                if (! is_array($currentVault) || is_link($vault)
+                    || realpath($vault) !== $vault
+                    || ($currentVault['mode'] & 0170000) !== 0040000
+                    || ($currentVault['mode'] & 0022) !== 0
+                    || $currentVault['dev'] !== $vaultStat['dev']
+                    || $currentVault['ino'] !== $vaultStat['ino']
+                    || $currentVault['mode'] !== $vaultStat['mode']) {
+                    throw new DomainException('Unsafe recovery vault identity or permissions; operation must stop.');
+                }
+                return $this->assertSecureLockIdentity($lock, $lockFile);
+            };
+            $lockCheck();
             if (! flock($lock, LOCK_EX | LOCK_NB)) {
                 throw new DomainException('Another verified recovery process is already running.');
             }
             // The pathname may have been exchanged while flock was pending.
             // Never back up real data under a stale or hard-linked lock.
-            $this->assertSecureLockIdentity($lock, $lockFile);
+            $lockCheck();
 
-            // Preserve the same on-disk lock identity throughout all external
+            // Preserve both vault and lock identities throughout all external
             // callbacks, backup/restore work and the final code switch.
-            // A replaced pathname would permit an unrelated second updater
-            // to acquire a different inode while this process still holds flock.
-            $lockCheck = fn (): bool => $this->assertSecureLockIdentity($lock, $lockFile);
             $guard = function (callable $callback) use ($lockCheck): bool {
                 $lockCheck();
                 $result = $callback();
@@ -160,6 +179,8 @@ final class VerifiedRecoveryCutover
         if (! is_array($opened) || ! is_array($named)
             || ($opened['mode'] & 0170000) !== 0100000
             || ($named['mode'] & 0170000) !== 0100000
+            || ($opened['mode'] & 0022) !== 0
+            || ($named['mode'] & 0022) !== 0
             || $opened['nlink'] !== 1 || $named['nlink'] !== 1
             || $opened['dev'] !== $named['dev']
             || $opened['ino'] !== $named['ino']
