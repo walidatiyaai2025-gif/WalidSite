@@ -98,8 +98,8 @@ class ReleaseArtifactGateTest(unittest.TestCase):
         # A small untrusted JSON file can exceed the stdlib parser recursion
         # limit; it must be rejected as invalid inventory metadata.
         # The runner may raise its recursion limit above Python defaults.
-        # Make the adversarial fixture deeper than that active limit.
-        depth = max(4096, sys.getrecursionlimit() + 256)
+        # Use ample depth beyond the active limit and the C JSON parser's\n        # independent nesting allowance (which can exceed sys.getrecursionlimit()).
+        depth = max(12000, sys.getrecursionlimit() + 256)
         self.manifest.write_text("[" * depth + "0" + "]" * depth,
                                  encoding="utf-8")
         with self.assertRaisesRegex(ValueError, "Invalid JSON release manifest"):
