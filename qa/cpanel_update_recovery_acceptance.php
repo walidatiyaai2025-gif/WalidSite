@@ -8,6 +8,7 @@ declare(strict_types=1);
 require dirname(__DIR__).'/backend/vendor/autoload.php';
 
 use App\Domain\Deployment\CpanelOwnerBackupCoordinator;
+use App\Domain\Deployment\CpanelConsoleWriterLease;
 use App\Domain\Deployment\OwnerUpdateRecoveryBackup;
 use App\Domain\Deployment\PrivateRecoverySnapshot;
 use App\Domain\Deployment\MariaDbRecoverySnapshot;
@@ -80,13 +81,24 @@ try {
     // Prove the REAL cross-request writer lock + private maintenance
     // transaction around the same disposable files/MariaDB restore. This is
     // an isolated CI fixture, NOT evidence of production foreign-writer drain.
-    $result = (new CpanelOwnerBackupCoordinator())->prove(
-        $live, $disposable,
-        $app.'/.env', $app.'/storage/app', $web.'/uploads',
-        $app, $web, $home.'/.walidsite-backups', $home.'/.walidsite-restore-drills',
-        '0.1.1', 'legacy',
-        static function () use (&$calls): bool { ++$calls; return true; },
-    );
+    // Simulate the real global HTTP middleware: the owner request already
+    // holds a shared lease when it enters the privileged recovery service.
+    // The service must promote the same descriptor, restore independently,
+    // and release it on success without ever deadlocking its own request.
+    $ownerHttpLease = new CpanelConsoleWriterLease();
+    $ownerHttpLease->beginForConsole($app);
+    try {
+        $result = (new CpanelOwnerBackupCoordinator())->prove(
+            $live, $disposable,
+            $app.'/.env', $app.'/storage/app', $web.'/uploads',
+            $app, $web, $home.'/.walidsite-backups', $home.'/.walidsite-restore-drills',
+            '0.1.1', 'legacy',
+            static function () use (&$calls): bool { ++$calls; return true; },
+            $ownerHttpLease,
+        );
+    } finally {
+        $ownerHttpLease->end();
+    }
     if (is_file($home.'/.walidsite-update-maintenance.json')
         || (fileperms($home.'/.walidsite-writer-drain.lock') & 0777) !== 0600
         || $result['code_update_performed'] !== false) {
