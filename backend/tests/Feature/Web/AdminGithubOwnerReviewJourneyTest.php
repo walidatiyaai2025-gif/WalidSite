@@ -134,10 +134,10 @@ final class AdminGithubOwnerReviewJourneyTest extends TestCase
         $second = $this->makeProposal($admin, 'admin/other');
         $url = fn ($p) => '/admin/github/proposals/'.$p->id.'/decision';
         $this->actingAs($admin, 'web')->post($url($second), [
-            'decision' => 'approve',
+            'decision' => 'approve', 'reason' => 'source_verified',
         ])->assertForbidden();
         $this->actingAs($owner, 'web')->post($url($first), [
-            'decision' => 'approve',
+            'decision' => 'approve', 'reason' => 'source_verified',
         ])->assertForbidden();
         $this->get('/admin/github')->assertOk()
             ->assertDontSee('action="'.route('admin.operations.github.decide', [
@@ -160,7 +160,7 @@ final class AdminGithubOwnerReviewJourneyTest extends TestCase
         ])]);
         $this->actingAs($owner, 'web')->post(
             '/admin/github/proposals/'.$item->id.'/decision',
-            ['decision' => 'approve'],
+            ['decision' => 'approve', 'reason' => 'source_verified'],
         )->assertStatus(409);
         $this->assertSame('pending', $item->fresh()->status);
         $this->assertNull($item->fresh()->verified_at);
