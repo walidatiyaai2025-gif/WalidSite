@@ -182,7 +182,7 @@ jobs:
           CI_RECOVERY_ROOT_PASSWORD: walidsite-root
         run: php qa/cpanel_update_recovery_acceptance.php
       - name: Issue 481 real authenticated Admin runtime diagnostics
-        if: ${{ github.event_name == 'pull_request' && (startsWith(github.head_ref, 'feat/481-') || startsWith(github.head_ref, 'fix/481-') || startsWith(github.head_ref, 'chore/481-')) }}
+        if: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'pull_request' && (startsWith(github.head_ref, 'feat/481-') || startsWith(github.head_ref, 'fix/481-') || startsWith(github.head_ref, 'chore/481-'))) }}
         shell: bash
         env:
           APP_ENV: testing
@@ -205,7 +205,7 @@ jobs:
         run: |
           set -euo pipefail
           tested_sha="$(git rev-parse HEAD)"
-          test "$tested_sha" = "${{ github.event.pull_request.head.sha }}"
+          # Check the real checkout source, never a synthetic PR merge ref.\n          test "$tested_sha" = "${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
           export WALIDSITE_QA_ADMIN_PASSWORD="$(python3 - <<'PY'
           import secrets
           print('Visual-' + secrets.token_urlsafe(24) + '-A9!')
@@ -378,7 +378,7 @@ jobs:
           PY
 
       - name: Upload Issue 481 Admin runtime visual diagnostics
-        if: ${{ always() && github.event_name == 'pull_request' && (startsWith(github.head_ref, 'feat/481-') || startsWith(github.head_ref, 'fix/481-') || startsWith(github.head_ref, 'chore/481-')) }}
+        if: ${{ always() && (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'pull_request' && (startsWith(github.head_ref, 'feat/481-') || startsWith(github.head_ref, 'fix/481-') || startsWith(github.head_ref, 'chore/481-'))) }}
         uses: actions/upload-artifact@v4
         with:
           name: issue-481-admin-and-web-runtime-visual-diagnostics
