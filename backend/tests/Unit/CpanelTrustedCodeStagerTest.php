@@ -159,6 +159,49 @@ final class CpanelTrustedCodeStagerTest extends TestCase
         }
     }
 
+    public function test_parallel_staging_is_blocked_before_any_version_is_prepared(): void
+    {
+        [$file, $envelope] = $this->signedZip();
+        $root = $this->home.'/.walidsite-releases';
+        self::assertTrue(mkdir($root, 0700));
+        $lease = fopen($root.'/.walidsite-stage.lock', 'c+');
+        self::assertIsResource($lease);
+        self::assertTrue(chmod($root.'/.walidsite-stage.lock', 0600));
+        self::assertTrue(flock($lease, LOCK_EX | LOCK_NB));
+        try {
+            $this->stage($file, $envelope);
+            self::fail('Concurrent staged-code operations must not share a lease.');
+        } catch (DomainException $error) {
+            self::assertStringContainsString('staging operation is active', $error->getMessage());
+            self::assertDirectoryDoesNotExist($root.'/v0.1.3-'.$this->sourceSha);
+            $this->assertLiveUntouched();
+        } finally {
+            flock($lease, LOCK_UN);
+            fclose($lease);
+        }
+    }
+
+    public function test_linked_private_stage_lock_does_not_trust_an_external_file(): void
+    {
+        if (! function_exists('symlink')) {
+            self::markTestSkipped('POSIX symlink fixture unavailable.');
+        }
+        [$file, $envelope] = $this->signedZip();
+        $root = $this->home.'/.walidsite-releases';
+        self::assertTrue(mkdir($root, 0700));
+        $outside = $this->home.'/private-user-content';
+        file_put_contents($outside, 'PRESERVE_OUTSIDE_BYTES');
+        self::assertTrue(symlink($outside, $root.'/.walidsite-stage.lock'));
+        try {
+            $this->stage($file, $envelope);
+            self::fail('Symbolic link must not authorize code staging.');
+        } catch (DomainException) {
+            self::assertSame('PRESERVE_OUTSIDE_BYTES', file_get_contents($outside));
+            self::assertDirectoryDoesNotExist($root.'/v0.1.3-'.$this->sourceSha);
+            $this->assertLiveUntouched();
+        }
+    }
+
     public function test_changed_or_untrusted_zip_cannot_prepare_executable_code(): void
     {
         [$file, $envelope] = $this->signedZip();
