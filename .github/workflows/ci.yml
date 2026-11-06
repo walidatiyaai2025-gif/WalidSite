@@ -468,6 +468,7 @@ jobs:
       (github.event_name == 'pull_request' && github.event.action != 'closed' &&
        (github.head_ref == 'fix/732-cpanel-first-boot-missing-key' ||
         github.head_ref == 'fix/26-cpanel-full-install-ci-acceptance' ||
+        github.head_ref == 'fix/26-revalidate-recovery-database-under-lease' ||
         github.head_ref == 'fix/26-foodex15-zip-mariadb-acceptance' ||
         github.head_ref == 'feat/732-cpanel-immutable-code-pointer') &&
        github.event.pull_request.head.repo.full_name == github.repository)
