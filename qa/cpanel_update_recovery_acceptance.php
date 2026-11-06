@@ -9,6 +9,7 @@ require dirname(__DIR__).'/backend/vendor/autoload.php';
 
 use App\Domain\Deployment\CpanelOwnerBackupCoordinator;
 use App\Domain\Deployment\CpanelConsoleWriterLease;
+use App\Domain\Deployment\CpanelDisposableMariaDbGuard;
 use App\Domain\Deployment\OwnerUpdateRecoveryBackup;
 use App\Domain\Deployment\PrivateRecoverySnapshot;
 use App\Domain\Deployment\MariaDbRecoverySnapshot;
@@ -67,6 +68,44 @@ try {
     ]);
     $live->exec('CREATE TABLE records (id INT PRIMARY KEY, note VARCHAR(100) NOT NULL) ENGINE=InnoDB');
     $live->exec("INSERT INTO records(id, note) VALUES (1,'retain-original'), (2,'verify-database-restore')");
+    // Core coordinator must recheck target identity, even if a future
+    // CLI/admin caller skips HTTP controller validation.
+    $dbGuard = new CpanelDisposableMariaDbGuard();
+    $schemas = $dbGuard->assertIndependentAndEmpty($live, $disposable);
+    if ($schemas['source_schema'] !== $source || $schemas['target_schema'] !== $target) {
+        throw new RuntimeException('Independent restore schema identity was not correctly attested.');
+    }
+    foreach ([
+        [$live, $live, 'identical PDO handle'],
+        [$live, new PDO(
+            "mysql:host=127.0.0.1;port=3306;dbname={$source};charset=utf8mb4",
+            'root', $rootPassword, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION],
+        ), 'different PDO handle to production schema'],
+        [new PDO('sqlite::memory:'), $disposable, 'unsupported source driver'],
+    ] as [$from, $to, $failureCase]) {
+        try {
+            $dbGuard->assertIndependentAndEmpty($from, $to);
+            throw new RuntimeException('Disallowed recovery PDO accepted: '.$failureCase);
+        } catch (DomainException $expected) {
+            // No DDL, backup or private maintenance marker may be produced.
+        }
+    }
+    $corrupt->exec('CREATE TABLE untrusted_target (id INT PRIMARY KEY) ENGINE=InnoDB');
+    try {
+        $dbGuard->assertIndependentAndEmpty($live, $corrupt);
+        throw new RuntimeException('Populated disposable MariaDB was accepted.');
+    } catch (DomainException $expected) {
+        // A populated restore schema must not be modified or cleared.
+    }
+    if ((int) $corrupt->query(
+        "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE()"
+    )->fetchColumn() !== 1) {
+        throw new RuntimeException('Rejected restore schema was unexpectedly modified.');
+    }
+    $corrupt->exec('DROP TABLE untrusted_target');
+    $dbGuard->assertIndependentAndEmpty($live, $corrupt);
+    echo "PASS: actual MariaDB source/target isolation rejects same schema and nonempty restores\n";
+
 
     $app = $home.'/application';
     $web = $home.'/public_html';
