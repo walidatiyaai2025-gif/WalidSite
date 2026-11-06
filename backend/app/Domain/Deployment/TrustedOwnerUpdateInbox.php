@@ -93,6 +93,77 @@ final class TrustedOwnerUpdateInbox
     }
 
     /**
+     * Owner-triggered publisher HTTPS download. No browser-provided release
+     * URL, filename, checksum, publisher key or target directory is accepted.
+     * The signed catalog is fetched fresh rather than trusting stale flash.
+     *
+     * @return array{id:string,version:string,source_sha:string,sha256:string,files:int,bytes:int}
+     */
+    public function downloadSigned(
+        TrustedReleaseCatalog $catalog,
+        TrustedReleaseArtifactDownloader $downloader,
+        string $publisherOrigin,
+        string $publisherKey,
+        string $installedVersion,
+        string $ownerId,
+        string $privateInboxRoot,
+        string $publicDocumentRoot,
+    ): array {
+        if ($ownerId === '' || strlen($ownerId) > 80) {
+            throw new DomainException('Invalid owner for signed release download.');
+        }
+        $signed = $catalog->check($publisherOrigin, $publisherKey, $installedVersion);
+        $release = $signed['release'];
+        if ($release['artifact_size'] > self::MAX_ARCHIVE_BYTES) {
+            throw new DomainException('Signed publisher ZIP exceeds private download capacity.');
+        }
+        $name = 'WalidSite-update-v'.$release['version'].'.zip';
+        $root = $this->privateDirectory($privateInboxRoot, $publicDocumentRoot);
+        $id = bin2hex(random_bytes(16));
+        $directory = $root.'/'.$id;
+        if (! @mkdir($directory, 0700) || realpath($directory) !== $directory
+            || is_link($directory) || ! @chmod($directory, 0700)) {
+            throw new RuntimeException('Cannot prepare isolated signed download inbox.');
+        }
+        $archive = $directory.'/'.$name;
+        try {
+            $downloader->download($release, $publisherOrigin, $archive);
+            // Require FULL verified archive inspection before issuing the
+            // owner-bound receipt. Checksum alone never authorizes PHP.
+            $inventory = (new TrustedReleaseArchive())->inspect($release, $directory, $archive);
+            $this->saveReceipt($directory.'/receipt.json', [
+                'schema' => 'walidsite.owner-update-inbox.v1',
+                'owner' => $ownerId,
+                'installed' => $installedVersion,
+                'version' => $release['version'],
+                'sha256' => $release['artifact_sha256'],
+                'source_sha' => $release['source_sha'],
+                'file' => $name,
+                'size' => $release['artifact_size'],
+                'created_at' => time(),
+                'envelope' => $signed['envelope'],
+            ]);
+            return [
+                'id' => $id,
+                'version' => $release['version'],
+                'source_sha' => $release['source_sha'],
+                'sha256' => $release['artifact_sha256'],
+                'files' => $inventory['files'],
+                'bytes' => $inventory['uncompressed_bytes'],
+            ];
+        } catch (Throwable $exception) {
+            @unlink($directory.'/receipt.json');
+            // A private 0700, random inbox never contains owner uploads. Only
+            // delete a regular, nonlinked ZIP bearing the approved basename.
+            if (is_file($archive) && ! is_link($archive)) {
+                @unlink($archive);
+            }
+            @rmdir($directory);
+            throw $exception;
+        }
+    }
+
+    /**
      * Revalidates *every* file and the signed release on every later request.
      * Never trusts a receipt's claimed checksum or uploaded code directory.
      *
