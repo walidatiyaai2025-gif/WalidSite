@@ -2,6 +2,8 @@
 import io
 import json
 import os
+import socket
+import ssl
 import tempfile
 import threading
 import time
@@ -9,11 +11,12 @@ import unittest
 from contextlib import redirect_stdout, redirect_stderr
 from http.client import HTTPException
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 from urllib.error import HTTPError, URLError
-from urllib.request import ProxyHandler, getproxies
+from urllib.request import ProxyHandler, Request, getproxies
 
-from qa.staging_smoke import CHECKS, NoRedirects, main, run, staging_origin
+from qa.staging_smoke import (CHECKS, NoRedirects, PinnedPublicHTTPSConnection,
+                              PublicDNSPinnedHTTPSHandler, main, run, staging_origin)
 
 
 class FakeResponse:
@@ -470,10 +473,124 @@ class StagingSmokeTest(unittest.TestCase):
                          "A default urllib proxy handler would inherit HTTPS_PROXY")
         self.assertEqual(no_proxy[0].proxies, {})
         self.assertTrue(any(isinstance(item, NoRedirects) for item in handlers))
+        self.assertEqual(
+            [item.expected_host for item in handlers
+             if isinstance(item, PublicDNSPinnedHTTPSHandler)],
+            ["staging.example.com"],
+        )
         self.assertTrue(receipt["http_smoke_passed"])
         self.assertFalse(receipt["network_egress_isolation_verified"])
         self.assertTrue(all(method == "GET" for _, method, _ in fake.requested))
         self.assertEqual(len(fake.requested), len(CHECKS))
+
+    def test_public_dns_https_connection_is_pinned_and_validates_original_tls_host(self):
+        handler = PublicDNSPinnedHTTPSHandler("staging.example.com")
+        observed = {}
+
+        def inspect_open(constructor, request, **kwargs):
+            observed["url"] = request.full_url
+            observed["connection"] = constructor("staging.example.com", timeout=8)
+            observed["options"] = kwargs
+            return "fixture-only-no-network"
+
+        handler.do_open = inspect_open
+        records = [
+            (socket.AF_INET6, socket.SOCK_STREAM, socket.IPPROTO_TCP, "",
+             ("2606:4700:4700::1111", 443, 0, 0)),
+            (socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "",
+             ("1.1.1.1", 443)),
+        ]
+        with patch("qa.staging_smoke.socket.getaddrinfo", return_value=records) as resolver:
+            self.assertEqual(handler.https_open(Request(
+                "https://staging.example.com/api/v1/public/home"
+            )), "fixture-only-no-network")
+        resolver.assert_called_once_with(
+            "staging.example.com", 443, type=socket.SOCK_STREAM,
+            proto=socket.IPPROTO_TCP,
+        )
+        self.assertEqual(observed["connection"]._pinned_ip, "1.1.1.1")
+        self.assertEqual(observed["connection"].host, "staging.example.com")
+        self.assertIsInstance(observed["options"]["context"], ssl.SSLContext)
+        self.assertTrue(observed["options"]["context"].check_hostname)
+        self.assertEqual(observed["options"]["context"].verify_mode, ssl.CERT_REQUIRED)
+        self.assertEqual(observed["url"],
+                         "https://staging.example.com/api/v1/public/home")
+
+        # Only the socket's destination is numeric. SNI / certificate
+        # validation MUST continue to use the explicitly approved domain.
+        raw_socket = Mock()
+        wrapped = Mock()
+        tls_context = Mock()
+        tls_context.wrap_socket.return_value = wrapped
+        connection = PinnedPublicHTTPSConnection(
+            "staging.example.com", pinned_ip="1.1.1.1",
+            timeout=5, context=tls_context,
+        )
+        with patch("qa.staging_smoke.socket.create_connection",
+                   return_value=raw_socket) as create_socket:
+            connection.connect()
+        create_socket.assert_called_once_with(("1.1.1.1", 443), 5, None)
+        tls_context.wrap_socket.assert_called_once_with(
+            raw_socket, server_hostname="staging.example.com",
+        )
+        self.assertIs(connection.sock, wrapped)
+
+    def test_dns_private_mixed_special_or_invalid_addresses_fail_before_socket(self):
+        def answer(address):
+            family = socket.AF_INET6 if ":" in address else socket.AF_INET
+            endpoint = ((address, 443, 0, 0) if family == socket.AF_INET6
+                        else (address, 443))
+            return (family, socket.SOCK_STREAM, socket.IPPROTO_TCP,
+                    "", endpoint)
+
+        for addresses in (
+            ["127.0.0.1"], ["10.0.0.5"], ["192.168.1.1"],
+            ["169.254.169.254"], ["100.64.0.1"], ["203.0.113.3"],
+            ["::1"], ["fc00::1"], ["fe80::1"],
+            ["::ffff:127.0.0.1"],
+            ["1.1.1.1", "127.0.0.1"], ["1.1.1.1", "fc00::1"],
+            [], ["broken-ip"],
+        ):
+            with self.subTest(addresses=addresses):
+                handler = PublicDNSPinnedHTTPSHandler("staging.example.com")
+                handler.do_open = Mock(side_effect=AssertionError(
+                    "No outbound HTTPS may follow untrusted DNS"
+                ))
+                with patch("qa.staging_smoke.socket.getaddrinfo",
+                           return_value=[answer(x) for x in addresses]):
+                    with self.assertRaises(URLError):
+                        handler.https_open(Request("https://staging.example.com/up"))
+                handler.do_open.assert_not_called()
+
+    def test_pinned_https_rejects_rebinding_and_proxy_tunnel(self):
+        handler = PublicDNSPinnedHTTPSHandler("staging.example.com")
+        handler.do_open = Mock(side_effect=AssertionError(
+            "Off-origin requests must fail before DNS"
+        ))
+        for url in ("https://other.example.com/up",
+                    "http://staging.example.com/up",
+                    "https://user:pass@staging.example.com/up",
+                    "https://staging.example.com:444/up"):
+            with self.subTest(url=url), patch(
+                    "qa.staging_smoke.socket.getaddrinfo") as resolver:
+                with self.assertRaises(URLError):
+                    handler.https_open(Request(url))
+                resolver.assert_not_called()
+        with patch("qa.staging_smoke.socket.getaddrinfo",
+                   side_effect=socket.gaierror("fixture-only secret")):
+            with self.assertRaises(URLError) as error:
+                handler.https_open(Request("https://staging.example.com/up"))
+        self.assertNotIn("fixture-only secret", str(error.exception))
+        handler.do_open.assert_not_called()
+
+        connection = PinnedPublicHTTPSConnection(
+            "staging.example.com", pinned_ip="1.1.1.1",
+        )
+        connection.set_tunnel("another.example.com")
+        with patch("qa.staging_smoke.socket.create_connection") as socket_call:
+            with self.assertRaises(OSError):
+                connection.connect()
+            socket_call.assert_not_called()
 
     def test_redirect_handler_never_constructs_a_followup_request(self):
         handler = NoRedirects()

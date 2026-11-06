@@ -9,9 +9,11 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import http.client
 import ipaddress
 import json
 import re
+import socket
 import threading
 import time
 import sys
@@ -21,7 +23,7 @@ from pathlib import Path
 from typing import Protocol
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
-from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
+from urllib.request import HTTPRedirectHandler, HTTPSHandler, ProxyHandler, Request, build_opener
 
 MAX_JSON_BYTES = 1024 * 1024
 UNSAFE_SUFFIXES = {
@@ -81,6 +83,84 @@ class NoRedirects(HTTPRedirectHandler):
 
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         return None
+
+
+class PinnedPublicHTTPSConnection(http.client.HTTPSConnection):
+    """Connect to a vetted numeric IP, but authenticate the original TLS host."""
+
+    def __init__(self, host: str, *, pinned_ip: str, **kwargs):
+        super().__init__(host, **kwargs)
+        self._pinned_ip = pinned_ip
+
+    def connect(self) -> None:
+        # A proxy tunnel would invalidate the DNS/public-IP binding.
+        if self._tunnel_host is not None:
+            raise OSError("Staging HTTP proxy tunnels are forbidden")
+        raw = socket.create_connection(
+            (self._pinned_ip, self.port), self.timeout, self.source_address,
+        )
+        try:
+            # Never replace the TLS SNI/certificate hostname with the IP:
+            # the same approved host must remain authenticated over HTTPS.
+            self.sock = self._context.wrap_socket(raw, server_hostname=self.host)
+        except BaseException:
+            raw.close()
+            raise
+
+
+class PublicDNSPinnedHTTPSHandler(HTTPSHandler):
+    """Reject private/mixed DNS then use that exact public IP for the socket.
+
+    A hostname-only preflight is insufficient: resolving the hostname again
+    during connect permits DNS rebinding between inspection and use. We pin
+    a numeric address for each request and retain HTTPS hostname validation.
+    The outer per-request deadline also bounds a stalled DNS resolution.
+    """
+
+    def __init__(self, expected_host: str):
+        super().__init__()
+        self.expected_host = expected_host
+
+    def https_open(self, request: Request):
+        parsed = urlsplit(request.full_url)
+        if (parsed.scheme != "https" or parsed.hostname != self.expected_host
+                or parsed.port not in (None, 443)
+                or parsed.username is not None or parsed.password is not None):
+            raise URLError("Staging HTTPS request escaped the approved origin")
+        try:
+            addresses = socket.getaddrinfo(
+                self.expected_host, 443, type=socket.SOCK_STREAM,
+                proto=socket.IPPROTO_TCP,
+            )
+        except OSError as exc:
+            raise URLError("Approved staging DNS is unavailable") from exc
+        if not addresses:
+            raise URLError("Approved staging DNS has no public addresses")
+
+        ips: set[str] = set()
+        for answer in addresses:
+            try:
+                ip = ipaddress.ip_address(answer[4][0])
+            except (ValueError, IndexError, TypeError) as exc:
+                raise URLError("Approved staging DNS returned an invalid IP") from exc
+            # Refuse even ONE private/loopback/link-local/reserved A/AAAA
+            # alongside otherwise public records. Do not silently fall back.
+            if not ip.is_global:
+                raise URLError("Approved staging DNS contains a non-public IP")
+            ips.add(str(ip))
+        selected = sorted(
+            ips, key=lambda value: (ipaddress.ip_address(value).version != 4, value),
+        )[0]
+
+        def pinned_connection(host: str, **kwargs):
+            if urlsplit("https://" + host).hostname != self.expected_host:
+                raise URLError("Staging HTTPS connection changed the approved host")
+            return PinnedPublicHTTPSConnection(host, pinned_ip=selected, **kwargs)
+
+        # Match Python's HTTPSHandler contract across supported runners:
+        # the HTTPSConnection creates a validating default SSLContext when
+        # context=None. A handler-level _check_hostname is not portable.
+        return self.do_open(pinned_connection, request, context=self._context)
 
 
 class Opener(Protocol):
@@ -295,7 +375,10 @@ def run(origin: str, opener: Opener | None = None, timeout: int = 8,
         # no-redirect policy still apply to every direct HTTPS request.
         # A network requiring an outbound proxy must fail closed rather than
         # silently claiming to have reached the approved staging origin.
-        opener = build_opener(ProxyHandler({}), NoRedirects())
+        opener = build_opener(
+            ProxyHandler({}), NoRedirects(),
+            PublicDNSPinnedHTTPSHandler(expected_host),
+        )
     results = [_check_one(origin, check, opener, timeout) for check in CHECKS]
     passed = all(item["passed"] for item in results)
     return {
