@@ -59,6 +59,19 @@ final class CpanelOwnerBackupCoordinator
             throw new DomainException('An original physical cPanel install is required for owner backup.');
         }
 
+        // The backup receipt must attest the *actual* installed code, not a
+        // caller-supplied version string. This coordinator deliberately
+        // supports only the first physical application tree: a chained active
+        // pointer needs separate, verified running-release lineage support.
+        // Refuse both before creating any private lock or recovery vault.
+        $actualVersion = (new TrustedInstalledVersion())->read($applicationBase.'/VERSION');
+        $activePointer = $home.'/.walidsite-active-release.json';
+        clearstatcache(true, $activePointer);
+        if ($actualVersion === null || ! hash_equals($actualVersion, $installedVersion)
+            || @lstat($activePointer) !== false) {
+            throw new DomainException('Installed code identity is not verified for a first-install recovery.');
+        }
+
         $writers = $ownerHttpLease ?? new CpanelConsoleWriterLease();
         $maintenance = new CpanelReleaseMaintenance();
         $token = null;
