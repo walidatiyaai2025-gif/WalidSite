@@ -334,7 +334,7 @@ Route::middleware('auth:web')->group(function (): void {
             'manual_published', 'manual_unpublished', 'manual_rejected',
             'scheduled', 'requires_review', 'refresh_required', 'refresh_superseded',
         ];
-        $projectActions = ['evidence_submitted', 'evidence_approved', 'evidence_discarded', 'draft_updated', 'project_published', 'project_withdrawn'];
+        $projectActions = ['evidence_submitted', 'evidence_approved', 'evidence_revoked', 'evidence_discarded', 'draft_updated', 'project_published', 'project_withdrawn'];
         $allActions = array_values(array_unique(array_merge(
             $providerActions, $editorialActions, $mediaActions, $projectActions
         )));
@@ -2630,6 +2630,121 @@ Route::middleware('auth:web')->prefix('admin')->group(function (): void {
             ->header('X-Content-Type-Options', 'nosniff');
     })->whereUuid('project')->name('admin.operations.projects.evidence.review')
         ->middleware('throttle:30,1');
+
+    // ADMIN-09: a source can lose public-sharing rights after approval.
+    // Only the owner can inspect and revoke verified public evidence. Source
+    // URLs are rendered as inert text and never fetched by this dashboard.
+    Route::get('/projects/{project}/evidence/approved', function (Request $request, string $project) {
+        abort_unless($request->user()?->canAccessAdmin() && $request->user()->hasRole('owner'), 403);
+        $input = $request->validate([
+            'lang' => ['sometimes', 'in:ar,en'],
+            'page' => ['sometimes', 'integer', 'between:1,10000'],
+        ]);
+        $record = \App\Models\Project::query()->whereKey($project)->firstOrFail();
+        $locale = $input['lang'] ?? 'en';
+        $sources = \App\Models\ProjectEvidence::query()
+            ->where('project_id', $record->id)
+            ->where('visibility', 'public')->whereNotNull('verified_at')
+            ->where('verified_at', '<=', now('UTC'))
+            ->orderByDesc('verified_at')->orderByDesc('id')
+            ->paginate(10)->appends(['lang' => $locale]);
+        return response()->view('admin.project-evidence-approved', compact(
+            'record', 'sources', 'locale'
+        ))->header('Cache-Control', 'no-store, private')
+            ->header('X-Content-Type-Options', 'nosniff');
+    })->whereUuid('project')->name('admin.operations.projects.evidence.approved')
+        ->middleware('throttle:30,1');
+
+    Route::post('/projects/{project}/evidence/{evidence}/revoke', function (
+        Request $request, string $project, string $evidence
+    ) {
+        abort_unless($request->user()?->canAccessAdmin() && $request->user()->hasRole('owner'), 403);
+        $input = $request->validate([
+            'lang' => ['sometimes', 'in:ar,en'],
+            'page' => ['sometimes', 'integer', 'between:1,10000'],
+            'revocation_confirmed' => ['accepted'],
+        ]);
+        if (array_diff(array_keys($request->request->all()), [
+            '_token', 'revocation_confirmed',
+        ]) !== []) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'evidence' => 'Unsupported evidence revocation fields.',
+            ]);
+        }
+
+        $withdrawn = \Illuminate\Support\Facades\DB::transaction(function () use (
+            $project, $evidence, $request
+        ): bool {
+            $record = \App\Models\Project::query()->whereKey($project)
+                ->lockForUpdate()->firstOrFail();
+            $source = \App\Models\ProjectEvidence::query()
+                ->whereKey($evidence)->where('project_id', $record->id)
+                ->lockForUpdate()->firstOrFail();
+            abort_unless($source->visibility === 'public'
+                && $source->verified_at !== null
+                && $source->verified_at->lessThanOrEqualTo(now('UTC')), 409);
+
+            // Preserve the review record privately for a new explicit rights
+            // check, rather than deleting provenance or leaving it public.
+            $source->forceFill([
+                'visibility' => 'private',
+                'verified_at' => null,
+            ])->save();
+
+            $lostLastProof = $record->visibility === 'public'
+                && $record->published_at !== null
+                && empty(app(\App\Http\Controllers\Api\PublicPortfolioController::class)
+                    ->publicProjectData($record, $request)['evidence_urls']);
+            if ($lostLastProof) {
+                // Atomic fail-closed withdrawal: nobody can keep visiting a
+                // case study whose final usable evidence was just revoked.
+                $record->forceFill([
+                    'visibility' => 'private',
+                    'published_at' => null,
+                ])->save();
+            }
+
+            $events = [[
+                'id' => (string) \Illuminate\Support\Str::uuid(),
+                'project_id' => $record->id,
+                'evidence_id' => $source->id,
+                'actor_id' => $request->user()->id,
+                'action' => 'evidence_revoked',
+                'created_at' => now('UTC'),
+            ]];
+            if ($lostLastProof) {
+                $events[] = [
+                    'id' => (string) \Illuminate\Support\Str::uuid(),
+                    'project_id' => $record->id,
+                    'evidence_id' => null,
+                    'actor_id' => $request->user()->id,
+                    'action' => 'project_withdrawn',
+                    'created_at' => now('UTC'),
+                ];
+            }
+            \Illuminate\Support\Facades\DB::table('project_audit_events')->insert($events);
+            return $lostLastProof;
+        }, 3);
+
+        // No source URL, prompt or request payload in the audit log.
+        \Illuminate\Support\Facades\Log::notice('admin.project_evidence.revoked', [
+            'project_id' => $project, 'evidence_id' => $evidence,
+            'actor_id' => $request->user()->id,
+            'project_withdrawn' => $withdrawn,
+        ]);
+        $ar = ($input['lang'] ?? 'en') === 'ar';
+        return redirect()->route('admin.operations.projects.evidence.approved', [
+            'project' => $project, 'lang' => $ar ? 'ar' : 'en',
+            'page' => $input['page'] ?? 1,
+        ])->with('status', $ar
+            ? ($withdrawn
+                ? 'أُلغي اعتماد الدليل وسُحب المشروع تلقائياً لعدم بقاء دليل عام صالح.'
+                : 'أُلغي اعتماد الدليل؛ بقيت الأدلة الأخرى المراجعة دون تغيير.')
+            : ($withdrawn
+                ? 'Evidence revoked and project withdrawn because no usable public proof remains.'
+                : 'Evidence revoked; other reviewed sources remain unchanged.'));
+    })->whereUuid('project')->whereUuid('evidence')
+        ->name('admin.operations.projects.evidence.revoke')->middleware('throttle:10,1');
 
     // ADMIN-09: explicit owner review is the only transition from a private
     // candidate to verified public evidence. The application never fetches the
