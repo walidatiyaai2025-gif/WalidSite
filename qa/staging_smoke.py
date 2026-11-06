@@ -157,10 +157,10 @@ class PublicDNSPinnedHTTPSHandler(HTTPSHandler):
                 raise URLError("Staging HTTPS connection changed the approved host")
             return PinnedPublicHTTPSConnection(host, pinned_ip=selected, **kwargs)
 
-        return self.do_open(
-            pinned_connection, request, context=self._context,
-            check_hostname=self._check_hostname,
-        )
+        # Match Python's HTTPSHandler contract across supported runners:
+        # the HTTPSConnection creates a validating default SSLContext when
+        # context=None. A handler-level _check_hostname is not portable.
+        return self.do_open(pinned_connection, request, context=self._context)
 
 
 class Opener(Protocol):
