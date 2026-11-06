@@ -176,7 +176,7 @@ class AdminRuntimeAuditTest(unittest.TestCase):
             with self.assertRaises(AdminSessionError):
                 exact_checkout(ROOT, SHA)
 
-    def test_actual_session_matrix_covers_52_unique_authenticated_screen_checks(self):
+    def test_actual_session_matrix_covers_78_unique_authenticated_screen_checks(self):
         manager, contexts, browser = fake_browser()
         with patch("qa.audit_admin_runtime.exact_checkout"):
             report = audit_admin(
@@ -190,7 +190,11 @@ class AdminRuntimeAuditTest(unittest.TestCase):
         self.assertEqual(len({
             (x["screen"], x["locale"], x["viewport"])
             for x in report["results"]
-        }), 52)
+        }), 78)
+        self.assertEqual({(x["viewport"], x["width"], x["height"])
+                          for x in report["results"]}, set(VIEWPORTS))
+        self.assertEqual({x["viewport"] for x in report["results"]},
+                         {"desktop", "tablet", "mobile"})
         self.assertTrue(all(x["status"] == "pass" for x in report["results"]))
         self.assertTrue(all(len(ctx.pages) == 13 and ctx.closed for ctx in contexts))
         self.assertTrue(all(p.closed for ctx in contexts for p in ctx.pages))
