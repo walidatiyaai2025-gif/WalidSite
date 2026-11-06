@@ -401,6 +401,8 @@ class SiteMaintenanceTest extends TestCase
 
     public function test_owner_backup_now_fails_closed_without_independent_host_adapter(): void
     {
+        // Test the identity/host guard independently of the production 1/5-minute limit.
+        $this->withoutMiddleware(\Illuminate\Routing\Middleware\ThrottleRequests::class);
         $this->post('/admin/updates/backup-now')->assertRedirect('/admin/login');
         $user = User::create([
             'email' => 'backup-host-gate@example.test',
@@ -423,6 +425,8 @@ class SiteMaintenanceTest extends TestCase
 
     public function test_host_adapter_cannot_accept_false_writer_isolation_as_backup_evidence(): void
     {
+        // Test the identity/host guard independently of the production 1/5-minute limit.
+        $this->withoutMiddleware(\Illuminate\Routing\Middleware\ThrottleRequests::class);
         $user = User::create([
             'email' => 'backup-rejected-owner@example.test',
             'password_hash' => 'unused', 'status' => 'active',
