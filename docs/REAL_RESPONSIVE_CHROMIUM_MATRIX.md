@@ -7,8 +7,9 @@ every main push performs the following at a source-pinned clean checkout:
 | Surface | Signed-in state | Screens | Languages | Viewports | Checks |
 | --- | --- | ---: | ---: | ---: | ---: |
 | Web public (static) | Real anonymous Chromium context | 12 | English and Arabic | 1440×900, 768×1024, 390×844 | 72 |
+| Web public (published detail) | Real anonymous, publication-verified API + detail route | 0–2 | English and Arabic | Same three sizes | 0–12 |
 | Admin | Locally authenticated, private file-only Playwright state | 13 | English and Arabic | 1440×900, 768×1024, 390×844 | 78 |
-| **Combined** | **Both modes separately isolated** | **25** | **2** | **3** | **150** |
+| **Combined** | **Both modes separately isolated** | **25–27** | **2** | **3** | **150–162** |
 
 Each visit uses the **actual Laravel HTTP response** and current real DOM.
 The checks require HTTP 200, canonical route and language direction, correct
@@ -31,16 +32,28 @@ The **actual** reports are stored as CI artifacts under
 `qa/visual-diagnostics/<sha>-web/web-runtime-a11y.json`. Both contain
 `tested_sha`, viewport dimensions and an exact list of individual
 screen/locale/viewport diagnoses. GitHub Actions verifies every case and its
-dimensions, not just the aggregate counts. Only the 25 source-backed pages
-that can be rendered without unapproved publication are covered here.
+dimensions, not just the aggregate counts. The existing first-install CI
+activation publishes approved project/README evidence, so WEB-05 must be
+discovered through the **actual anonymous** `/api/v1/public/projects` API and
+checked at the detail API before its six real HTML browser cases may run.
+WEB-08 is included **only when** `/api/v1/public/articles` advertises a
+currently published, rights-validated article that the detail API confirms.
+Neither fake project slugs nor newly published QA articles are permitted.
+Strict slugs, loopback-only discovery, bounded JSON and zero redirects are
+required; URLs, titles and content never appear in the browser report. CI
+checks `dynamic_web_verified`, `dynamic_web_pending` and exact row count
+(78 or 84 Web if the verified seeded WEB-05 is present; 72 is a hard
+diagnostic defect for the fresh-setup fixture).
 
 The original `assets/screen-reference/*`, the 40-screen canonical contract,
 `design/visual-fidelity-evidence.json` and the frozen owner-approved WEB-01,
 WEB-03 and WEB-04 designs are unchanged. **Zero decoded-RGBA matches are NOT
-implied by 150 accessible and responsive checks.** WEB-05 Case Study and
-WEB-08 Article Detail still require actual approved published slugs; all 13
-Flutter screens require a native runtime/device harness, and real device
-breakpoints/contrast/assistive-technology acceptance remain pending.
+implied by 150–162 accessible and responsive checks.** WEB-05 case-study
+checks use the real approved setup fixture when available, but an absent
+WEB-08 article remains explicitly pending rather than seeded with fake
+claims. All 13 Flutter screens require a native runtime/device harness, and
+real device breakpoints/contrast/assistive-technology acceptance remain
+pending.
 
 ### Repeat on a trusted local Laravel runtime
 
