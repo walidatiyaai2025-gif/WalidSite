@@ -88,6 +88,37 @@ final class CpanelOwnerBackupCoordinatorTest extends TestCase
         $this->assertOwnerDataPreserved();
     }
 
+    public function test_original_install_cannot_claim_a_versioned_previous_release_root(): void
+    {
+        $app = $this->home.'/application';
+        foreach ([
+            '.walidsite-releases/v0.1.2-'.str_repeat('a', 40),
+            'untrusted',
+        ] as $forgedRoot) {
+            try {
+                (new CpanelOwnerBackupCoordinator())->prove(
+                    new PDO('sqlite::memory:'),
+                    new PDO('sqlite::memory:'),
+                    $app.'/.env',
+                    $app.'/storage/app',
+                    $this->home.'/public_html/uploads',
+                    $app,
+                    $this->home.'/public_html',
+                    $this->home.'/.walidsite-backups',
+                    $this->home.'/.walidsite-restore-drills',
+                    '0.1.2', $forgedRoot, static fn (): bool => true,
+                );
+                self::fail('First-install recovery accepted a forged previous code root.');
+            } catch (DomainException $error) {
+                self::assertStringContainsString('Installed code identity', $error->getMessage());
+            }
+            self::assertFileDoesNotExist($this->home.'/.walidsite-writer-drain.lock');
+            self::assertFileDoesNotExist($this->home.'/.walidsite-update-maintenance.json');
+            self::assertDirectoryDoesNotExist($this->home.'/.walidsite-backups');
+            $this->assertOwnerDataPreserved();
+        }
+    }
+
     public function test_unverified_foreign_writer_freeze_denies_backup_without_lease_or_mutation(): void
     {
         try {
