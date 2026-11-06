@@ -291,6 +291,51 @@ final class VerifiedRecoveryCutoverTest extends TestCase
         }
     }
 
+    public function test_group_readable_backup_vault_is_not_a_private_recovery_boundary(): void
+    {
+        if (PHP_OS_FAMILY === 'Windows') {
+            self::markTestSkipped('POSIX permissions required.');
+        }
+        self::assertTrue(chmod($this->vault, 0750));
+        try {
+            $this->execute();
+            self::fail('Readable owner recovery vault must be rejected.');
+        } catch (DomainException $error) {
+            self::assertStringContainsString('private locations', $error->getMessage());
+            self::assertSame($this->old, realpath($this->current));
+            self::assertSame([], glob($this->vault.'/recovery-*') ?: []);
+            self::assertSame([], glob($this->vault.'/.mariadb-*') ?: []);
+            self::assertSame(0, (int) $this->recoveryDb->query(
+                'SELECT COUNT(*) FROM information_schema.tables WHERE TABLE_SCHEMA=DATABASE()'
+            )->fetchColumn());
+        } finally {
+            self::assertTrue(chmod($this->vault, 0700));
+        }
+    }
+
+    public function test_group_readable_existing_cutover_lock_is_rejected_without_chmod(): void
+    {
+        if (PHP_OS_FAMILY === 'Windows') {
+            self::markTestSkipped('POSIX permissions required.');
+        }
+        $path = $this->vault.'/.verified-cutover.lock';
+        self::assertSame(13, file_put_contents($path, 'ORIGINAL_LOCK'));
+        self::assertTrue(chmod($path, 0640));
+        try {
+            $this->execute();
+            self::fail('Existing group-readable owner update lock must fail closed.');
+        } catch (DomainException $error) {
+            self::assertStringContainsString('recovery lock identity', $error->getMessage());
+            self::assertSame(0640, fileperms($path) & 0777);
+            self::assertSame('ORIGINAL_LOCK', file_get_contents($path));
+            self::assertSame($this->old, realpath($this->current));
+            self::assertSame([], glob($this->vault.'/recovery-*') ?: []);
+            self::assertSame([], glob($this->vault.'/.mariadb-*') ?: []);
+        } finally {
+            self::assertTrue(chmod($path, 0600));
+        }
+    }
+
     public function test_group_writable_recovery_lock_blocks_all_backup_mutations(): void
     {
         if (PHP_OS_FAMILY === 'Windows') {

@@ -59,7 +59,7 @@ final class VerifiedRecoveryCutover
             || ! is_dir($vault) || ! is_writable($vault)
             || ! is_array($vaultStat)
             || ($vaultStat['mode'] & 0170000) !== 0040000
-            || ($vaultStat['mode'] & 0022) !== 0
+            || ($vaultStat['mode'] & 0777) !== 0700
             || ! is_dir($restoration) || ! is_writable($restoration)
             || is_link($disposableFileRestoreRoot)
             || ! is_array($restoreStat)
@@ -73,9 +73,18 @@ final class VerifiedRecoveryCutover
         if (is_link($lockFile)) {
             throw new DomainException('Unsafe recovery orchestration lock.');
         }
-        $lock = @fopen($lockFile, 'c+');
+        // An existing lock is evidence with its own provenance: never
+        // chmod it into acceptability. Newly created locks become 0600
+        // before any protected operation, regardless of process umask.
+        clearstatcache(true, $lockFile);
+        $existing = @lstat($lockFile) !== false;
+        $lock = $existing ? @fopen($lockFile, 'c+b') : @fopen($lockFile, 'x+b');
         if ($lock === false) {
             throw new DomainException('Cannot secure private recovery lock.');
+        }
+        if (! $existing && ! @chmod($lockFile, 0600)) {
+            fclose($lock);
+            throw new DomainException('New private recovery lock cannot be protected.');
         }
 
         try {
@@ -91,7 +100,7 @@ final class VerifiedRecoveryCutover
                 if (! is_array($currentVault) || is_link($vault)
                     || realpath($vault) !== $vault
                     || ($currentVault['mode'] & 0170000) !== 0040000
-                    || ($currentVault['mode'] & 0022) !== 0
+                    || ($currentVault['mode'] & 0777) !== 0700
                     || $currentVault['dev'] !== $vaultStat['dev']
                     || $currentVault['ino'] !== $vaultStat['ino']
                     || $currentVault['mode'] !== $vaultStat['mode']) {
@@ -203,8 +212,8 @@ final class VerifiedRecoveryCutover
         if (! is_array($opened) || ! is_array($named)
             || ($opened['mode'] & 0170000) !== 0100000
             || ($named['mode'] & 0170000) !== 0100000
-            || ($opened['mode'] & 0022) !== 0
-            || ($named['mode'] & 0022) !== 0
+            || ($opened['mode'] & 0777) !== 0600
+            || ($named['mode'] & 0777) !== 0600
             || $opened['nlink'] !== 1 || $named['nlink'] !== 1
             || $opened['dev'] !== $named['dev']
             || $opened['ino'] !== $named['ino']
