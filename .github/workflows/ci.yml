@@ -205,7 +205,8 @@ jobs:
         run: |
           set -euo pipefail
           tested_sha="$(git rev-parse HEAD)"
-          # Check the real checkout source, never a synthetic PR merge ref.\n          test "$tested_sha" = "${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
+          # Check the real checkout source, never a synthetic PR merge ref.
+          test "$tested_sha" = "${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
           export WALIDSITE_QA_ADMIN_PASSWORD="$(python3 - <<'PY'
           import secrets
           print('Visual-' + secrets.token_urlsafe(24) + '-A9!')
