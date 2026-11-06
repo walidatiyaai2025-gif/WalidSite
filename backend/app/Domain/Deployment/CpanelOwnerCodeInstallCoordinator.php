@@ -53,9 +53,8 @@ final class CpanelOwnerCodeInstallCoordinator
         $signed = (new TrustedReleaseMetadata())->verify(
             $envelope, $publisherKey, $origin, $installedVersion,
         );
-        $front = $home.'/application/resources/deployment/cpanel-stable-index.php';
-        // Compare the exact trusted front controller shipped by running code.
-        // It may also be loaded from base_path by the authenticated controller.
+        // This trusted front controller is shipped inside the installed
+        // physical application, not selected by an HTTP parameter.
         $front = $home.'/application/resources/deployment/cpanel-stable-index.php';
         (new CpanelPhysicalHostPreflight())->assertReady(
             $home, $front, $installedVersion, $signed['artifact_size'],
