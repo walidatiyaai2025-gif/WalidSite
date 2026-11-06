@@ -57,8 +57,21 @@ final class PublicRepositoryDirectory
         try {
             foreach (GithubAllowlistProposal::query()
                 ->where('status', 'approved')
+                ->whereNotNull('reviewed_by_user_id')
+                ->whereNotNull('reviewed_at')
+                ->where('reviewed_at', '<=', now('UTC'))
+                ->whereColumn('reviewed_by_user_id', '!=', 'submitted_by_user_id')
                 ->whereNotNull('verified_at')
                 ->where('verified_at', '<=', now('UTC'))
+                ->whereExists(static function ($query): void {
+                    // A mutable status field alone is not owner approval.
+                    // Require the persisted independent decision receipt.
+                    $query->selectRaw('1')
+                        ->from('github_allowlist_proposal_events as review_events')
+                        ->whereColumn('review_events.proposal_id', 'github_allowlist_proposals.id')
+                        ->whereColumn('review_events.actor_user_id', 'github_allowlist_proposals.reviewed_by_user_id')
+                        ->where('review_events.action', 'approved');
+                })
                 ->orderBy('created_at')->orderBy('id')
                 ->limit(200)->pluck('repository_slug') as $candidate) {
                 if (! is_string($candidate) || ! $this->validSlug($candidate)) {

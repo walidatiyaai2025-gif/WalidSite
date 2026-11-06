@@ -4,6 +4,7 @@ namespace Tests\Feature\GitHub;
 
 use App\Integrations\GitHub\PublicRepositoryDirectory;
 use App\Models\GithubAllowlistProposal;
+use App\Models\GithubAllowlistProposalEvent;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
@@ -33,8 +34,28 @@ final class ApprovedRepositoryDirectoryTest extends TestCase
             'status' => $status,
             'submitted_by_user_id' => $user->id,
         ]);
-        $proposal->verified_at = $verified ? now()->subMinute() : null;
-        $proposal->save();
+        // Test fixtures emulate the independent owner decision and audit
+        // event that the real W1 approval API persists atomically.
+        if ($status === 'approved' && $verified) {
+            $reviewer = User::create([
+                'email' => Str::lower(Str::random(16)).'@example.test',
+                'status' => 'active',
+            ]);
+            $proposal->reviewed_by_user_id = $reviewer->id;
+            $proposal->reviewed_at = now()->subMinute();
+            $proposal->verified_at = now()->subMinute();
+            $proposal->save();
+            GithubAllowlistProposalEvent::create([
+                'proposal_id' => $proposal->id,
+                'actor_user_id' => $reviewer->id,
+                'action' => 'approved',
+                'reason' => 'source_verified',
+                'created_at' => now()->subMinute(),
+            ]);
+        } else {
+            $proposal->verified_at = $verified ? now()->subMinute() : null;
+            $proposal->save();
+        }
         return $proposal;
     }
 
@@ -116,6 +137,31 @@ final class ApprovedRepositoryDirectoryTest extends TestCase
         $item->save();
         Http::fake();
         $this->assertSame([], app(PublicRepositoryDirectory::class)->repositories());
+        Http::assertNothingSent();
+    }
+
+    public function test_mutable_approved_flag_without_independent_owner_receipt_is_not_public(): void
+    {
+        $noEvent = $this->proposal('acme/no-event');
+        GithubAllowlistProposalEvent::query()
+            ->where('proposal_id', $noEvent->id)->delete();
+
+        $noReviewer = $this->proposal('acme/no-reviewer');
+        $noReviewer->reviewed_by_user_id = null;
+        $noReviewer->save();
+
+        $selfApproved = $this->proposal('acme/self-approved');
+        $selfApproved->reviewed_by_user_id = $selfApproved->submitted_by_user_id;
+        $selfApproved->save();
+
+        $futureReview = $this->proposal('acme/future-review');
+        $futureReview->reviewed_at = now()->addHour();
+        $futureReview->save();
+
+        Http::fake();
+        $directory = app(PublicRepositoryDirectory::class);
+        $this->assertSame([], $directory->configuredSlugs());
+        $this->assertSame([], $directory->repositories());
         Http::assertNothingSent();
     }
 
