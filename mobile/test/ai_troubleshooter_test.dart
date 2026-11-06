@@ -25,6 +25,106 @@ Future<T> withRealLoopbackHttp<T>(Future<T> Function() operation) async {
 
 void main() {
 
+  test('MOBILE-03 bearer login accepts only bounded, live UTC identities', () {
+    const bearer = '1|valid-test-signed-token';
+    final validUntil = DateTime.now().toUtc()
+        .add(const Duration(hours: 1)).toIso8601String();
+    String payload(Object? expires, {String token = bearer,
+        String type = 'Bearer', bool extra = false}) => jsonEncode({
+      'data': {
+        'token': token,
+        'token_type': type,
+        'expires_at': expires,
+        if (extra) 'private_internal_field': 'must never be accepted',
+      },
+    });
+
+    final live = MobileAiClient.parseLoginResponse(payload(validUntil));
+    expect(live.token, bearer);
+    expect(live.expiresAt, isNotNull);
+    expect(live.expiresAt!.isUtc, isTrue);
+    expect(MobileAiClient.parseLoginResponse(payload(null)).expiresAt, isNull);
+    // Explicit time-zone offsets from Laravel/ISO-8601 are valid and
+    // normalized to UTC; a naive local timestamp is never trusted.
+    expect(
+      MobileAiClient.parseLoginResponse(payload('2099-01-01T10:00:00+03:00'))
+          .expiresAt!.isUtc,
+      isTrue,
+    );
+
+    for (final expiry in <Object?>[
+      '2020-01-01T00:00:00Z',
+      validUntil.replaceAll('Z', ''),
+      '2099-01-01T10:00:00',
+      '2026-99-99T99:00:00Z',
+      '2099-01-01T10:00:00+99:99',
+      false,
+      123,
+      'Z' * 60,
+    ]) {
+      expect(
+        () => MobileAiClient.parseLoginResponse(payload(expiry)),
+        throwsFormatException,
+        reason: 'No expired, unzoned or malformed bearer expiry: $expiry',
+      );
+    }
+    for (final token in <String>[
+      '', 'bad\\nheader', 'bad\\rheader', 'space bearer',
+      'invalid\\u202Ebidirectional', 'é' * 100,
+    ]) {
+      expect(() => MobileAiClient.parseLoginResponse(
+        payload(validUntil, token: token)), throwsFormatException,
+        reason: 'Untrusted bearer token characters must fail closed',
+      );
+    }
+    expect(() => MobileAiClient.parseLoginResponse(
+        payload(validUntil, type: 'Basic')), throwsFormatException);
+    expect(() => MobileAiClient.parseLoginResponse(
+        payload(validUntil, extra: true)), throwsFormatException);
+    expect(() => MobileAiClient.parseLoginResponse('{"data":[]}'),
+        throwsFormatException);
+    expect(() => MobileAiClient.parseLoginResponse('x' * 17000),
+        throwsFormatException);
+  });
+
+  test('MOBILE-03 runbook Save requires the exact typed server receipt', () {
+    const id = '22222222-2222-4222-8222-222222222222';
+    String payload({
+      Object? type = 'runbook',
+      Object? saved = true,
+      Object? resourceId = id,
+      bool extra = false,
+    }) => jsonEncode({
+      'data': {
+        'resource_type': type,
+        'resource_id': resourceId,
+        'saved': saved,
+        if (extra) 'unexpected': 'unverified',
+      },
+    });
+    MobileAiClient.verifyRunbookSavedResponse(payload(), id);
+    for (final invalid in <String>[
+      payload(type: 'article'),
+      payload(type: 'unknown'),
+      payload(saved: false),
+      payload(saved: 1),
+      payload(resourceId: '11111111-1111-4111-8111-111111111111'),
+      payload(resourceId: id.toUpperCase()),
+      payload(extra: true),
+      '{"data":{"saved":true,"resource_id":"$id"}}',
+      '{"data":[{"resource_type":"runbook","resource_id":"$id","saved":true}]}',
+      '{"data":{},"extra":"unverified"}',
+      'x' * 17000,
+    ]) {
+      expect(() => MobileAiClient.verifyRunbookSavedResponse(invalid, id),
+          throwsFormatException,
+          reason: 'A status-200 response is not necessarily a saved runbook');
+    }
+    expect(() => MobileAiClient.verifyRunbookSavedResponse(
+        payload(), 'invalid-id'), throwsFormatException);
+  });
+
+
   test('MOBILE-03 real HTTP slow-drip response obeys one total deadline', () => withRealLoopbackHttp(() async {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     final stop = Completer<void>();
