@@ -65,7 +65,8 @@ class FakePage:
 
 
 class FakeContext:
-    def __init__(self):
+    def __init__(self, viewport=None):
+        self.viewport = viewport
         self.pages = []
         self.routes = []
         self.closed = False
@@ -86,7 +87,7 @@ def fake_browser():
     contexts = []
     browser = Mock()
     def context_factory(**_kwargs):
-        context = FakeContext()
+        context = FakeContext(_kwargs.get("viewport"))
         contexts.append(context)
         return context
     browser.new_context.side_effect = context_factory
@@ -187,6 +188,9 @@ class AdminRuntimeAuditTest(unittest.TestCase):
         self.assertEqual(report["failed_checks"], 0)
         self.assertEqual(report["visual_parity"], "not_attested")
         self.assertEqual(len(contexts), 2 * len(VIEWPORTS))
+        self.assertEqual({(ctx.viewport["width"], ctx.viewport["height"])
+                          for ctx in contexts},
+                         {(1440, 900), (768, 1024), (390, 844)})
         self.assertEqual(len({
             (x["screen"], x["locale"], x["viewport"])
             for x in report["results"]
