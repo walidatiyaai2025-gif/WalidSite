@@ -842,6 +842,42 @@ jobs:
           gh api -X DELETE "repos/${GITHUB_REPOSITORY}/git/refs/heads/${SOURCE_BRANCH}"
           echo "Deleted merged short-lived branch $SOURCE_BRANCH"
 
+      # One-time reconciliation for a mistakenly created, EMPTY nonstandard
+      # #25 preflight branch. Only the exact original main ancestor may go.
+      # Do not touch the canonical merged branch or any unmerged work.
+      - name: Reconcile exact empty Issue 25 preflight ref after its PR merge
+        if: ${{ github.event.pull_request.number == 1015 }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          old_branch="test/25-runtime-artisan-api-parity"
+          expected="836332ca98f15a6265fa3e80aaeb9d50410bca0c"
+          ref="repos/${GITHUB_REPOSITORY}/git/ref/heads/${old_branch}"
+          actual="$(gh api "$ref" --jq .object.sha 2>/dev/null)" || {
+            echo "Old preflight branch already absent or unreadable; no deletion"; exit 0;
+          }
+          if [[ "$actual" != "$expected" ]]; then
+            echo "Old branch advanced; preserving unique work"; exit 0;
+          fi
+          comparison="$(gh api "repos/${GITHUB_REPOSITORY}/compare/${expected}...main")"
+          status="$(jq -r .status <<<"$comparison")"
+          behind="$(jq -r .behind_by <<<"$comparison")"
+          if [[ "$behind" != 0 || ( "$status" != ahead && "$status" != identical ) ]]; then
+            echo "Old branch has unmerged work; preserving"; exit 0;
+          fi
+          open_count="$(gh api -X GET "repos/${GITHUB_REPOSITORY}/pulls" \
+            -f state=open -f head="${GITHUB_REPOSITORY%%/*}:${old_branch}" --jq length)"
+          if [[ "$open_count" != 0 ]]; then
+            echo "Old branch is in an open PR; preserving"; exit 0;
+          fi
+          current="$(gh api "$ref" --jq .object.sha 2>/dev/null)" || exit 0
+          if [[ "$current" != "$expected" ]]; then
+            echo "Old branch changed during cleanup; preserving"; exit 0;
+          fi
+          gh api -X DELETE "repos/${GITHUB_REPOSITORY}/git/refs/heads/${old_branch}"
+          echo "Deleted exact, ancestor-only preflight branch ${old_branch}"
       - name: Reconcile pre-hook T001 branches after a verified merge
         shell: bash
         env:
