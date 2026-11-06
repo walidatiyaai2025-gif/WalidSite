@@ -125,6 +125,34 @@ class CaptureRunnerTest(unittest.TestCase):
         self.assertFalse((self.root / "qa/visual-captures/WEB-01.png").exists())
         self.assertEqual(audit(self.root), ([], 0, 40))
 
+    def test_wrong_sized_png_never_decodes_or_admits_evidence(self):
+        # The trusted reference is converted before the renderer runs;
+        # wrong-sized untrusted PNG headers must NOT reach RGBA allocation.
+        from unittest.mock import patch
+
+        original_convert = Image.Image.convert
+        converted = []
+
+        def guarded_convert(image, *args, **kwargs):
+            converted.append(image.size)
+            if image.size != (3, 2):
+                raise AssertionError("Untrusted wrong-size PNG was decoded")
+            return original_convert(image, *args, **kwargs)
+
+        command = [
+            sys.executable, "-c",
+            "import os; from PIL import Image; "
+            "Image.new('RGB', (96, 64), 'white').save("
+            "os.environ['WALIDSITE_CAPTURE_PATH'], format='PNG')",
+        ]
+        with patch.object(Image.Image, "convert", guarded_convert):
+            with self.assertRaisesRegex(CaptureError, "Wrong screenshot dimensions"):
+                self.run_capture(command=command)
+        self.assertEqual(converted, [(3, 2)])
+        self.assertEqual(self.record()["status"], "pending")
+        self.assertFalse((self.root / "qa/visual-captures/WEB-01.png").exists())
+        self.assertEqual(audit(self.root), ([], 0, 40))
+
     def test_renderer_mutating_source_cannot_advance_a_capture(self):
         from unittest.mock import patch
         # Initial source checkout attestation passes, but the renderer
