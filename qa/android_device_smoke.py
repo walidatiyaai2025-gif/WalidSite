@@ -37,10 +37,10 @@ def _command(argv: list[str], *, timeout: int = 15) -> subprocess.CompletedProce
 
 
 def _checked_adb(adb: str, serial: str, *arguments: str,
-                 timeout: int = 15) -> str:
+                 timeout: int = 15, stage: str = "unknown") -> str:
     result = _command([adb, "-s", serial, *arguments], timeout=timeout)
     if result.returncode:
-        raise DeviceSmokeError("Android device command failed")
+        raise DeviceSmokeError("Android device command failed [" + stage + "]")
     return result.stdout.strip()
 
 
@@ -91,32 +91,43 @@ def smoke(apk: Path, *, package_id: str, version_name: str,
         if checksum.hexdigest() != expected_sha256:
             raise DeviceSmokeError("Copied APK bytes do not match expected SHA256")
 
-        if _checked_adb(adb, serial, "get-state") != "device":
+        if _checked_adb(adb, serial, "get-state", stage="get-state") != "device":
             raise DeviceSmokeError("Selected Android device is not online")
-        if _checked_adb(adb, serial, "shell", "getprop", "sys.boot_completed") != "1":
+        if _checked_adb(adb, serial, "shell", "getprop", "sys.boot_completed", stage="boot") != "1":
             raise DeviceSmokeError("Selected Android device has not finished booting")
-        preinstalled = _checked_adb(adb, serial, "shell", "pm", "path", package_id)
-        if preinstalled and not preinstalled.startswith("package:"):
+        # Android 35 can return a nonzero exit code for `pm path` when an
+        # application is simply absent on a clean emulator. Query the user-0
+        # package list instead, whose empty successful result means absent.
+        # Match the exact full identity, never a substring or an adb error.
+        package_list = _checked_adb(
+            adb, serial, "shell", "pm", "list", "packages",
+            "--user", "0", package_id, stage="preinstall-query",
+        )
+        if package_list not in ("", "package:" + package_id):
             raise DeviceSmokeError("Unexpected device package query response")
+        preinstalled = package_list == "package:" + package_id
         if preinstalled and not allow_replace:
             raise DeviceSmokeError("Existing app needs explicit --allow-replace")
 
         flags = ["-r"] if preinstalled else []
         install_output = _checked_adb(adb, serial, "install", *flags, str(candidate),
-                                      timeout=180)
+                                      timeout=180, stage="install")
         if "Success" not in install_output.splitlines():
             raise DeviceSmokeError("Android package installer did not confirm success")
-        installed = _checked_adb(adb, serial, "shell", "pm", "path", package_id)
+        installed = _checked_adb(adb, serial, "shell", "pm", "path", package_id,
+                                 stage="postinstall-query")
         if not installed.startswith("package:"):
             raise DeviceSmokeError("Installed Android package not found after install")
         launch_output = _checked_adb(adb, serial, "shell", "am", "start", "-W",
-                                     "-n", package_id + "/.MainActivity", timeout=45)
+                                     "-n", package_id + "/.MainActivity", timeout=45,
+                                     stage="launch")
         if ("Status: ok" not in launch_output.splitlines()
                 or not any(line in {"Activity: " + package_id + "/.MainActivity",
                                     "Activity: " + package_id + "/" + package_id + ".MainActivity"}
                            for line in launch_output.splitlines())):
             raise DeviceSmokeError("Android launcher did not report expected activity")
-        pid = _checked_adb(adb, serial, "shell", "pidof", package_id)
+        pid = _checked_adb(adb, serial, "shell", "pidof", package_id,
+                           stage="process-check")
         if not pid or not all(part.isdecimal() and int(part) > 0 for part in pid.split()):
             raise DeviceSmokeError("Android app process not running after launch")
         return {
@@ -125,7 +136,7 @@ def smoke(apk: Path, *, package_id: str, version_name: str,
             "package_id": package_id,
             "version_name": version_name,
             "version_code": version_code,
-            "replaced_existing_install": bool(preinstalled),
+            "replaced_existing_install": preinstalled,
             "source_sha_supplied_not_attested": source_sha,
             "physical_device_type_verified": False,
             "visual_fidelity_verified": False,
@@ -160,7 +171,9 @@ def main(argv: list[str] | None = None) -> int:
     except (DeviceSmokeError, ApkAcceptanceError, OSError, ValueError) as exc:
         print(json.dumps({"device_install_launch_verified": False,
                           "production_ready": False,
-                          "error": type(exc).__name__}), file=sys.stderr)
+                          "error": type(exc).__name__,
+                          "reason": str(exc) if isinstance(exc, DeviceSmokeError)
+                          else "Android APK inspection or command rejected"}), file=sys.stderr)
         return 1
     print(json.dumps(value, sort_keys=True))
     return 0

@@ -44,8 +44,14 @@ class AndroidDeviceSmokeTest(unittest.TestCase):
             value = "device\n"
         elif cmd == ["shell", "getprop", "sys.boot_completed"]:
             value = "1\n"
+        elif cmd == ["shell", "pm", "list", "packages", "--user", "0", PACKAGE]:
+            value = "package:" + PACKAGE + "\n" if getattr(self, "installed", False) else ""
         elif cmd == ["shell", "pm", "path", PACKAGE]:
-            value = "package:/data/app/app/base.apk\n" if getattr(self, "installed", False) else ""
+            # On real Android 35, querying a missing package may exit nonzero.
+            # Fresh-install detection must not depend on this failing command.
+            if not getattr(self, "installed", False):
+                return CompletedProcess(argv, 1, "", "Package not found")
+            value = "package:/data/app/app/base.apk\n"
         elif cmd[0] == "install":
             self.assertGreaterEqual(timeout, 90)
             self.assertTrue(cmd[-1].endswith("candidate.apk"))
@@ -73,6 +79,13 @@ class AndroidDeviceSmokeTest(unittest.TestCase):
         self.assertFalse(receipt["distribution_signing_identity_verified"])
         self.assertEqual(receipt["apk_sha256"], self.digest)
         self.assertTrue(any(argv[3] == "install" for argv in self.requests))
+        preinstall = self.requests.index(("adb", "-s", "emulator-5554",
+            "shell", "pm", "list", "packages", "--user", "0", PACKAGE))
+        install = next(i for i, args in enumerate(self.requests) if args[3] == "install")
+        self.assertLess(preinstall, install)
+        self.assertFalse(any(args[3:] == ("shell", "pm", "path", PACKAGE)
+                             for args in self.requests[:install]),
+                         "A clean device must not run pm path on an absent package")
         self.assertEqual(self.requests[-1][3:], ("shell", "pidof", PACKAGE))
 
     def test_refuse_mutation_without_serial_confirmation_or_safe_apk(self):
@@ -129,6 +142,29 @@ class AndroidDeviceSmokeTest(unittest.TestCase):
                         smoke(self.apk, **self.kwargs)
                 self.assertFalse(any(argv[3] == "install" for argv in self.requests))
 
+    def test_preinstall_inventory_rejects_substring_and_transport_failure(self):
+        for invalid_stdout, returncode in (
+            ("package:" + PACKAGE + ".imposter", 0),
+            ("package:" + PACKAGE + "\npackage:" + PACKAGE, 0),
+            ("", 1),
+        ):
+            self.requests.clear()
+            self.installed = False
+
+            def rejected(argv, *, timeout=15):
+                result = self.adb(argv, timeout=timeout)
+                if argv[3:] == ["shell", "pm", "list", "packages", "--user", "0", PACKAGE]:
+                    result.stdout = invalid_stdout
+                    result.returncode = returncode
+                return result
+
+            with self.subTest(stdout=invalid_stdout, code=returncode):
+                with patch("qa.android_device_smoke.inspect", side_effect=self.inspect), \
+                     patch("qa.android_device_smoke._command", side_effect=rejected):
+                    with self.assertRaises(DeviceSmokeError):
+                        smoke(self.apk, **self.kwargs)
+                self.assertFalse(any(args[3] == "install" for args in self.requests))
+
     def test_existing_app_must_opt_in_to_replace(self):
         self.installed = True
         with self.assertRaisesRegex(DeviceSmokeError, "allow-replace"):
@@ -157,6 +193,42 @@ class AndroidDeviceSmokeTest(unittest.TestCase):
                      patch("qa.android_device_smoke._command", side_effect=faulty):
                     with self.assertRaises(DeviceSmokeError):
                         smoke(self.apk, **self.kwargs)
+
+    def test_rejected_adb_stage_is_static_and_never_leaks_transport_output(self):
+        for operation, stage in (("get-state", "get-state"),
+                                 ("install", "install"),
+                                 ("am", "launch"), ("pidof", "process-check")):
+            self.requests.clear()
+            self.installed = False
+
+            def rejected(argv, *, timeout=15):
+                result = self.adb(argv, timeout=timeout)
+                if operation == argv[3] or operation in argv:
+                    result.returncode = 1
+                    result.stderr = "secret transport log: device serial and private path"
+                return result
+
+            with self.subTest(operation=operation):
+                with patch("qa.android_device_smoke.inspect", side_effect=self.inspect), \
+                     patch("qa.android_device_smoke._command", side_effect=rejected):
+                    with self.assertRaisesRegex(DeviceSmokeError, r"\[" + stage + r"\]") as caught:
+                        smoke(self.apk, **self.kwargs)
+                self.assertNotIn("secret transport log", str(caught.exception))
+                self.assertNotIn("emulator-5554", str(caught.exception))
+
+    def test_cli_reports_only_static_safe_device_failure_reason(self):
+        with patch("qa.android_device_smoke.smoke",
+                   side_effect=DeviceSmokeError("Android device command failed [launch]")), \
+             redirect_stderr(io.StringIO()) as errors:
+            status = main(["--apk", str(self.apk), "--package-id", PACKAGE,
+                           "--version-name", "0.1.0", "--version-code", "1",
+                           "--source-sha", SHA, "--expected-sha256", self.digest,
+                           "--serial", "secret-device"])
+        self.assertEqual(status, 1)
+        data = json.loads(errors.getvalue())
+        self.assertEqual(data["reason"], "Android device command failed [launch]")
+        self.assertNotIn("secret-device", errors.getvalue())
+        self.assertNotIn(str(self.apk), errors.getvalue())
 
     def test_adb_unavailable_and_failed_cli_do_not_leak_serial_or_path(self):
         with patch("qa.android_device_smoke.inspect", side_effect=self.inspect), \

@@ -423,7 +423,11 @@ class ReleaseAndroidQaAttachmentTest(unittest.TestCase):
         ci = (Path(__file__).resolve().parents[2] /
               ".github/workflows/ci.yml").read_text()
         self.assertIn("verify-source-pinned-release-bundle:", ci)
-        self.assertIn("needs: [required-ci-gate, build-cpanel-package, build-android-qa-apk]", ci)
+        self.assertIn("needs: [required-ci-gate, build-cpanel-package, build-android-qa-apk, android-emulator-install-launch]", ci)
+        self.assertIn("name: WalidSite-Android-emulator-launch-${{ github.sha }}", ci)
+        self.assertIn("assert emulator['device_install_launch_verified'] is True", ci)
+        self.assertIn("assert emulator['apk_sha256'] == proof['android_apk_sha256']", ci)
+        self.assertIn("assert emulator['production_ready'] is False", ci)
         self.assertIn("WalidSite-UNPUBLISHED-release-train-${{ github.sha }}", ci)
         self.assertIn(
             "name: WalidSite-UNPUBLISHED-release-train-"
