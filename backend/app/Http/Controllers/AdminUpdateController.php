@@ -746,13 +746,10 @@ final class AdminUpdateController extends Controller
         ]);
         $message = 'Signed code release '.$result['version']
             .' passed independent backup/restore, atomic cutover and live health verification.';
-        if (! $historyRecorded) {
-            $message .= ' WARNING: private update history could not be recorded;'
-                .' installation remains complete but the audit trail needs operator recovery.';
-        }
         return redirect()->route('admin.updates.index', [
             'lang' => ($input['lang'] ?? 'en') === 'ar' ? 'ar' : 'en',
-        ])->with('status', $message);
+        ])->with('status', $message)
+          ->with('code_update_history_warning', ! $historyRecorded);
     }
 
     public function apply(Request $request, SiteUpdater $updater): RedirectResponse
