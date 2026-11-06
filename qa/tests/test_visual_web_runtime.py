@@ -330,7 +330,7 @@ class WebRuntimeAuditTest(unittest.TestCase):
                                       "evidence_urls": ["http://untrusted.invalid"]}}),
             FakeApiResponse({"data": [good_data]}),
             FakeApiResponse({"data": good_data}, content_type="text/html"),
-            FakeApiResponse({"data": good_data}, raw=b"\\xff"),
+            FakeApiResponse({"data": good_data}, raw=b"\xff"),
             FakeApiResponse({"data": good_data}, raw=b"not-json"),
             FakeApiResponse({"data": good_data},
                             raw=b"x" * (MAX_DISCOVERY_BYTES + 1)),
@@ -340,7 +340,7 @@ class WebRuntimeAuditTest(unittest.TestCase):
             with self.subTest(detail=detail.status, type=detail.headers["content-type"]):
                 manager, contexts, browser = fake_playwright(
                     published=approved, detail_response=detail)
-                with patch("qa.audit_web_runtime.exact_checkout"), \\
+                with patch("qa.audit_web_runtime.exact_checkout"), \
                      patch.dict(os.environ, {"WALIDSITE_CAPTURE_STORAGE_STATE": ""}):
                     with self.assertRaises(AdminSessionError) as rejected:
                         audit_web("http://127.0.0.1:8000", SHA, root=ROOT,
@@ -359,7 +359,7 @@ class WebRuntimeAuditTest(unittest.TestCase):
                 "slug": "approved-article",
                 "evidence_urls": ["https://github.com/owner/repo"],
             }}))
-        with patch("qa.audit_web_runtime.exact_checkout"), \\
+        with patch("qa.audit_web_runtime.exact_checkout"), \
              patch.dict(os.environ, {"WALIDSITE_CAPTURE_STORAGE_STATE": ""}):
             with self.assertRaises(AdminSessionError):
                 audit_web("http://127.0.0.1:8000", SHA, root=ROOT,
