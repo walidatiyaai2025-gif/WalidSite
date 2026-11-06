@@ -455,6 +455,34 @@ class SiteMaintenanceTest extends TestCase
         $this->assertSame(0, $host->calls);
     }
 
+    public function test_owner_signed_code_install_requires_verified_stage_and_host_capability(): void
+    {
+        $this->withoutMiddleware(\Illuminate\Routing\Middleware\ThrottleRequests::class);
+        $this->post('/admin/updates/install-signed')->assertRedirect('/admin/login');
+
+        $user = User::create([
+            'email' => 'signed-install-owner@example.test',
+            'password_hash' => 'unused', 'status' => 'active',
+        ]);
+        $user->roles()->attach(Role::firstOrCreate(['name' => 'admin'])->id);
+        $this->actingAs($user)
+            ->post('/admin/updates/install-signed')->assertForbidden();
+        $user->roles()->attach(Role::firstOrCreate(['name' => 'owner'])->id);
+        config(['site.updates_enabled' => true]);
+
+        $this->get('/admin/updates?lang=en')->assertOk()
+            ->assertSee('data-testid="owner-install-host-blocked"', false)
+            ->assertDontSee('data-testid="owner-signed-install-form"', false);
+        $this->post('/admin/updates/install-signed')
+            ->assertRedirect()->assertSessionHasErrors('install');
+        $this->assertNull(session('owner_update_installed'));
+        $this->post('/admin/updates/install-signed?lang=en', [
+            'version' => '9.9.9', 'backup_verified' => 'true',
+        ])->assertRedirect()->assertSessionHasErrors('install');
+        $this->get('/admin/updates?lang=ar')->assertOk()
+            ->assertSee('تثبيت التحديث — الاستضافة أو الاستعادة غير جاهزة');
+    }
+
     public function test_manual_updates_can_be_disabled_without_hiding_status(): void
     {
         config(['site.updates_enabled' => false]);
