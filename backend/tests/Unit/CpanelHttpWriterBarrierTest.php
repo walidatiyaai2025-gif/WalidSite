@@ -3,6 +3,7 @@
 namespace Tests\Unit;
 
 use App\Domain\Deployment\CpanelConsoleWriterLease;
+use App\Domain\Deployment\CpanelReleaseMaintenance;
 use App\Http\Middleware\CpanelHttpWriterBarrier;
 use DomainException;
 use Illuminate\Http\Request;
@@ -48,6 +49,7 @@ final class CpanelHttpWriterBarrierTest extends TestCase
         return new CpanelHttpWriterBarrier(
             new CpanelConsoleWriterLease(),
             $this->home.'/application',
+            $this->home,
         );
     }
 
@@ -176,6 +178,77 @@ final class CpanelHttpWriterBarrierTest extends TestCase
         $exclusive->beginExclusiveForUpdate($this->home);
         $exclusive->assertExclusiveHeld();
         $exclusive->end();
+    }
+
+    public function test_only_authenticated_get_up_health_probe_can_run_under_exclusive_maintenance(): void
+    {
+        $owner = new CpanelConsoleWriterLease();
+        $maintenance = new CpanelReleaseMaintenance();
+        $owner->beginExclusiveForUpdate($this->home);
+        $session = $maintenance->begin($this->home, 'legacy', '0.1.1');
+        try {
+            $executed = false;
+            $request = Request::create('/up', 'GET', [], [], [], [
+                'HTTP_X_WALIDSITE_RELEASE_PROBE' => $session['token'],
+            ]);
+            $response = $this->middleware()->handle(
+                $request,
+                static function () use (&$executed): Response {
+                    $executed = true;
+                    return new Response('verified new release health');
+                },
+            );
+            $this->assertTrue($executed);
+            $this->assertSame(200, $response->getStatusCode());
+            $this->assertContains('no-store', array_map('trim', explode(',', (string) $response->headers->get('Cache-Control'))));
+            // No second shared lease can be taken through this health path:
+            // the owner's existing exclusive writer lock is still held.
+            $owner->assertExclusiveHeld();
+            try {
+                (new CpanelConsoleWriterLease())->beginForConsole($this->home.'/application');
+                $this->fail('Health probe accidentally reopened an ordinary writer.');
+            } catch (DomainException) {
+                $owner->assertExclusiveHeld();
+            }
+        } finally {
+            $maintenance->clear($this->home, $session['token']);
+            $owner->end();
+        }
+    }
+
+    public function test_probe_header_cannot_bypass_maintenance_for_other_routes_methods_or_bad_tokens(): void
+    {
+        $owner = new CpanelConsoleWriterLease();
+        $maintenance = new CpanelReleaseMaintenance();
+        $owner->beginExclusiveForUpdate($this->home);
+        $session = $maintenance->begin($this->home, 'legacy', '0.1.1');
+        try {
+            foreach ([
+                ['/up', 'GET', str_repeat('0', 64)],
+                ['/admin/updates', 'GET', $session['token']],
+                ['/up', 'POST', $session['token']],
+                ['/up?force=1', 'GET', $session['token']],
+                ['/api/v1/contact', 'GET', $session['token']],
+            ] as [$uri, $method, $token]) {
+                $called = false;
+                $request = Request::create($uri, $method, [], [], [], [
+                    'HTTP_X_WALIDSITE_RELEASE_PROBE' => $token,
+                ]);
+                $response = $this->middleware()->handle(
+                    $request,
+                    static function () use (&$called): Response {
+                        $called = true;
+                        return new Response('unauthorized');
+                    },
+                );
+                $this->assertFalse($called, 'Forbidden probe executed a site route: '.$uri);
+                $this->assertSame(503, $response->getStatusCode(), $uri);
+                $owner->assertExclusiveHeld();
+            }
+        } finally {
+            $maintenance->clear($this->home, $session['token']);
+            $owner->end();
+        }
     }
 
     public function test_expired_private_maintenance_marker_returns_503_before_request_handler(): void
