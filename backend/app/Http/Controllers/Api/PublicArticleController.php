@@ -167,10 +167,10 @@ class PublicArticleController extends Controller
         // Match Flutter's verified-category parser. A legacy control,
         // bidi override/isolate or malformed UTF-8 label must not poison
         // the otherwise published article list.
-        $unsafeLabel = '/[\\x00-\\x1F\\x7F\\x{202A}-\\x{202E}\\x{2066}-\\x{2069}]/u';
+        $unsafeLabel = '/[\x00-\x1F\x7F\x{202A}-\x{202E}\x{2066}-\x{2069}]/u';
 
         return strlen($slug) <= 60
-            && preg_match('/\\A[a-z0-9]+(?:-[a-z0-9]+)*\\z/D', $slug) === 1
+            && preg_match('/\A[a-z0-9]+(?:-[a-z0-9]+)*\z/D', $slug) === 1
             && trim($en) !== '' && strlen($en) <= 160
             && trim($ar) !== '' && strlen($ar) <= 160
             && preg_match($unsafeLabel, $en) === 0
