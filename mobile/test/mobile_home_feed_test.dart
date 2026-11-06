@@ -32,7 +32,12 @@ String feed({
         'summary': 'Evidence-backed project summary',
         'role': 'Engineering',
         'evidence_urls': ['https://docs.example.org/project'],
-        'url': 'https://portfolio.example.org/projects/verified-project',
+        'url': 'https://portfolio.example.org/projects/verified-project?lang=en',
+    );
+    expect(
+      MobileHomeProject.publicDetailUrl('verified-project',
+          origin: trusted, arabic: true).toString(),
+      'https://portfolio.example.org/projects/verified-project?lang=ar',
       },
     ],
     'reading_feed': articles ?? [
