@@ -247,7 +247,7 @@ body:has(.expertise-screen) .t007-nav-shell{box-shadow:none}
  .expertise-description{min-height:0;font-size:16px;line-height:1.5}
  .expertise-hero-actions{gap:9px}
  .expertise-hero-actions a{padding:9px 12px;font-size:14px}
- .expertise-art{width:100%;max-width:100%;min-width:0;box-sizing:border-box;justify-self:stretch;overflow:clip;height:auto;aspect-ratio:700/320;min-height:175px;margin:0}
+ .expertise-art{height:auto;aspect-ratio:700/320;min-height:175px;margin:0}
  .expertise-kicker{flex-basis:auto;min-width:155px}
  .expertise-tab-nav{gap:6px}
  .expertise-tab-nav a{font-size:12px;padding:8px 10px}
