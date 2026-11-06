@@ -1,4 +1,3 @@
-@push('head')
 <style>
 /* WEB-03 mobile containment only: preserve the owner-approved artwork and desktop layout. */
 @media (max-width: 700px) {
@@ -22,4 +21,3 @@
     }
 }
 </style>
-@endpush
