@@ -22,6 +22,7 @@ final class CpanelVerifiedCodeRollback extends RuntimeException
         public readonly string $previousRoot,
         public readonly string $previousVersion,
         public readonly string $previousVersionFingerprint,
+        public readonly string $previousReleaseFingerprint,
     ) {
         parent::__construct('New release health failed; old code pointer restored.');
     }
