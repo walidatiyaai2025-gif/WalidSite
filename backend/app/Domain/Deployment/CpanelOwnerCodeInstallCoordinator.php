@@ -87,6 +87,11 @@ final class CpanelOwnerCodeInstallCoordinator
             if ($host->externalWritersStopped() !== true) {
                 throw new DomainException('Foreign writers resumed before maintenance.');
             }
+            // The disposable PDO may be replaced or populated while release
+            // metadata and staged files are authenticated. Verify the actual
+            // source and recovery schemas again under our exclusive lease,
+            // immediately before creating a maintenance marker or backup.
+            (new CpanelDisposableMariaDbGuard())->assertIndependentAndEmpty($live, $disposable);
             $token = $maintenance->begin($home, 'legacy', $installedVersion, 300)['token'];
             $quiesced = static function () use (
                 $requestLease, $host, $maintenance, $home, $token,
