@@ -378,6 +378,17 @@ jobs:
           print("DYNAMIC WEB-05/08: pending approved published slugs; not fabricated")
           PY
 
+          # Independently inspect the 12 anonymous public routes in Arabic
+          # and English at desktop/mobile sizes. Accessibility defects are
+          # recorded, not confused with a zero-RGBA screenshot attestation.
+          # A failed route, unsafe origin, source drift or incomplete matrix
+          # remains a fatal CI failure; ordinary defects stay in the artifact.
+          set +e
+          python3 -B qa/audit_web_runtime.py --commit "$tested_sha" --output "$PWD/qa/visual-diagnostics/$tested_sha-web/web-runtime-a11y.json"
+          web_a11y_exit=$?
+          set -e
+          if test "$web_a11y_exit" -gt 1; then exit "$web_a11y_exit"; fi
+
       - name: Upload Issue 481 Admin runtime visual diagnostics
         if: ${{ always() && ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'pull_request' && (startsWith(github.head_ref, 'feat/481-') || startsWith(github.head_ref, 'fix/481-') || startsWith(github.head_ref, 'chore/481-')))) }}
         uses: actions/upload-artifact@v4
