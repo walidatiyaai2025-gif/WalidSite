@@ -7,14 +7,16 @@ import 'package:flutter/material.dart';
 
 import '../articles/verified_articles.dart';
 import '../runbooks/verified_online_runbooks.dart';
-import '../theme/waleed_theme.dart';
 
 // Published Home resource titles are display identities, not layout controls.
 // Never let a compromised feed inject newlines or bidi overrides/isolates.
-bool _unsafeHomeTitle(String title) => title.runes.any((code) =>
-    code < 32 || code == 127 ||
-    (code >= 0x202a && code <= 0x202e) ||
-    (code >= 0x2066 && code <= 0x2069));
+bool _unsafeHomeTitle(String title) => title.runes.any(
+  (code) =>
+      code < 32 ||
+      code == 127 ||
+      (code >= 0x202a && code <= 0x202e) ||
+      (code >= 0x2066 && code <= 0x2069),
+);
 
 class MobileHomeProject {
   const MobileHomeProject({
@@ -33,9 +35,7 @@ class MobileHomeProject {
     if (value is! Map<String, dynamic>) {
       throw const FormatException('Invalid home project');
     }
-    const keys = {
-      'slug', 'title', 'summary', 'role', 'evidence_urls', 'url',
-    };
+    const keys = {'slug', 'title', 'summary', 'role', 'evidence_urls', 'url'};
     if (value.length != keys.length ||
         value.keys.toSet().difference(keys).isNotEmpty) {
       throw const FormatException('Unexpected home project fields');
@@ -48,13 +48,22 @@ class MobileHomeProject {
     final url = value['url'];
     if (slug is! String ||
         !RegExp(r'^[A-Za-z0-9-]{1,180}$').hasMatch(slug) ||
-        title is! String || title.trim().isEmpty || title.length > 250 ||
+        title is! String ||
+        title.trim().isEmpty ||
+        title.length > 250 ||
         _unsafeHomeTitle(title) ||
-        summary is! String || summary.trim().isEmpty || summary.length > 5000 ||
-        role is! String || role.trim().isEmpty || role.length > 220 ||
-        evidence is! List || evidence.isEmpty || evidence.length > 50 ||
+        summary is! String ||
+        summary.trim().isEmpty ||
+        summary.length > 5000 ||
+        role is! String ||
+        role.trim().isEmpty ||
+        role.length > 220 ||
+        evidence is! List ||
+        evidence.isEmpty ||
+        evidence.length > 50 ||
         evidence.any((item) => item is! String || item.length > 2048) ||
-        url is! String || url.length > 2048) {
+        url is! String ||
+        url.length > 2048) {
       throw const FormatException('Unsafe home project');
     }
     return MobileHomeProject(
@@ -85,18 +94,25 @@ class MobileHomeArticle {
     final title = value['title'];
     final url = value['url'];
     final publishedAt = value['published_at'];
-    final publishedTime =
-        publishedAt is String ? DateTime.tryParse(publishedAt) : null;
+    final publishedTime = publishedAt is String
+        ? DateTime.tryParse(publishedAt)
+        : null;
     if (slug is! String ||
         !RegExp(r'^[A-Za-z0-9-]{1,180}$').hasMatch(slug) ||
-        title is! String || title.trim().isEmpty || title.length > 250 ||
+        title is! String ||
+        title.trim().isEmpty ||
+        title.length > 250 ||
         _unsafeHomeTitle(title) ||
-        url is! String || url.length > 2048 ||
-        publishedAt is! String || publishedAt.length > 50 ||
+        url is! String ||
+        url.length > 2048 ||
+        publishedAt is! String ||
+        publishedAt.length > 50 ||
         !RegExp(r'(?:Z|[+-][0-9]{2}:[0-9]{2})$').hasMatch(publishedAt) ||
-        publishedTime == null || !publishedTime.isUtc ||
+        publishedTime == null ||
+        !publishedTime.isUtc ||
         publishedTime.isAfter(
-            DateTime.now().toUtc().add(const Duration(minutes: 5)))) {
+          DateTime.now().toUtc().add(const Duration(minutes: 5)),
+        )) {
       throw const FormatException('Unsafe home article');
     }
     return MobileHomeArticle(slug: slug, title: title);
@@ -117,8 +133,7 @@ class MobileHomeFeed {
   static MobileHomeFeed parse(String body, bool arabic) {
     // The transport limit is in UTF-8 bytes, not Dart UTF-16 units.
     // Apply it to injected/direct parser calls as well as HTTP reads.
-    if (body.length > 1024 * 1024 ||
-        utf8.encode(body).length > 1024 * 1024) {
+    if (body.length > 1024 * 1024 || utf8.encode(body).length > 1024 * 1024) {
       throw const FormatException('Home response too large');
     }
     final decoded = jsonDecode(body);
@@ -131,8 +146,12 @@ class MobileHomeFeed {
     final data = decoded['data'] as Map<String, dynamic>;
     final meta = decoded['meta'] as Map<String, dynamic>;
     const dataKeys = {
-      'profile', 'featured_projects', 'reading_feed', 'offline_runbooks',
-      'tools', 'saved_requires_auth',
+      'profile',
+      'featured_projects',
+      'reading_feed',
+      'offline_runbooks',
+      'tools',
+      'saved_requires_auth',
     };
     if (data.length != dataKeys.length ||
         data.keys.toSet().difference(dataKeys).isNotEmpty ||
@@ -162,7 +181,8 @@ class MobileHomeFeed {
     final runbooks = rawRunbooks.map(ReviewedRunbook.fromJson).toList();
     if (projects.map((e) => e.slug).toSet().length != projects.length ||
         articles.map((e) => e.slug).toSet().length != articles.length ||
-        runbooks.map((e) => e.id.toLowerCase()).toSet().length != runbooks.length) {
+        runbooks.map((e) => e.id.toLowerCase()).toSet().length !=
+            runbooks.length) {
       throw const FormatException('Duplicate home resource');
     }
 
@@ -228,6 +248,158 @@ class MobileHomeReader {
 
 typedef MobileHomeFetch = Future<MobileHomeFeed> Function(bool arabic);
 
+/// A truthful video-feed-style card for verified app content. The thumbnail is
+/// an abstract local illustration, never an invented photo or video preview.
+class MobileHomeFeedCard extends StatelessWidget {
+  const MobileHomeFeedCard({
+    required this.title,
+    required this.kind,
+    required this.detail,
+    required this.icon,
+    required this.onTap,
+    this.palette = const [Color(0xff163b66), Color(0xff00a999)],
+    super.key,
+  });
+
+  final String title;
+  final String kind;
+  final String detail;
+  final IconData icon;
+  final VoidCallback? onTap;
+  final List<Color> palette;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 22),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: onTap,
+          child: Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 620),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  AspectRatio(
+                    aspectRatio: 16 / 9,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(14),
+                        gradient: LinearGradient(
+                          colors: palette,
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                      ),
+                      child: Stack(
+                        children: [
+                          PositionedDirectional(
+                            end: 26,
+                            top: 20,
+                            child: Icon(icon, size: 96, color: Colors.white24),
+                          ),
+                          Center(
+                            child: Icon(icon, size: 54, color: Colors.white),
+                          ),
+                          PositionedDirectional(
+                            start: 12,
+                            bottom: 12,
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                color: Colors.black.withValues(alpha: .58),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 9,
+                                  vertical: 5,
+                                ),
+                                child: Text(
+                                  kind,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 11),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const CircleAvatar(
+                        radius: 20,
+                        backgroundColor: Color(0xffe9eef3),
+                        child: Text(
+                          'W',
+                          style: TextStyle(
+                            color: Color(0xff163b66),
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 11),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              title,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Color(0xff0f0f0f),
+                                fontSize: 16,
+                                height: 1.25,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            if (detail.isNotEmpty) ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                detail,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: Color(0xff606060),
+                                  fontSize: 13,
+                                  height: 1.25,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      const Icon(
+                        Icons.more_vert,
+                        size: 21,
+                        color: Color(0xff606060),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class MobileHomeFeedPanel extends StatefulWidget {
   const MobileHomeFeedPanel({
     required this.arabic,
@@ -287,10 +459,12 @@ class _MobileHomeFeedPanelState extends State<MobileHomeFeedPanel> {
         key: const Key('mobile-home-unconfigured'),
         child: Padding(
           padding: const EdgeInsets.all(16),
-          child: Text(label(
-            'Verified live home feed is not configured. Navigation and bundled offline tools remain available.',
-            'موجز الصفحة الرئيسية الموثق غير مهيأ. ما زال التنقل والأدوات المحلية المتاحة دون إنترنت يعملان.',
-          )),
+          child: Text(
+            label(
+              'Verified live home feed is not configured. Navigation and bundled offline tools remain available.',
+              'موجز الصفحة الرئيسية الموثق غير مهيأ. ما زال التنقل والأدوات المحلية المتاحة دون إنترنت يعملان.',
+            ),
+          ),
         ),
       );
     }
@@ -315,10 +489,12 @@ class _MobileHomeFeedPanelState extends State<MobileHomeFeedPanel> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(label(
-                    'Could not verify the live home feed. Offline navigation remains available.',
-                    'تعذر التحقق من موجز الصفحة الرئيسية. يظل التنقل دون إنترنت متاحًا.',
-                  )),
+                  Text(
+                    label(
+                      'Could not verify the live home feed. Offline navigation remains available.',
+                      'تعذر التحقق من موجز الصفحة الرئيسية. يظل التنقل دون إنترنت متاحًا.',
+                    ),
+                  ),
                   const SizedBox(height: 10),
                   FilledButton(
                     key: const Key('mobile-home-retry'),
@@ -332,25 +508,28 @@ class _MobileHomeFeedPanelState extends State<MobileHomeFeedPanel> {
         }
 
         final feed = snapshot.data!;
-        final empty = feed.projects.isEmpty &&
+        final empty =
+            feed.projects.isEmpty &&
             feed.articles.isEmpty &&
             feed.runbooks.isEmpty;
         return Card(
           key: const Key('mobile-home-feed'),
+          color: Colors.white,
+          elevation: 0,
           child: Padding(
-            padding: const EdgeInsets.all(18),
+            padding: const EdgeInsets.fromLTRB(0, 14, 0, 0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   label('Verified live feed', 'الموجز المباشر الموثق'),
                   style: const TextStyle(
-                    color: WaleedPalette.primary,
-                    fontSize: 20,
-                    fontWeight: FontWeight.w800,
+                    color: Color(0xff0f0f0f),
+                    fontSize: 19,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 12),
                 if (empty)
                   Text(
                     label(
@@ -360,67 +539,75 @@ class _MobileHomeFeedPanelState extends State<MobileHomeFeedPanel> {
                     key: const Key('mobile-home-empty'),
                   ),
                 if (feed.projects.isNotEmpty) ...[
-                  const SizedBox(height: 10),
-                  Text(label('Featured projects', 'مشاريع موثقة'),
-                      style: const TextStyle(fontWeight: FontWeight.w700)),
-                  ...feed.projects.map((project) => ListTile(
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    leading: const Icon(Icons.verified_outlined),
-                    title: Text(project.title),
-                    subtitle: Text(project.summary),
-                  )),
-                ],
-                if (feed.articles.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  Text(label('Latest reviewed articles', 'أحدث المقالات المراجعة'),
-                      style: const TextStyle(fontWeight: FontWeight.w700)),
-                  ...feed.articles.take(3).map(
-                    (article) => ListTile(
-                      key: Key('mobile-home-article-${article.slug}'),
-                      contentPadding: EdgeInsets.zero,
-                      dense: true,
-                      leading: const Icon(Icons.article_outlined),
-                      title: Text(article.title),
-                      trailing: Icon(widget.arabic
-                          ? Icons.chevron_left : Icons.chevron_right),
-                      onTap: () => widget.onOpenArticle == null
-                          ? widget.onOpenArticles()
-                          : widget.onOpenArticle!(article.slug),
+                  ...feed.projects.map(
+                    (project) => MobileHomeFeedCard(
+                      key: Key('mobile-home-project-${project.slug}'),
+                      title: project.title,
+                      kind: label('Verified project', 'مشروع موثق'),
+                      detail: '${project.role} · ${project.summary}',
+                      icon: Icons.verified_outlined,
+                      palette: const [Color(0xff174a70), Color(0xff307e87)],
+                      onTap: null,
                     ),
                   ),
-                  const SizedBox(height: 8),
+                ],
+                if (feed.articles.isNotEmpty) ...[
+                  ...feed.articles
+                      .take(3)
+                      .map(
+                        (article) => MobileHomeFeedCard(
+                          key: Key('mobile-home-article-${article.slug}'),
+                          title: article.title,
+                          kind: label('Verified article', 'مقالة موثقة'),
+                          detail: label(
+                            'Reviewed publication',
+                            'محتوى منشور ومراجع',
+                          ),
+                          icon: Icons.article_outlined,
+                          palette: const [Color(0xff243b68), Color(0xff516fa5)],
+                          onTap: () => widget.onOpenArticle == null
+                              ? widget.onOpenArticles()
+                              : widget.onOpenArticle!(article.slug),
+                        ),
+                      ),
                   TextButton.icon(
                     key: const Key('mobile-home-open-articles'),
                     onPressed: widget.onOpenArticles,
                     icon: const Icon(Icons.article_outlined),
-                    label: Text(label('Open article library', 'فتح مكتبة المقالات')),
+                    label: Text(
+                      label('Open article library', 'فتح مكتبة المقالات'),
+                    ),
                   ),
                 ],
                 if (feed.runbooks.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  Text(label('Reviewed runbooks', 'أدلة تشغيل مراجعة'),
-                      style: const TextStyle(fontWeight: FontWeight.w700)),
-                  ...feed.runbooks.take(3).map(
-                    (runbook) => ListTile(
-                      key: Key('mobile-home-runbook-${runbook.id}'),
-                      contentPadding: EdgeInsets.zero,
-                      dense: true,
-                      leading: const Icon(Icons.menu_book_outlined),
-                      title: Text(runbook.title),
-                      trailing: Icon(widget.arabic
-                          ? Icons.chevron_left : Icons.chevron_right),
-                      onTap: () => widget.onOpenRunbook == null
-                          ? widget.onOpenRunbooks()
-                          : widget.onOpenRunbook!(runbook.id),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
+                  ...feed.runbooks
+                      .take(3)
+                      .map(
+                        (runbook) => MobileHomeFeedCard(
+                          key: Key('mobile-home-runbook-${runbook.id}'),
+                          title: runbook.title,
+                          kind: label('Reviewed runbook', 'دليل تشغيل موثق'),
+                          detail: label(
+                            'Revision ${runbook.version}',
+                            'الإصدار ${runbook.version}',
+                          ),
+                          icon: Icons.menu_book_outlined,
+                          palette: const [Color(0xff394e57), Color(0xff4c8178)],
+                          onTap: () => widget.onOpenRunbook == null
+                              ? widget.onOpenRunbooks()
+                              : widget.onOpenRunbook!(runbook.id),
+                        ),
+                      ),
                   TextButton.icon(
                     key: const Key('mobile-home-open-runbooks'),
                     onPressed: widget.onOpenRunbooks,
                     icon: const Icon(Icons.menu_book_outlined),
-                    label: Text(label('Open reviewed runbooks', 'فتح أدلة التشغيل المراجعة')),
+                    label: Text(
+                      label(
+                        'Open reviewed runbooks',
+                        'فتح أدلة التشغيل المراجعة',
+                      ),
+                    ),
                   ),
                 ],
               ],
@@ -483,17 +670,23 @@ class _MobileHomeArticleRouteState extends State<MobileHomeArticleRoute> {
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
           return Scaffold(
-            appBar: AppBar(title: Text(widget.arabic ? 'مقال موثق' : 'Verified article')),
-            body: const Center(child: CircularProgressIndicator(
-              key: Key('mobile-home-article-loading'),
-            )),
+            appBar: AppBar(
+              title: Text(widget.arabic ? 'مقال موثق' : 'Verified article'),
+            ),
+            body: const Center(
+              child: CircularProgressIndicator(
+                key: Key('mobile-home-article-loading'),
+              ),
+            ),
           );
         }
         if (snapshot.hasError ||
             !snapshot.hasData ||
             snapshot.data!.slug != widget.slug) {
           return Scaffold(
-            appBar: AppBar(title: Text(widget.arabic ? 'مقال موثق' : 'Verified article')),
+            appBar: AppBar(
+              title: Text(widget.arabic ? 'مقال موثق' : 'Verified article'),
+            ),
             body: Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,

@@ -368,6 +368,7 @@ void main() {
     await tester.scrollUntilVisible(
       find.byKey(const Key('verified-articles-entry')),
       140,
+      scrollable: find.descendant(of: find.byKey(const Key('mobile-home-scroll-feed')), matching: find.byType(Scrollable)),
     );
     await tester.ensureVisible(find.byKey(const Key('verified-articles-entry')));
     await tester.pumpAndSettle();

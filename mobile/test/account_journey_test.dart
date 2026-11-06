@@ -947,7 +947,9 @@ void main() {
         key: ValueKey<String>(rootKey),
       ));
       await tester.pumpAndSettle();
-      await tester.scrollUntilVisible(find.byKey(entry), 145);
+      await tester.scrollUntilVisible(find.byKey(entry), 145,
+        scrollable: find.descendant(of: find.byKey(const Key('mobile-home-scroll-feed')), matching: find.byType(Scrollable)),
+      );
       await tester.ensureVisible(find.byKey(entry));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(entry));

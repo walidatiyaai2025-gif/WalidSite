@@ -53,6 +53,20 @@ String feed({
 });
 
 void main() {
+  testWidgets('YouTube-style Home keeps its existing AI destination wired', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(const WaleedTechApp(initiallyStarted: true));
+    expect(find.byKey(const Key('mobile-youtube-home')), findsOneWidget);
+    expect(find.byKey(const Key('mobile-home-filter-for-you')), findsOneWidget);
+    expect(find.byKey(const Key('mobile-home-filter-ai')), findsOneWidget);
+    expect(find.byKey(const Key('mobile-home-filter-articles')), findsOneWidget);
+    expect(find.byKey(const Key('mobile-home-nav-ai')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('mobile-home-nav-ai')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('ai-unconfigured')), findsOneWidget);
+  });
+
   test('MOBILE-02 parser accepts bounded reviewed home resources', () {
     final parsed = MobileHomeFeed.parse(feed(), false);
     expect(parsed.projects.single.title, 'Verified project');
@@ -205,11 +219,13 @@ void main() {
     await tester.scrollUntilVisible(
       find.byKey(const Key('offline-runbooks-entry')),
       120,
+      scrollable: find.descendant(of: find.byKey(const Key('mobile-home-scroll-feed')), matching: find.byType(Scrollable)),
     );
     expect(find.byKey(const Key('offline-runbooks-entry')), findsOneWidget);
     await tester.scrollUntilVisible(
       find.byKey(const Key('verified-articles-entry')),
       120,
+      scrollable: find.descendant(of: find.byKey(const Key('mobile-home-scroll-feed')), matching: find.byType(Scrollable)),
     );
     expect(find.byKey(const Key('verified-articles-entry')), findsOneWidget);
   });
@@ -220,20 +236,20 @@ void main() {
     var runbooks = 0;
     await tester.pumpWidget(MaterialApp(
       home: Scaffold(
-        body: MobileHomeFeedPanel(
+        body: SingleChildScrollView(child: MobileHomeFeedPanel(
           arabic: false,
           fetch: (_) async => MobileHomeFeed.parse(feed(), false),
           onOpenArticles: () => articles++,
           onOpenRunbooks: () => runbooks++,
-        ),
+        )),
       ),
     ));
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('mobile-home-feed')), findsOneWidget);
-    expect(find.text('Verified project'), findsOneWidget);
-    expect(find.text('Reviewed article'), findsOneWidget);
-    expect(find.text('Reviewed runbook'), findsOneWidget);
+    expect(find.text('Verified project'), findsWidgets);
+    expect(find.text('Reviewed article'), findsWidgets);
+    expect(find.text('Reviewed runbook'), findsWidgets);
 
     await tester.ensureVisible(find.byKey(const Key('mobile-home-open-articles')));
     await tester.tap(find.byKey(const Key('mobile-home-open-articles')));
@@ -249,7 +265,7 @@ void main() {
       (tester) async {
     await tester.pumpWidget(MaterialApp(
       home: Scaffold(
-        body: MobileHomeFeedPanel(
+        body: SingleChildScrollView(child: MobileHomeFeedPanel(
           arabic: true,
           fetch: (_) async => MobileHomeFeed.parse(
             feed(
@@ -262,7 +278,7 @@ void main() {
           ),
           onOpenArticles: () {},
           onOpenRunbooks: () {},
-        ),
+        )),
       ),
     ));
     await tester.pumpAndSettle();
@@ -277,7 +293,7 @@ void main() {
     final locales = <bool>[];
     await tester.pumpWidget(MaterialApp(
       home: Scaffold(
-        body: MobileHomeFeedPanel(
+        body: SingleChildScrollView(child: MobileHomeFeedPanel(
           arabic: false,
           fetch: (arabic) async {
             calls++;
@@ -289,7 +305,7 @@ void main() {
           },
           onOpenArticles: () {},
           onOpenRunbooks: () {},
-        ),
+        )),
       ),
     ));
     await tester.pumpAndSettle();
@@ -376,14 +392,20 @@ void main() {
       ),
     ));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.byKey(const Key('mobile-home-article-reviewed-article')));
-    await tester.tap(find.byKey(const Key('mobile-home-article-reviewed-article')));
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('mobile-home-article-reviewed-article')),
+      120,
+      scrollable: find.byType(Scrollable),
+    );
+    final articleCard = find.byKey(const Key('mobile-home-article-reviewed-article'));
+    await tester.tapAt(tester.getTopLeft(articleCard) + const Offset(20, 35));
     await tester.pump();
     expect(slug, 'reviewed-article');
 
     const runbookId = '00000000-0000-4000-8000-000000000001';
     await tester.ensureVisible(find.byKey(const Key('mobile-home-runbook-$runbookId')));
-    await tester.tap(find.byKey(const Key('mobile-home-runbook-$runbookId')));
+    final runbookCard = find.byKey(const Key('mobile-home-runbook-$runbookId'));
+    await tester.tapAt(tester.getTopLeft(runbookCard) + const Offset(20, 35));
     await tester.pump();
     expect(id, runbookId);
   });

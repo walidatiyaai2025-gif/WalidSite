@@ -79,7 +79,8 @@ void main() {
       (tester) async {
     await tester.pumpWidget(const WaleedTechApp(initiallyStarted: true));
     await tester.scrollUntilVisible(
-        find.byKey(const Key('interview-practice-entry')), 140);
+        find.byKey(const Key('interview-practice-entry')), 140,
+        scrollable: find.descendant(of: find.byKey(const Key('mobile-home-scroll-feed')), matching: find.byType(Scrollable)));
     await tester.ensureVisible(find.byKey(const Key('interview-practice-entry')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('interview-practice-entry')));

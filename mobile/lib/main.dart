@@ -237,7 +237,14 @@ class CompanionHome extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    void push(Widget page) {
+      Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(builder: (_) => page),
+      );
+    }
+
     return Scaffold(
+      key: const Key('mobile-youtube-home'),
       appBar: AppBar(
         title: Text(
           arabic ? 'رفيق وليد التقني' : 'Waleed Tech Companion',
@@ -245,14 +252,136 @@ class CompanionHome extends StatelessWidget {
         ),
         actions: [
           IconButton(
+            key: const Key('mobile-home-search'),
+            tooltip: arabic ? 'المقالات' : 'Search articles',
+            onPressed: () => push(VerifiedArticleLibrary(
+              arabic: arabic,
+              loginAction: _loginForArticleSave,
+              saveAction: const MobileAccountClient().saveArticle,
+              onViewSaved: (viewContext, bearer) =>
+                  _openSavedAfterArticleSave(viewContext, bearer, arabic),
+            )),
+            icon: const Icon(Icons.search),
+          ),
+          IconButton(
+            key: const Key('mobile-home-language'),
             tooltip: arabic ? 'Switch to English' : 'Switch to Arabic',
             onPressed: onToggleLanguage,
             icon: const Icon(Icons.language),
+          ),
+          IconButton(
+            key: const Key('mobile-home-profile'),
+            tooltip: arabic ? 'الملف الشخصي' : 'Your profile',
+            onPressed: () => push(MobileAccountJourney(
+              arabic: arabic,
+              initialSection: MobileAccountSection.profile,
+            )),
+            icon: const Icon(Icons.account_circle_outlined),
+          ),
+        ],
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(54),
+          child: SizedBox(
+            height: 54,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsetsDirectional.fromSTEB(12, 5, 12, 5),
+              children: [
+                _HomeCategoryChip(
+                  key: const Key('mobile-home-filter-for-you'),
+                  label: arabic ? 'لك' : 'For you',
+                  selected: true,
+                ),
+                _HomeCategoryChip(
+                  key: const Key('mobile-home-filter-ai'),
+                  label: 'AI',
+                  onTap: () => push(AiTroubleshooterScreen(arabic: arabic)),
+                ),
+                _HomeCategoryChip(
+                  key: const Key('mobile-home-filter-articles'),
+                  label: arabic ? 'مقالات' : 'Articles',
+                  onTap: () => push(VerifiedArticleLibrary(
+                    arabic: arabic,
+                    loginAction: _loginForArticleSave,
+                    saveAction: const MobileAccountClient().saveArticle,
+                    onViewSaved: (viewContext, bearer) =>
+                        _openSavedAfterArticleSave(viewContext, bearer, arabic),
+                  )),
+                ),
+                _HomeCategoryChip(
+                  key: const Key('mobile-home-filter-guides'),
+                  label: arabic ? 'أدلة' : 'Guides',
+                  onTap: () => push(ReviewedRunbookLibrary(arabic: arabic)),
+                ),
+                _HomeCategoryChip(
+                  key: const Key('mobile-home-filter-learn'),
+                  label: arabic ? 'تعلّم' : 'Learn',
+                  onTap: () => push(VerifiedLearningLibrary(arabic: arabic)),
+                ),
+                _HomeCategoryChip(
+                  key: const Key('mobile-home-filter-github'),
+                  label: 'GitHub',
+                  onTap: () => push(VerifiedGithubPortfolioScreen(arabic: arabic)),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      bottomNavigationBar: NavigationBar(
+        height: 64,
+        selectedIndex: 0,
+        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+        onDestinationSelected: (index) {
+          switch (index) {
+            case 1:
+              push(VerifiedLearningLibrary(arabic: arabic));
+            case 2:
+              push(AiTroubleshooterScreen(arabic: arabic));
+            case 3:
+              push(MobileAccountJourney(
+                arabic: arabic,
+                initialSection: MobileAccountSection.saved,
+              ));
+            case 4:
+              push(MobileAccountJourney(
+                arabic: arabic,
+                initialSection: MobileAccountSection.profile,
+              ));
+          }
+        },
+        destinations: [
+          NavigationDestination(
+            key: const Key('mobile-home-nav-home'),
+            icon: const Icon(Icons.home_outlined),
+            selectedIcon: const Icon(Icons.home_filled),
+            label: arabic ? 'الرئيسية' : 'Home',
+          ),
+          NavigationDestination(
+            key: const Key('mobile-home-nav-learn'),
+            icon: const Icon(Icons.explore_outlined),
+            label: arabic ? 'استكشف' : 'Explore',
+          ),
+          const NavigationDestination(
+            key: const Key('mobile-home-nav-ai'),
+            icon: const Icon(Icons.auto_awesome_outlined),
+            label: 'AI',
+          ),
+          NavigationDestination(
+            key: const Key('mobile-home-nav-library'),
+            icon: const Icon(Icons.video_library_outlined),
+            label: arabic ? 'المكتبة' : 'Library',
+          ),
+          NavigationDestination(
+            key: const Key('mobile-home-nav-you'),
+            icon: const Icon(Icons.account_circle_outlined),
+            label: arabic ? 'أنت' : 'You',
           ),
         ],
       ),
       body: SafeArea(
         child: ListView(
+          key: const Key('mobile-home-scroll-feed'),
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
           children: [
             _IntroPanel(arabic: arabic),
@@ -573,6 +702,38 @@ class CompanionHome extends StatelessWidget {
       ),
     );
   }
+}
+
+class _HomeCategoryChip extends StatelessWidget {
+  const _HomeCategoryChip({
+    required this.label,
+    this.selected = false,
+    this.onTap,
+    super.key,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsetsDirectional.only(end: 8),
+    child: ActionChip(
+      onPressed: onTap,
+      backgroundColor: selected ? const Color(0xff0f0f0f) : const Color(0xfff2f2f2),
+      side: BorderSide.none,
+      shape: const StadiumBorder(),
+      label: Text(
+        label,
+        style: TextStyle(
+          color: selected ? Colors.white : const Color(0xff0f0f0f),
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    ),
+  );
 }
 
 class _IntroPanel extends StatelessWidget {
