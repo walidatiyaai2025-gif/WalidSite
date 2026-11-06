@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\IdentityController;
 use App\Http\Controllers\Api\AccountPrivacyController;
 use App\Http\Controllers\Api\AiProviderController;
 use App\Http\Controllers\Api\AdminDashboardController;
+use App\Http\Controllers\Api\AdminGithubProposalController;
 use App\Http\Controllers\Api\AdminTrustedUpdateController;
 use App\Http\Controllers\Api\AdminAiRouteController;
 use App\Http\Controllers\Api\AdminAiTaskRouteController;
@@ -125,6 +126,13 @@ Route::middleware([RequireSecureApiTransport::class, 'auth:sanctum'])->group(fun
         ->name('api.admin.github')->middleware('throttle:30,1');
     Route::post('/admin/github/sync', [AdminProductController::class, 'syncGithub'])
         ->name('api.admin.github.sync')->middleware('throttle:6,1');
+    // ADMIN-08: admin proposals and independent owner-only review.
+    Route::get('/admin/github/proposals', [AdminGithubProposalController::class, 'index'])
+        ->name('api.admin.github.proposals')->middleware('throttle:30,1');
+    Route::post('/admin/github/proposals', [AdminGithubProposalController::class, 'store'])
+        ->name('api.admin.github.proposals.store')->middleware('throttle:6,1');
+    Route::post('/admin/github/proposals/{id}/decision', [AdminGithubProposalController::class, 'decide'])
+        ->whereUuid('id')->name('api.admin.github.proposals.decision')->middleware('throttle:6,1');
     Route::get('/admin/projects', [AdminProductController::class, 'projects'])
         ->name('api.admin.projects')->middleware('throttle:60,1');
     Route::get('/admin/audience', [AdminProductController::class, 'audience'])
