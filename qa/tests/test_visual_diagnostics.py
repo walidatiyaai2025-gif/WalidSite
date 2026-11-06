@@ -217,6 +217,38 @@ class VisualDiagnosticsTest(unittest.TestCase):
             self.assertEqual((count, total), (1, 1))
 
 
+    def test_compact_rgba_mask_preserves_every_pixel_and_alpha_mismatch(self):
+        # A reference-sized image used to allocate an entire list of Python
+        # pixel pairs, followed by a second list for the full difference mask.
+        # Assert the actual binary output and all four channels exactly.
+        with tempfile.TemporaryDirectory() as tmp:
+            reference = Image.new("RGBA", (512, 256), (17, 34, 51, 255))
+            actual = reference.copy()
+            points = {
+                (0, 0): (18, 34, 51, 255),       # red only
+                (511, 0): (17, 35, 51, 255),     # green only
+                (0, 255): (17, 34, 52, 255),     # blue only
+                (511, 255): (17, 34, 51, 254),  # alpha only
+            }
+            for position, pixel in points.items():
+                actual.putpixel(position, pixel)
+            diff = Path(tmp) / "difference.png"
+            count, total = _compare_rgba(reference, actual, diff)
+            self.assertEqual((count, total), (4, 512 * 256))
+            with Image.open(diff) as image:
+                self.assertEqual(image.mode, "L")
+                self.assertEqual(image.size, (512, 256))
+                for point in points:
+                    self.assertEqual(image.getpixel(point), 255)
+                self.assertEqual(image.getpixel((256, 128)), 0)
+                self.assertEqual(image.getpixel((511, 254)), 0)
+            identical = Path(tmp) / "identical.png"
+            self.assertEqual(_compare_rgba(reference, reference.copy(), identical),
+                             (0, 512 * 256))
+            self.assertFalse(identical.exists())
+            with self.assertRaisesRegex(ValueError, "different dimensions"):
+                _compare_rgba(reference, Image.new("RGBA", (1, 1)), identical)
+
     def test_multiple_real_renderer_artifacts_stay_outside_checkout_during_attestation(self):
         # A live clean-checkout guard would reject the old implementation's
         # own untracked temporary PNG and previous-screen comparison outputs.
