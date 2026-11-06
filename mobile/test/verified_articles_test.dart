@@ -186,6 +186,60 @@ void main() {
     expect(VerifiedArticle.parseList(safeJson).single.id, isNull);
   });
 
+  test('MOBILE-07 rejects unzoned, impossible and future published_at', () {
+    final row = Map<String, dynamic>.from(
+        ((jsonDecode(safeJson) as Map<String, dynamic>)['data'] as List).single);
+    String response(Object? value) => jsonEncode({
+      'data': [Map<String, dynamic>.from(row)..['published_at'] = value],
+    });
+    for (final valid in [
+      '2026-10-31T18:00:00Z', '2026-10-31T21:00:00+03:00',
+      '2026-10-31T18:00:00.123456+00:00',
+    ]) {
+      expect(VerifiedArticle.parseList(response(valid)).single.slug,
+          'database-recovery');
+      expect(VerifiedArticle.parseDetail(jsonEncode({
+        'data': Map<String, dynamic>.from(row)..['published_at'] = valid,
+      }), 'database-recovery').slug, 'database-recovery');
+    }
+    for (final bad in <Object?>[
+      null, 17, '', '2026-10-31', '2026-10-31T18:00:00',
+      '2026-02-30T18:00:00Z', '2026-13-01T18:00:00Z',
+      '2026-10-31T25:00:00Z', '2026-10-31T18:61:00Z',
+      '2026-10-31T18:00:00+14:30', 'Z' * 80,
+      DateTime.now().toUtc().add(const Duration(hours: 1)).toIso8601String(),
+    ]) {
+      expect(() => VerifiedArticle.parseList(response(bad)),
+          throwsFormatException, reason: 'Article not safely published: $bad');
+      expect(() => VerifiedArticlePage.parse(jsonEncode({
+        'data': [Map<String, dynamic>.from(row)..['published_at'] = bad],
+        'meta': {'current_page': 1, 'has_more_pages': false},
+      }), 1), throwsFormatException);
+    }
+  });
+
+  test('MOBILE-07 public titles and category labels reject bidi controls', () {
+    final row = Map<String, dynamic>.from(
+        ((jsonDecode(safeJson) as Map<String, dynamic>)['data'] as List).single);
+    for (final unsafe in <String>[
+      'Trusted\nunverified', 'Trusted\rhidden', 'Trusted\u202Ereversed',
+      'Trusted\u2066isolate', 'Trusted\u007Fdelete',
+    ]) {
+      expect(() => VerifiedArticle.parseList(jsonEncode({
+        'data': [Map<String, dynamic>.from(row)..['title'] = unsafe],
+      })), throwsFormatException);
+      expect(() => VerifiedArticleCategory.parse([
+        {'slug': 'backend', 'name': unsafe},
+      ]), throwsFormatException);
+    }
+    expect(VerifiedArticle.parseList(jsonEncode({
+      'data': [Map<String, dynamic>.from(row)..['title'] = 'قواعد البيانات'],
+    })).single.title, 'قواعد البيانات');
+    expect(VerifiedArticleCategory.parse([
+      {'slug': 'backend', 'name': 'قواعد البيانات'},
+    ]).single.name, 'قواعد البيانات');
+  });
+
   test('published article parser rejects unsupported or unsafe evidence', () {
     final items = VerifiedArticle.parseList(safeJson);
     expect(items, hasLength(1));

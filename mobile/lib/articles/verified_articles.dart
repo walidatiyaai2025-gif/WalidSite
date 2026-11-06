@@ -32,7 +32,10 @@ class VerifiedArticleCategory {
       final slug = item['slug'] as String;
       final name = item['name'] as String;
       if (slug.length > 60 || !validSlug.hasMatch(slug) ||
-          !seen.add(slug) || name.trim().isEmpty || name.length > 160) {
+          !seen.add(slug) || name.trim().isEmpty || name.length > 160 ||
+          name.runes.any((ch) => ch < 32 || ch == 127 ||
+              (ch >= 0x202a && ch <= 0x202e) ||
+              (ch >= 0x2066 && ch <= 0x2069))) {
         throw const FormatException('Unsafe article category');
       }
       categories.add(VerifiedArticleCategory(slug: slug, name: name));
@@ -61,6 +64,26 @@ class VerifiedArticle {
   final String title;
   final String body;
   final List<String> citations;
+
+  /// Reject ambiguous, future or normalized-impossible publication times.
+  static bool _publishedAtIsCurrent(Object? raw) {
+    if (raw is! String || raw.length > 50) return false;
+    final match = RegExp(
+      r'^([0-9]{4})-(0[1-9]|1[0-2])-([0-2][0-9]|3[01])'
+      r'T(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]'
+      r'(?:[.][0-9]{1,6})?(?:Z|[+-](?:0[0-9]|1[0-3]):[0-5][0-9]|[+-]14:00)$',
+    ).firstMatch(raw);
+    if (match == null) return false;
+    final year = int.parse(match.group(1)!);
+    final month = int.parse(match.group(2)!);
+    final day = int.parse(match.group(3)!);
+    final calendar = DateTime.utc(year, month, day);
+    if (calendar.year != year || calendar.month != month ||
+        calendar.day != day) return false;
+    final instant = DateTime.tryParse(raw);
+    return instant != null && instant.isUtc &&
+        !instant.isAfter(DateTime.now().toUtc().add(const Duration(minutes: 5)));
+  }
 
   // Keep benign public citation query parameters; never show signed links.
   // Match Laravel's reviewed-source parameter filter at each encoding depth.
@@ -133,12 +156,15 @@ class VerifiedArticle {
           title is! String ||
           title.trim().isEmpty ||
           title.length > 250 ||
+          title.runes.any((ch) => ch < 32 || ch == 127 ||
+              (ch >= 0x202a && ch <= 0x202e) ||
+              (ch >= 0x2066 && ch <= 0x2069)) ||
           body is! String ||
           body.trim().isEmpty ||
           body.length > 60000 ||
           item['tested_status'] != 'documented' ||
           item['published_at'] is! String ||
-          DateTime.tryParse(item['published_at'] as String) == null ||
+          !_publishedAtIsCurrent(item['published_at']) ||
           citations is! List ||
           citations.isEmpty ||
           citations.length > 20) {
