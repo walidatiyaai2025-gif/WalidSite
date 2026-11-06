@@ -93,7 +93,7 @@ final class Web13PaginatedSearchTest extends TestCase
                 ->assertOk()
                 ->assertSee('<html lang="'.$lang.'" dir="'.$direction.'">', false)
                 ->assertSee('data-testid="verified-search-pagination"', false)
-                ->assertHeader('Cache-Control', 'no-store')
+                ->assertHeader('Cache-Control', 'no-store, private')
                 ->assertSee($lang === 'ar'
                     ? 'نتائج موثقة: 13 مقالات، 12 مشاريع.'
                     : 'Verified results: 13 articles, 12 projects.')
@@ -105,7 +105,7 @@ final class Web13PaginatedSearchTest extends TestCase
             $second = $this->get(route('public.search', $base + ['page' => 2]))
                 ->assertOk()
                 ->assertSee('rel="prev"', false)
-                ->assertHeader('Cache-Control', 'no-store')
+                ->assertHeader('Cache-Control', 'no-store, private')
                 ->assertSee($lang === 'ar'
                     ? 'نتائج موثقة: 13 مقالات، 12 مشاريع.'
                     : 'Verified results: 13 articles, 12 projects.')
@@ -162,10 +162,10 @@ final class Web13PaginatedSearchTest extends TestCase
         foreach (['en', 'ar'] as $lang) {
             $base = ['lang' => $lang, 'q' => 'PagerEvidence2026', 'type' => 'articles'];
             $this->get(route('public.search', $base))->assertOk()
-                ->assertHeader('Cache-Control', 'no-store')
+                ->assertHeader('Cache-Control', 'no-store, private')
                 ->assertSee($lang === 'ar' ? 'نتائج موثقة: 11 مقالات.' : 'Verified results: 11 articles.');
             $this->get(route('public.search', $base + ['page' => 2]))->assertOk()
-                ->assertHeader('Cache-Control', 'no-store')
+                ->assertHeader('Cache-Control', 'no-store, private')
                 ->assertSee($lang === 'ar' ? 'نتائج موثقة: 11 مقالات.' : 'Verified results: 11 articles.');
         }
 
@@ -177,7 +177,7 @@ final class Web13PaginatedSearchTest extends TestCase
         foreach (['en', 'ar'] as $lang) {
             $base = ['lang' => $lang, 'q' => 'PagerEvidence2026', 'type' => 'articles'];
             $this->get(route('public.search', $base))->assertOk()
-                ->assertHeader('Cache-Control', 'no-store')
+                ->assertHeader('Cache-Control', 'no-store, private')
                 ->assertSee($lang === 'ar' ? 'نتائج موثقة: 10 مقالات.' : 'Verified results: 10 articles.')
                 ->assertDontSee('dynamic-revoke-1');
             $this->get(route('public.search', $base + ['page' => 2]))->assertNotFound();
