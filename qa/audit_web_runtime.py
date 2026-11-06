@@ -45,6 +45,17 @@ FATAL_CODES = frozenset({
     "runtime_inspection_failure",
 })
 
+# Only currently published, evidence-gated public API records may authorize
+# a WEB-05 or WEB-08 browser capture. Never invent test slugs, publish an
+# unreviewed fixture, or put private URLs/record titles into evidence JSON.
+PUBLIC_DETAIL_ENDPOINTS = (
+    ("WEB-05", "/api/v1/public/projects?lang=en", "/api/v1/public/projects/"),
+    ("WEB-08", "/api/v1/public/articles?lang=en", "/api/v1/public/articles/"),
+)
+PUBLIC_SLUG = re.compile(r"[A-Za-z0-9][A-Za-z0-9-]{0,199}\Z")
+MAX_DISCOVERY_BYTES = 256 * 1024
+
+
 # A narrow, structural root-cause probe for the sole remaining owner-frozen
 # WEB-03 mobile overflow. Never copy text, href, IDs, form values or arbitrary
 # CSS class strings from the DOM into artifacts. Only known source class
@@ -134,6 +145,59 @@ def safe_overflow_structure(raw: object) -> dict:
     }
 
 
+def discover_published_details(browser, base: str) -> dict[str, str]:
+    """Select a real anonymous published slug from each canonical public API.
+
+    The API list already enforces evidence/publication/rights gates; the
+    matching API detail endpoint must independently confirm HTTP 200. Fixed
+    loopback-only paths prevent network probing or caller-provided slugs.
+    Private record titles, IDs, URLs, or response bodies are NEVER reported.
+    """
+    found: dict[str, str] = {}
+    context = browser.new_context(
+        viewport={"width": 390, "height": 844},
+        locale="en-US", reduced_motion="reduce", color_scheme="light",
+    )
+    try:
+        for screen, listing, detail in PUBLIC_DETAIL_ENDPOINTS:
+            response = context.request.get(base + listing, timeout=10000,
+                                           max_redirects=0)
+            if response.status != 200:
+                raise AdminSessionError("Public detail discovery HTTP check failed")
+            raw = response.body()
+            if not isinstance(raw, bytes) or len(raw) > MAX_DISCOVERY_BYTES:
+                raise AdminSessionError("Public detail discovery exceeded response budget")
+            try:
+                payload = json.loads(raw.decode("utf-8", errors="strict"))
+            except (UnicodeError, ValueError):
+                raise AdminSessionError("Public detail discovery JSON was invalid") from None
+            data = payload.get("data") if isinstance(payload, dict) else None
+            if not isinstance(data, list) or len(data) > 12:
+                raise AdminSessionError("Public detail listing shape is invalid")
+            if not data:
+                continue
+            first = data[0]
+            slug = first.get("slug") if isinstance(first, dict) else None
+            if not isinstance(slug, str) or PUBLIC_SLUG.fullmatch(slug) is None:
+                raise AdminSessionError("Published detail slug was unsafe")
+            verified = context.request.get(base + detail + slug + "?lang=en",
+                                           timeout=10000, max_redirects=0)
+            if (verified.status != 200
+                    or not verified.headers.get("content-type", "").lower()
+                        .startswith("application/json")):
+                raise AdminSessionError("Published detail did not match public API")
+            found[screen] = slug
+    except AdminSessionError:
+        raise
+    except Exception:
+        # A raw browser/network/response exception can contain source
+        # payloads or query URLs. Do not echo or serialize it anywhere.
+        raise AdminSessionError("Anonymous public detail discovery failed") from None
+    finally:
+        context.close()
+    return found
+
+
 def inspect_page(page, url: str, locale: str) -> list[str]:
     """Inspect actual rendered controls; return codes only, no page content."""
     try:
@@ -177,15 +241,25 @@ def audit_web(origin: str, sha: str, *, root: Path | None = None,
     root = (root or Path(__file__).resolve().parents[1]).resolve()
     exact_checkout(root, sha)
 
-    plans = {locale: build_web_plan(root, locale=locale)
-             for locale in ("en", "ar")}
-    if any(len(plan["captures"]) != WEB_STATIC_COUNT for plan in plans.values()):
-        raise AdminSessionError("Expected exactly 12 source-backed static Web routes")
+    # Source and static-route assertions precede all browser/network access.
+    for locale in ("en", "ar"):
+        if len(build_web_plan(root, locale=locale)["captures"]) != WEB_STATIC_COUNT:
+            raise AdminSessionError("Expected exactly 12 source-backed static Web routes")
     rows = []
+    discovered: dict[str, str] = {}
     manager = playwright_manager if playwright_manager is not None else _playwright()
     with manager as playwright:
         browser = playwright.chromium.launch(headless=True)
         try:
+            discovered = discover_published_details(browser, base)
+            plans = {
+                locale: build_web_plan(
+                    root, locale=locale,
+                    project_slug=discovered.get("WEB-05"),
+                    article_slug=discovered.get("WEB-08"),
+                )
+                for locale in ("en", "ar")
+            }
             for locale, plan in plans.items():
                 for viewport, width, height in VIEWPORTS:
                     # Fresh unauthenticated context; never reuse Admin cookies.
@@ -241,7 +315,8 @@ def audit_web(origin: str, sha: str, *, root: Path | None = None,
         for row in plan["captures"]
         for viewport in VIEWPORTS
     }
-    if (len(rows) != MAX_CHECKS or
+    extra = len(discovered) * 2 * len(VIEWPORTS)
+    if (len(rows) != MAX_CHECKS + extra or
             {(row["screen"], row["locale"], row["viewport"])
              for row in rows} != expected_keys):
         raise AdminSessionError("Public Web runtime audit matrix incomplete")
@@ -253,7 +328,12 @@ def audit_web(origin: str, sha: str, *, root: Path | None = None,
         "scope": "anonymous_public_web_runtime_accessibility_diagnostics_only",
         "visual_parity": "not_attested",
         "evidence_admitted": False,
-        "dynamic_web_pending": ["WEB-05", "WEB-08"],
+        "dynamic_web_pending": [
+            name for name in ("WEB-05", "WEB-08") if name not in discovered
+        ],
+        "dynamic_web_verified": sorted(discovered),
+        "static_checks": MAX_CHECKS,
+        "dynamic_checks": extra,
         "screen_checks": len(rows),
         "failed_checks": sum(row["status"] == "defect" for row in rows),
         "fatal_checks": fatal,
