@@ -145,7 +145,7 @@ final class CpanelVerifiedCodeRollbackTest extends TestCase
     public function test_mutated_previous_release_keeps_maintenance_barrier_closed(): void
     {
         $proof = $this->rejectCandidateHealth();
-        file_put_contents($this->previousApplication.'/VERSION', "0.1.9\n");
+        file_put_contents($this->previousApplication.'/bootstrap/app.php', '<?php // mutated previous release');
 
         try {
             (new CpanelImmutableCodePointer())->assertVerifiedRollback(
