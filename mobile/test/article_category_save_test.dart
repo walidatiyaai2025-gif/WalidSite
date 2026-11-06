@@ -288,6 +288,56 @@ void main() {
     );
   });
 
+  test('ambiguous HTTP 200 Save receipt checks same account, never retries POST', () async {
+    final saved = MobileSavedResource(
+      type: 'article',
+      id: articleId,
+      title: 'Published article',
+      detailPath: '/api/v1/public/articles/$articleSlug',
+      savedAt: DateTime.utc(2026, 11, 1),
+    );
+    var reads = 0;
+    Future<MobileSavedPage> confirmed(String bearer, bool arabic, int page) async {
+      expect(bearer, 'same-session-only');
+      expect(arabic, false);
+      expect(page, 1);
+      reads++;
+      return MobileSavedPage([saved], page, false);
+    }
+    await MobileAccountClient.verifyOrReconcileArticleSave(
+      '{"data":{"saved":true}}', 'same-session-only', articleId, confirmed,
+    );
+    expect(reads, 1, reason: 'Malformed 200 receipt requires own Saved GET');
+
+    reads = 0;
+    await MobileAccountClient.verifyOrReconcileArticleSave(
+      jsonEncode({'data': {
+        'resource_type': 'article', 'resource_id': articleId, 'saved': true,
+      }}),
+      'same-session-only', articleId, confirmed,
+    );
+    expect(reads, 0, reason: 'Exact positive ACK does not require extra GET');
+
+    for (final payload in [
+      'not-json',
+      '{"data":{"resource_type":"runbook","resource_id":"$articleId","saved":true}}',
+      '{"data":{"resource_type":"article","resource_id":"other","saved":true}}',
+    ]) {
+      var checks = 0;
+      await expectLater(
+        MobileAccountClient.verifyOrReconcileArticleSave(
+          payload, 'same-session-only', articleId,
+          (bearer, arabic, page) async {
+            checks++;
+            return MobileSavedPage(const [], page, false);
+          },
+        ),
+        throwsA(isA<TimeoutException>()),
+      );
+      expect(checks, 1);
+    }
+  });
+
   test('bookmarks need exact positive HTTP 200 body, UUID and resource type', () {
     final receipt = jsonEncode({
       'data': {
