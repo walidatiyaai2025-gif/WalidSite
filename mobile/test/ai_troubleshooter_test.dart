@@ -1536,4 +1536,88 @@ void main() {
     expect(submissions, 1);
     expect(polls, 0);
   });
+
+  testWidgets('MOBILE-03 English login timeout reports safe manual recovery',
+      (tester) async {
+    var attempts = 0;
+    await pumpScreen(
+      tester,
+      login: (_, __) async {
+        attempts++;
+        throw TimeoutException('private connection detail');
+      },
+    );
+
+    await login(tester);
+    await reveal(tester, const Key('ai-message'));
+    expect(find.text(
+      'The request timed out. Check your connection and retry manually; '
+      'no automatic retry was sent.',
+    ), findsOneWidget);
+    expect(find.text('private connection detail'), findsNothing);
+    expect(find.byKey(const Key('ai-diagnose-submit')), findsNothing);
+    expect(attempts, 1);
+  });
+
+  testWidgets('MOBILE-03 Arabic status timeout retains job and never retries paid POST',
+      (tester) async {
+    var diagnoses = 0;
+    var reads = 0;
+    await pumpScreen(
+      tester,
+      arabic: true,
+      login: (_, __) async =>
+          const MobileAiSession(token: token, expiresAt: null),
+      diagnose: (_, __, ___, ____) async {
+        diagnoses++;
+        return const MobileAiJob(
+          id: jobId,
+          status: 'queued',
+          progressPercent: 0,
+          resultUrl: null,
+          retryAfterSeconds: 1,
+        );
+      },
+      poll: (bearer, id) async {
+        expect(bearer, token);
+        expect(id, jobId);
+        reads++;
+        throw TimeoutException('private request metadata');
+      },
+    );
+
+    await login(tester);
+    await tester.enterText(find.byKey(const Key('ai-technology')), 'API');
+    await tester.enterText(
+      find.byKey(const Key('ai-question')), 'Why was the request delayed?',
+    );
+    await reveal(tester, const Key('ai-consent'));
+    await tester.tap(find.byKey(const Key('ai-consent')));
+    await reveal(tester, const Key('ai-diagnose-submit'));
+    await tester.tap(find.byKey(const Key('ai-diagnose-submit')));
+    await tester.pumpAndSettle();
+
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pump();
+    await reveal(tester, const Key('ai-refresh-status'));
+    await tester.tap(find.byKey(const Key('ai-refresh-status')));
+    await tester.pumpAndSettle();
+    await reveal(tester, const Key('ai-message'));
+    expect(find.text(
+      'انتهت مهلة الاتصال. تحقق من الشبكة ثم أعد المحاولة يدويًا؛ '
+      'لم تُرسل محاولة تلقائية.',
+    ), findsOneWidget);
+    expect(find.text('private request metadata'), findsNothing);
+    await reveal(tester, const Key('ai-job-status'));
+    expect(find.textContaining('في الانتظار'), findsWidgets);
+    expect(diagnoses, 1);
+    expect(reads, 1);
+
+    // Even after the throttled manual status button unlocks, no timer is
+    // allowed to send another authenticated GET or a new paid diagnosis.
+    await tester.pump(const Duration(seconds: 2));
+    await tester.pump();
+    expect(reads, 1);
+    expect(diagnoses, 1);
+  });
 }
