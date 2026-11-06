@@ -28,7 +28,13 @@ except ModuleNotFoundError as exc:
     from render_admin_screenshot import expected_heading
 
 
-VIEWPORTS = (("desktop", 1440, 900), ("mobile", 390, 844))
+# Runtime responsiveness must cover all three contract breakpoints. This is
+# diagnostic evidence only, never a substitute for reference-PNG parity.
+VIEWPORTS = (
+    ("desktop", 1440, 900),
+    ("tablet", 768, 1024),
+    ("mobile", 390, 844),
+)
 SHA_RE = re.compile(r"[0-9a-f]{40}\Z")
 MAX_CHECKS = len(ADMIN_IDS) * 2 * len(VIEWPORTS)
 
