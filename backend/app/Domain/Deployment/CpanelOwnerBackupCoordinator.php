@@ -7,7 +7,7 @@ use PDO;
 use Throwable;
 
 /**
- * Backend-only first-install cPanel recovery transaction.
+ * Backend-only cPanel recovery transaction for verified running releases.
  *
  * Coordinates the SAME private file lease shared by HTTP/CLI/queues with a
  * private release maintenance barrier and a disposable DB+file restore drill.
@@ -27,6 +27,8 @@ final class CpanelOwnerBackupCoordinator
      * @param ?CpanelConsoleWriterLease $ownerHttpLease Existing HTTP
      *     request-scoped lease from Laravel DI after owner+CSRF checks, never
      *     a value from request/session. Null for independent trusted CLI use.
+     * @param ?string $runningApplication Actual server-derived Laravel base
+     *     path after the stable dispatcher. Null is first-install legacy only.
      * @return array{id:string,version:string,files:int,bytes:int,tables:int,rows:int,file_sha256:string,database_sha256:string,code_update_performed:bool}
      */
     public function prove(
@@ -43,6 +45,7 @@ final class CpanelOwnerBackupCoordinator
         string $previousRoot,
         callable $externalWritersStopped,
         ?CpanelConsoleWriterLease $ownerHttpLease = null,
+        ?string $runningApplication = null,
     ): array {
         // Fail before creating even a lock file if the caller has not supplied
         // independent evidence of foreign writer isolation.
@@ -59,21 +62,24 @@ final class CpanelOwnerBackupCoordinator
             throw new DomainException('An original physical cPanel install is required for owner backup.');
         }
 
-        // The backup receipt must attest the *actual* installed code, not a
-        // caller-supplied version string. This coordinator deliberately
-        // supports only the first physical application tree: a chained active
-        // pointer needs separate, verified running-release lineage support.
-        // Refuse both before creating any private lock or recovery vault.
-        $actualVersion = (new TrustedInstalledVersion())->read($applicationBase.'/VERSION');
-        $activePointer = $home.'/.walidsite-active-release.json';
-        clearstatcache(true, $activePointer);
-        if ($actualVersion === null || ! hash_equals($actualVersion, $installedVersion)
-            || @lstat($activePointer) !== false
-            // This coordinator attests only the original first installation.
-            // A claimed versioned prior root without an active pointer is
-            // not a provable running-release lineage.
-            || $previousRoot !== 'legacy') {
-            throw new DomainException('Installed code identity is not verified for a first-install recovery.');
+        // Backups always snapshot the ORIGINAL private .env/storage and public
+        // uploads, even when the stable dispatcher now runs versioned code.
+        // The receipt version, however, must match the ACTUAL running code.
+        // Do not accept an environment/session version or a guessed pointer.
+        $firstVersion = (new TrustedInstalledVersion())->read($applicationBase.'/VERSION');
+        $running = $runningApplication ?? $applicationBase;
+        $expectedPreviousRoot = $running === $applicationBase
+            ? 'legacy' : substr(dirname($running), strlen($home) + 1);
+        if ($firstVersion === null
+            || (new TrustedInstalledReleasePin())->read($running, $publicRoot, $firstVersion)
+                !== $installedVersion
+            || $previousRoot !== $expectedPreviousRoot
+            || ($previousRoot !== 'legacy'
+                && (preg_match(
+                    '#\\A\\.walidsite-releases/v'.preg_quote($installedVersion, '#').'-[a-f0-9]{40}\\z#D',
+                    $previousRoot,
+                ) !== 1 || $running !== $home.'/'.$previousRoot.'/application'))) {
+            throw new DomainException('Installed code identity is not verified for owner recovery.');
         }
 
         $writers = $ownerHttpLease ?? new CpanelConsoleWriterLease();
@@ -95,6 +101,14 @@ final class CpanelOwnerBackupCoordinator
             $writers->assertExclusiveHeld();
             if ($externalWritersStopped() !== true) {
                 throw new DomainException('Host writer isolation changed before maintenance.');
+            }
+            // Re-read the private stable-dispatcher pointer and running
+            // VERSION under the SAME exclusive writer descriptor. A swapped
+            // pointer or code tree during lock handoff cannot create a backup
+            // receipt labelled with another release.
+            if ((new TrustedInstalledReleasePin())->read($running, $publicRoot, $firstVersion)
+                !== $installedVersion) {
+                throw new DomainException('Installed release lineage changed before backup.');
             }
 
             // Backup Now is a separate entrypoint from signed code install.
@@ -128,9 +142,9 @@ final class CpanelOwnerBackupCoordinator
                 throw new DomainException('Writer isolation changed after recovery drill.');
             }
 
-            // Backup-only transaction: no code pointer was switched, so the
-            // live, unchanged original release can safely resume once this
-            // exact barrier is cleared under the held exclusive writer lease.
+            // Backup-only transaction: no code pointer was switched. The
+            // unchanged verified running release may resume after the exact
+            // maintenance barrier is cleared under our writer lease.
             $maintenance->clear($home, $token);
             $token = null;
             return [...$proof, 'code_update_performed' => false];
