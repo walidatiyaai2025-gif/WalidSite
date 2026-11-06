@@ -269,20 +269,38 @@ def _reject_nonfinite_json(value: str) -> object:
 
 
 def _is_expected_media_type(headers: object, expected: str) -> bool:
-    """Accept only the exact MIME essence, with optional RFC-style parameters.
+    """Fail closed on ambiguous MIME headers; permit normal charset parameters.
 
-    Substring checks would accept application/json-malicious or
-    text/html-extra and turn invalid responses into false staging PASS.
+    HTTPMessage.get() returns only one instance when a server sends multiple
+    Content-Type fields. Repeated fields or comma-joined values must never
+    attest a known HTML/JSON response. Do not read the body to diagnose them.
     """
-    raw = headers.get("Content-Type", "")
-    if not isinstance(raw, str):
+    get_all = getattr(headers, "get_all", None)
+    if callable(get_all):
+        values = get_all("Content-Type", [])
+        if not isinstance(values, (list, tuple)) or len(values) != 1:
+            return False
+        raw = values[0]
+    else:
+        raw = headers.get("Content-Type", "")
+    if not isinstance(raw, str) or any(
+        ord(ch) < 32 or ord(ch) == 127 for ch in raw
+    ) or "," in raw:
         return False
     parts = raw.split(";")
     if parts[0].strip().lower() != expected:
         return False
-    # Content-Type parameters must not hide a second (conflicting) MIME value.
-    return all("=" in part and bool(part.split("=", 1)[0].strip())
-               for part in parts[1:])
+    names: set[str] = set()
+    for param in parts[1:]:
+        match = re.fullmatch(
+            r'\s*([A-Za-z][A-Za-z0-9_-]*)\s*=\s*(?:[A-Za-z0-9._-]+|"[A-Za-z0-9._-]+")\s*',
+            param,
+            flags=re.ASCII,
+        )
+        if match is None or match.group(1).lower() in names:
+            return False
+        names.add(match.group(1).lower())
+    return True
 
 
 def _check_one_transaction(origin: str, spec: Check, opener: Opener, timeout: int) -> dict:
