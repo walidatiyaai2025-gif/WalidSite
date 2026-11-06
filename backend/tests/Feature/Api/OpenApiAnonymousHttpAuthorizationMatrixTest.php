@@ -326,6 +326,78 @@ final class OpenApiAnonymousHttpAuthorizationMatrixTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_all_protected_openapi_operations_deny_revoked_and_expired_bearers(): void
+    {
+        // Test the REAL Sanctum + Laravel HTTP middleware, not route-list
+        // registration. This executes 52 protected requests across every
+        // documented admin/mobile method. Throttling has separate dedicated
+        // tests; disable it only here so the authorization matrix remains
+        // deterministic, without bypassing Sanctum, roles or abilities.
+        $this->withoutMiddleware(ThrottleRequests::class);
+        $provider = $this->checkedProvider();
+        $operations = array_values(array_filter(
+            $this->operations(),
+            static fn (array $op): bool => $op['role'] !== 'public'
+        ));
+        $this->assertCount(26, $operations);
+
+        foreach (['revoked', 'expired'] as $state) {
+            foreach ([
+                'admin' => ['ability' => 'admin', 'read' => '/api/v1/admin/dashboard'],
+                'authenticated' => ['ability' => 'mobile', 'read' => '/api/v1/mobile/me'],
+            ] as $contractRole => $identity) {
+                [$user, $plainText] = $this->bearer('owner', $identity['ability']);
+
+                // Prove the token was genuinely accepted before revocation or
+                // expiration. Otherwise an always-401 stub could pass a
+                // negative-only security test without exercising Sanctum.
+                Auth::forgetGuards();
+                $this->withToken($plainText)
+                    ->getJson($identity['read'])->assertOk();
+
+                if ($state === 'revoked') {
+                    $this->assertSame(1, $user->tokens()->delete());
+                } else {
+                    $this->assertSame(
+                        1, $user->tokens()->update(['expires_at' => now()->subMinute()])
+                    );
+                }
+
+                $examined = 0;
+                foreach ($operations as $op) {
+                    if ($op['role'] !== $contractRole) {
+                        continue;
+                    }
+                    $examined++;
+                    Auth::forgetGuards();
+                    $response = $this->withToken($plainText)->json(
+                        $op['method'], $this->uri($op['path'], $provider->id), []
+                    );
+                    $response->assertUnauthorized()
+                        ->assertHeader('Content-Type', 'application/json');
+                    $this->assertStringNotContainsString(
+                        'PRIVATE_TEST_SENTINEL', $response->getContent(),
+                        'Stale bearer exposed private data: '.$op['id']
+                    );
+                }
+                $this->assertSame(
+                    $contractRole === 'admin' ? 22 : 4, $examined,
+                    'Revoked/expired token matrix unexpectedly lost coverage'
+                );
+            }
+        }
+
+        foreach ([
+            'ai_jobs', 'ai_diagnosis_requests', 'mobile_interview_sessions',
+            'articles', 'projects', 'project_audit_events',
+        ] as $table) {
+            $this->assertSame(0, DB::table($table)->count(),
+                'Rejected stale-bearer request changed '.$table);
+        }
+        $this->assertDatabaseCount('ai_providers', 1);
+        Http::assertNothingSent();
+    }
+
     public function test_public_contact_contract_does_not_fabricate_mail_delivery_without_transport(): void
     {
         config()->set('mail.contact_recipient', null);
