@@ -43,6 +43,38 @@ final class Web07BlogScreenParityTest extends TestCase
         return $article;
     }
 
+    public function test_bilingual_blog_heading_navigation_uses_one_reference_h1_and_nested_content_headings(): void
+    {
+        foreach (['en' => 'ltr', 'ar' => 'rtl'] as $locale => $direction) {
+            // The reference viewport contains the sole page H1. The live
+            // functional section and its cards are subordinate, not H1 peers.
+            $empty = $this->get(route('public.blog', ['lang' => $locale]))->assertOk()
+                ->assertSee('dir="'.$direction.'"', false)
+                ->assertSee('<h2 id="blog-title">', false)
+                ->assertSee('<h3 id="blog-saved-heading">', false)
+                ->assertSee('aria-labelledby="blog-title"', false)
+                ->assertSee('aria-labelledby="blog-saved-heading"', false);
+            preg_match_all('/<h1(?:\\s|>)/i', $empty->getContent(), $h1);
+            $this->assertCount(1, $h1[0], 'Exactly one H1 for '.$locale);
+            $this->assertStringNotContainsString('<h1 id="blog-title">', $empty->getContent());
+        }
+
+        $published = $this->publishedGuide('web07-heading-navigation');
+        foreach (['en', 'ar'] as $locale) {
+            $page = $this->get(route('public.blog', ['lang' => $locale]))->assertOk()
+                ->assertSee('<h2 id="blog-title">', false)
+                ->assertSee('<h3>', false)
+                ->assertSee('<h3 id="blog-saved-heading">', false)
+                ->assertSee('web07-heading-navigation');
+            $html = $page->getContent();
+            preg_match_all('/<h1(?:\\s|>)/i', $html, $h1);
+            $this->assertCount(1, $h1[0]);
+            $this->assertSame(1, substr_count($html, '<h3>'.$published->title_en.'</h3>') +
+                substr_count($html, '<h3>'.$published->title_ar.'</h3>'));
+            $this->assertStringNotContainsString('<h1 id="blog-title">', $html);
+        }
+    }
+
     public function test_filtered_second_page_first_viewport_article_returns_to_same_blog_results(): void
     {
         $category = Category::query()->create([

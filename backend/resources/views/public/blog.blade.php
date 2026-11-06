@@ -8,7 +8,7 @@
 @endpush
 @push('styles')
 <style>
-.blog-shell{padding-block:clamp(30px,5vw,70px) 75px}.blog-shell h1{color:var(--wa-primary);font-size:clamp(34px,5vw,52px);line-height:1.2}
+.blog-shell{padding-block:clamp(30px,5vw,70px) 75px}.blog-shell #blog-title{color:var(--wa-primary);font-size:clamp(34px,5vw,52px);line-height:1.2}
 .blog-intro{color:var(--wa-body);max-width:72ch;font-size:17px}
 .blog-search{display:flex;align-items:end;flex-wrap:wrap;gap:12px;background:#fff;border:1px solid var(--wa-soft-border);padding:20px;border-radius:18px;margin:24px 0 32px}
 .blog-field{flex:1 1 220px}.blog-field label{display:block;font-weight:700;margin-bottom:6px}
@@ -19,7 +19,7 @@
 .blog-result-summary{color:var(--wa-body);font-weight:700;margin:-12px 0 20px}
 .blog-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,310px),1fr));gap:18px}
 .blog-card{background:#fff;border:1px solid var(--wa-soft-border);border-radius:20px;display:flex;flex-direction:column;gap:10px;padding:22px}
-.blog-card h2{margin:0;font-size:23px;line-height:1.4;color:var(--wa-primary)}
+.blog-card h3{margin:0;font-size:23px;line-height:1.4;color:var(--wa-primary)}
 .blog-card p{margin:0;color:var(--wa-body);overflow-wrap:anywhere}
 .blog-stamp{font-size:13px;color:var(--wa-muted-text)}.blog-card a{display:inline-flex;min-height:44px;align-items:center;margin-top:auto;font-weight:800;color:var(--wa-cta)}
 .blog-empty{padding:25px;border:1px solid var(--wa-soft-border);border-radius:16px;background:#fff;display:flex;flex-direction:column;align-items:flex-start;gap:14px}
@@ -31,7 +31,7 @@
 .blog-pages a{color:var(--wa-cta);font-weight:700}
 
 .blog-saved{margin-block:28px;background:#fff;border:1px solid var(--wa-soft-border);border-radius:18px;padding:24px}
-.blog-saved h2{color:var(--wa-primary);margin-top:0}
+.blog-saved h3{color:var(--wa-primary);margin-top:0}
 .blog-saved p{overflow-wrap:anywhere}.blog-saved ul{padding-inline-start:24px}
 .blog-saved li{margin-block:8px;overflow-wrap:anywhere}
 .blog-saved a{color:var(--wa-cta);display:inline-flex;align-items:center;min-height:44px;font-weight:700}
@@ -41,7 +41,7 @@
 @section('content')
 @include('public.t012-reference-stage', ['screen' => 'blog'])
 <section class="site-wrap blog-shell t012-functional" id="t012-functional" aria-labelledby="blog-title">
-    <h1 id="blog-title">{{ $locale === 'ar' ? 'المدونة التقنية' : 'Technical blog' }}</h1>
+    <h2 id="blog-title">{{ $locale === 'ar' ? 'المدونة التقنية' : 'Technical blog' }}</h2>
     <p class="blog-intro">{{ $locale === 'ar'
         ? 'مقالات منشورة بعد مراجعة مصادرها وصحة محتواها. لا تعرض المسودات أو التجارب غير المثبتة.'
         : 'Source-reviewed technical articles only. Unverified drafts and unpublished experiments stay private.' }}</p>
@@ -103,7 +103,7 @@
                     <p class="blog-stamp">{{ $locale === 'ar' ? 'مقال موثق المصدر' : 'Source-reviewed article' }}
                         <time datetime="{{ $article->published_at?->toIso8601String() }}">{{ $article->published_at?->format('Y-m-d') }}</time>
                     </p>
-                    <h2>{{ $locale === 'ar' ? $article->title_ar : $article->title_en }}</h2>
+                    <h3>{{ $locale === 'ar' ? $article->title_ar : $article->title_en }}</h3>
                     <p>{{ \Illuminate\Support\Str::limit(trim(preg_replace('/[#*>]+/u', '', $revision->body_md)), 190) }}</p>
                     <a href="{{ route('public.article', array_merge(['slug' => $article->slug, 'lang' => $locale], ($search !== '' || $category !== '' || $paginated->currentPage() > 1) ? array_filter(['source' => 'blog', 'q' => $search, 'category' => $category, 'page' => $paginated->currentPage() > 1 ? $paginated->currentPage() : null], fn ($value) => $value !== '' && $value !== null) : [])) }}">
                         {{ $locale === 'ar' ? 'قراءة المقال والمصادر' : 'Read article and sources' }}
@@ -129,7 +129,7 @@
     @endif
 
     <section class="blog-saved" aria-labelledby="blog-saved-heading" id="blog-saved-links">
-        <h2 id="blog-saved-heading">{{ $locale === 'ar' ? 'روابط القراءة المحفوظة على هذا الجهاز' : 'Reading links saved on this device' }}</h2>
+        <h3 id="blog-saved-heading">{{ $locale === 'ar' ? 'روابط القراءة المحفوظة على هذا الجهاز' : 'Reading links saved on this device' }}</h3>
         <p>{{ $locale === 'ar'
             ? 'هذه روابط عامة حفظتها بنفسك في هذا المتصفح، وليست قائمة مرتبطة بالحساب. تتحقق صفحة المقال من حالة النشر والمصادر مجددًا عند فتح كل رابط؛ قد لا يعود المحتوى متاحًا بعد سحب اعتماده.'
             : 'These are public links you explicitly saved in this browser, not an account reading history. Every linked article is rechecked for publication and evidence when opened, and revoked content may no longer be available.' }}</p>
