@@ -809,7 +809,8 @@ jobs:
     if: >-
       (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
       (github.event_name == 'pull_request' && github.event.action != 'closed' &&
-       github.head_ref == 'fix/751-native-android-qa-build-ci' &&
+       (github.head_ref == 'fix/751-native-android-qa-build-ci' ||
+        github.head_ref == 'feat/481-android-emulator-install-launch') &&
        github.event.pull_request.head.repo.full_name == github.repository)
     needs: required-ci-gate
     runs-on: ubuntu-latest
@@ -912,12 +913,125 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+  android-emulator-install-launch:
+    # Real Android emulator launch of the same source-pinned debug APK.
+    # This is NOT a physical phone, screenshot parity or store signing.
+    if: >-
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'pull_request' && github.event.action != 'closed' &&
+       github.head_ref == 'feat/481-android-emulator-install-launch' &&
+       github.event.pull_request.head.repo.full_name == github.repository)
+    needs: [required-ci-gate, build-android-qa-apk]
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    permissions:
+      contents: read
+    env:
+      SOURCE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: WalidSite-Android-debug-QA-${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          path: dist/android-emulator/input
+      - name: Pin exactly tested Android archive before device mutation
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          (cd dist/android-emulator/input && sha256sum --check WalidSite-Android-debug-QA.apk.sha256)
+          PYTHONPATH="$PWD" python3 qa/verify_release_android_qa.py \
+            --dir dist/android-emulator/input --checkout . --sha "$SOURCE_SHA" \
+            > dist/android-emulator/source-proof.json
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          source = json.loads(Path('dist/android-emulator/source-proof.json').read_text())
+          assert source['source_sha'] == os.environ['SOURCE_SHA']
+          assert source['android_qa_receipt_checked'] is True
+          assert source['production_ready'] is False
+          PY
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Require hardware-accelerated emulator rather than synthetic test
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -c /dev/kvm
+          sudo chmod 666 /dev/kvm
+          test -r /dev/kvm && test -w /dev/kvm
+      - name: Install and launch exact compiled APK on Android emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          ram-size: 3072M
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          disable-animations: true
+          script: |
+            set -euo pipefail
+            adb -s emulator-5554 get-state | grep -Fx device
+            sdk_root="$ANDROID_HOME"
+            test -n "$sdk_root"
+            aapt="$(find "$sdk_root/build-tools" -mindepth 2 -maxdepth 2 -type f -name aapt | sort -V | tail -1)"
+            apksigner="$(find "$sdk_root/build-tools" -mindepth 2 -maxdepth 2 -type f -name apksigner | sort -V | tail -1)"
+            test -x "$aapt" && test -x "$apksigner"
+            python3 qa/android_qa_build_metadata.py > dist/android-emulator/checked-source-identity.json
+            python3 - <<'PY'
+            import json
+            from pathlib import Path
+            data = json.loads(Path('dist/android-emulator/checked-source-identity.json').read_text())
+            assert data['debug_qa_only'] is True and data['distribution_ready'] is False
+            assert data['placeholder_package_id'] is False
+            PY
+            package_id="$(python3 -c "import json; print(json.load(open('dist/android-emulator/checked-source-identity.json'))['package_id'])")"
+            version_name="$(python3 -c "import json; print(json.load(open('dist/android-emulator/checked-source-identity.json'))['version_name'])")"
+            version_code="$(python3 -c "import json; print(json.load(open('dist/android-emulator/checked-source-identity.json'))['version_code'])")"
+            python3 -m qa.android_device_smoke \
+              --apk dist/android-emulator/input/WalidSite-Android-debug-QA.apk \
+              --package-id "$package_id" --version-name "$version_name" \
+              --version-code "$version_code" --source-sha "$SOURCE_SHA" \
+              --expected-sha256 "$(sha256sum dist/android-emulator/input/WalidSite-Android-debug-QA.apk | cut -d' ' -f1)" \
+              --serial emulator-5554 --confirm-install \
+              --aapt "$aapt" --apksigner "$apksigner" \
+              > dist/android-emulator/emulator-launch.json
+            python3 - <<'PY'
+            import hashlib, json, os
+            from pathlib import Path
+            receipt = json.loads(Path('dist/android-emulator/emulator-launch.json').read_text())
+            identity = json.loads(Path('dist/android-emulator/checked-source-identity.json').read_text())
+            apk = Path('dist/android-emulator/input/WalidSite-Android-debug-QA.apk')
+            assert receipt['device_install_launch_verified'] is True
+            assert receipt['apk_sha256'] == hashlib.sha256(apk.read_bytes()).hexdigest()
+            for key in ('package_id', 'version_name', 'version_code'):
+                assert receipt[key] == identity[key]
+            assert receipt['source_sha_supplied_not_attested'] == os.environ['SOURCE_SHA']
+            for key in ('replaced_existing_install', 'physical_device_type_verified',
+                        'visual_fidelity_verified', 'distribution_signing_identity_verified',
+                        'ios_build_verified', 'production_ready'):
+                assert receipt[key] is False, key
+            PY
+      - name: Retain redacted exact-source emulator launch receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: WalidSite-Android-emulator-launch-${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          path: dist/android-emulator/emulator-launch.json
+          if-no-files-found: error
+          retention-days: 30
+
   verify-source-pinned-release-bundle:
     # Fail closed if actual main Setup ZIP, Update ZIP and compiled APK
     # disagree on source SHA, release SemVer or test-only trust boundaries.
     # This is NOT a production release or a device smoke test.
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [required-ci-gate, build-cpanel-package, build-android-qa-apk]
+    needs: [required-ci-gate, build-cpanel-package, build-android-qa-apk, android-emulator-install-launch]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -935,6 +1049,10 @@ jobs:
         with:
           name: WalidSite-Android-debug-QA-${{ github.sha }}
           path: dist/source-proof/android
+      - uses: actions/download-artifact@v4
+        with:
+          name: WalidSite-Android-emulator-launch-${{ github.sha }}
+          path: dist/source-proof/emulator
       - name: Verify one immutable web and native artifact train
         shell: bash
         env:
@@ -964,6 +1082,19 @@ jobs:
           assert proof['publisher_signature_verified'] is False
           assert proof['android_distribution_signing_verified'] is False
           assert proof['device_launch_verified'] is False
+          # Artifact-only inventory does not assert any device execution:
+          # the independently run emulator receipt is verified separately.
+          emulator = json.loads(Path('dist/source-proof/emulator/emulator-launch.json').read_text())
+          assert emulator['device_install_launch_verified'] is True
+          assert emulator['source_sha_supplied_not_attested'] == os.environ['SOURCE_SHA']
+          assert emulator['apk_sha256'] == proof['android_apk_sha256']
+          assert emulator['package_id'] == proof['android_package_id']
+          assert emulator['version_name'] == proof['version']
+          assert emulator['version_code'] == proof['android_version_code']
+          assert emulator['physical_device_type_verified'] is False
+          assert emulator['visual_fidelity_verified'] is False
+          assert emulator['distribution_signing_identity_verified'] is False
+          assert emulator['production_ready'] is False
           assert proof['code_update_performed'] is False
           assert proof['production_ready'] is False
           PY
