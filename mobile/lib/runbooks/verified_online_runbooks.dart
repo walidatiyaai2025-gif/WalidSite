@@ -82,6 +82,13 @@ class ReviewedRunbook {
     final at = timestamp is String ? DateTime.tryParse(timestamp) : null;
     if (id is! String || !_uuid.hasMatch(id) ||
         title is! String || title.trim().isEmpty || title.length > 220 ||
+        // Review titles are UI identity labels, never formatting directives.
+        // Block C0/DEL and Unicode bidi overrides/isolates that can disguise
+        // the published title or reverse the displayed publication identity.
+        title.runes.any((ch) =>
+            ch < 32 || ch == 127 ||
+            (ch >= 0x202a && ch <= 0x202e) ||
+            (ch >= 0x2066 && ch <= 0x2069)) ||
         body is! String || body.trim().isEmpty || body.length > 65536 ||
         utf8.encode(body).length > 65536 ||
         version is! int || version < 1 || version > 1000000000 ||
