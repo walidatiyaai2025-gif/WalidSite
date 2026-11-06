@@ -69,8 +69,8 @@ void main() {
       );
     }
     for (final token in <String>[
-      '', 'bad\\nheader', 'bad\\rheader', 'space bearer',
-      'invalid\\u202Ebidirectional', 'é' * 100,
+      '', 'bad\nheader', 'bad\rheader', 'space bearer',
+      'invalid\u202Ebidirectional', 'é' * 100,
     ]) {
       expect(() => MobileAiClient.parseLoginResponse(
         payload(validUntil, token: token)), throwsFormatException,
