@@ -27,10 +27,20 @@ final class TrustedCodeCandidatePromoter
         string $archiveFile,
         string $releaseRoot,
         string $publicDocumentRoot,
+        bool $verifiedPhysicalCpanelLayout = false,
     ): array {
         $quarantine = realpath($privateQuarantineRoot);
         $releases = realpath($releaseRoot);
         $public = realpath($publicDocumentRoot);
+        // Legacy symlink deployments resolve public_html inside releases.
+        // The independently verified ONE-ZIP cPanel topology instead keeps a
+        // physical document root beside a *private* .walidsite-releases dir.
+        // Opt in only for that exact layout after physical host preflight.
+        $physicalCpanel = $verifiedPhysicalCpanelLayout
+            && $releases !== false && $public !== false
+            && basename($releases) === '.walidsite-releases'
+            && $public === dirname($releases).'/public_html'
+            && ! is_link($publicDocumentRoot);
         if ($quarantine === false || $releases === false || $public === false
             || is_link($privateQuarantineRoot) || is_link($releaseRoot)
             || ! is_dir($quarantine) || ! is_dir($releases)
@@ -38,7 +48,7 @@ final class TrustedCodeCandidatePromoter
             || $this->overlap($quarantine, $releases)
             || $this->overlap($quarantine, $public)
             || $quarantine === $public || $releases === $public
-            || ! $this->inside($public, $releases)) {
+            || (! $this->inside($public, $releases) && ! $physicalCpanel)) {
             throw new DomainException('Trusted promotion requires distinct private quarantine and versioned code roots.');
         }
 
