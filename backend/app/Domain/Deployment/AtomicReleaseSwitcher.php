@@ -26,8 +26,12 @@ final class AtomicReleaseSwitcher
         callable $healthCheck,
     ): array {
         $root = realpath($releaseRoot);
+        $rootStat = $root === false ? false : @lstat($root);
         $candidate = realpath($candidateDirectory);
         if ($root === false || ! is_dir($root) || is_link($releaseRoot)
+            || ! is_array($rootStat)
+            || ($rootStat['mode'] & 0170000) !== 0040000
+            || ($rootStat['mode'] & 0022) !== 0
             || $candidate === false || ! is_dir($candidate) || is_link($candidateDirectory)
             || dirname($currentLink) !== dirname($releaseRoot)
             || basename($currentLink) !== 'current'
@@ -48,13 +52,30 @@ final class AtomicReleaseSwitcher
             throw new DomainException('Cannot acquire private release lock.');
         }
         try {
-            $this->assertSecureLockIdentity($lock, $lockFile);
+            // The stable releases directory is part of the code pointer's
+            // trust boundary. Locking a safe inode is insufficient when an
+            // external callback changes the directory holding that inode.
+            $leaseCheck = function () use ($root, $rootStat, $lock, $lockFile): void {
+                clearstatcache(true, $root);
+                $currentRoot = @lstat($root);
+                if (! is_array($currentRoot) || is_link($root)
+                    || realpath($root) !== $root
+                    || ($currentRoot['mode'] & 0170000) !== 0040000
+                    || ($currentRoot['mode'] & 0022) !== 0
+                    || $currentRoot['dev'] !== $rootStat['dev']
+                    || $currentRoot['ino'] !== $rootStat['ino']
+                    || $currentRoot['mode'] !== $rootStat['mode']) {
+                    throw new DomainException('Release root identity or permissions changed; manual verification required.');
+                }
+                $this->assertSecureLockIdentity($lock, $lockFile);
+            };
+            $leaseCheck();
             if (! flock($lock, LOCK_EX | LOCK_NB)) {
                 throw new DomainException('Another code update is running.');
             }
             // Recheck the actual inode after exclusive locking: a pre-open
             // is_link() check alone cannot prevent a swapped or aliased lock.
-            $this->assertSecureLockIdentity($lock, $lockFile);
+            $leaseCheck();
             $previous = realpath($currentLink);
             if ($previous === false || ! is_dir($previous) || ! $this->under($previous, $root)
                 || $previous === $candidate || ! $this->complete($candidate) || ! $this->complete($previous)
@@ -65,9 +86,9 @@ final class AtomicReleaseSwitcher
             // callback may be long-running and must not change the pathname
             // whose inode this process holds locked: another updater could
             // otherwise acquire a different file under the same lock name.
-            $this->assertSecureLockIdentity($lock, $lockFile);
+            $leaseCheck();
             $backupVerified = $verifiedBackup();
-            $this->assertSecureLockIdentity($lock, $lockFile);
+            $leaseCheck();
             if ($backupVerified !== true) {
                 throw new DomainException('Code switch requires an independently verified recovery backup.');
             }
@@ -77,7 +98,7 @@ final class AtomicReleaseSwitcher
                 || ! $this->publicLinkMatches($publicDocumentRoot, $currentLink, $previous)) {
                 throw new DomainException('Concurrent release or public document root change detected.');
             }
-            $this->assertSecureLockIdentity($lock, $lockFile);
+            $leaseCheck();
 
             $this->replacePointer($currentLink, $candidate);
             try {
@@ -87,7 +108,7 @@ final class AtomicReleaseSwitcher
                 // A health callback is external code and may change the live
                 // pointer or the lease pathname. Never report success based
                 // solely on the state observed before calling it.
-                $this->assertSecureLockIdentity($lock, $lockFile);
+                $leaseCheck();
                 if (realpath($currentLink) !== $candidate
                     || ! $this->publicLinkMatches($publicDocumentRoot, $currentLink, $candidate)) {
                     throw new RuntimeException('Release pointer changed during health verification.');
@@ -97,7 +118,7 @@ final class AtomicReleaseSwitcher
                 // an automatic rollback might overwrite another deployer's
                 // newer release. Stop and require verified manual recovery.
                 try {
-                    $this->assertSecureLockIdentity($lock, $lockFile);
+                    $leaseCheck();
                     if (realpath($currentLink) !== $candidate
                         || ! $this->publicLinkMatches($publicDocumentRoot, $currentLink, $candidate)) {
                         throw new DomainException('Release or public root ownership lost during health check.');
@@ -172,6 +193,8 @@ final class AtomicReleaseSwitcher
         if (! is_array($opened) || ! is_array($named)
             || ($opened['mode'] & 0170000) !== 0100000
             || ($named['mode'] & 0170000) !== 0100000
+            || ($opened['mode'] & 0022) !== 0
+            || ($named['mode'] & 0022) !== 0
             || $opened['nlink'] !== 1 || $named['nlink'] !== 1
             || $opened['dev'] !== $named['dev']
             || $opened['ino'] !== $named['ino']
