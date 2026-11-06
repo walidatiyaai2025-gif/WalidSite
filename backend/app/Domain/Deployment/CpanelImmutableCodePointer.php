@@ -106,7 +106,9 @@ final class CpanelImmutableCodePointer
             // Pin the complete previously running immutable release before
             // any callback, backup, or provisional pointer switch. A version
             // file alone cannot prove the old PHP tree remained intact.
-            $oldReleaseFingerprint = $this->releaseSeal($oldRoot);
+            $oldReleaseFingerprint = $previous === null
+                ? ''
+                : $this->releaseSeal($oldRoot);
             $oldVersion = trim($oldVersionSnapshot['bytes']);
             if (! preg_match('/\A(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\z/D', $oldVersion)
                 || version_compare($version, $oldVersion, '<=')) {
