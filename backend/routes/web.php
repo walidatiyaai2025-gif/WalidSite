@@ -2373,9 +2373,11 @@ Route::middleware('auth:web')->prefix('admin')->group(function (): void {
             return $actor;
         }, $input['repository_slug']);
 
-        return redirect()->route('admin.operations.github', [
-            'lang' => $request->query('lang') === 'ar' ? 'ar' : 'en',
-        ])->with('status', 'Repository proposal submitted for independent review.');
+        $lang = $request->query('lang') === 'ar' ? 'ar' : 'en';
+        return redirect()->route('admin.operations.github', ['lang' => $lang])
+            ->with('status', $lang === 'ar'
+                ? 'تم إرسال طلب المستودع للمراجعة المستقلة.'
+                : 'Repository proposal submitted for independent review.');
     })->name('admin.operations.github.propose')->middleware('throttle:6,1');
 
     Route::post('/github/proposals/{id}/decision', function (
@@ -2402,9 +2404,11 @@ Route::middleware('auth:web')->prefix('admin')->group(function (): void {
             return $owner;
         }, $id, $input['decision'], $input['reason'] ?? null);
 
-        return redirect()->route('admin.operations.github', [
-            'lang' => $request->query('lang') === 'ar' ? 'ar' : 'en',
-        ])->with('status', 'Independent repository review recorded.');
+        $lang = $request->query('lang') === 'ar' ? 'ar' : 'en';
+        return redirect()->route('admin.operations.github', ['lang' => $lang])
+            ->with('status', $lang === 'ar'
+                ? 'تم تسجيل قرار المراجعة المستقلة.'
+                : 'Independent repository review recorded.');
     })->whereUuid('id')->name('admin.operations.github.decide')
         ->middleware('throttle:6,1');
 

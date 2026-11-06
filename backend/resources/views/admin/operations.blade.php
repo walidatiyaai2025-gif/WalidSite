@@ -102,6 +102,11 @@ summary{cursor:pointer;min-height:44px;padding:8px}
 @if($errors->any())<div role="alert" class="panel warn"><strong>{{ $ar ? 'تعذر حفظ العملية' : 'The operation was not saved' }}</strong><ul>@foreach($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></div>@endif
 
 @if($section === 'github')
+@php($githubProposalStatusLabels = [
+    'pending' => ['Pending review', 'قيد المراجعة'],
+    'approved' => ['Approved', 'معتمد'],
+    'rejected' => ['Rejected', 'مرفوض'],
+])
 <section class="panel" aria-labelledby="github-review-title">
 <h2 id="github-review-title">{{ $ar ? 'طلبات المستودعات ومراجعة المالك' : 'Repository proposals and owner review' }}</h2>
 <p class="muted">{{ $ar ? 'إرسال الطلب لا ينشر المستودع. تعتمد الإضافة على قرار مالك مستقل ثم التحقق من كونه عامًا.' : 'Submission never publishes a repository. Independent owner approval and public verification are mandatory.' }}</p>
@@ -127,7 +132,7 @@ summary{cursor:pointer;min-height:44px;padding:8px}
 @foreach($githubProposals as $proposal)
 <tr>
 <td>{{ $proposal->repository_slug }}</td>
-<td>{{ $proposal->status }}</td>
+<td>{{ $githubProposalStatusLabels[$proposal->status][$ar ? 1 : 0] ?? ($ar ? 'حالة غير معروفة' : 'Unknown status') }}</td>
 <td><time datetime="{{ $proposal->created_at?->toIso8601String() }}">{{ $proposal->created_at?->toDateString() }}</time></td>
 <td>
 @if($canReviewGithub && $proposal->status === 'pending' && $proposal->submitted_by_user_id !== auth('web')->id())

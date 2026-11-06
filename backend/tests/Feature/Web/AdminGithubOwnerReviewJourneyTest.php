@@ -231,6 +231,42 @@ final class AdminGithubOwnerReviewJourneyTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_review_status_and_flash_messages_are_fully_bilingual(): void
+    {
+        $admin = $this->account('admin');
+        $owner = $this->account('owner');
+        $pending = $this->makeProposal($admin, 'acme/pending-state');
+        $approved = $this->makeProposal($admin, 'acme/approved-state');
+        $approved->update(['status' => 'approved']);
+        $rejected = $this->makeProposal($admin, 'acme/rejected-state');
+        $rejected->update(['status' => 'rejected']);
+
+        Http::fake();
+        $this->actingAs($admin, 'web');
+        $this->get('/admin/github?lang=ar')->assertOk()
+            ->assertSee('قيد المراجعة')
+            ->assertSee('معتمد')
+            ->assertSee('مرفوض');
+        $this->get('/admin/github?lang=en')->assertOk()
+            ->assertSee('Pending review')
+            ->assertSee('Approved')
+            ->assertSee('Rejected');
+
+        $this->post('/admin/github/proposals?lang=ar', [
+            'repository_slug' => 'acme/arabic-submission',
+        ])->assertRedirect('/admin/github?lang=ar')
+            ->assertSessionHas('status', 'تم إرسال طلب المستودع للمراجعة المستقلة.');
+
+        $this->actingAs($owner, 'web')
+            ->post('/admin/github/proposals/'.$pending->id.'/decision?lang=ar', [
+                'decision' => 'reject',
+                'reason' => 'owner_policy',
+            ])->assertRedirect('/admin/github?lang=ar')
+            ->assertSessionHas('status', 'تم تسجيل قرار المراجعة المستقلة.');
+        $this->assertSame('rejected', $pending->fresh()->status);
+        Http::assertNothingSent();
+    }
+
     public function test_malformed_repo_secret_fields_and_revoked_owner_role_fail_closed(): void
     {
         Http::fake();
