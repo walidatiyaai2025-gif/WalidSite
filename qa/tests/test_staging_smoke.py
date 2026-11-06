@@ -89,7 +89,7 @@ class StagingSmokeTest(unittest.TestCase):
     def test_public_and_private_live_endpoints_are_read_only_and_expected_count(self):
         fake = FakeOpener()
         receipt = permitted_run("https://staging.example.com", fake)
-        self.assertEqual(len(receipt["checks"]), 23)
+        self.assertEqual(len(receipt["checks"]), 28)
         self.assertTrue(receipt["http_smoke_passed"])
         self.assertFalse(receipt["production_ready"])
         self.assertFalse(receipt["deployment_release_sha_verified"])
@@ -146,8 +146,8 @@ class StagingSmokeTest(unittest.TestCase):
 
     def test_private_laravel_paths_deny_without_reading_any_private_response_body(self):
         private = [check for check in CHECKS if check.kind == "private_denied"]
-        self.assertEqual(len(private), 12)
-        self.assertEqual(len({check.path for check in private}), 12)
+        self.assertEqual(len(private), 17)
+        self.assertEqual(len({check.path for check in private}), 17)
         self.assertEqual(len({check.path for check in CHECKS}), len(CHECKS))
 
         for spec in private:
@@ -179,6 +179,11 @@ class StagingSmokeTest(unittest.TestCase):
             "/.env.bak", "/.env.backup",
             "/application/database/database.sqlite",
             "/application/bootstrap/cache/config.php",
+            "/.walidsite-active-release.json",
+            "/.walidsite-update-maintenance.json",
+            "/.walidsite-writer-drain.lock",
+            "/.walidsite-releases/",
+            "/.walidsite-backups/",
         }
         self.assertTrue(sensitive_paths.issubset({spec.path for spec in CHECKS}))
         for path in sorted(sensitive_paths):
@@ -432,7 +437,7 @@ class StagingSmokeTest(unittest.TestCase):
 
         report = permitted_run("https://staging.example.com", Offline())
         self.assertFalse(report["http_smoke_passed"])
-        self.assertEqual(len(report["checks"]), 23)
+        self.assertEqual(len(report["checks"]), 28)
         self.assertNotIn("leak-this-host-auth-token", json.dumps(report))
         self.assertTrue(all(x["observed_status"] is None for x in report["checks"]))
 
