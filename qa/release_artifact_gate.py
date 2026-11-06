@@ -68,6 +68,29 @@ def _assert_named_directory_identity(directory: Path, descriptor: int) -> None:
 
 
 @contextmanager
+def _stable_manifest_reader(path: Path):
+    """Pin the private manifest parent as well as the manifest inode.
+
+    A no-follow file descriptor alone cannot prevent a substituted parent
+    directory from serving a different manifest after the verifier returns.
+    """
+    parent = path.parent
+    if not path.name or path.name in (".", ".."):
+        raise ValueError("Invalid release manifest filename")
+    try:
+        fd = os.open(parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    except OSError as exc:
+        raise ValueError("Cannot securely open manifest directory") from exc
+    try:
+        _assert_named_directory_identity(parent, fd)
+        with _stable_reader(path.name, dir_fd=fd) as item:
+            yield item
+        _assert_named_directory_identity(parent, fd)
+    finally:
+        os.close(fd)
+
+
+@contextmanager
 def _stable_reader(path: str | Path, *, dir_fd: int | None = None):
     """Pin a regular file descriptor; never validate one path and read another.
 
@@ -107,7 +130,7 @@ def verify(folder: Path, manifest_path: Path, source_sha: str | None = None) -> 
     folder = Path(folder)
     # The manifest may live beside the artifacts, as documented. Keep its
     # original pathname: resolve() here would bypass O_NOFOLLOW on symlinks.
-    with _stable_reader(manifest_path) as (stream, metadata):
+    with _stable_manifest_reader(Path(manifest_path)) as (stream, metadata):
         if not 0 < metadata.st_size <= MAX_MANIFEST_BYTES:
             raise ValueError("Invalid or oversized release manifest")
         raw_manifest = stream.read(MAX_MANIFEST_BYTES + 1)
