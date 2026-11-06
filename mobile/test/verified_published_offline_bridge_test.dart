@@ -60,6 +60,8 @@ Future<String> _envelope(
   String id = publishedId,
   int version = 3,
   String markdown = publishedMarkdown,
+  String titleEn = 'Approved recovery',
+  String titleAr = 'استعادة معتمدة',
   DateTime? validatedAt,
   String? checksumOverride,
   bool published = true,
@@ -69,8 +71,8 @@ Future<String> _envelope(
       .bytes.map((byte) => byte.toRadixString(16).padLeft(2, '0')).join();
   final item = <String, dynamic>{
     'id': id,
-    'title_en': 'Approved recovery',
-    'title_ar': 'استعادة معتمدة',
+    'title_en': titleEn,
+    'title_ar': titleAr,
     'steps_en': ['Verify approved backup'],
     'steps_ar': ['تحقق من النسخة المعتمدة'],
     if (published) ...{
@@ -213,6 +215,130 @@ void main() {
         throwsFormatException);
     expect(store.pins[publishedId], newRevision);
     expect((await repo.load()).items.single.publishedVersion, 4);
+  });
+
+  test('new signed same-version content, review date or title cannot rewrite a trusted pinned UUID',
+      () async {
+    final keys = await _keys();
+    final now = DateTime.now().toUtc();
+    final original = await _envelope(keys.pair, signedAt:
+        now.subtract(const Duration(minutes: 3)));
+    final reSignedAt = now.subtract(const Duration(minutes: 1));
+    const alteredText = '# Changed under the SAME published version';
+    final alteredReview = publishedAt.add(const Duration(minutes: 1));
+    final variants = [
+      (
+        envelope: await _envelope(keys.pair, markdown: alteredText,
+            signedAt: reSignedAt),
+        current: _current(markdown: alteredText),
+      ),
+      (
+        envelope: await _envelope(keys.pair, validatedAt: alteredReview,
+            signedAt: reSignedAt),
+        current: _current(at: alteredReview),
+      ),
+      (
+        envelope: await _envelope(keys.pair,
+            titleEn: 'Rebranded without a new review',
+            signedAt: reSignedAt),
+        current: _current(),
+      ),
+    ];
+    var downloaded = original;
+    final store = _PinnedMemoryStore();
+    final source = SignedRunbookSource(
+      url: 'https://updates.example.org/reviewed-pack.json',
+      publicKeyBase64: keys.publicKey,
+      transport: (_) async => downloaded,
+    );
+    final repo = OfflineRunbookRepository(source: source, store: store);
+    await repo.syncPublished(_current());
+    expect(store.writes, 1);
+
+    for (final variant in variants) {
+      downloaded = variant.envelope;
+      await expectLater(
+          repo.syncPublished(variant.current), throwsFormatException);
+      expect(store.writes, 1,
+          reason: 'Never overwrite a trusted pin before detecting a conflict');
+      expect(store.pins[publishedId], original);
+      final reopened = await OfflineRunbookRepository(
+          source: source, store: store).load();
+      expect(reopened.signedVerified, isTrue);
+      expect(reopened.items.single.publishedMarkdown, publishedMarkdown);
+      expect(reopened.items.single.titleEn, 'Approved recovery');
+      expect(reopened.items.single.publishedValidatedAt, publishedAt);
+    }
+  });
+
+  test('legacy global signed snapshots reject same-version redefinition without data loss',
+      () async {
+    final keys = await _keys();
+    final now = DateTime.now().toUtc();
+    final original = await _envelope(keys.pair,
+        signedAt: now.subtract(const Duration(minutes: 2)));
+    const alteredText = '# Changed signed global published body';
+    final alteredReview = publishedAt.add(const Duration(minutes: 1));
+    final revisions = [
+      (
+        envelope: await _envelope(keys.pair, markdown: alteredText,
+            signedAt: now.subtract(const Duration(minutes: 1))),
+        current: _current(markdown: alteredText),
+      ),
+      (
+        envelope: await _envelope(keys.pair, validatedAt: alteredReview,
+            signedAt: now.subtract(const Duration(minutes: 1))),
+        current: _current(at: alteredReview),
+      ),
+    ];
+    var downloaded = original;
+    final source = SignedRunbookSource(
+      url: 'https://updates.example.org/reviewed-pack.json',
+      publicKeyBase64: keys.publicKey,
+      transport: (_) async => downloaded,
+    );
+    final store = _MemoryStore();
+    final repo = OfflineRunbookRepository(source: source, store: store);
+    await repo.syncPublished(_current());
+    expect(store.writes, 1);
+
+    for (final revised in revisions) {
+      downloaded = revised.envelope;
+      await expectLater(
+          repo.syncPublished(revised.current), throwsFormatException);
+      expect(store.writes, 1);
+      expect(store.snapshot, original);
+      final reopened = await OfflineRunbookRepository(
+          source: source, store: store).load();
+      expect(reopened.signedVerified, isTrue);
+      expect(reopened.items.single.publishedMarkdown, publishedMarkdown);
+    }
+  });
+
+  test('re-signing identical reviewed content under a later signing timestamp is permitted',
+      () async {
+    final keys = await _keys();
+    final now = DateTime.now().toUtc();
+    final original = await _envelope(keys.pair,
+        signedAt: now.subtract(const Duration(minutes: 3)));
+    final reSigned = await _envelope(keys.pair,
+        signedAt: now.subtract(const Duration(minutes: 1)));
+    var downloaded = original;
+    final store = _PinnedMemoryStore();
+    final source = SignedRunbookSource(
+      url: 'https://updates.example.org/reviewed-pack.json',
+      publicKeyBase64: keys.publicKey,
+      transport: (_) async => downloaded,
+    );
+    final repo = OfflineRunbookRepository(source: source, store: store);
+    await repo.syncPublished(_current());
+    downloaded = reSigned;
+    final pack = await repo.syncPublished(_current());
+    expect(store.writes, 2);
+    expect(store.pins[publishedId], reSigned);
+    expect(pack.signedVerified, isTrue);
+    expect(pack.items.single.publishedVersion, 3);
+    expect(pack.items.single.publishedMarkdown, publishedMarkdown);
   });
 
   test('newer signature timestamp cannot downgrade an already pinned published version',
