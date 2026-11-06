@@ -229,6 +229,29 @@ final class CpanelVerifiedCodeRollbackTest extends TestCase
         }
     }
 
+    public function test_first_maintenance_callback_cannot_rebaseline_changed_previous_code(): void
+    {
+        $path = $this->previousApplication.'/bootstrap/app.php';
+        $healthProbes = 0;
+        try {
+            $this->switcher->activate(
+                $this->home, $this->candidate, '0.1.2', $this->sha,
+                $this->front, $this->token,
+                static function () use ($path): bool {
+                    file_put_contents($path, '<?php // changed before provisional cutover');
+                    return true;
+                },
+                static fn (): bool => true, static fn (): bool => true,
+                static function () use (&$healthProbes): bool { ++$healthProbes; return false; },
+            );
+            self::fail('An initial callback changed the previous release baseline.');
+        } catch (DomainException $failure) {
+            self::assertStringContainsString('code tree changed before cutover', $failure->getMessage());
+            self::assertSame(0, $healthProbes, 'Mutation must be rejected before selecting the candidate.');
+            self::assertFileExists($this->home.'/.walidsite-update-maintenance.json');
+        }
+    }
+
     public function test_same_bytes_previous_php_inode_swap_keeps_barrier(): void
     {
         $path = $this->previousApplication.'/bootstrap/app.php';

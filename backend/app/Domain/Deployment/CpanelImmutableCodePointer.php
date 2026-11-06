@@ -93,12 +93,6 @@ final class CpanelImmutableCodePointer
             $this->assertPhysicalIdentityUnchanged(
                 $home, $candidate, $front, $version, $releaseIdentity,
             );
-            if ($maintenanceReady() !== true || $recoveryVerified() !== true
-                || $signedCandidateVerified() !== true) {
-                throw new DomainException('Code installation requires write isolation, signed release and restored backup.');
-            }
-            $this->assertLockIdentity($lock, $lockPath);
-
             $previous = $this->read($pointer, $home);
             $oldRoot = $previous === null ? $home : $home.'/'.$previous['root'];
             if (! is_dir($oldRoot) || is_link($oldRoot)
@@ -123,6 +117,12 @@ final class CpanelImmutableCodePointer
                 throw new DomainException('The signed release must be newer than installed code.');
             }
 
+            if ($maintenanceReady() !== true || $recoveryVerified() !== true
+                || $signedCandidateVerified() !== true) {
+                throw new DomainException('Code installation requires write isolation, signed release and restored backup.');
+            }
+            $this->assertLockIdentity($lock, $lockPath);
+
             // Migrations are not modified by a code-only update; database
             // rollback of arbitrary migrations is never assumed safe.
             $schema = new ReleaseSchemaCompatibility();
@@ -140,6 +140,9 @@ final class CpanelImmutableCodePointer
             if ($this->readPinnedPhysicalFile($oldVersionFile, 32)['fingerprint']
                 !== $oldVersionSnapshot['fingerprint']) {
                 throw new DomainException('Installed release version identity changed during update.');
+            }
+            if ($previous !== null && ! hash_equals($oldReleaseFingerprint, $this->releaseSeal($oldRoot))) {
+                throw new DomainException('Previous release code tree changed before cutover.');
             }
             // Preload only non-executable static assets before pointer switch.
             // Public name collisions with different bytes fail closed.
