@@ -95,10 +95,17 @@ def smoke(apk: Path, *, package_id: str, version_name: str,
             raise DeviceSmokeError("Selected Android device is not online")
         if _checked_adb(adb, serial, "shell", "getprop", "sys.boot_completed", stage="boot") != "1":
             raise DeviceSmokeError("Selected Android device has not finished booting")
-        preinstalled = _checked_adb(adb, serial, "shell", "pm", "path", package_id,
-                                    stage="preinstall-query")
-        if preinstalled and not preinstalled.startswith("package:"):
+        # Android 35 can return a nonzero exit code for `pm path` when an
+        # application is simply absent on a clean emulator. Query the user-0
+        # package list instead, whose empty successful result means absent.
+        # Match the exact full identity, never a substring or an adb error.
+        package_list = _checked_adb(
+            adb, serial, "shell", "pm", "list", "packages",
+            "--user", "0", package_id, stage="preinstall-query",
+        )
+        if package_list not in ("", "package:" + package_id):
             raise DeviceSmokeError("Unexpected device package query response")
+        preinstalled = package_list == "package:" + package_id
         if preinstalled and not allow_replace:
             raise DeviceSmokeError("Existing app needs explicit --allow-replace")
 
@@ -129,7 +136,7 @@ def smoke(apk: Path, *, package_id: str, version_name: str,
             "package_id": package_id,
             "version_name": version_name,
             "version_code": version_code,
-            "replaced_existing_install": bool(preinstalled),
+            "replaced_existing_install": preinstalled,
             "source_sha_supplied_not_attested": source_sha,
             "physical_device_type_verified": False,
             "visual_fidelity_verified": False,
