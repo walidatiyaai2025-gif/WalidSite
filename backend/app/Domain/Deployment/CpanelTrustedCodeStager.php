@@ -90,6 +90,7 @@ final class CpanelTrustedCodeStager
         $candidate = (new TrustedCodeCandidatePromoter())->promote(
             $signedEnvelope, $publisherPublicKey, $pinnedHttpsOrigin,
             $installedVersion, $private, $inbox, $archiveFile, $releaseRoot, $public,
+            verifiedPhysicalCpanelLayout: true,
         );
         if ($candidate['version'] !== $signed['version']
             || ! hash_equals($candidate['artifact_sha256'], $signed['artifact_sha256'])
