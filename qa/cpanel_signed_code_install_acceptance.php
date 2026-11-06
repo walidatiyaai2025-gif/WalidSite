@@ -199,6 +199,10 @@ try {
 
         if ($mode === 'late-populated-restore') {
             if (!$rejected || $host->probes !== 0
+                || file_get_contents($app.'/.env') !== "APP_KEY=base64:DISPOSABLE_CI_ONLY\n"
+                || file_get_contents($app.'/storage/app/owner.txt') !== 'KEEP_OWNER'
+                || file_get_contents($public.'/uploads/avatar.png') !== 'KEEP_UPLOAD'
+                || $live->query('SELECT note FROM owner_records WHERE id=1')->fetchColumn() !== 'PRESERVE_ROW'
                 || $host->isolationChecks !== 2
                 || is_file($home.'/.walidsite-active-release.json')
                 || is_file($home.'/.walidsite-update-maintenance.json')
