@@ -334,8 +334,20 @@ def _check_one_transaction(origin: str, spec: Check, opener: Opener, timeout: in
         elif spec.kind == "redirect":
             # A 302 to an attacker-controlled origin must never pass a guest
             # authorization check. Compare exact targets; do not follow them.
-            location = response.headers.get("Location", "")
-            if location not in (spec.redirect_to, origin + spec.redirect_to):
+            # HTTPMessage.get() silently returns one of multiple Location
+            # headers. A redirect with two destinations is ambiguous even
+            # when the first destination is our expected login route.
+            get_all = getattr(response.headers, "get_all", None)
+            if callable(get_all):
+                locations = get_all("Location", [])
+            else:
+                locations = [response.headers.get("Location", "")]
+            if (not isinstance(locations, (list, tuple))
+                    or len(locations) != 1
+                    or not isinstance(locations[0], str)
+                    or locations[0] not in (
+                        spec.redirect_to, origin + spec.redirect_to
+                    )):
                 reason = "unsafe_or_unexpected_redirect"
         elif spec.kind == "html" and not _is_expected_media_type(response.headers, "text/html"):
             reason = "non_html_response"
