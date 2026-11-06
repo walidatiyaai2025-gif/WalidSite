@@ -45,7 +45,15 @@ final class CpanelPhysicalHostPreflight
         $public = realpath($homeDirectory.'/public_html');
         $private = realpath($homeDirectory.'/application');
         $trusted = realpath($trustedFrontController);
+        clearstatcache(true, $homeDirectory);
+        $homeStat = @lstat($homeDirectory);
         if ($home === false || $home !== $homeDirectory || is_link($homeDirectory)
+            || ! is_array($homeStat)
+            || ($homeStat['mode'] & 0170000) !== 0040000
+            // A later maintenance lease MUST refuse account homes writable
+            // by another local principal. Surface this at read-only preflight
+            // instead of claiming the same host is ready to stage code.
+            || ($homeStat['mode'] & 0022) !== 0
             || ! is_dir($home) || ! is_writable($home)
             || $public === false || $public !== $home.'/public_html'
             || $private === false || $private !== $home.'/application'

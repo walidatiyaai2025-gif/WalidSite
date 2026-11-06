@@ -68,6 +68,28 @@ final class CpanelPhysicalHostPreflightTest extends TestCase
         self::assertSame('DO_NOT_READ_OR_REPORT_APP_KEY', file_get_contents($this->home.'/application/.env'));
     }
 
+    public function test_foreign_writable_cpanel_home_is_rejected_before_owner_staging(): void
+    {
+        // The same account-home modes are unsafe for the later maintenance
+        // barrier. Read-only hosting preflight must not advertise READY.
+        foreach ([0777, 0770, 0702] as $mode) {
+            self::assertTrue(chmod($this->home, $mode));
+            clearstatcache(true, $this->home);
+            try {
+                $this->inspect();
+                self::fail('Foreign-writable cPanel home passed owner update preflight.');
+            } catch (DomainException) {
+                self::assertFileDoesNotExist($this->home.'/.walidsite-update-maintenance.json');
+            } finally {
+                chmod($this->home, 0700);
+                clearstatcache(true, $this->home);
+            }
+        }
+
+        self::assertSame('hosting_layout_verified', $this->inspect()['state']);
+        self::assertSame('DO_NOT_READ_OR_REPORT_APP_KEY', file_get_contents($this->home.'/application/.env'));
+    }
+
     public function test_after_code_pointer_switch_uses_versioned_code_not_original_version(): void
     {
         $sha = str_repeat('a', 40);
