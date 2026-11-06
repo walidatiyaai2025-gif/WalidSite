@@ -13,7 +13,8 @@ import zipfile
 
 from qa.android_qa_build_metadata import metadata
 from qa.verify_release_android_qa import (
-    APK_NAME, CHECKSUM_NAME, IDENTITY_NAME, PROOF_NAME, hash_bounded_stream, verify, verify_bundle,
+    APK_NAME, CHECKSUM_NAME, IDENTITY_NAME, PROOF_NAME, hash_bounded_stream,
+    pinned_directory, read_verified, verify_bounded_zip_members, verify, verify_bundle,
     site_release_version,
 )
 
@@ -86,6 +87,38 @@ class ReleaseAndroidQaAttachmentTest(unittest.TestCase):
                                         retain=retain)
         with self.assertRaisesRegex(ValueError, "byte budget"):
             hash_bounded_stream(io.BytesIO(payload), 0, retain=True)
+
+    def test_zip_crc_validation_rejects_expansive_archive_before_decompression(self):
+        with pinned_directory(self.folder) as fd:
+            # The normal APK fixture has two bounded ZIP members.
+            read_verified(fd, APK_NAME, self.apk.stat().st_size, verify_zip=True)
+
+        # This is just a few KiB compressed, but contains MiBs of output.
+        # Reject based on ZIP metadata before testzip() decompresses it.
+        with zipfile.ZipFile(self.apk, "w", zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr("AndroidManifest.xml", b"manifest")
+            archive.writestr("classes.dex", b"A" * (2 * 1024 * 1024))
+        self.assertLess(self.apk.stat().st_size, 100000)
+        with pinned_directory(self.folder) as fd:
+            with self.assertRaisesRegex(ValueError, "byte budget"):
+                read_verified(fd, APK_NAME, self.apk.stat().st_size,
+                              verify_zip=True)
+
+    def test_zip_member_count_and_expanded_budget_are_enforced(self):
+        source = io.BytesIO()
+        with zipfile.ZipFile(source, "w", zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr("a", b"A" * 100)
+            archive.writestr("b", b"B" * 100)
+        with zipfile.ZipFile(io.BytesIO(source.getvalue())) as archive:
+            verify_bounded_zip_members(archive, 50)
+            with self.assertRaisesRegex(ValueError, "cumulative byte budget"):
+                verify_bounded_zip_members(archive, 49)
+        source = io.BytesIO()
+        with zipfile.ZipFile(source, "w") as archive:
+            archive.writestr("only", b"x")
+        with zipfile.ZipFile(io.BytesIO(source.getvalue())) as archive:
+            with self.assertRaisesRegex(ValueError, "member count"):
+                verify_bounded_zip_members(archive, 100)
 
     def test_same_sha_native_debug_receipt_does_not_claim_production_release(self):
         result = self.attempt()
