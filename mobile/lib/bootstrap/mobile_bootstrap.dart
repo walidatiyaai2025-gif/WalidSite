@@ -28,7 +28,10 @@ class MobileBootstrapCapabilities {
     bool arabic,
     Uri origin,
   ) {
-    if (body.length > 128 * 1024) {
+    // Enforce the same UTF-8 byte cap as the network reader, including
+    // direct/injected parser callers with multibyte Arabic response data.
+    if (body.length > 128 * 1024 ||
+        utf8.encode(body).length > 128 * 1024) {
       throw const FormatException('Bootstrap response too large');
     }
     final decoded = jsonDecode(body);
