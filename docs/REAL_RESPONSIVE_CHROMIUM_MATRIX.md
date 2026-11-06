@@ -55,6 +55,38 @@ claims. All 13 Flutter screens require a native runtime/device harness, and
 real device breakpoints/contrast/assistive-technology acceptance remain
 pending.
 
+### Actual Android debug APK launch gate (CI, not a device screenshot)
+
+The CI `build-android-qa-apk` job compiles a Debug-signed Android APK at
+the exact checked-in main/PR SHA and verifies its manifest, signature and
+bytes. The separate `android-emulator-install-launch` job now downloads
+**those same artifact bytes**, independently verifies their SHA-256, native
+identity and source-pinned receipt, starts a **hardware-accelerated Android 35
+x86_64 emulator**, then uses `qa.android_device_smoke` to install the APK,
+launch its actual Flutter MainActivity and require a running application
+process. A failure blocks `verify-source-pinned-release-bundle` on main and
+cannot be bypassed by an uploaded synthetic JSON file.
+
+The successful, privacy-redacted receipt is retained under
+`WalidSite-Android-emulator-launch-<commit-sha>`. This certifies a real APK
+install and foreground app-process launch **only on the disposable CI
+emulator**. It does not certify offline/online product journeys, an external
+HTTPS backend, an Android or iOS physical device, native screen screenshots,
+WCAG/device assistive technology, publisher identity, store distribution,
+or strict RGBA parity with the immutable 13 mobile reference PNGs. The
+`verify_release_android_qa.py` artifact-only receipt intentionally still
+reports `device_launch_verified=false` because static APK inspection does
+not run a device. The independent emulator receipt is explicitly checked by
+CI instead of changing this evidence boundary.
+
+Real device navigation and screenshots remain a distinct LEAD #481
+acceptance: render all contracted screens at the original physical
+dimensions and locale on an authorized handset or explicitly labeled
+emulator; separately record exact-SHA screenshots, device serial
+attestation (privately), DPR and zero-tolerance decoded RGBA comparisons.
+Do not mark any visual ledger entry as `matched` from a successful app
+launch alone.
+
 ### Repeat on a trusted local Laravel runtime
 
 After provisioning the actual test database/server and a locally authenticated
