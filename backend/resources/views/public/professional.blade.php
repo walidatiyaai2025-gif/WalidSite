@@ -23,6 +23,12 @@
 ])
 @section('meta_description', $seoDescriptions[$page][$locale])
 
+@push('styles')
+@if($page === 'expertise')
+    @include('public.expertise-mobile-overflow-fix')
+@endif
+@endpush
+
 @section('content')
 {{-- WEB-03 owner-approved four-state design replaces the obsolete single reference stage.
      About / Recruiter keep their pre-existing reference headers unchanged. --}}
