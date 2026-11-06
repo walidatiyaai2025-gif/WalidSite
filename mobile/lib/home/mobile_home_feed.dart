@@ -31,6 +31,21 @@ class MobileHomeProject {
   final String summary;
   final String role;
 
+  /// Build public project links from the verified application origin, never
+  /// from an arbitrary URL carried in the Home response.
+  static Uri? publicDetailUrl(String slug, {Uri? origin, bool arabic = false}) {
+    if (!RegExp(r'^[A-Za-z0-9-]{1,180}$').hasMatch(slug)) return null;
+    final safeOrigin = origin == null
+        ? MobileHomeReader.configuredOrigin()
+        : VerifiedArticleReader.validatedOrigin(origin.toString());
+    if (safeOrigin == null) return null;
+    return safeOrigin.replace(
+      path: '/projects/$slug',
+      queryParameters: {'lang': arabic ? 'ar' : 'en'},
+      fragment: null,
+    );
+  }
+
   static MobileHomeProject fromJson(Object? value) {
     if (value is! Map<String, dynamic>) {
       throw const FormatException('Invalid home project');
@@ -407,6 +422,7 @@ class MobileHomeFeedPanel extends StatefulWidget {
     required this.onOpenRunbooks,
     this.onOpenArticle,
     this.onOpenRunbook,
+    this.onOpenProject,
     this.fetch,
     super.key,
   });
@@ -416,6 +432,7 @@ class MobileHomeFeedPanel extends StatefulWidget {
   final VoidCallback onOpenRunbooks;
   final ValueChanged<String>? onOpenArticle;
   final ValueChanged<String>? onOpenRunbook;
+  final ValueChanged<String>? onOpenProject;
   final MobileHomeFetch? fetch;
 
   @override
@@ -547,7 +564,9 @@ class _MobileHomeFeedPanelState extends State<MobileHomeFeedPanel> {
                       detail: '${project.role} · ${project.summary}',
                       icon: Icons.verified_outlined,
                       palette: const [Color(0xff174a70), Color(0xff307e87)],
-                      onTap: null,
+                      onTap: widget.onOpenProject == null
+                          ? null
+                          : () => widget.onOpenProject!(project.slug),
                     ),
                   ),
                 ],
