@@ -8,7 +8,7 @@ use RuntimeException;
 use Throwable;
 
 /**
- * First physical cPanel code-only release orchestration.
+ * Verified physical cPanel code-only release orchestration, including chained releases.
  *
  * The same HTTP writer descriptor is promoted to EXCLUSIVE and held across
  * private maintenance, independently restored DB/file backup, atomic pointer
@@ -17,7 +17,8 @@ use Throwable;
  *
  * No migrations are run. Changed migration inventory or Composer dependencies
  * are explicitly unsupported by CpanelArchiveCodeOnlyPreflight and the pointer.
- * Chained updates require a separate verified running-root backup contract.
+ * Chained code-only updates use the same verified stable original private data
+ * and independently checked running-release pointer as owner Backup Now.
  */
 final class CpanelOwnerCodeInstallCoordinator
 {
@@ -34,14 +35,32 @@ final class CpanelOwnerCodeInstallCoordinator
         string $homeDirectory,
         string $archiveDirectory,
         string $archiveFile,
+        ?string $runningApplication = null,
     ): array {
         $home = realpath($homeDirectory);
         if ($home === false || $home !== $homeDirectory || is_link($homeDirectory)
             || ! is_dir($home.'/application') || is_link($home.'/application')
-            || ! is_dir($home.'/public_html') || is_link($home.'/public_html')
-            || (new TrustedInstalledVersion())->read($home.'/application/VERSION') !== $installedVersion
-            || @lstat($home.'/.walidsite-active-release.json') !== false) {
-            throw new DomainException('Only a verified original physical cPanel install is supported.');
+            || ! is_dir($home.'/public_html') || is_link($home.'/public_html')) {
+            throw new DomainException('Verified physical cPanel roots are required for code installation.');
+        }
+        // The first-install VERSION remains a permanent trust anchor. Later
+        // verified running releases are selected solely by the stable private
+        // pointer and server-derived Laravel base path, never by a browser
+        // field, .env version override or arbitrary candidate folder.
+        $firstVersion = (new TrustedInstalledVersion())->read($home.'/application/VERSION');
+        $running = $runningApplication ?? $home.'/application';
+        $previousRoot = $running === $home.'/application'
+            ? 'legacy' : substr(dirname($running), strlen($home) + 1);
+        if ($firstVersion === null
+            || (new TrustedInstalledReleasePin())->read(
+                $running, $home.'/public_html', $firstVersion,
+            ) !== $installedVersion
+            || ($previousRoot !== 'legacy'
+                && (preg_match(
+                    '#\\A\\.walidsite-releases/v'.preg_quote($installedVersion, '#').'-[a-f0-9]{40}\\z#D',
+                    $previousRoot,
+                ) !== 1 || $running !== $home.'/'.$previousRoot.'/application'))) {
+            throw new DomainException('Installed running release identity is not verified for code installation.');
         }
         // A trusted host adapter supplies independently checked real-world
         // writer shutdown; the application can only isolate cooperating HTTP
@@ -87,17 +106,25 @@ final class CpanelOwnerCodeInstallCoordinator
             if ($host->externalWritersStopped() !== true) {
                 throw new DomainException('Foreign writers resumed before maintenance.');
             }
+            // Under the held exclusive writer descriptor, re-attest the
+            // actual selected release and immutable first-install trust pin
+            // before any private maintenance marker or recovery snapshot.
+            if ((new TrustedInstalledReleasePin())->read(
+                $running, $home.'/public_html', $firstVersion,
+            ) !== $installedVersion) {
+                throw new DomainException('Running release lineage changed before code maintenance.');
+            }
             // The disposable PDO may be replaced or populated while release
             // metadata and staged files are authenticated. Verify the actual
             // source and recovery schemas again under our exclusive lease,
             // immediately before creating a maintenance marker or backup.
             (new CpanelDisposableMariaDbGuard())->assertIndependentAndEmpty($live, $disposable);
-            $token = $maintenance->begin($home, 'legacy', $installedVersion, 300)['token'];
+            $token = $maintenance->begin($home, $previousRoot, $installedVersion, 300)['token'];
             $quiesced = static function () use (
-                $requestLease, $host, $maintenance, $home, $token,
+                $requestLease, $host, $maintenance, $home, $token, $previousRoot,
             ): bool {
                 $requestLease->assertExclusiveHeld();
-                $maintenance->assertActive($home, $token, 'legacy');
+                $maintenance->assertActive($home, $token, $previousRoot);
                 return $host->externalWritersStopped() === true;
             };
 
@@ -176,8 +203,11 @@ final class CpanelOwnerCodeInstallCoordinator
             try {
                 if ($token !== null && ! $releaseSwitched
                     && @lstat($home.'/.walidsite-active-release.json') === false) {
-                    // No code was switched; remove a still-live lease only
-                    // when we retain its exclusive writer ownership.
+                    // Original-install rollback: the initial private pointer
+                    // remains absent, so no code was switched. For chained
+                    // releases a restored previous pointer is NOT sufficient
+                    // to auto-clear maintenance without separately proving
+                    // its exact immutable identity; keep the recovery barrier.
                     try {
                         $requestLease->assertExclusiveHeld();
                         $maintenance->clear($home, $token);
