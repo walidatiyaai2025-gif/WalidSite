@@ -44,8 +44,14 @@ class AndroidDeviceSmokeTest(unittest.TestCase):
             value = "device\n"
         elif cmd == ["shell", "getprop", "sys.boot_completed"]:
             value = "1\n"
+        elif cmd == ["shell", "pm", "list", "packages", "--user", "0", PACKAGE]:
+            value = "package:" + PACKAGE + "\n" if getattr(self, "installed", False) else ""
         elif cmd == ["shell", "pm", "path", PACKAGE]:
-            value = "package:/data/app/app/base.apk\n" if getattr(self, "installed", False) else ""
+            # On real Android 35, querying a missing package may exit nonzero.
+            # Fresh-install detection must not depend on this failing command.
+            if not getattr(self, "installed", False):
+                return CompletedProcess(argv, 1, "", "Package not found")
+            value = "package:/data/app/app/base.apk\n"
         elif cmd[0] == "install":
             self.assertGreaterEqual(timeout, 90)
             self.assertTrue(cmd[-1].endswith("candidate.apk"))
@@ -73,6 +79,13 @@ class AndroidDeviceSmokeTest(unittest.TestCase):
         self.assertFalse(receipt["distribution_signing_identity_verified"])
         self.assertEqual(receipt["apk_sha256"], self.digest)
         self.assertTrue(any(argv[3] == "install" for argv in self.requests))
+        preinstall = self.requests.index(("adb", "-s", "emulator-5554",
+            "shell", "pm", "list", "packages", "--user", "0", PACKAGE))
+        install = next(i for i, args in enumerate(self.requests) if args[3] == "install")
+        self.assertLess(preinstall, install)
+        self.assertFalse(any(args[3:] == ("shell", "pm", "path", PACKAGE)
+                             for args in self.requests[:install]),
+                         "A clean device must not run pm path on an absent package")
         self.assertEqual(self.requests[-1][3:], ("shell", "pidof", PACKAGE))
 
     def test_refuse_mutation_without_serial_confirmation_or_safe_apk(self):
@@ -128,6 +141,29 @@ class AndroidDeviceSmokeTest(unittest.TestCase):
                     with self.assertRaises(DeviceSmokeError):
                         smoke(self.apk, **self.kwargs)
                 self.assertFalse(any(argv[3] == "install" for argv in self.requests))
+
+    def test_preinstall_inventory_rejects_substring_and_transport_failure(self):
+        for invalid_stdout, returncode in (
+            ("package:" + PACKAGE + ".imposter", 0),
+            ("package:" + PACKAGE + "\npackage:" + PACKAGE, 0),
+            ("", 1),
+        ):
+            self.requests.clear()
+            self.installed = False
+
+            def rejected(argv, *, timeout=15):
+                result = self.adb(argv, timeout=timeout)
+                if argv[3:] == ["shell", "pm", "list", "packages", "--user", "0", PACKAGE]:
+                    result.stdout = invalid_stdout
+                    result.returncode = returncode
+                return result
+
+            with self.subTest(stdout=invalid_stdout, code=returncode):
+                with patch("qa.android_device_smoke.inspect", side_effect=self.inspect), \
+                     patch("qa.android_device_smoke._command", side_effect=rejected):
+                    with self.assertRaises(DeviceSmokeError):
+                        smoke(self.apk, **self.kwargs)
+                self.assertFalse(any(args[3] == "install" for args in self.requests))
 
     def test_existing_app_must_opt_in_to_replace(self):
         self.installed = True
