@@ -80,7 +80,7 @@ def run(package: Path, source_sha: str) -> dict:
         extract_verified_archive(package, home, expected_sha=source_sha)
         if (home / "application/.env").exists() or not (
                 home / "application/vendor/autoload.php").is_file() or (
-                home / "application/storage/app/site-first-run.json").exists()):
+                home / "application/storage/app/site-first-run.json").exists():
             raise AcceptanceError("Disposable Setup ZIP is not a clean install")
 
         cert, key = work / "localhost.crt", work / "localhost.key"
