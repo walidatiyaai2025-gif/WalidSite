@@ -13,6 +13,7 @@ use App\Domain\Deployment\CpanelConsoleWriterLease;
 use App\Domain\Deployment\CpanelOwnerCodeInstallCoordinator;
 use App\Domain\Deployment\CpanelOwnerCodeUpdateHost;
 use App\Domain\Deployment\CpanelReleaseMaintenance;
+use App\Domain\Deployment\TrustedInstalledReleasePin;
 
 if (PHP_SAPI !== 'cli' || getenv('GITHUB_ACTIONS') !== 'true'
     || getenv('CI_RECOVERY_HOST') !== '127.0.0.1'
@@ -312,6 +313,7 @@ try {
                     private string $version, private string $sha,
                 ) {}
                 public function externalWritersStopped(): bool { return true; }
+                public function acceptHealthyRetry(): void { $this->healthy = true; }
                 public function disposableRestoreConnection(): PDO
                 {
                     throw new RuntimeException('Fixture supplies its separate recovery database directly.');
@@ -363,14 +365,66 @@ try {
                 || $afterPointer['version'] !== ($mode === 'ok' ? $nextVersion : $version)
                 || $nextHost->probes !== 1
                 || ($mode === 'chained-health') !== $secondFailed
-                || ($mode === 'chained-health') !== is_file(
-                    $home.'/.walidsite-update-maintenance.json')
+                || is_file($home.'/.walidsite-update-maintenance.json')
                 || file_get_contents($app.'/.env') !== "APP_KEY=base64:DISPOSABLE_CI_ONLY\n"
                 || file_get_contents($app.'/storage/app/owner.txt') !== 'KEEP_OWNER'
                 || file_get_contents($public.'/uploads/avatar.png') !== 'KEEP_UPLOAD'
                 || $live->query('SELECT note FROM owner_records WHERE id=1')->fetchColumn() !== 'PRESERVE_ROW'
                 || (int) $secondRestore->query('SELECT COUNT(*) FROM owner_records')->fetchColumn() !== 2) {
                 throw new RuntimeException('Second signed update corrupted previous release or private owner data.');
+            }
+
+            if ($mode === 'chained-health') {
+                // Failed health cannot be a successful update. Restore the
+                // immutable prior code and independently verify it is live-
+                // eligible without any lingering maintenance barrier. This
+                // disposable check is NOT a real HTTPS Admin login.
+                if (is_file($home.'/.walidsite-update-maintenance.json')
+                    || (new TrustedInstalledReleasePin())->read(
+                        $running, $public, $old,
+                    ) !== $version) {
+                    throw new RuntimeException(
+                        'Verified chained rollback did not resume the previous release.'
+                    );
+                }
+
+                // Retry the same CI-only signed candidate from the prior
+                // healthy release, with a fresh empty independent MariaDB
+                // recovery database and a newly acquired exclusive lease.
+                // A stale candidate or maintenance marker must not strand
+                // the owner after a safe rollback.
+                $retrySchema = 'ci_release_retry_'.$id;
+                $root->exec('CREATE DATABASE '.chr(96).$retrySchema.chr(96).' CHARACTER SET utf8mb4');
+                $schemas[] = $retrySchema;
+                $retryRestore = codeDb($retrySchema, $pass);
+                $nextHost->acceptHealthyRetry();
+                $retryLease = new CpanelConsoleWriterLease();
+                $retryLease->beginForConsole($running);
+                try {
+                    $retryResult = (new CpanelOwnerCodeInstallCoordinator())->install(
+                        $nextHost, $retryLease, $live, $retryRestore,
+                        $nextEnvelope, $key, 'https://updates.walidatiya.com',
+                        $version, $home, $inbox, $nextArchive, $running,
+                    );
+                } finally {
+                    $retryLease->end();
+                }
+                if ($retryResult['state'] !== 'installed_verified'
+                    || $retryResult['version'] !== $nextVersion
+                    || $retryResult['from'] !== $version
+                    || $retryResult['source_sha'] !== $nextSha
+                    || !isset($retryResult['backup_id'])
+                    || $nextHost->probes !== 2
+                    || is_file($home.'/.walidsite-update-maintenance.json')
+                    || $live->query('SELECT note FROM owner_records WHERE id=1')->fetchColumn() !== 'PRESERVE_ROW'
+                    || (int) $retryRestore->query('SELECT COUNT(*) FROM owner_records')->fetchColumn() !== 2
+                    || file_get_contents($app.'/.env') !== "APP_KEY=base64:DISPOSABLE_CI_ONLY\n"
+                    || file_get_contents($app.'/storage/app/owner.txt') !== 'KEEP_OWNER'
+                    || file_get_contents($public.'/uploads/avatar.png') !== 'KEEP_UPLOAD') {
+                    throw new RuntimeException(
+                        'Chained rollback retry did not preserve identity, code or owner data.'
+                    );
+                }
             }
         }
     }
@@ -386,6 +440,8 @@ try {
         'late_populated_restore_blocked' => true,
         'chained_code_only_fixture_tested' => true,
         'chained_health_failure_previous_pointer_restored' => true,
+        'chained_health_recovery_cleared_maintenance' => true,
+        'chained_health_recovery_retry_succeeded' => true,
         'chained_fixture_source_sha_not_git_attested' => true,
         'real_https_host_verified' => false,
         'independent_foreign_writer_isolation' => false,
