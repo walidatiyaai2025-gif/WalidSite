@@ -2,7 +2,13 @@
 
 namespace Tests\Feature\Api;
 
+use App\Models\AiProvider;
+use App\Models\Role;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Routing\Middleware\ThrottleRequests;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Str;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
@@ -104,12 +110,15 @@ final class OpenApiAnonymousHttpAuthorizationMatrixTest extends TestCase
         return $operations;
     }
 
-    private function uri(string $contractPath): string
+    private function uri(string $contractPath, ?string $providerId = null): string
     {
-        // Use route-valid, nonexistent IDs: 401 must precede entity selection.
+        // All protected model-bound provider URLs use a real fixture so an
+        // authorization result can never be masked by a missing model 404.
+        $id = $providerId !== null && str_contains($contractPath, '/admin/ai/')
+            ? $providerId : '00000000-0000-4000-8000-000000000001';
         $path = str_replace(
             ['{id}', '{slug}'],
-            ['00000000-0000-4000-8000-000000000001', 'missing-public-record'],
+            [$id, 'missing-public-record'],
             $contractPath
         );
         $this->assertStringNotContainsString('{', $path,
@@ -171,6 +180,149 @@ final class OpenApiAnonymousHttpAuthorizationMatrixTest extends TestCase
         }
         $this->assertGreaterThan(14, $publicReads,
             'The public read-only HTTP matrix must not silently shrink');
+        Http::assertNothingSent();
+    }
+
+    /**
+     * Create a real Sanctum personal access token; first-party web session
+     * TransientToken is intentionally never used for API authorization.
+     */
+    private function bearer(string $role, string $ability): array
+    {
+        $user = User::create([
+            'email' => Str::lower(Str::random(20)).'@example.test',
+            'status' => 'active',
+            'password_hash' => null,
+        ]);
+        $user->roles()->attach(Role::firstOrCreate(['name' => $role])->id);
+        $token = $user->createToken(
+            'openapi-role-scope-regression', [$ability], now()->addHour()
+        );
+
+        return [$user, $token->plainTextToken];
+    }
+
+    private function checkedProvider(): AiProvider
+    {
+        return AiProvider::create([
+            'display_name' => 'Local-only scope fixture',
+            'provider_type' => 'openai-compatible',
+            'base_url' => 'https://api.example.test/v1',
+            'secret_ciphertext' => 'SYNTHETIC_ENCRYPTED_PLACEHOLDER_NOT_LIVE',
+            'enabled' => false,
+            'health_status' => 'unverified',
+            'concurrent_limit' => 1,
+            'timeout_seconds' => 5,
+            'daily_budget_minor' => 100,
+            'currency' => 'USD',
+            'routing_priority' => 10,
+        ]);
+    }
+
+    public function test_every_contract_admin_method_rejects_reader_and_mobile_only_owner_bearers(): void
+    {
+        // The role matrix intentionally traverses 44 requests in one test.
+        // Laravel rate limiting has its own dedicated security tests and can
+        // legitimately return 429 after the quota. Disable ONLY the throttle
+        // middleware here, keeping auth:sanctum and all controller RBAC live.
+        $this->withoutMiddleware(ThrottleRequests::class);
+        $provider = $this->checkedProvider();
+        [, $readerAdminBearer] = $this->bearer('reader', 'admin');
+        [, $ownerMobileBearer] = $this->bearer('owner', 'mobile');
+        $before = [
+            'tokens' => DB::table('personal_access_tokens')->count(),
+            'jobs' => DB::table('ai_jobs')->count(),
+            'providers' => DB::table('ai_providers')->count(),
+            'articles' => DB::table('articles')->count(),
+            'audit' => DB::table('project_audit_events')->count(),
+        ];
+
+        $operations = array_values(array_filter(
+            $this->operations(), static fn (array $op): bool => $op['role'] === 'admin'
+        ));
+        $this->assertCount(22, $operations);
+        foreach ([
+            'reader-with-admin-bearer' => $readerAdminBearer,
+            'owner-with-mobile-only-bearer' => $ownerMobileBearer,
+        ] as $scenario => $token) {
+            foreach ($operations as $op) {
+                Auth::forgetGuards();
+                $this->withToken($token)->json(
+                    $op['method'], $this->uri($op['path'], $provider->id), []
+                )->assertForbidden()->assertHeader('Content-Type', 'application/json');
+            }
+        }
+
+        $this->assertSame($before, [
+            'tokens' => DB::table('personal_access_tokens')->count(),
+            'jobs' => DB::table('ai_jobs')->count(),
+            'providers' => DB::table('ai_providers')->count(),
+            'articles' => DB::table('articles')->count(),
+            'audit' => DB::table('project_audit_events')->count(),
+        ], 'Denied admin requests must never mutate persistent records');
+        Http::assertNothingSent();
+    }
+
+    public function test_genuine_owner_admin_bearer_can_read_every_contract_admin_get(): void
+    {
+        $provider = $this->checkedProvider();
+        [, $ownerAdminBearer] = $this->bearer('owner', 'admin');
+        $reads = array_values(array_filter($this->operations(),
+            static fn (array $op): bool =>
+                $op['role'] === 'admin' && $op['method'] === 'GET'
+        ));
+        $this->assertCount(13, $reads);
+        foreach ($reads as $op) {
+            Auth::forgetGuards();
+            $this->withToken($ownerAdminBearer)->getJson(
+                $this->uri($op['path'], $provider->id)
+            )->assertOk()->assertHeader('Content-Type', 'application/json');
+        }
+        $this->assertDatabaseCount('ai_jobs', 0);
+        $this->assertDatabaseCount('ai_providers', 1);
+        Http::assertNothingSent();
+    }
+
+    public function test_admin_only_bearer_is_denied_all_four_private_mobile_contract_operations(): void
+    {
+        [, $ownerAdminBearer] = $this->bearer('owner', 'admin');
+        $operations = array_values(array_filter(
+            $this->operations(),
+            static fn (array $op): bool => $op['role'] === 'authenticated'
+        ));
+        $this->assertCount(4, $operations);
+        foreach ($operations as $op) {
+            Auth::forgetGuards();
+            $this->withToken($ownerAdminBearer)->json(
+                $op['method'], $this->uri($op['path']), []
+            )->assertForbidden()->assertHeader('Content-Type', 'application/json');
+        }
+        $this->assertDatabaseCount('ai_jobs', 0);
+        $this->assertDatabaseCount('ai_diagnosis_requests', 0);
+        $this->assertDatabaseCount('mobile_interview_sessions', 0);
+        Http::assertNothingSent();
+    }
+
+    public function test_legitimate_mobile_bearer_preserves_private_read_and_validation_boundaries(): void
+    {
+        [$user, $ownerMobileBearer] = $this->bearer('owner', 'mobile');
+        foreach (['/mobile/me', '/mobile/saved'] as $path) {
+            Auth::forgetGuards();
+            $response = $this->withToken($ownerMobileBearer)
+                ->getJson($this->uri($path))->assertOk();
+            if ($path === '/mobile/me') {
+                $response->assertJsonPath('data.id', $user->id);
+            }
+        }
+        foreach (['/mobile/ai/diagnose', '/mobile/interview'] as $path) {
+            Auth::forgetGuards();
+            $this->withToken($ownerMobileBearer)->postJson(
+                $this->uri($path), []
+            )->assertUnprocessable()->assertHeader('Content-Type', 'application/json');
+        }
+        $this->assertDatabaseCount('ai_jobs', 0);
+        $this->assertDatabaseCount('ai_diagnosis_requests', 0);
+        $this->assertDatabaseCount('mobile_interview_sessions', 0);
         Http::assertNothingSent();
     }
 
