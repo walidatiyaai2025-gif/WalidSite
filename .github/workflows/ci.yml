@@ -565,7 +565,8 @@ jobs:
         github.head_ref == 'fix/26-revalidate-recovery-database-under-lease' ||
         github.head_ref == 'fix/26-apache-https-setup-ci-gate' ||
         github.head_ref == 'fix/26-foodex15-zip-mariadb-acceptance' ||
-        github.head_ref == 'feat/732-cpanel-immutable-code-pointer') &&
+        github.head_ref == 'feat/732-cpanel-immutable-code-pointer' ||
+        github.head_ref == 'fix/732-verified-chained-rollback-resume') &&
        github.event.pull_request.head.repo.full_name == github.repository)
     needs: required-ci-gate
     runs-on: ubuntu-latest
@@ -736,6 +737,8 @@ jobs:
           assert proof["late_populated_restore_blocked"] is True
           assert proof["chained_code_only_fixture_tested"] is True
           assert proof["chained_health_failure_previous_pointer_restored"] is True
+          assert proof["chained_health_recovery_cleared_maintenance"] is True
+          assert proof["chained_health_recovery_retry_succeeded"] is True
           assert proof["chained_fixture_source_sha_not_git_attested"] is True
           assert proof["real_https_host_verified"] is False
           assert proof["independent_foreign_writer_isolation"] is False
