@@ -63,7 +63,9 @@ void main() {
     expect(bar().destinations.length, 5);
     expect(bar().selectedIndex, 0);
     expect(find.byKey(const Key('mobile-home-scroll-feed')), findsOneWidget);
-    expect(find.text('Learn'), findsOneWidget);
+    expect(tester.widget<NavigationDestination>(
+      find.byKey(const Key('mobile-home-nav-learn')),
+    ).label, 'Learn');
 
     // Primary destinations update their own selected state in place, rather
     // than pushing a full-screen route that hides the five-tab bar.
