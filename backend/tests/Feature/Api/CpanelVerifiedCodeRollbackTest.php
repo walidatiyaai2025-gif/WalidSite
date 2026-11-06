@@ -1,13 +1,13 @@
 <?php
 
-namespace Tests\\Feature\\Api;
+namespace Tests\Feature\Api;
 
-use App\\Domain\\Deployment\\CpanelImmutableCodePointer;
-use App\\Domain\\Deployment\\CpanelReleaseMaintenance;
-use App\\Domain\\Deployment\\CpanelVerifiedCodeRollback;
+use App\Domain\Deployment\CpanelImmutableCodePointer;
+use App\Domain\Deployment\CpanelReleaseMaintenance;
+use App\Domain\Deployment\CpanelVerifiedCodeRollback;
 use DomainException;
 use FilesystemIterator;
-use PHPUnit\\Framework\\TestCase;
+use PHPUnit\Framework\TestCase;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
 
@@ -44,15 +44,15 @@ final class CpanelVerifiedCodeRollbackTest extends TestCase
             self::assertTrue(mkdir($directory, 0700, true));
         }
 
-        file_put_contents($this->home.'/application/VERSION', "0.1.0\\n");
+        file_put_contents($this->home.'/application/VERSION', "0.1.0\n");
         file_put_contents($this->home.'/application/.env', 'KEEP_APP_KEY');
         file_put_contents($this->home.'/application/storage/app/owner.txt', 'KEEP_PRIVATE');
         copy($this->front, $this->home.'/public_html/index.php');
         file_put_contents($this->home.'/public_html/.htaccess', 'RewriteEngine On');
 
         foreach ([
-            $this->previousApplication.'/VERSION' => "0.1.1\\n",
-            $this->candidate.'/application/VERSION' => "0.1.2\\n",
+            $this->previousApplication.'/VERSION' => "0.1.1\n",
+            $this->candidate.'/application/VERSION' => "0.1.2\n",
         ] as $path => $bytes) {
             file_put_contents($path, $bytes);
         }
@@ -139,13 +139,13 @@ final class CpanelVerifiedCodeRollbackTest extends TestCase
         self::assertFileDoesNotExist($this->home.'/.walidsite-update-maintenance.json');
         self::assertSame('KEEP_APP_KEY', file_get_contents($this->home.'/application/.env'));
         self::assertSame('KEEP_PRIVATE', file_get_contents($this->home.'/application/storage/app/owner.txt'));
-        self::assertSame("0.1.1\\n", file_get_contents($this->previousApplication.'/VERSION'));
+        self::assertSame("0.1.1\n", file_get_contents($this->previousApplication.'/VERSION'));
     }
 
     public function test_mutated_previous_release_keeps_maintenance_barrier_closed(): void
     {
         $proof = $this->rejectCandidateHealth();
-        file_put_contents($this->previousApplication.'/VERSION', "0.1.9\\n");
+        file_put_contents($this->previousApplication.'/VERSION', "0.1.9\n");
 
         try {
             (new CpanelImmutableCodePointer())->assertVerifiedRollback(
