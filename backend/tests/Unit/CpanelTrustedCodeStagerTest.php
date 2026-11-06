@@ -148,6 +148,7 @@ final class CpanelTrustedCodeStagerTest extends TestCase
         self::assertSame('0.1.3', trim((string) file_get_contents($target.'/application/VERSION')));
         self::assertSame($this->composerLock, file_get_contents($target.'/application/composer.lock'));
         self::assertSame(0700, fileperms($this->home.'/.walidsite-releases') & 0777);
+        self::assertSame(0600, fileperms($this->home.'/.walidsite-releases/.walidsite-stage.lock') & 0777);
         $this->assertLiveUntouched();
 
         // A second attempt cannot overwrite or reinstall the immutable code.
@@ -178,6 +179,27 @@ final class CpanelTrustedCodeStagerTest extends TestCase
         } finally {
             flock($lease, LOCK_UN);
             fclose($lease);
+        }
+    }
+
+    public function test_preexisting_group_readable_stage_lock_is_rejected_without_chmod_or_code_change(): void
+    {
+        [$file, $envelope] = $this->signedZip();
+        $root = $this->home.'/.walidsite-releases';
+        self::assertTrue(mkdir($root, 0700));
+        $lock = $root.'/.walidsite-stage.lock';
+        file_put_contents($lock, 'EXISTING_LEASE');
+        self::assertTrue(chmod($lock, 0640));
+
+        try {
+            $this->stage($file, $envelope);
+            self::fail('A group-readable preexisting lease must not authorize staging.');
+        } catch (DomainException $error) {
+            self::assertStringContainsString('lease identity or permissions', $error->getMessage());
+            self::assertSame(0640, fileperms($lock) & 0777);
+            self::assertSame('EXISTING_LEASE', file_get_contents($lock));
+            self::assertDirectoryDoesNotExist($root.'/v0.1.3-'.$this->sourceSha);
+            $this->assertLiveUntouched();
         }
     }
 

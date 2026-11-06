@@ -92,9 +92,25 @@ final class CpanelTrustedCodeStager
         if (is_link($lockPath) || (file_exists($lockPath) && ! is_file($lockPath))) {
             throw new DomainException('Private stage lock is unsafe.');
         }
-        $lock = @fopen($lockPath, 'c+');
+        // Newly created leases must be private even under a permissive
+        // process umask. Never chmod an existing lease: insecure preexisting
+        // files are rejected rather than silently rehabilitated.
+        $created = false;
+        if (! file_exists($lockPath) && ! is_link($lockPath)) {
+            $lock = @fopen($lockPath, 'x+');
+            $created = $lock !== false;
+        } else {
+            $lock = false;
+        }
+        if ($lock === false) {
+            $lock = @fopen($lockPath, 'c+');
+        }
         if ($lock === false) {
             throw new DomainException('Cannot acquire private code staging lock.');
+        }
+        if ($created && ! @chmod($lockPath, 0600)) {
+            fclose($lock);
+            throw new DomainException('Cannot secure newly created private staging lease.');
         }
         try {
             $guard = static function () use ($lock, $lockPath, $releaseRoot, $rootStat): void {
@@ -111,8 +127,8 @@ final class CpanelTrustedCodeStager
                     || $actualRoot['mode'] !== $rootStat['mode']
                     || ($opened['mode'] & 0170000) !== 0100000
                     || ($named['mode'] & 0170000) !== 0100000
-                    || ($opened['mode'] & 0022) !== 0
-                    || ($named['mode'] & 0022) !== 0
+                    || ($opened['mode'] & 0777) !== 0600
+                    || ($named['mode'] & 0777) !== 0600
                     || $opened['dev'] !== $named['dev']
                     || $opened['ino'] !== $named['ino']
                     || $opened['nlink'] !== 1 || $named['nlink'] !== 1) {
