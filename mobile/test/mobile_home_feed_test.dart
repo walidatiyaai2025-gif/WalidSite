@@ -73,6 +73,45 @@ void main() {
     expect(arabic.runbooks, isEmpty);
   });
 
+  test('MOBILE-02 rejects title controls and bidi identity spoofing', () {
+    final normalProject = {
+      'slug': 'verified-project',
+      'title': 'مشروع موثق',
+      'summary': 'Evidence-backed project summary',
+      'role': 'Engineering',
+      'evidence_urls': ['https://docs.example.org/project'],
+      'url': 'https://portfolio.example.org/projects/verified-project',
+    };
+    final normalArticle = {
+      'slug': 'reviewed-article',
+      'title': 'مقال موثق',
+      'url': 'https://portfolio.example.org/blog/reviewed-article',
+      'published_at': '2026-11-02T10:00:00Z',
+    };
+    for (final malicious in [
+      'Approved\nFake',
+      'Approved\rFake',
+      'Approved\u007fFake',
+      'Approved\u202eFake',
+      'Approved\u2066Fake\u2069',
+    ]) {
+      final project = {...normalProject, 'title': malicious};
+      final article = {...normalArticle, 'title': malicious};
+      expect(() => MobileHomeProject.fromJson(project), throwsFormatException,
+          reason: malicious);
+      expect(() => MobileHomeArticle.fromJson(article), throwsFormatException,
+          reason: malicious);
+      expect(() => MobileHomeFeed.parse(
+          feed(projects: [project], articles: []), false),
+          throwsFormatException);
+      expect(() => MobileHomeFeed.parse(
+          feed(projects: [], articles: [article]), false),
+          throwsFormatException);
+    }
+    expect(MobileHomeProject.fromJson(normalProject).title, 'مشروع موثق');
+    expect(MobileHomeArticle.fromJson(normalArticle).title, 'مقال موثق');
+  });
+
   test('MOBILE-02 Home feed caps actual UTF-8 bytes before JSON parsing', () {
     const limit = 1024 * 1024;
     final baseline = feed();
