@@ -3,6 +3,7 @@
 namespace Tests\Feature\Api;
 
 use App\Models\GithubAllowlistProposal;
+use App\Models\GithubAllowlistProposalEvent;
 use App\Models\Role;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -60,6 +61,9 @@ final class AdminGithubProposalReviewTest extends TestCase
         $this->assertNull($proposal->reviewed_at);
         $this->assertNull($proposal->verified_at);
         $this->assertSame(1, GithubAllowlistProposal::count());
+        $this->assertSame(1, GithubAllowlistProposalEvent::query()->where(
+            'proposal_id', $proposal->id
+        )->where('action', 'submitted')->count());
         $this->assertStringNotContainsString($admin->email, $created->getContent());
 
         $this->getJson($url)->assertOk()
@@ -115,6 +119,10 @@ final class AdminGithubProposalReviewTest extends TestCase
         $this->assertSame($admin->id, $fresh->submitted_by_user_id);
         $this->assertNotNull($fresh->verified_at);
         $this->assertNotNull($fresh->reviewed_at);
+        $this->assertSame('source_verified', $fresh->decision_reason);
+        $this->assertSame(['submitted', 'approved'],
+            GithubAllowlistProposalEvent::query()
+                ->where('proposal_id', $id)->orderBy('id')->pluck('action')->all());
         Http::assertSentCount(1);
         Http::assertSent(fn ($request) => $request->method() === 'GET'
             && $request->url() === 'https://api.github.com/repos/trusted/repo'
@@ -139,6 +147,10 @@ final class AdminGithubProposalReviewTest extends TestCase
             ->assertJsonPath('data.status', 'rejected')
             ->assertJsonPath('data.verified_at', null);
         $this->assertNotNull(GithubAllowlistProposal::findOrFail($id)->reviewed_at);
+        $this->assertSame(['submitted', 'rejected'],
+            GithubAllowlistProposalEvent::query()->where(
+                'proposal_id', $id
+            )->orderBy('id')->pluck('action')->all());
         $this->postJson($path, ['decision' => 'approve'])->assertStatus(409);
         Http::assertNothingSent();
         $this->assertSame($owner->id,
@@ -166,12 +178,40 @@ final class AdminGithubProposalReviewTest extends TestCase
             $this->withToken($ownerToken)->postJson(
                 '/api/v1/admin/github/proposals/'.$id.'/decision',
                 ['decision' => 'approve'],
-            )->assertStatus(409);
+            )->assertStatus(in_array($status, [403, 429, 503], true) ? 503 : 409);
             $proposal = GithubAllowlistProposal::findOrFail($id);
             $this->assertSame('pending', $proposal->status);
             $this->assertNull($proposal->verified_at);
             $this->assertNull($proposal->reviewed_by_user_id);
+            $this->assertSame(1, GithubAllowlistProposalEvent::query()
+                ->where('proposal_id', $id)->count());
         }
+    }
+
+    public function test_reason_is_audit_safe_and_cannot_contain_secrets(): void
+    {
+        [, $adminToken] = $this->identity('admin');
+        [, $ownerToken] = $this->identity('owner');
+        Http::fake();
+        $id = $this->withToken($adminToken)->postJson(
+            '/api/v1/admin/github/proposals',
+            ['repository_slug' => 'safe/project'],
+        )->assertCreated()->json('data.id');
+        $path = '/api/v1/admin/github/proposals/'.$id.'/decision';
+        $this->withToken($ownerToken)->postJson($path, [
+            'decision' => 'reject', 'reason' => 'api_key=SECRET',
+        ])->assertUnprocessable();
+        $this->postJson($path, [
+            'decision' => 'reject', 'reason' => 'out_of_scope',
+        ])->assertOk()->assertJsonPath('data.decision_reason', 'out_of_scope');
+        $events = GithubAllowlistProposalEvent::query()
+            ->where('proposal_id', $id)->orderBy('id')->get();
+        $this->assertSame(['submitted', 'rejected'], $events->pluck('action')->all());
+        $this->assertSame('out_of_scope', $events->last()->reason);
+        $this->assertSame(2, $events->count());
+        $this->assertStringNotContainsString('SECRET',
+            (string) $events->last()->reason);
+        Http::assertNothingSent();
     }
 
     public function test_revoked_owner_role_prevents_decision(): void
