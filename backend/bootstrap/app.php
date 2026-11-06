@@ -26,6 +26,10 @@ return Application::configure(basePath: dirname(__DIR__))
         // This separate PII gate must also run before web sessions/CSRF.
         $middleware->prepend(\App\Http\Middleware\RequireSecureContactTransport::class);
         $middleware->prepend(\App\Http\Middleware\RequireSecureAdminTransport::class);
+        // Outermost dynamic-request lock. The same private flock is held by
+        // Laravel CLI and queue/scheduler workers, so a future trusted
+        // exclusive owner update cannot race in-flight web writers.
+        $middleware->prepend(\App\Http\Middleware\CpanelHttpWriterBarrier::class);
         // Session and CSRF use Laravel's standard 'web' middleware group.
         $middleware->web(append: [\App\Http\Middleware\RequireInstallation::class]);
     })
