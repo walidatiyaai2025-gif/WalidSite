@@ -1,6 +1,6 @@
 <?php
 
-namespace App\\Domain\\Deployment;
+namespace App\Domain\Deployment;
 
 use RuntimeException;
 
