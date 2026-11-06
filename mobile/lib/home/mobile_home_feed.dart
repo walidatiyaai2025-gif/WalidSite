@@ -33,7 +33,6 @@ class MobileHomeProject {
 
   /// Build public project links from the verified application origin, never
   /// from an arbitrary URL carried in the Home response.
-  @visibleForTesting
   static Uri? publicDetailUrl(String slug, {Uri? origin, bool arabic = false}) {
     if (!RegExp(r'^[A-Za-z0-9-]{1,180}$').hasMatch(slug)) return null;
     final safeOrigin = origin == null
