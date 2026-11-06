@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\GithubAllowlistProposal;
+use App\Models\GithubAllowlistProposalEvent;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -11,7 +12,6 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Validation\ValidationException;
 use Laravel\Sanctum\PersonalAccessToken;
-use Throwable;
 
 final class AdminGithubProposalController extends Controller
 {
@@ -50,6 +50,7 @@ final class AdminGithubProposalController extends Controller
             'submitted_at' => $proposal->created_at?->toIso8601String(),
             'reviewed_at' => $proposal->reviewed_at?->toIso8601String(),
             'verified_at' => $proposal->verified_at?->toIso8601String(),
+            'decision_reason' => $proposal->decision_reason,
         ];
     }
 
@@ -94,11 +95,18 @@ final class AdminGithubProposalController extends Controller
             $actor = $this->actor($request, lock: true);
             abort_if(GithubAllowlistProposal::query()->where('repository_slug', $slug)->exists(),
                 409, 'Repository already proposed.');
-            return GithubAllowlistProposal::create([
+            $item = GithubAllowlistProposal::create([
                 'repository_slug' => $slug,
                 'submitted_by_user_id' => $actor->id,
                 'status' => 'pending',
             ]);
+            GithubAllowlistProposalEvent::create([
+                'proposal_id' => $item->id,
+                'actor_user_id' => $actor->id,
+                'action' => 'submitted',
+                'created_at' => now('UTC'),
+            ]);
+            return $item;
         }, 3);
 
         return response()->json(['data' => $this->output($proposal)], 201)
@@ -107,62 +115,93 @@ final class AdminGithubProposalController extends Controller
 
     public function decide(Request $request, string $id): JsonResponse
     {
-        $this->actor($request, owner: true);
-        $this->onlyFields($request, ['decision']);
-        $input = $request->validate(['decision' => ['required', 'in:approve,reject']]);
+        $owner = $this->actor($request, owner: true);
+        $this->onlyFields($request, ['decision', 'reason']);
+        $input = $request->validate([
+            'decision' => ['required', 'in:approve,reject'],
+            // Stable, auditable codes; no free-text credentials or private URLs.
+            'reason' => ['sometimes', 'in:source_verified,not_public,owner_policy,out_of_scope'],
+        ]);
 
-        $proposal = DB::transaction(function () use ($request, $id, $input) {
+        $initial = GithubAllowlistProposal::query()->findOrFail($id);
+        abort_unless($initial->status === 'pending', 409);
+        abort_if($initial->submitted_by_user_id === $owner->id, 403,
+            'Independent owner review required.');
+
+        // External network activity occurs BEFORE acquiring DB row locks.
+        // This is always a freshly verified public record, never an old cache.
+        if ($input['decision'] === 'approve') {
+            $this->verifyPublicRepository($initial->repository_slug);
+        }
+
+        $proposal = DB::transaction(function () use ($request, $id, $input, $initial) {
             $owner = $this->actor($request, owner: true, lock: true);
-            $proposal = GithubAllowlistProposal::query()->whereKey($id)
+            $locked = GithubAllowlistProposal::query()->whereKey($id)
                 ->lockForUpdate()->firstOrFail();
-            abort_unless($proposal->status === 'pending', 409);
-            abort_if($proposal->submitted_by_user_id === $owner->id, 403,
+            abort_unless($locked->status === 'pending'
+                && $locked->repository_slug === $initial->repository_slug, 409);
+            abort_if($locked->submitted_by_user_id === $owner->id, 403,
                 'Independent owner review required.');
 
-            if ($input['decision'] === 'approve') {
-                // Construct the only permitted outbound destination from a
-                // validated canonical slug. No token, custom URL or redirect.
-                try {
-                    $reply = Http::acceptJson()->withHeaders([
-                        'User-Agent' => 'WalidSite-Github-Allowlist-Review',
-                        'X-GitHub-Api-Version' => '2022-11-28',
-                    ])->connectTimeout(3)->timeout(5)
-                        ->withOptions(['allow_redirects' => false])
-                        ->get('https://api.github.com/repos/'.$proposal->repository_slug);
-                    if (! $reply->ok()
-                        || $reply->json('private') !== false
-                        || $reply->json('visibility') !== 'public'
-                        || ! is_string($reply->json('full_name'))
-                        || strcasecmp($reply->json('full_name'), $proposal->repository_slug) !== 0
-                        || $reply->json('archived') === true) {
-                        abort(409, 'Public repository verification failed.');
-                    }
-                    $url = $reply->json('html_url');
-                    $parts = is_string($url) ? parse_url($url) : false;
-                    if (! is_array($parts)
-                        || strtolower($parts['scheme'] ?? '') !== 'https'
-                        || strtolower($parts['host'] ?? '') !== 'github.com'
-                        || strtolower(trim($parts['path'] ?? '', '/')) !== $proposal->repository_slug
-                        || isset($parts['user']) || isset($parts['pass'])
-                        || isset($parts['port']) || isset($parts['query'])
-                        || isset($parts['fragment'])) {
-                        abort(409, 'Public repository verification failed.');
-                    }
-                } catch (\Illuminate\Http\Client\ConnectionException) {
-                    abort(409, 'Public repository verification unavailable.');
-                }
-                $proposal->verified_at = now('UTC');
-                $proposal->status = 'approved';
-            } else {
-                $proposal->status = 'rejected';
-            }
-            $proposal->reviewed_by_user_id = $owner->id;
-            $proposal->reviewed_at = now('UTC');
-            $proposal->save();
-            return $proposal;
+            $locked->status = $input['decision'] === 'approve' ? 'approved' : 'rejected';
+            $locked->verified_at = $input['decision'] === 'approve' ? now('UTC') : null;
+            $locked->reviewed_by_user_id = $owner->id;
+            $locked->reviewed_at = now('UTC');
+            $locked->decision_reason = $input['reason'] ?? (
+                $input['decision'] === 'approve' ? 'source_verified' : 'owner_policy'
+            );
+            $locked->save();
+            GithubAllowlistProposalEvent::create([
+                'proposal_id' => $locked->id,
+                'actor_user_id' => $owner->id,
+                'action' => $locked->status,
+                'reason' => $locked->decision_reason,
+                'created_at' => now('UTC'),
+            ]);
+            return $locked;
         }, 3);
 
         return response()->json(['data' => $this->output($proposal)])
             ->header('Cache-Control', 'no-store, private');
+    }
+
+    private function verifyPublicRepository(string $slug): void
+    {
+        // Repository path derives ONLY from our server-validated canonical
+        // owner/repo identifier. Never accept arbitrary URLs or OAuth tokens.
+        try {
+            $reply = Http::acceptJson()->withHeaders([
+                'User-Agent' => 'WalidSite-Github-Allowlist-Review',
+                'X-GitHub-Api-Version' => '2022-11-28',
+            ])->connectTimeout(3)->timeout(5)
+                ->withOptions(['allow_redirects' => false])
+                ->get('https://api.github.com/repos/'.$slug);
+        } catch (\Illuminate\Http\Client\ConnectionException) {
+            abort(503, 'Public repository verification unavailable.');
+        }
+        if ($reply->status() === 404) {
+            abort(409, 'Public repository verification failed.');
+        }
+        if ($reply->status() === 403 || $reply->status() === 429
+            || ! $reply->ok()) {
+            abort(503, 'Public repository verification unavailable.');
+        }
+        if ($reply->json('private') !== false
+            || $reply->json('visibility') !== 'public'
+            || ! is_string($reply->json('full_name'))
+            || strcasecmp($reply->json('full_name'), $slug) !== 0) {
+            abort(409, 'Public repository verification failed.');
+        }
+        $url = $reply->json('html_url');
+        $parts = is_string($url) ? parse_url($url) : false;
+        if (! is_array($parts)
+            || strtolower($parts['scheme'] ?? '') !== 'https'
+            || strtolower($parts['host'] ?? '') !== 'github.com'
+            || strtolower(trim($parts['path'] ?? '', '/')) !== $slug
+            || isset($parts['user']) || isset($parts['pass'])
+            || isset($parts['port']) || isset($parts['query'])
+            || isset($parts['fragment'])) {
+            abort(409, 'Public repository verification failed.');
+        }
     }
 }
