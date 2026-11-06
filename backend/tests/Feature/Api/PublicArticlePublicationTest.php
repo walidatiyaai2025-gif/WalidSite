@@ -184,6 +184,52 @@ class PublicArticlePublicationTest extends TestCase
             ->assertJsonPath('data.0.slug', 'many-reviewed-categories');
     }
 
+    public function test_unsafe_legacy_category_labels_do_not_break_verified_mobile_feed(): void
+    {
+        $article = $this->article('safe-article-with-unsafe-legacy-taxonomy');
+        $this->revision($article);
+        $article->publishVerified();
+
+        $safe = Category::create([
+            'slug' => 'verified-safe',
+            'name_en' => 'Public guidance',
+            'name_ar' => 'إرشادات عامة',
+        ]);
+        $article->categories()->attach($safe);
+
+        foreach ([
+            ['slug' => 'label-with-newline', 'name_en' => "Ops\\nPrivate",
+                'name_ar' => 'اسم عام'],
+            ['slug' => 'label-with-bidi', 'name_en' => "Ops\\u{202E}hidden",
+                'name_ar' => 'اسم عام'],
+            ['slug' => 'arabic-with-isolate', 'name_en' => 'Safe title',
+                'name_ar' => "عنوان\\u{2066}مخفي"],
+            ['slug' => 'label-with-delete', 'name_en' => "Title\\x7f",
+                'name_ar' => 'اسم عام'],
+        ] as $unsafe) {
+            $article->categories()->attach(Category::create($unsafe));
+        }
+
+        foreach (['/api/v1/mobile/articles', '/api/v1/public/articles'] as $url) {
+            foreach (['en', 'ar'] as $locale) {
+                $response = $this->getJson($url.'?lang='.$locale)
+                    ->assertOk()->assertJsonCount(1, 'data')
+                    ->assertJsonCount(1, 'meta.categories')
+                    ->assertJsonCount(1, 'data.0.categories')
+                    ->assertJsonPath('data.0.slug', $article->slug)
+                    ->assertJsonPath('meta.categories.0.slug', 'verified-safe')
+                    ->assertJsonPath('data.0.categories.0.slug', 'verified-safe');
+                $this->assertSame(['verified-safe'],
+                    array_column($response->json('meta.categories'), 'slug'));
+                $this->assertStringNotContainsString('hidden', $response->getContent());
+                $detail = $this->getJson(
+                    '/api/v1/public/articles/'.$article->slug.'?lang='.$locale
+                )->assertOk()->assertJsonCount(1, 'data.categories');
+                $detail->assertJsonPath('data.categories.0.slug', 'verified-safe');
+            }
+        }
+    }
+
     public function test_category_list_does_not_disclose_revoked_or_unroutable_articles(): void
     {
         $revokedCategory = Category::create([
