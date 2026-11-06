@@ -555,6 +555,32 @@ class OfflineRunbookRepository {
     }
   }
 
+  /// A publisher signature authenticates the bytes, but cannot authorize
+  /// rewriting an already stored immutable publication under the SAME
+  /// reviewed version. Reject before any per-UUID or legacy-global write.
+  static void _rejectRedefinedRevision(
+      OfflineRunbookPack previousPack, OfflineRunbook candidate) {
+    for (final previous in previousPack.items) {
+      if (previous.id != candidate.id ||
+          previous.publishedMarkdown == null ||
+          previous.publishedVersion != candidate.publishedVersion) {
+        continue;
+      }
+      final sameReviewTime = previous.publishedValidatedAt != null &&
+          candidate.publishedValidatedAt != null &&
+          previous.publishedValidatedAt!
+              .isAtSameMomentAs(candidate.publishedValidatedAt!);
+      if (previous.publishedMarkdown != candidate.publishedMarkdown ||
+          previous.publishedBodySha256 != candidate.publishedBodySha256 ||
+          previous.titleEn != candidate.titleEn ||
+          previous.titleAr != candidate.titleAr ||
+          !sameReviewTime) {
+        throw const FormatException(
+            'Refusing redefined signed published revision');
+      }
+    }
+  }
+
   Future<OfflineRunbookPack> sync() {
     final prior = _sharedSyncBarrier;
     final completed = Completer<void>();
@@ -610,6 +636,10 @@ class OfflineRunbookRepository {
     }
     if (revision != null && store is RunbookPinnedSnapshotStore) {
       final id = revision.id.toLowerCase();
+      final candidate = fresh.items.singleWhere((item) =>
+          item.id == id &&
+          item.publishedVersion == revision.version &&
+          item.publishedMarkdown == revision.markdown);
       final pin = await _trustedPinned(id);
       final global = await _trustedSnapshot();
       // A different UUID's newer global pack must not block this download.
@@ -622,6 +652,9 @@ class OfflineRunbookRepository {
           global,
       ];
       for (final previous in precedents) {
+        // Never destroy the last trusted copy with a differently signed
+        // payload that redefines this UUID's SAME reviewed version.
+        _rejectRedefinedRevision(previous.pack, candidate);
         // A newly signed envelope can carry an older published content
         // version. Signature time must never override a known newer
         // revision of the SAME public UUID in the offline cache.
@@ -661,6 +694,13 @@ class OfflineRunbookRepository {
     }
     final snapshot = await _trustedSnapshot();
     if (snapshot != null) {
+      if (revision != null) {
+        final candidate = fresh.items.singleWhere((item) =>
+            item.id == revision.id.toLowerCase() &&
+            item.publishedVersion == revision.version &&
+            item.publishedMarkdown == revision.markdown);
+        _rejectRedefinedRevision(snapshot.pack, candidate);
+      }
       // Legacy/global signed snapshot storage must enforce the same
       // published-version rollback rule as per-UUID pins. A more recent
       // signature timestamp does not authorize older reviewed content.
