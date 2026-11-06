@@ -2345,8 +2345,67 @@ Route::middleware('auth:web')->prefix('admin')->group(function (): void {
             'repos' => $repos,
             'selectedRepo' => $selectedRepo,
             'configuredCount' => count($directory->configuredSlugs()),
+            'githubProposals' => \App\Models\GithubAllowlistProposal::query()
+                ->orderByDesc('created_at')->orderBy('id')->paginate(20),
+            'canReviewGithub' => $request->user()->hasRole('owner'),
         ])->header('Cache-Control', 'no-store, private');
     })->name('admin.operations.github')->middleware('throttle:30,1');
+
+    // ADMIN-08 real web-session forms use the SAME workflow as the bearer
+    // API. No synthetic app-wide token, no duplicate approval policy.
+    Route::post('/github/proposals', function (
+        Request $request, \App\Domain\GitHub\GithubProposalWorkflow $workflow
+    ) {
+        abort_unless($request->user()?->canAccessAdmin(), 403);
+        if (array_diff(array_keys($request->request->all()),
+            ['_token', 'repository_slug']) !== []) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'repository_slug' => 'Unexpected form fields.',
+            ]);
+        }
+        $input = $request->validate(['repository_slug' => ['required', 'string', 'max:140']]);
+        $userId = $request->user()->getKey();
+        $workflow->submit(static function (bool $lock) use ($userId): \App\Models\User {
+            $query = \App\Models\User::query()->whereKey($userId);
+            $actor = ($lock ? $query->lockForUpdate() : $query)->first();
+            abort_unless($actor?->canAccessAdmin(), 403);
+            return $actor;
+        }, $input['repository_slug']);
+
+        return redirect()->route('admin.operations.github', [
+            'lang' => $request->query('lang') === 'ar' ? 'ar' : 'en',
+        ])->with('status', 'Repository proposal submitted for independent review.');
+    })->name('admin.operations.github.propose')->middleware('throttle:6,1');
+
+    Route::post('/github/proposals/{id}/decision', function (
+        Request $request, string $id,
+        \App\Domain\GitHub\GithubProposalWorkflow $workflow
+    ) {
+        abort_unless($request->user()?->canAccessAdmin()
+            && $request->user()->hasRole('owner'), 403);
+        if (array_diff(array_keys($request->request->all()),
+            ['_token', 'decision', 'reason']) !== []) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'decision' => 'Unexpected form fields.',
+            ]);
+        }
+        $input = $request->validate([
+            'decision' => ['required', 'in:approve,reject'],
+            'reason' => ['sometimes', 'in:source_verified,not_public,owner_policy,out_of_scope'],
+        ]);
+        $ownerId = $request->user()->getKey();
+        $workflow->decide(static function (bool $lock) use ($ownerId): \App\Models\User {
+            $query = \App\Models\User::query()->whereKey($ownerId);
+            $owner = ($lock ? $query->lockForUpdate() : $query)->first();
+            abort_unless($owner?->canAccessAdmin() && $owner->hasRole('owner'), 403);
+            return $owner;
+        }, $id, $input['decision'], $input['reason'] ?? null);
+
+        return redirect()->route('admin.operations.github', [
+            'lang' => $request->query('lang') === 'ar' ? 'ar' : 'en',
+        ])->with('status', 'Independent repository review recorded.');
+    })->whereUuid('id')->name('admin.operations.github.decide')
+        ->middleware('throttle:6,1');
 
     Route::post('/github/refresh', function (Request $request, \App\Integrations\GitHub\PublicRepositoryDirectory $directory) {
         abort_unless($request->user()?->canAccessAdmin(), 403);
