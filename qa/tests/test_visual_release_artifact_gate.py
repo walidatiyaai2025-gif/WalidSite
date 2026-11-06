@@ -328,6 +328,36 @@ class ReleaseArtifactGateTest(unittest.TestCase):
         self.assertEqual((retired / self.pkg.name).read_bytes(),
                          b"test fixture, not a production release")
 
+    def test_duplicate_and_nonfinite_manifest_json_never_attested(self):
+        # Default Python json.loads silently keeps the last duplicate key,
+        # even when the first key uses Unicode JSON escapes. That allows an
+        # ambiguous inventory to pass checksum verification.
+        raw = json.dumps(self.data)
+        version_duplicate = raw[:-1] + ', "version": "1.2.3"}'
+        escaped_duplicate = raw[:-1] + r', "\u0076ersion": "1.2.3"}'
+        digest_duplicate = raw.replace(
+            '"sha256": ',
+            '"sha256": "' + "0" * 64 + '", "sha256": ', 1,
+        )
+        nonfinite_masked = raw.replace(
+            f'"bytes": {self.entry["bytes"]}',
+            f'"bytes": NaN, "bytes": {self.entry["bytes"]}', 1,
+        )
+        for kind, content in (
+            ("top_level_duplicate", version_duplicate),
+            ("escaped_duplicate", escaped_duplicate),
+            ("nested_checksum_duplicate", digest_duplicate),
+            ("masked_nonfinite", nonfinite_masked),
+        ):
+            with self.subTest(kind=kind):
+                self.manifest.write_text(content, encoding="utf-8")
+                with self.assertRaisesRegex(ValueError, "Invalid JSON release manifest"):
+                    verify(self.root, self.manifest, SHA)
+        # Valid unambiguous manifests remain accepted by the same verifier.
+        self.save()
+        self.assertTrue(verify(self.root, self.manifest, SHA)[
+            "artifact_integrity_verified"])
+
     def test_schema_unknown_fields_and_missing_artifacts_rejected(self):
         for mutation in (
             {**self.data, "unexpected": True},
