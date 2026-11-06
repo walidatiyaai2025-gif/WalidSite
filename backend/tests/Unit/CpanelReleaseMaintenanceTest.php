@@ -71,6 +71,33 @@ final class CpanelReleaseMaintenanceTest extends TestCase
         $maintenance->assertActive($this->home, $session['token'], 'legacy');
     }
 
+    public function test_active_maintenance_rejects_forged_previous_code_identity_with_valid_token(): void
+    {
+        $maintenance = new CpanelReleaseMaintenance();
+        $session = $maintenance->begin($this->home, 'legacy', '0.1.1');
+        $path = $this->home.'/.walidsite-update-maintenance.json';
+        $original = json_decode((string) file_get_contents($path), true, 8, JSON_THROW_ON_ERROR);
+
+        foreach ([
+            ['previous_version' => 'not-a-version'],
+            ['previous_root' => '.walidsite-releases/v0.1.2-'.str_repeat('a', 40)],
+            ['previous_root' => ['legacy']],
+            ['probe_sha256' => ['invalid']],
+        ] as $changes) {
+            file_put_contents($path, json_encode(array_replace($original, $changes), JSON_THROW_ON_ERROR));
+            try {
+                $maintenance->assertActive($this->home, $session['token'], 'legacy');
+                $this->fail('Malformed or inconsistent release lineage was accepted as an active maintenance lease.');
+            } catch (DomainException) {
+                $this->assertFileExists($path);
+            }
+        }
+
+        file_put_contents($path, json_encode($original, JSON_THROW_ON_ERROR));
+        $maintenance->assertActive($this->home, $session['token'], 'legacy');
+        $maintenance->clear($this->home, $session['token']);
+    }
+
     public function test_expired_lease_cannot_be_cleared_to_expose_unverified_new_code(): void
     {
         $maintenance = new CpanelReleaseMaintenance();
