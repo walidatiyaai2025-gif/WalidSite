@@ -496,6 +496,65 @@ class StagingSmokeTest(unittest.TestCase):
                 )
                 self.assertTrue(all(x.closed for x in opener.responses))
 
+    def test_unexpected_worker_error_is_redacted_and_other_probes_continue(self):
+        secret = "TOP_SECRET_TOKEN_MUST_NOT_ESCAPE"
+
+        class ExplodingOpener(FakeOpener):
+            def open(self, request, timeout):
+                if request.full_url.endswith("/api/v1/public/home"):
+                    raise RuntimeError(secret)
+                return super().open(request, timeout)
+
+        fake = ExplodingOpener()
+        report = permitted_run("https://staging.example.com", fake)
+        failures = [item for item in report["checks"] if not item["passed"]]
+        self.assertEqual(
+            [(x["path"], x["reason"]) for x in failures],
+            [("/api/v1/public/home", "probe_worker_error")],
+        )
+        self.assertIsNone(failures[0]["observed_status"])
+        self.assertFalse(report["http_smoke_passed"])
+        self.assertFalse(report["production_ready"])
+        self.assertEqual(len(report["checks"]), len(CHECKS))
+        self.assertEqual(fake.requested[-1][0],
+                         "https://staging.example.com/api/v1/admin/dashboard")
+        self.assertNotIn(secret, json.dumps(report))
+        self.assertTrue(all(response.closed for response in fake.responses))
+
+    def test_response_close_failure_fails_probe_without_leaking_or_aborting(self):
+        secret = "CLOSE_ERROR_SECRET_MUST_NOT_ESCAPE"
+
+        class CloseExplodingResponse(FakeResponse):
+            def close(self):
+                self.closed = True
+                raise RuntimeError(secret)
+
+        class CloseExplodingOpener(FakeOpener):
+            def open(self, request, timeout):
+                if not request.full_url.endswith("/api/v1/public/home"):
+                    return super().open(request, timeout)
+                self.requested.append(
+                    (request.full_url, request.get_method(), timeout))
+                response = CloseExplodingResponse(
+                    200, "application/json", b'{"data":{}}')
+                self.responses.append(response)
+                return response
+
+        fake = CloseExplodingOpener()
+        report = permitted_run("https://staging.example.com", fake)
+        failures = [item for item in report["checks"] if not item["passed"]]
+        self.assertEqual(
+            [(x["path"], x["reason"]) for x in failures],
+            [("/api/v1/public/home", "response_close_failed")],
+        )
+        self.assertFalse(report["http_smoke_passed"])
+        self.assertEqual(len(report["checks"]), len(CHECKS))
+        self.assertNotIn(secret, json.dumps(report))
+        self.assertTrue(all(response.closed for response in fake.responses))
+        self.assertTrue(permitted_run(
+            "https://staging.example.com", FakeOpener()
+        )["http_smoke_passed"])
+
     def test_bad_transport_never_reports_success_or_leaks_raw_error(self):
         class Offline:
             def open(self, request, timeout):

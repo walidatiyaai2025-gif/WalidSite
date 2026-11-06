@@ -336,7 +336,13 @@ def _check_one_transaction(origin: str, spec: Check, opener: Opener, timeout: in
         reason = "transport_or_tls_error_" + type(exc).__name__
     finally:
         if response is not None:
-            response.close()
+            try:
+                response.close()
+            except Exception:
+                # A broken close must not escape the read-only audit or turn
+                # an otherwise successful response into an unverified PASS.
+                # Never print a transport exception message (may be sensitive).
+                reason = "response_close_failed"
     return {
         "path": spec.path,
         "expected_status": spec.status,
@@ -380,8 +386,17 @@ def _check_one(origin: str, spec: Check, opener: Opener, timeout: int) -> dict:
             "passed": False,
             "reason": "request_deadline_exceeded",
         }
-    if error:
-        raise error[0]
+    if error or not result:
+        # A custom opener/HTTP response can raise outside the ordinary
+        # transport exception list. Preserve the full failure receipt instead
+        # of leaking error text or aborting the remaining staging probes.
+        return {
+            "path": spec.path,
+            "expected_status": spec.status,
+            "observed_status": None,
+            "passed": False,
+            "reason": "probe_worker_error",
+        }
     return result[0]
 
 
