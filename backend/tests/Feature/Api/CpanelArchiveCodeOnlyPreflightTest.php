@@ -323,7 +323,7 @@ final class CpanelArchiveCodeOnlyPreflightTest extends TestCase
             $this->root.'/application/database/migrations/'.$this->migration,
             $release.'/application/database/migrations/'.$this->migration,
         ));
-        file_put_contents($release.'/application/VERSION', "0.1.3\\n");
+        file_put_contents($release.'/application/VERSION', "0.1.3\n");
         $pointer = $this->root.'/.walidsite-active-release.json';
         file_put_contents($pointer, json_encode([
             'schema' => 1, 'version' => '0.1.3',
@@ -338,9 +338,9 @@ final class CpanelArchiveCodeOnlyPreflightTest extends TestCase
     {
         $active = $this->activateVersionedRelease();
         $entries = $this->entries();
-        $entries['application/VERSION'] = "0.1.4\\n";
+        $entries['application/VERSION'] = "0.1.4\n";
         $sha = $this->makeZip($entries);
-        $verify = static fn () => (new CpanelArchiveCodeOnlyPreflight())->assertCompatible(
+        $verify = fn () => (new CpanelArchiveCodeOnlyPreflight())->assertCompatible(
             $this->root, $this->root.'/public_html', $this->archive,
             $sha, '0.1.3', '0.1.4',
         );
@@ -366,7 +366,7 @@ final class CpanelArchiveCodeOnlyPreflightTest extends TestCase
     {
         $this->activateVersionedRelease();
         $entries = $this->entries();
-        $entries['application/VERSION'] = "0.1.4\\n";
+        $entries['application/VERSION'] = "0.1.4\n";
         $sha = $this->makeZip($entries);
         $verify = fn () => (new CpanelArchiveCodeOnlyPreflight())->assertCompatible(
             $this->root, $this->root.'/public_html', $this->archive,
