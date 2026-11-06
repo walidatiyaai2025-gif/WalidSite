@@ -174,6 +174,8 @@ class WebRuntimeAuditTest(unittest.TestCase):
         self.assertEqual(report["visual_parity"], "not_attested")
         self.assertEqual(report["dynamic_web_pending"], ["WEB-05", "WEB-08"])
         self.assertEqual(len(contexts), 6)
+        self.assertEqual({ctx.viewport_width for ctx in contexts},
+                         {1440, 768, 390})
         self.assertEqual(len({(r["screen"], r["locale"], r["viewport"])
                               for r in report["results"]}), 72)
         self.assertEqual({r["viewport"] for r in report["results"]},
