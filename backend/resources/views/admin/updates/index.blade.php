@@ -182,7 +182,24 @@ button:disabled{background:#718096;cursor:not-allowed}
 <p class="blocked">{{ $locale === 'ar'
     ? 'Install Update يظل متوقفًا حتى توفر التبديل الآمن والتحقق الكامل من الإصدار وحالة الاستعادة الحالية. نجاح Backup Now لا يصرّح بالتثبيت تلقائيًا.'
     : 'Install Update remains blocked until signed code cutover and current recovery verification are integrated. A successful Backup Now does not authorize installation.' }}</p>
-<button type="button" disabled aria-describedby="code-updates-title">{{ $locale === 'ar' ? 'تثبيت التحديث — غير متاح بعد' : 'Install Update — Hosting/Recovery Blocked' }}</button>
+@if($stagedCode && $hostCodeUpdateAvailable)
+<form method="post" action="{{ route('admin.updates.install-signed', ['lang' => $locale]) }}"
+      data-testid="owner-signed-install-form">
+@csrf
+<button type="submit" data-testid="owner-signed-install">
+{{ $locale === 'ar' ? 'تثبيت الإصدار الموقّع بعد اختبار الاستعادة' : 'Install signed release with verified recovery' }}</button>
+<p class="small">{{ $locale === 'ar'
+    ? 'هذه عملية تحديث الكود فقط: تعيد فحص التوقيع وكل الملفات ثم عزل الكتابة والنسخة الاحتياطية والاستعادة والتبديل وفحص HTTPS. أي فشل يوقف التثبيت.'
+    : 'Code-only update: rechecks signed files, exclusive writer isolation, real backup/restore, atomic code pointer and live HTTPS health. Failures block installation.' }}</p>
+</form>
+@else
+<button type="button" disabled aria-describedby="code-updates-title" data-testid="owner-install-host-blocked">{{ $locale === 'ar' ? 'تثبيت التحديث — الاستضافة أو الاستعادة غير جاهزة' : 'Install Update — Hosting/Recovery Blocked' }}</button>
+@endif
+@if($errors->has('install'))
+<p class="error" role="alert" data-testid="owner-signed-install-failed">{{ $locale === 'ar'
+    ? 'توقف تثبيت الكود أو فشل إثبات الاستعادة. لم يتم اعتماد الإصدار الجديد؛ راجع حالة الصيانة الخاصة.'
+    : $errors->first('install') }}</p>
+@endif
 </section>
 
 <form method="post" action="{{ route('admin.updates.check', ['lang' => $locale]) }}">
