@@ -203,11 +203,11 @@ void main() {
 
   test('reviewed titles reject controls and bidi identity spoofing', () {
     for (final malicious in [
-      'Approved\\nUnauthorized',
-      'Reviewed\\rSpoofed',
-      'Reviewed\\u007fSpoofed',
-      'Reviewed\\u202eSpoofed',
-      'Reviewed\\u2066Spoofed\\u2069',
+      'Approved\nUnauthorized',
+      'Reviewed\rSpoofed',
+      'Reviewed\u007fSpoofed',
+      'Reviewed\u202eSpoofed',
+      'Reviewed\u2066Spoofed\u2069',
     ]) {
       expect(
         () => ReviewedRunbook.fromJson(guide(title: malicious)),
