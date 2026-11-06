@@ -88,7 +88,6 @@ final class AdminGithubOwnerReviewJourneyTest extends TestCase
                 ->assertHeader('Cache-Control', 'no-store, private')
                 ->assertSee('lang="'.$lang.'"', false)
                 ->assertSee('dir="'.($lang === 'ar' ? 'rtl' : 'ltr').'"', false)
-                ->assertSee('name="repository_slug"', false)
                 ->assertSee('name="repository_slug"', false);
             // The admin is not permitted to render any decision form.
             $this->assertStringNotContainsString('name="decision" value="approve"',
@@ -187,12 +186,12 @@ final class AdminGithubOwnerReviewJourneyTest extends TestCase
         foreach (['https://github.com/acme/public', '../repo', 'x/../private'] as $slug) {
             $this->post('/admin/github/proposals', [
                 'repository_slug' => $slug,
-            ])->assertUnprocessable();
+            ])->assertSessionHasErrors();
         }
         $this->post('/admin/github/proposals', [
             'repository_slug' => 'acme/public',
             'token' => 'dont-store-this',
-        ])->assertUnprocessable();
+        ])->assertSessionHasErrors();
         $this->actingAs($owner, 'web');
         $owner->roles()->detach();
         $this->post('/admin/github/proposals/'.$item->id.'/decision', [
