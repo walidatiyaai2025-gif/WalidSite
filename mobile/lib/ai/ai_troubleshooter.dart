@@ -689,6 +689,14 @@ class _AiTroubleshooterScreenState extends State<AiTroubleshooterScreen> {
     if (error is MobileAiHttpException) {
       return _httpMessage(error.statusCode);
     }
+    if (error is TimeoutException) {
+      // A timed-out manual GET or login is not a configuration failure.
+      // Never retry here: paid POST uncertainty has separate key-based
+      // recovery, and job status remains a user-initiated read-only GET.
+      return widget.arabic
+          ? 'انتهت مهلة الاتصال. تحقق من الشبكة ثم أعد المحاولة يدويًا؛ لم تُرسل محاولة تلقائية.'
+          : 'The request timed out. Check your connection and retry manually; no automatic retry was sent.';
+    }
     return widget.arabic
         ? 'تعذر الاتصال بالخدمة بأمان. تحقق من الإعداد والاتصال.'
         : 'Could not reach the service safely. Check configuration and connectivity.';
