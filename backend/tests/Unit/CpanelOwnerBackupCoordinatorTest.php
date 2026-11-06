@@ -40,7 +40,7 @@ final class CpanelOwnerBackupCoordinatorTest extends TestCase
         parent::tearDown();
     }
 
-    private function attempt(callable $hostWritersStopped): array
+    private function attempt(callable $hostWritersStopped, ?CpanelConsoleWriterLease $ownerLease = null): array
     {
         $app = $this->home.'/application';
         return (new CpanelOwnerBackupCoordinator())->prove(
@@ -53,7 +53,7 @@ final class CpanelOwnerBackupCoordinatorTest extends TestCase
             $this->home.'/public_html',
             $this->home.'/.walidsite-backups',
             $this->home.'/.walidsite-restore-drills',
-            '0.1.2', 'legacy', $hostWritersStopped,
+            '0.1.2', 'legacy', $hostWritersStopped, $ownerLease,
         );
     }
 
@@ -124,6 +124,55 @@ final class CpanelOwnerBackupCoordinatorTest extends TestCase
 
         // After safely unwinding a backup-only failure, a later honest
         // reader may acquire a shared lock; no stale maintenance remains.
+        $reader = new CpanelConsoleWriterLease();
+        $reader->beginForConsole($this->home.'/application');
+        $reader->end();
+    }
+
+    public function test_owner_http_backup_handoff_fails_closed_if_other_request_is_still_active(): void
+    {
+        $owner = new CpanelConsoleWriterLease();
+        $peer = new CpanelConsoleWriterLease();
+        $owner->beginForConsole($this->home.'/application');
+        $peer->beginForConsole($this->home.'/application');
+
+        try {
+            try {
+                $this->attempt(static fn (): bool => true, $owner);
+                self::fail('A competing HTTP reader was bypassed by privileged owner recovery.');
+            } catch (DomainException $error) {
+                self::assertStringContainsString('Active writers', $error->getMessage());
+            }
+            self::assertFileDoesNotExist($this->home.'/.walidsite-update-maintenance.json');
+            self::assertDirectoryDoesNotExist($this->home.'/.walidsite-backups');
+            $this->assertOwnerDataPreserved();
+        } finally {
+            $owner->end();
+            $peer->end();
+        }
+
+        $next = new CpanelConsoleWriterLease();
+        $next->beginExclusiveForUpdate($this->home);
+        $next->end();
+    }
+
+    public function test_owner_http_handoff_clears_barrier_even_when_disposable_restore_is_rejected(): void
+    {
+        $owner = new CpanelConsoleWriterLease();
+        $owner->beginForConsole($this->home.'/application');
+        try {
+            $this->attempt(static fn (): bool => true, $owner);
+            self::fail('SQLite must not be accepted as a MariaDB recovery receipt.');
+        } catch (Throwable) {
+            // Failure still proves the handoff went through private backup
+            // recovery and returned to a safe, unmodified installed site.
+            self::assertFileDoesNotExist($this->home.'/.walidsite-update-maintenance.json');
+            self::assertSame([], glob($this->home.'/.walidsite-backups/receipt-*.json') ?: []);
+            $this->assertOwnerDataPreserved();
+        } finally {
+            $owner->end(); // Idempotent after coordinator finally.
+        }
+
         $reader = new CpanelConsoleWriterLease();
         $reader->beginForConsole($this->home.'/application');
         $reader->end();
