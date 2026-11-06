@@ -46,7 +46,9 @@ class Issue481VisualCiAdmissionTest(unittest.TestCase):
     def test_real_runtime_and_artifact_share_the_same_issue_branch_admission(self):
         self.assert_ci_contract(CI.read_text(encoding="utf-8"))
 
-    def assert_native_emulator_gate(self, source: str) -> None:
+    def assert_native_emulator_gate(self, source: str, script: str | None = None) -> None:
+        if script is None:
+            script = (ROOT / "qa/ci_android_emulator_smoke.sh").read_text(encoding="utf-8")
         # Source-pinned compiled APK must be admitted on this feature branch,
         # actually installed/launched via ADB, and required before the unified
         # main release provenance check. An uploaded mock/receipt alone is not
@@ -68,11 +70,14 @@ class Issue481VisualCiAdmissionTest(unittest.TestCase):
         self.assertIn("needs: [required-ci-gate, build-android-qa-apk]", emulator)
         self.assertIn("reactivecircus/android-emulator-runner@v2", emulator)
         self.assertIn("qa/verify_release_android_qa.py", emulator)
-        self.assertIn("python3 -m qa.android_device_smoke", emulator)
-        self.assertIn("--confirm-install", emulator)
+        self.assertIn("script: bash qa/ci_android_emulator_smoke.sh", emulator)
+        self.assertIn("#!/usr/bin/env bash", script)
+        self.assertIn("set -euo pipefail", script)
+        self.assertIn("python3 -m qa.android_device_smoke", script)
+        self.assertIn("--confirm-install", script)
         self.assertIn("emulator-launch.json", emulator)
         self.assertIn("if-no-files-found: error", emulator)
-        self.assertIn("'visual_fidelity_verified', 'distribution_signing_identity_verified'", emulator)
+        self.assertIn("'visual_fidelity_verified', 'distribution_signing_identity_verified'", script)
         bundle = source.split("  verify-source-pinned-release-bundle:", 1)[1].split(
             "  cleanup-merged-branch:", 1
         )[0]
@@ -88,20 +93,32 @@ class Issue481VisualCiAdmissionTest(unittest.TestCase):
 
     def test_emulator_gate_missing_or_wrong_source_is_rejected(self):
         source = CI.read_text(encoding="utf-8")
+        script = (ROOT / "qa/ci_android_emulator_smoke.sh").read_text(encoding="utf-8")
         for needle, replacement in (
             ("reactivecircus/android-emulator-runner@v2", "echo simulated-emulator"),
-            ("python3 -m qa.android_device_smoke", "echo simulated-adb"),
+            ("script: bash qa/ci_android_emulator_smoke.sh", "script: echo fake-smoke"),
             ("qa/verify_release_android_qa.py", "echo skipped-verification"),
-            ("--confirm-install", "--no-confirm-install"),
             ("build-android-qa-apk, android-emulator-install-launch]",
              "build-android-qa-apk]"),
             ("assert emulator['physical_device_type_verified'] is False",
              "assert emulator['physical_device_type_verified'] is True"),
         ):
-            with self.subTest(needle=needle):
+            with self.subTest(workflow_needle=needle):
                 self.assertIn(needle, source)
                 with self.assertRaises(AssertionError):
-                    self.assert_native_emulator_gate(source.replace(needle, replacement, 1))
+                    self.assert_native_emulator_gate(source.replace(needle, replacement, 1), script)
+        for needle, replacement in (
+            ("#!/usr/bin/env bash", "#!/bin/sh"),
+            ("set -euo pipefail", "set -e"),
+            ("python3 -m qa.android_device_smoke", "echo simulated-adb"),
+            ("--confirm-install", "--no-confirm-install"),
+            ("'visual_fidelity_verified', 'distribution_signing_identity_verified'",
+             "'visual_fidelity_verified'"),
+        ):
+            with self.subTest(script_needle=needle):
+                self.assertIn(needle, script)
+                with self.assertRaises(AssertionError):
+                    self.assert_native_emulator_gate(source, script.replace(needle, replacement, 1))
 
     def test_removing_fix_or_chore_admission_or_weakening_artifacts_is_detected(self):
         source = CI.read_text(encoding="utf-8")
