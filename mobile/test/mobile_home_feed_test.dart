@@ -98,6 +98,28 @@ void main() {
     expect(find.byKey(const Key('mobile-home-filter-articles')), findsOneWidget);
   });
 
+  testWidgets('MOBILE-02 Home profile and AI shortcuts retain primary navigation',
+      (tester) async {
+    await tester.pumpWidget(const WaleedTechApp(initiallyStarted: true));
+
+    await tester.tap(find.byKey(const Key('mobile-home-profile')));
+    await tester.pumpAndSettle();
+    expect(find.byType(NavigationBar), findsOneWidget);
+    expect(tester.widget<NavigationBar>(find.byType(NavigationBar)).selectedIndex, 4);
+
+    await tester.tap(find.byKey(const Key('mobile-home-nav-home')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('mobile-home-filter-ai')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('ai-unconfigured')), findsOneWidget);
+    expect(find.byType(NavigationBar), findsOneWidget);
+    expect(tester.widget<NavigationBar>(find.byType(NavigationBar)).selectedIndex, 2);
+
+    await tester.tap(find.byKey(const Key('mobile-home-nav-home')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('mobile-home-scroll-feed')), findsOneWidget);
+  });
+
   testWidgets('MOBILE-02 Arabic primary Learn tab is translated and reversible',
       (tester) async {
     await tester.pumpWidget(const WaleedTechApp(initiallyStarted: true));
