@@ -19,6 +19,7 @@ final class CpanelOwnerBackupCoordinatorTest extends TestCase
         $this->home = sys_get_temp_dir().'/walidsite-owner-coordinator-'.bin2hex(random_bytes(8));
         self::assertTrue(mkdir($this->home.'/application/storage/app', 0700, true));
         self::assertTrue(mkdir($this->home.'/public_html/uploads', 0700, true));
+        file_put_contents($this->home.'/application/VERSION', "0.1.2\n");
         file_put_contents($this->home.'/application/.env', 'KEEP_PRIVATE_CONFIGURATION');
         file_put_contents($this->home.'/application/storage/app/user.txt', 'KEEP_PRIVATE_USER_DATA');
         file_put_contents($this->home.'/public_html/uploads/user.jpg', 'KEEP_PUBLIC_UPLOAD');
@@ -55,6 +56,36 @@ final class CpanelOwnerBackupCoordinatorTest extends TestCase
             $this->home.'/.walidsite-restore-drills',
             '0.1.2', 'legacy', $hostWritersStopped, $ownerLease,
         );
+    }
+
+    public function test_mismatched_or_missing_physical_version_rejects_false_backup_receipt(): void
+    {
+        foreach (['0.1.3', 'invalid-version'] as $forged) {
+            file_put_contents($this->home.'/application/VERSION', $forged);
+            try {
+                $this->attempt(static fn (): bool => true);
+                self::fail('A caller-provided version cannot forge the installed code.');
+            } catch (DomainException $error) {
+                self::assertStringContainsString('Installed code identity', $error->getMessage());
+            }
+            self::assertFileDoesNotExist($this->home.'/.walidsite-writer-drain.lock');
+            self::assertDirectoryDoesNotExist($this->home.'/.walidsite-backups');
+        }
+        file_put_contents($this->home.'/application/VERSION', "0.1.2\n");
+
+        // An active chained-release pointer cannot be reported as a legacy
+        // physical backup without attesting the *running* code lineage.
+        $pointer = $this->home.'/.walidsite-active-release.json';
+        file_put_contents($pointer, '{"schema":1,"version":"0.1.3","root":"unverified"}');
+        try {
+            $this->attempt(static fn (): bool => true);
+            self::fail('An active code pointer cannot be ignored in recovery.');
+        } catch (DomainException $error) {
+            self::assertStringContainsString('Installed code identity', $error->getMessage());
+        }
+        self::assertFileDoesNotExist($this->home.'/.walidsite-writer-drain.lock');
+        self::assertDirectoryDoesNotExist($this->home.'/.walidsite-backups');
+        $this->assertOwnerDataPreserved();
     }
 
     public function test_unverified_foreign_writer_freeze_denies_backup_without_lease_or_mutation(): void
