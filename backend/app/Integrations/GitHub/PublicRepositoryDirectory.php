@@ -27,7 +27,9 @@ final class PublicRepositoryDirectory
     {
         $configured = config('portfolio.github_public_repos', []);
         if (! is_array($configured)) {
-            return [];
+            // A malformed legacy environment value must not block the
+            // separately approved DB allowlist.
+            $configured = [];
         }
 
         $seen = [];
