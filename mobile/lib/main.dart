@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'theme/waleed_theme.dart';
 import 'runbooks/offline_runbooks.dart';
 import 'runbooks/verified_online_runbooks.dart';
@@ -36,6 +37,26 @@ Future<void> _openSavedAfterArticleSave(
       initialSection: MobileAccountSection.saved,
       initialSession: MobileAiSession(token: bearer, expiresAt: null),
     ),
+  ));
+}
+
+/// Projects are opened through a canonical HTTPS public detail route only.
+Future<void> _openVerifiedProject(
+  BuildContext context, String slug, bool arabic,
+) async {
+  final target = MobileHomeProject.publicDetailUrl(slug);
+  if (target != null) {
+    try {
+      if (await launchUrl(target, mode: LaunchMode.externalApplication)) return;
+    } catch (_) {
+      // Platform/browser failure is not proof that the project opened.
+    }
+  }
+  if (!context.mounted) return;
+  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+    content: Text(arabic
+        ? 'تعذر فتح صفحة المشروع الموثق حاليًا.'
+        : 'Could not open the verified project page.'),
   ));
 }
 
@@ -412,6 +433,7 @@ class CompanionHome extends StatelessWidget {
                   ),
                 ),
               ),
+              onOpenProject: (slug) => _openVerifiedProject(context, slug, arabic),
               onOpenRunbook: (id) => Navigator.of(context).push(
                 MaterialPageRoute<void>(
                   builder: (_) => ReviewedRunbookDetail(id: id, arabic: arabic),
