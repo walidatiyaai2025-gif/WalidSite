@@ -519,9 +519,15 @@ final class AdminUpdateController extends Controller
         try {
             $result = $updater->apply();
         } catch (Throwable $exception) {
-            report($exception);
+            // DB/SQL/driver exceptions can embed connection strings, file paths
+            // or user-provided values. Do not let Laravel's default exception
+            // reporter persist their message, stack or previous exception.
+            // A class-only marker is sufficient for private diagnostics.
+            \\Illuminate\\Support\\Facades\\Log::warning('admin.updates.migration_blocked', [
+                'type' => $exception::class,
+            ]);
 
-            return back()->withErrors(['updates' => 'Migration failed. Review private logs and the database backup.']);
+            return back()->withErrors(['updates' => 'Migration could not be completed. No successful update is claimed; check the private recovery state.']);
         }
 
         if ($result['state'] === 'schema_mismatch') {
