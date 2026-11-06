@@ -775,7 +775,7 @@ jobs:
           assert proof['version'] == version
           assert proof['native_and_web_version_match'] is True
           assert proof['same_sha_assets_verified'] is True
-          assert proof['php_zip_negative_rejections'] == 4
+          assert proof['php_zip_negative_rejections'] == 7
           assert proof['test_only_ephemeral_key'] is True
           assert proof['publisher_signature_verified'] is False
           assert proof['android_distribution_signing_verified'] is False
