@@ -304,10 +304,7 @@ class _CompanionHomeState extends State<CompanionHome> {
           IconButton(
             key: const Key('mobile-home-profile'),
             tooltip: arabic ? 'الملف الشخصي' : 'Your profile',
-            onPressed: () => push(MobileAccountJourney(
-              arabic: arabic,
-              initialSection: MobileAccountSection.profile,
-            )),
+            onPressed: () => setState(() => _selectedTab = 4),
             icon: const Icon(Icons.account_circle_outlined),
           ),
         ],
@@ -327,7 +324,7 @@ class _CompanionHomeState extends State<CompanionHome> {
                 _HomeCategoryChip(
                   key: const Key('mobile-home-filter-ai'),
                   label: 'AI',
-                  onTap: () => push(AiTroubleshooterScreen(arabic: arabic)),
+                  onTap: () => setState(() => _selectedTab = 2),
                 ),
                 _HomeCategoryChip(
                   key: const Key('mobile-home-filter-articles'),
@@ -348,7 +345,7 @@ class _CompanionHomeState extends State<CompanionHome> {
                 _HomeCategoryChip(
                   key: const Key('mobile-home-filter-learn'),
                   label: arabic ? 'تعلّم' : 'Learn',
-                  onTap: () => push(VerifiedLearningLibrary(arabic: arabic)),
+                  onTap: () => setState(() => _selectedTab = 1),
                 ),
                 _HomeCategoryChip(
                   key: const Key('mobile-home-filter-github'),
