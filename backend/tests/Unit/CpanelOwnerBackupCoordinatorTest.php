@@ -4,6 +4,7 @@ namespace Tests\Unit;
 
 use App\Domain\Deployment\CpanelConsoleWriterLease;
 use App\Domain\Deployment\CpanelOwnerBackupCoordinator;
+use App\Domain\Deployment\TrustedInstalledReleasePin;
 use DomainException;
 use PDO;
 use PHPUnit\Framework\TestCase;
@@ -279,6 +280,108 @@ final class CpanelOwnerBackupCoordinatorTest extends TestCase
         $reader = new CpanelConsoleWriterLease();
         $reader->beginForConsole($this->home.'/application');
         $reader->end();
+    }
+
+    /** @return array{string,string} */
+    private function switchedRunningRelease(): array
+    {
+        $root = '.walidsite-releases/v0.1.3-'.str_repeat('a', 40);
+        self::assertTrue(mkdir($this->home.'/'.$root.'/application', 0700, true));
+        file_put_contents($this->home.'/'.$root.'/application/VERSION', "0.1.3\n");
+        $pointer = $this->home.'/.walidsite-active-release.json';
+        file_put_contents($pointer, json_encode([
+            'schema' => 1, 'version' => '0.1.3', 'root' => $root,
+        ], JSON_THROW_ON_ERROR));
+        self::assertTrue(chmod($pointer, 0600));
+
+        return [$this->home.'/'.$root.'/application', $root];
+    }
+
+    private function attemptAfterSwitch(
+        string $running, string $previousRoot, callable $hostStopped,
+    ): array {
+        $app = $this->home.'/application';
+
+        return (new CpanelOwnerBackupCoordinator())->prove(
+            new PDO('sqlite::memory:'), new PDO('sqlite::memory:'),
+            $app.'/.env', $app.'/storage/app',
+            $this->home.'/public_html/uploads', $app,
+            $this->home.'/public_html',
+            $this->home.'/.walidsite-backups',
+            $this->home.'/.walidsite-restore-drills',
+            '0.1.3', $previousRoot, $hostStopped, null, $running,
+        );
+    }
+
+    public function test_chained_backup_attests_running_release_before_disposable_mariadb_guard(): void
+    {
+        [$running, $previousRoot] = $this->switchedRunningRelease();
+        self::assertSame('0.1.3', (new TrustedInstalledReleasePin())
+            ->read($running, $this->home.'/public_html', '0.1.2'));
+        $hostChecks = 0;
+        try {
+            $this->attemptAfterSwitch(
+                $running, $previousRoot,
+                static function () use (&$hostChecks): bool {
+                    ++$hostChecks;
+                    return true;
+                },
+            );
+            self::fail('SQLite cannot produce a real MariaDB backup receipt.');
+        } catch (DomainException $error) {
+            self::assertStringContainsString('MariaDB connections are required', $error->getMessage());
+        }
+        self::assertSame(2, $hostChecks, 'Exclusive lock precedes disposable database verification.');
+        self::assertFileDoesNotExist($this->home.'/.walidsite-update-maintenance.json');
+        self::assertDirectoryDoesNotExist($this->home.'/.walidsite-backups');
+        self::assertDirectoryDoesNotExist($this->home.'/.walidsite-restore-drills');
+        $this->assertOwnerDataPreserved();
+    }
+
+    public function test_chained_backup_rejects_forged_running_root_and_legacy_root_before_lock(): void
+    {
+        [$running, $previousRoot] = $this->switchedRunningRelease();
+        foreach ([
+            [$this->home.'/application', $previousRoot],
+            [$running, 'legacy'],
+            [$running, '.walidsite-releases/v0.1.3-'.str_repeat('b', 40)],
+        ] as [$claimedRunning, $claimedPrevious]) {
+            try {
+                $this->attemptAfterSwitch($claimedRunning, $claimedPrevious, static fn (): bool => true);
+                self::fail('Forged previous release lineage must be rejected.');
+            } catch (DomainException $error) {
+                self::assertStringContainsString('Installed code identity', $error->getMessage());
+            }
+            self::assertFileDoesNotExist($this->home.'/.walidsite-writer-drain.lock');
+            self::assertFileDoesNotExist($this->home.'/.walidsite-update-maintenance.json');
+            self::assertDirectoryDoesNotExist($this->home.'/.walidsite-backups');
+            $this->assertOwnerDataPreserved();
+        }
+    }
+
+    public function test_chained_backup_fails_closed_when_pointer_changes_during_writer_lock_handoff(): void
+    {
+        [$running, $previousRoot] = $this->switchedRunningRelease();
+        $hostChecks = 0;
+        try {
+            $this->attemptAfterSwitch(
+                $running, $previousRoot,
+                function () use (&$hostChecks): bool {
+                    if (++$hostChecks === 2) {
+                        $pointer = $this->home.'/.walidsite-active-release.json';
+                        file_put_contents($pointer, '{"schema":1,"version":"0.1.3","root":"forged"}');
+                    }
+                    return true;
+                },
+            );
+            self::fail('Swapped active pointer must not yield a recovery receipt.');
+        } catch (DomainException $error) {
+            self::assertStringContainsString('lineage changed', $error->getMessage());
+        }
+        self::assertSame(2, $hostChecks);
+        self::assertFileDoesNotExist($this->home.'/.walidsite-update-maintenance.json');
+        self::assertDirectoryDoesNotExist($this->home.'/.walidsite-backups');
+        $this->assertOwnerDataPreserved();
     }
 
     private function assertOwnerDataPreserved(): void
