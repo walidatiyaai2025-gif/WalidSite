@@ -201,6 +201,29 @@ void main() {
     expect(ReviewedRunbook.fromJson(guide(body: valid)).markdown, valid);
   });
 
+  test('reviewed titles reject controls and bidi identity spoofing', () {
+    for (final malicious in [
+      'Approved\\nUnauthorized',
+      'Reviewed\\rSpoofed',
+      'Reviewed\\u007fSpoofed',
+      'Reviewed\\u202eSpoofed',
+      'Reviewed\\u2066Spoofed\\u2069',
+    ]) {
+      expect(
+        () => ReviewedRunbook.fromJson(guide(title: malicious)),
+        throwsFormatException,
+        reason: malicious,
+      );
+      expect(
+        () => ReviewedRunbookPage.parse(
+            response(1, [guide(title: malicious)]), 1),
+        throwsFormatException,
+      );
+    }
+    final normal = guide(title: 'دليل مراجعة النسخ الاحتياطية');
+    expect(ReviewedRunbook.fromJson(normal).title, normal['title']);
+  });
+
   test('rejects untrusted, malformed and oversized runbook data', () {
     final invalid = <String>[
       '{}',
