@@ -18,7 +18,13 @@ from pathlib import Path
 
 SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 SHA40 = re.compile(r"[0-9a-f]{40}\Z")
-VERSION = re.compile(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?\Z")
+# SemVer prerelease identifiers may be alphanumeric/hyphenated or canonical
+# decimal numbers. Reject leading-zero numeric identifiers and empty dot fields.
+_PRE_ID = r"(?:0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)"
+VERSION = re.compile(
+    r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)"
+    + r"(?:-" + _PRE_ID + r"(?:\." + _PRE_ID + r")*)?\Z"
+)
 KINDS = {"web-cpanel-zip": ".zip", "android-apk": ".apk",
          "android-aab": ".aab", "ios-ipa": ".ipa"}
 MAX_MANIFEST_BYTES = 1024 * 1024
