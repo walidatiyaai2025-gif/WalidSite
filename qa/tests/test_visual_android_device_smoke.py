@@ -158,6 +158,42 @@ class AndroidDeviceSmokeTest(unittest.TestCase):
                     with self.assertRaises(DeviceSmokeError):
                         smoke(self.apk, **self.kwargs)
 
+    def test_rejected_adb_stage_is_static_and_never_leaks_transport_output(self):
+        for operation, stage in (("get-state", "get-state"),
+                                 ("install", "install"),
+                                 ("am", "launch"), ("pidof", "process-check")):
+            self.requests.clear()
+            self.installed = False
+
+            def rejected(argv, *, timeout=15):
+                result = self.adb(argv, timeout=timeout)
+                if operation == argv[3] or operation in argv:
+                    result.returncode = 1
+                    result.stderr = "secret transport log: device serial and private path"
+                return result
+
+            with self.subTest(operation=operation):
+                with patch("qa.android_device_smoke.inspect", side_effect=self.inspect), \\
+                     patch("qa.android_device_smoke._command", side_effect=rejected):
+                    with self.assertRaisesRegex(DeviceSmokeError, "\\\\[" + stage + "\\\\]") as caught:
+                        smoke(self.apk, **self.kwargs)
+                self.assertNotIn("secret transport log", str(caught.exception))
+                self.assertNotIn("emulator-5554", str(caught.exception))
+
+    def test_cli_reports_only_static_safe_device_failure_reason(self):
+        with patch("qa.android_device_smoke.smoke",
+                   side_effect=DeviceSmokeError("Android device command failed [launch]")), \\
+             redirect_stderr(io.StringIO()) as errors:
+            status = main(["--apk", str(self.apk), "--package-id", PACKAGE,
+                           "--version-name", "0.1.0", "--version-code", "1",
+                           "--source-sha", SHA, "--expected-sha256", self.digest,
+                           "--serial", "secret-device"])
+        self.assertEqual(status, 1)
+        data = json.loads(errors.getvalue())
+        self.assertEqual(data["reason"], "Android device command failed [launch]")
+        self.assertNotIn("secret-device", errors.getvalue())
+        self.assertNotIn(str(self.apk), errors.getvalue())
+
     def test_adb_unavailable_and_failed_cli_do_not_leak_serial_or_path(self):
         with patch("qa.android_device_smoke.inspect", side_effect=self.inspect), \
              patch("qa.android_device_smoke.subprocess.run",
