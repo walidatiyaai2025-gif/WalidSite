@@ -257,7 +257,7 @@ class MobileAiClient {
         data.keys.toSet().difference({'token', 'token_type', 'expires_at'}).isNotEmpty ||
         bearer is! String || bearer.isEmpty || bearer.length > 8192 ||
         // Sanctum tokens are printable ASCII, not newline/header directives.
-        !RegExp(r'^[!-~]+ ||
+        !RegExp(r'^[!-~]+$').hasMatch(bearer) ||
         data['token_type'] != 'Bearer') {
       throw const FormatException('Invalid mobile token response');
     }
