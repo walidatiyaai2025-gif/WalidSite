@@ -3,21 +3,45 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:waleed_tech_companion/main.dart';
 
 void main() {
+  testWidgets('YouTube-style Home keeps its existing AI destination wired', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(const WaleedTechApp(initiallyStarted: true));
+    expect(find.byKey(const Key('mobile-youtube-home')), findsOneWidget);
+    expect(find.byKey(const Key('mobile-home-filter-for-you')), findsOneWidget);
+    expect(find.byKey(const Key('mobile-home-filter-ai')), findsOneWidget);
+    expect(find.byKey(const Key('mobile-home-filter-articles')), findsOneWidget);
+    expect(find.byKey(const Key('mobile-home-nav-home')), findsOneWidget);
+    expect(find.byKey(const Key('mobile-home-nav-ai')), findsOneWidget);
+    expect(find.byKey(const Key('mobile-home-nav-you')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('mobile-home-nav-ai')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('ai-unconfigured')), findsOneWidget);
+  });
+
   testWidgets('home renders engineering topics without invented metrics', (
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(const WaleedTechApp(initiallyStarted: true));
 
     expect(find.text('Waleed Tech Companion'), findsOneWidget);
-    await tester.scrollUntilVisible(find.text('Explore engineering topics'), 140);
+    await tester.scrollUntilVisible(find.text('Explore engineering topics'), 140,
+      scrollable: find.descendant(of: find.byKey(const Key('mobile-home-scroll-feed')), matching: find.byType(Scrollable)),
+    );
     expect(find.text('Explore engineering topics'), findsOneWidget);
-    await tester.scrollUntilVisible(find.text('Database Engineering'), 140);
+    await tester.scrollUntilVisible(find.text('Database Engineering'), 140,
+      scrollable: find.descendant(of: find.byKey(const Key('mobile-home-scroll-feed')), matching: find.byType(Scrollable)),
+    );
     expect(find.text('Database Engineering'), findsOneWidget);
     // The offline CTA increases the ListView height; scroll before asserting.
-    await tester.scrollUntilVisible(find.text('Software Engineering'), 140);
+    await tester.scrollUntilVisible(find.text('Software Engineering'), 140,
+      scrollable: find.descendant(of: find.byKey(const Key('mobile-home-scroll-feed')), matching: find.byType(Scrollable)),
+    );
     expect(find.text('Software Engineering'), findsOneWidget);
     // ListView builds items lazily: scroll to the last topic before asserting.
-    await tester.scrollUntilVisible(find.text('AI Engineering'), 150);
+    await tester.scrollUntilVisible(find.text('AI Engineering'), 150,
+      scrollable: find.descendant(of: find.byKey(const Key('mobile-home-scroll-feed')), matching: find.byType(Scrollable)),
+    );
     expect(find.text('AI Engineering'), findsOneWidget);
   });
 
@@ -25,7 +49,9 @@ void main() {
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(const WaleedTechApp(initiallyStarted: true));
-    await tester.scrollUntilVisible(find.text('Database Engineering'), 140);
+    await tester.scrollUntilVisible(find.text('Database Engineering'), 140,
+      scrollable: find.descendant(of: find.byKey(const Key('mobile-home-scroll-feed')), matching: find.byType(Scrollable)),
+    );
     await tester.ensureVisible(find.text('Database Engineering'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Database Engineering'));
@@ -50,6 +76,7 @@ void main() {
     await tester.scrollUntilVisible(
       find.byKey(const Key('ai-troubleshooter-entry')),
       140,
+      scrollable: find.descendant(of: find.byKey(const Key('mobile-home-scroll-feed')), matching: find.byType(Scrollable)),
     );
     await tester.ensureVisible(find.byKey(const Key('ai-troubleshooter-entry')));
     await tester.pumpAndSettle();
@@ -70,9 +97,13 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('رفيق وليد التقني'), findsOneWidget);
-    await tester.scrollUntilVisible(find.text('استكشف المجالات التقنية'), 140);
+    await tester.scrollUntilVisible(find.text('استكشف المجالات التقنية'), 140,
+      scrollable: find.descendant(of: find.byKey(const Key('mobile-home-scroll-feed')), matching: find.byType(Scrollable)),
+    );
     expect(find.text('استكشف المجالات التقنية'), findsOneWidget);
-    await tester.scrollUntilVisible(find.text('هندسة قواعد البيانات'), 140);
+    await tester.scrollUntilVisible(find.text('هندسة قواعد البيانات'), 140,
+      scrollable: find.descendant(of: find.byKey(const Key('mobile-home-scroll-feed')), matching: find.byType(Scrollable)),
+    );
     expect(find.text('هندسة قواعد البيانات'), findsOneWidget);
     expect(
       Directionality.of(tester.element(find.text('رفيق وليد التقني'))),
@@ -94,7 +125,9 @@ void main() {
     await tester.pumpWidget(const WaleedTechApp(initiallyStarted: true));
     await tester.tap(find.byTooltip('Switch to Arabic'));
     await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(find.text('هندسة قواعد البيانات'), 140);
+    await tester.scrollUntilVisible(find.text('هندسة قواعد البيانات'), 140,
+      scrollable: find.descendant(of: find.byKey(const Key('mobile-home-scroll-feed')), matching: find.byType(Scrollable)),
+    );
     // A lazily built element may still be partially below the test viewport.
     await tester.ensureVisible(find.text('هندسة قواعد البيانات'));
     await tester.pumpAndSettle();

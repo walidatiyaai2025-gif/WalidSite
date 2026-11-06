@@ -29,7 +29,9 @@ void main() {
 
     expect(find.byKey(const Key('mobile-welcome-screen')), findsNothing);
     expect(find.byType(CompanionHome), findsOneWidget);
-    await tester.scrollUntilVisible(find.byKey(const Key('offline-runbooks-entry')), 120);
+    await tester.scrollUntilVisible(find.byKey(const Key('offline-runbooks-entry')), 120,
+      scrollable: find.descendant(of: find.byKey(const Key('mobile-home-scroll-feed')), matching: find.byType(Scrollable)),
+    );
     expect(find.byKey(const Key('offline-runbooks-entry')), findsOneWidget);
     expect(
       Navigator.of(tester.element(find.byType(CompanionHome))).canPop(),

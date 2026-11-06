@@ -294,6 +294,7 @@ void main() {
     // ensureVisible may leave the center outside the tappable region.
     await tester.scrollUntilVisible(
       find.byKey(const Key('verified-learning-entry')), 150,
+      scrollable: find.descendant(of: find.byKey(const Key('mobile-home-scroll-feed')), matching: find.byType(Scrollable)),
     );
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.byKey(const Key('verified-learning-entry')));
