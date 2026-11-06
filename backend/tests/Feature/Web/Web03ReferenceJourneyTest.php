@@ -226,4 +226,29 @@ final class Web03ReferenceJourneyTest extends TestCase
         }
     }
 
+    public function test_mobile_hero_art_is_contained_without_replacing_the_approved_illustration(): void
+    {
+        foreach (['en', 'ar'] as $locale) {
+            $html = $this->get(route('public.expertise', ['lang' => $locale]))
+                ->assertOk()
+                ->assertSee('class="expertise-art"', false)
+                ->assertSee('viewBox="0 0 700 340"', false)
+                ->getContent();
+
+            // Mobile-only containment prevents the illustration from widening
+            // the document. Keep the approved desktop geometry and SVG intact.
+            $this->assertStringContainsString(
+                '.expertise-art{height:296px;min-width:0;display:flex;',
+                $html
+            );
+            $this->assertStringContainsString('@media (max-width: 700px)', $html);
+            $this->assertStringContainsString(
+                'body:has(.expertise-screen) .expertise-art {',
+                $html
+            );
+            $this->assertStringContainsString('overflow: clip;', $html);
+            $this->assertStringContainsString('max-width: 100%;', $html);
+        }
+    }
+
 }
