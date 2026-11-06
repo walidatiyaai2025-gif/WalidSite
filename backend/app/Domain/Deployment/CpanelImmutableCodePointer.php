@@ -217,6 +217,20 @@ final class CpanelImmutableCodePointer
                     }
                 } else {
                     $this->replace($pointer, $previous);
+                    $proof = new CpanelVerifiedCodeRollback(
+                        $previous,
+                        $previous['root'],
+                        $oldVersion,
+                        $oldVersionSnapshot['fingerprint'],
+                    );
+                    // Issue the recovery capability only after independently
+                    // re-reading the restored pointer and previous release
+                    // through pinned inodes while this pointer lock is held.
+                    $this->assertVerifiedRollback(
+                        $home, $oldRoot.'/application', $home.'/public_html',
+                        $front, $maintenanceToken, $proof,
+                    );
+                    throw $proof;
                 }
                 throw new RuntimeException('New release health failed; old code pointer restored.', 0, $failure);
             }
@@ -225,6 +239,90 @@ final class CpanelImmutableCodePointer
             flock($lock, LOCK_UN);
             fclose($lock);
         }
+    }
+
+    /**
+     * Independently re-attest a chained previous release after a failed
+     * candidate health check. The caller must still hold the original
+     * exclusive HTTP writer lease; this method proves only the restored
+     * pointer/runtime identity, never authorizes a new update.
+     */
+    public function assertVerifiedRollback(
+        string $homeDirectory,
+        string $runningApplication,
+        string $publicDocumentRoot,
+        string $trustedFrontController,
+        string $maintenanceToken,
+        CpanelVerifiedCodeRollback $proof,
+    ): void {
+        $home = realpath($homeDirectory);
+        $public = realpath($publicDocumentRoot);
+        $running = realpath($runningApplication);
+        if ($home === false || $home !== $homeDirectory
+            || $public !== $home.'/public_html'
+            || $running === false || $running !== $runningApplication
+            || is_link($homeDirectory) || is_link($publicDocumentRoot)
+            || is_link($runningApplication)
+            || $proof->previousRoot === 'legacy'
+            || ! preg_match(
+                '#\\A\\.walidsite-releases/v'.preg_quote($proof->previousVersion, '#').'-[a-f0-9]{40}\\z#D',
+                $proof->previousRoot,
+            )) {
+            throw new DomainException('Previous release identity is not safe to resume.');
+        }
+
+        (new CpanelReleaseMaintenance())->assertActive(
+            $home, $maintenanceToken, $proof->previousRoot,
+        );
+
+        $expectedPointer = [
+            'schema' => 1,
+            'version' => $proof->previousVersion,
+            'root' => $proof->previousRoot,
+        ];
+        $pointer = $this->read($home.'/.walidsite-active-release.json', $home);
+        if ($proof->previousPointer !== $expectedPointer || $pointer !== $expectedPointer) {
+            throw new DomainException('Restored release pointer does not match its verified rollback proof.');
+        }
+
+        $release = $home.'/'.$proof->previousRoot;
+        $application = $release.'/application';
+        $releasePublic = $release.'/public_html';
+        if (realpath($release) !== $release || is_link($release)
+            || realpath($application) !== $running || is_link($application)
+            || ! is_dir($releasePublic) || is_link($releasePublic)) {
+            throw new DomainException('Previous immutable release tree cannot be independently verified.');
+        }
+
+        $version = $this->readPinnedPhysicalFile($application.'/VERSION', 32);
+        if (trim($version['bytes']) !== $proof->previousVersion
+            || ! hash_equals($proof->previousVersionFingerprint, $version['fingerprint'])) {
+            throw new DomainException('Previous release version inode changed during rollback.');
+        }
+
+        $trustedFront = $this->readPinnedPhysicalFile($trustedFrontController, 1048576);
+        $stableFront = $this->readPinnedPhysicalFile($public.'/index.php', 1048576);
+        $releaseFront = $this->readPinnedPhysicalFile($releasePublic.'/index.php', 1048576);
+        $stableRewrite = $this->readPinnedPhysicalFile($public.'/.htaccess', 1048576);
+        $releaseRewrite = $this->readPinnedPhysicalFile($releasePublic.'/.htaccess', 1048576);
+        foreach ([$stableFront, $releaseFront] as $front) {
+            if (! hash_equals(
+                hash('sha256', $trustedFront['bytes']),
+                hash('sha256', $front['bytes']),
+            )) {
+                throw new DomainException('Previous release stable front controller changed; recovery barrier remains.');
+            }
+        }
+        if (! hash_equals(
+            hash('sha256', $stableRewrite['bytes']),
+            hash('sha256', $releaseRewrite['bytes']),
+        )) {
+            throw new DomainException('Previous release rewrite entrypoint changed; recovery barrier remains.');
+        }
+
+        (new CpanelReleaseMaintenance())->assertActive(
+            $home, $maintenanceToken, $proof->previousRoot,
+        );
     }
 
     /**
