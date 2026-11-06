@@ -66,6 +66,52 @@ final class CpanelConsoleWriterLease
     }
 
     /**
+     * Handoff for a future authenticated owner-only HTTP update action.
+     *
+     * The global HTTP barrier already owns this shared descriptor. Opening a
+     * second exclusive descriptor would deadlock against our own request.
+     * Convert the SAME descriptor non-blockingly, then re-attest its private
+     * inode and maintenance state before returning any exclusive proof.
+     *
+     * flock() conversion is not guaranteed atomic on every host. On any
+     * conversion failure, close/abandon the possibly lost shared lock and
+     * throw: the caller must abort without touching code, DB or backups.
+     * Never treat an unsuccessful conversion as continuing HTTP isolation.
+     * Authentication, external SQL writer quiescence and recovery remain
+     * separate mandatory gates before actual update actions are enabled.
+     */
+    public function promoteSharedForUpdate(string $homeDirectory): void
+    {
+        if ($this->depth !== 1 || $this->mode !== LOCK_SH
+            || ! is_resource($this->stream) || $this->home === null
+            || ! hash_equals($this->home['path'], $homeDirectory)) {
+            throw new DomainException('An exclusive owner handoff requires a single live HTTP writer lease.');
+        }
+
+        $home = $this->home;
+        $this->assertPrivateLock($this->stream, $home);
+        $this->markerAbsent($home['path']);
+
+        try {
+            if (! @flock($this->stream, LOCK_EX | LOCK_NB)) {
+                throw new DomainException('Active writers prevent an exclusive owner update.');
+            }
+            // Both the account-home identity and private lock must still be
+            // trusted after the non-atomic OS conversion. The maintenance
+            // marker must not have appeared in the intervening window.
+            $this->assertPrivateLock($this->stream, $home);
+            $this->markerAbsent($home['path']);
+            $this->mode = LOCK_EX;
+        } catch (\Throwable $error) {
+            // A failed shared->exclusive conversion may already have revoked
+            // the shared lock. Do not expose a stale "writer protected" claim
+            // to the remaining request; refuse the update and release.
+            $this->end();
+            throw $error;
+        }
+    }
+
+    /**
      * Check the actual lease descriptor and its pathname. This check does not
      * treat a boolean callback, environment variable or session claim as
      * evidence that writers have stopped.
@@ -168,7 +214,11 @@ final class CpanelConsoleWriterLease
         clearstatcache(true, $marker);
         // An expired, broken or maliciously linked marker MUST NOT allow a
         // background writer to resume while recovery is still unresolved.
-        if (@lstat($marker) !== false) {
+        // is_link also covers dangling symlinks. Avoid lstat() on a known
+        // absent path: PHP emits noisy warnings in strict PHPUnit CI even
+        // with @-suppression, and absence must never become an approval of a
+        // linked or non-regular maintenance marker.
+        if (is_link($marker) || file_exists($marker)) {
             throw new DomainException('cPanel release maintenance blocks background writers.');
         }
     }
