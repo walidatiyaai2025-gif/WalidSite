@@ -35,6 +35,37 @@ The discovery tool makes read-only **GET** requests to numeric `127.0.0.1` only,
 
 The resulting plan uses exactly 14 canonical Web screen IDs and the existing real Chromium renderer. As with any other plan, an absolute plan file outside the checkout is required so the untracked plan cannot invalidate the Git source SHA preflight. The diagnostic image/report outputs are **not** admission into `design/visual-fidelity-evidence.json`. A visual match requires the independent exact decoded-RGBA gate, matching approved dimensions, locale and DPR, full renderer provenance, and subsequent AR/EN/device/accessibility checks. Do not call 14/14 screens pixel-matched merely because discovery or the diagnostic script ran.
 
+## Real anonymous public Web accessibility / responsive diagnostics
+
+The existing Issue #481 CI visual-diagnostics job also runs `qa/audit_web_runtime.py`
+against its **real local Laravel server**, using a fresh anonymous Chromium
+context for every language and viewport. This checks 12 currently routable
+static pages in **English and Arabic** at **1440×900 and 390×844**, or
+**48 actual page checks** total. It excludes WEB-05 Project Detail and
+WEB-08 Article Detail until genuinely approved published slugs exist; do not
+seed invented content to inflate coverage.
+
+The audit verifies exact route/HTTP 200 without redirects, server-rendered
+language/direction, a visible H1, the public `main#main-content` landmark,
+keyboard skip focus, accessible names for interactive controls, inert links,
+and document horizontal overflow. Requests leaving the local server are
+blocked before transmission. It refuses private Admin browser storage-state
+files, a dirty or changed source SHA, invalid origins and incomplete matrices.
+
+The generated `web-runtime-a11y.json` sits alongside real Web screenshot
+diagnostics in the existing `issue-481-admin-and-web-runtime-visual-diagnostics`
+Actions artifact. It includes **only stable defect codes**, screen IDs,
+locale and viewport; not user content, personal details or cookies.
+Exit `0` means all checks have no flagged defects, `1` means diagnosed
+accessibility/responsive defects, and `2` means fatal runtime/route/source
+verification failure. CI records exit `1` but blocks on `2`.
+
+The report is **not** WCAG certification, visual match or approval to
+publish. It cannot close #481 or mark any of the 40 evidence entries
+`matched`: actual independently authenticated Web/Admin/mobile pixel
+attestation and remaining cross-device/keyboard/assistive-technology
+review are still required.
+
 ## Execute a checked, resumable plan
 
 Create a **trusted local** JSON plan (not a checked-in credentials file). Example for two real public-page captures:
