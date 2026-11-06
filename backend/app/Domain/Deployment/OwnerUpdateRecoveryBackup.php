@@ -303,11 +303,48 @@ final class OwnerUpdateRecoveryBackup
             throw new RuntimeException('Cannot create private recovery receipt.');
         }
 
+        $complete = false;
         try {
-            if (! @chmod($path, 0600) || fwrite($stream, $json) !== strlen($json)) {
+            if (! @chmod($path, 0600)
+                || fwrite($stream, $json) !== strlen($json)
+                || ! fflush($stream)) {
                 throw new RuntimeException('Cannot persist verified recovery receipt.');
             }
+
+            // Never issue a recovery receipt unless its complete bytes are
+            // visible through the same regular, single-linked private inode.
+            clearstatcache(true, $path);
+            $opened = @fstat($stream);
+            $named = @lstat($path);
+            if (! is_array($opened) || ! is_array($named)
+                || is_link($path)
+                || ($opened['mode'] & 0170000) !== 0100000
+                || ($named['mode'] & 0170000) !== 0100000
+                || ($opened['mode'] & 0777) !== 0600
+                || ($named['mode'] & 0777) !== 0600
+                || $opened['nlink'] !== 1 || $named['nlink'] !== 1
+                || $opened['dev'] !== $named['dev']
+                || $opened['ino'] !== $named['ino']
+                || $opened['size'] !== strlen($json)
+                || $named['size'] !== strlen($json)) {
+                throw new DomainException('Recovery receipt changed before finalization.');
+            }
+            $complete = true;
         } finally {
+            // A failed write must not leave a truncated receipt for later
+            // recovery processing. Never delete a pathname swapped to a
+            // different inode by another local actor.
+            if (! $complete) {
+                clearstatcache(true, $path);
+                $opened = @fstat($stream);
+                $named = @lstat($path);
+                if (is_array($opened) && is_array($named) && ! is_link($path)
+                    && $opened['dev'] === $named['dev']
+                    && $opened['ino'] === $named['ino']
+                    && $opened['nlink'] === 1 && $named['nlink'] === 1) {
+                    @unlink($path);
+                }
+            }
             fclose($stream);
         }
     }
