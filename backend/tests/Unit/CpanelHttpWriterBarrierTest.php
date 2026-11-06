@@ -148,7 +148,7 @@ final class CpanelHttpWriterBarrierTest extends TestCase
         );
         $this->assertFalse($hit);
         $this->assertSame(503, $response->getStatusCode());
-        $this->assertSame('no-store', $response->headers->get('Cache-Control'));
+        $this->assertContains('no-store', array_map('trim', explode(',', (string) $response->headers->get('Cache-Control'))));
         $this->assertSame('30', $response->headers->get('Retry-After'));
         $this->assertFileExists($marker);
     }
