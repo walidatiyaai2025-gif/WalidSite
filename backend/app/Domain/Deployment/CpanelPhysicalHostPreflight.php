@@ -94,8 +94,16 @@ final class CpanelPhysicalHostPreflight
 
         $releases = $home.'/.walidsite-releases';
         if (file_exists($releases) || is_link($releases)) {
+            clearstatcache(true, $releases);
+            $releaseStat = @lstat($releases);
             if (is_link($releases) || ! is_dir($releases)
-                || realpath($releases) !== $releases || ! is_writable($releases)) {
+                || realpath($releases) !== $releases || ! is_writable($releases)
+                || ! is_array($releaseStat)
+                || ($releaseStat['mode'] & 0170000) !== 0040000
+                // Staging requires a private 0700-style release root. A
+                // publicly readable existing directory must not pass the
+                // earlier read-only owner hosting gate.
+                || ($releaseStat['mode'] & 0077) !== 0) {
                 throw new DomainException('Private immutable release root is unsafe.');
             }
         }
