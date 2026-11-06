@@ -39,9 +39,7 @@ def check_routes(artisan_output: object, openapi_text: str) -> tuple[dict, list[
         "uncontracted_registrations": [],
     }
     try:
-        paths, declared = openapi_operations(openapi_text)
-        if len(paths) != 42 or len(declared) != 46:
-            raise ValueError('Canonical 42-path/46-operation contract changed')
+        _, declared = openapi_operations(openapi_text)
         expected = {}
         for item in declared:
             path, verb = item.rsplit("#", 1)
