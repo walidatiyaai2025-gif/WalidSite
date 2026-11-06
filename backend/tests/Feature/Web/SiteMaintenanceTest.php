@@ -430,11 +430,8 @@ class SiteMaintenanceTest extends TestCase
         $user->roles()->attach(Role::firstOrCreate(['name' => 'owner'])->id);
         $this->actingAs($user);
         config(['site.updates_enabled' => true]);
-        $calls = 0;
-        $this->app->instance(
-            \App\Domain\Deployment\CpanelOwnerBackupHost::class,
-            new class($calls) implements \App\Domain\Deployment\CpanelOwnerBackupHost {
-                public function __construct(private int &$calls) {}
+        $host = new class implements \App\Domain\Deployment\CpanelOwnerBackupHost {
+                public int $calls = 0;
                 public function externalWritersStopped(): bool
                 {
                     $this->calls++;
@@ -444,14 +441,14 @@ class SiteMaintenanceTest extends TestCase
                 {
                     throw new \RuntimeException('A false writer guard must never touch the restore database.');
                 }
-            },
-        );
+            };
+        $this->app->instance(\App\Domain\Deployment\CpanelOwnerBackupHost::class, $host);
         // Running under the test/application tree, not the approved physical
         // cPanel layout, must fail before contacting the host implementation.
         $this->post('/admin/updates/backup-now')
             ->assertRedirect()->assertSessionHasErrors('backup');
         $this->assertNull(session('owner_backup_receipt'));
-        $this->assertSame(0, $calls);
+        $this->assertSame(0, $host->calls);
     }
 
     public function test_manual_updates_can_be_disabled_without_hiding_status(): void
