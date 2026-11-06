@@ -86,12 +86,16 @@ final class AdminSignedUpdateUploadTest extends TestCase
             // and the action may not manufacture a private inbox or proof.
             $this->post('https://localhost/admin/updates/preflight')
                 ->assertRedirect()->assertSessionHasErrors('hosting');
+            $this->post('https://localhost/admin/updates/stage')
+                ->assertRedirect()->assertSessionHasErrors('stage');
             $this->assertNull(session('owner_update_host_preflight'));
+            $this->assertNull(session('owner_update_staged_code'));
 
             $this->get('https://localhost/admin/updates')->assertOk()
                 ->assertSee('data-testid="trusted-zip-upload-form"', false)
                 ->assertSee('data-testid="verify-signed-update-zip"', false)
                 ->assertDontSee('data-testid="owner-host-preflight-form"', false)
+                ->assertDontSee('data-testid="owner-private-code-stage-form"', false)
                 ->assertSee('Install Update — Hosting/Recovery Blocked')
                 ->assertDontSee('name="release_url"', false);
 
@@ -117,10 +121,27 @@ final class AdminSignedUpdateUploadTest extends TestCase
             $this->post('https://localhost/admin/updates/preflight')
                 ->assertRedirect()->assertSessionHasErrors('hosting');
             $this->assertNull(session('owner_update_host_preflight'));
+            $this->post('https://localhost/admin/updates/stage')
+                ->assertRedirect()->assertSessionHasErrors('stage');
+            $this->assertNull(session('owner_update_staged_code'));
             $this->get('https://localhost/admin/updates')->assertOk()
                 ->assertDontSee('data-testid="owner-host-preflight-verified"', false)
                 ->assertSee('Install Update — Hosting/Recovery Blocked');
             $this->assertSame('0.1.2', trim(file_get_contents(base_path('VERSION'))));
+
+            // A forged session-only "passed" preflight is never enough to
+            // stage executable code on an incompatible non-cPanel checkout.
+            // The stage service MUST independently rerun physical + ZIP gates.
+            session()->put('owner_update_host_preflight', [
+                'id' => $id, 'installed_version' => '0.1.2',
+                'version' => '0.1.3',
+                'artifact_sha256' => hash('sha256', $validArchiveBytes),
+                'checked_at' => time(),
+            ]);
+            $this->post('https://localhost/admin/updates/stage')
+                ->assertRedirect()->assertSessionHasErrors('stage');
+            $this->assertNull(session('owner_update_staged_code'));
+            $this->assertDirectoryDoesNotExist(dirname(base_path()).'/.walidsite-releases');
 
             // Replacing a known-good upload with a rejected ZIP must not leave
             // that older signed artifact presented as the NEW verified ZIP.
@@ -184,6 +205,8 @@ final class AdminSignedUpdateUploadTest extends TestCase
         $this->actingAs($user)->post('https://localhost/admin/updates/verify-upload')
             ->assertForbidden();
         $this->actingAs($user)->post('https://localhost/admin/updates/preflight')
+            ->assertForbidden();
+        $this->actingAs($user)->post('https://localhost/admin/updates/stage')
             ->assertForbidden();
     }
 }
