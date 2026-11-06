@@ -637,6 +637,7 @@ jobs:
           assert proof["signed_code_cutover_fixture"] is True
           assert proof["disposable_mariadb_restore"] is True
           assert proof["failed_health_pointer_reverted"] is True
+          assert proof["late_populated_restore_blocked"] is True
           assert proof["real_https_host_verified"] is False
           assert proof["independent_foreign_writer_isolation"] is False
           assert proof["publisher_signature_verified_for_production"] is False
