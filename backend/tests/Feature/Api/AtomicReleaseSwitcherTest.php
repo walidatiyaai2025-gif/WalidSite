@@ -165,6 +165,107 @@ final class AtomicReleaseSwitcherTest extends TestCase
         $this->reject();
     }
 
+    public function test_group_writable_release_root_blocks_cutover_before_backup(): void
+    {
+        if (PHP_OS_FAMILY === 'Windows') {
+            self::markTestSkipped('POSIX directory permissions required.');
+        }
+        $backupCalls = 0;
+        self::assertTrue(chmod($this->releases, 0770));
+        try {
+            (new AtomicReleaseSwitcher())->switch(
+                $this->releases, $this->current, $this->docroot, $this->next,
+                static function () use (&$backupCalls): bool { ++$backupCalls; return true; },
+                static fn (): bool => true,
+            );
+            self::fail('Group-writable release root cannot authorize executable cutover.');
+        } catch (DomainException $error) {
+            self::assertStringContainsString('atomic current/public_html', $error->getMessage());
+            self::assertSame(0, $backupCalls);
+            self::assertSame($this->old, realpath($this->current));
+            self::assertSame('v1', file_get_contents($this->docroot.'/index.php'));
+        } finally {
+            self::assertTrue(chmod($this->releases, 0700));
+        }
+    }
+
+    public function test_group_writable_atomic_switch_lock_is_rejected_before_backup(): void
+    {
+        if (PHP_OS_FAMILY === 'Windows') {
+            self::markTestSkipped('POSIX file permissions required.');
+        }
+        $lockPath = $this->releases.'/.release-switch.lock';
+        self::assertSame(0, file_put_contents($lockPath, ''));
+        self::assertTrue(chmod($lockPath, 0660));
+        $backupCalls = 0;
+        try {
+            (new AtomicReleaseSwitcher())->switch(
+                $this->releases, $this->current, $this->docroot, $this->next,
+                static function () use (&$backupCalls): bool { ++$backupCalls; return true; },
+                static fn (): bool => true,
+            );
+            self::fail('Writable atomic switch lock cannot authorize code mutation.');
+        } catch (DomainException $error) {
+            self::assertStringContainsString('release lock identity', $error->getMessage());
+            self::assertSame(0, $backupCalls);
+            self::assertSame($this->old, realpath($this->current));
+            self::assertSame('v1', file_get_contents($this->docroot.'/index.php'));
+        } finally {
+            self::assertTrue(chmod($lockPath, 0600));
+        }
+    }
+
+    public function test_release_root_chmod_during_backup_blocks_pointer_cutover(): void
+    {
+        if (PHP_OS_FAMILY === 'Windows') {
+            self::markTestSkipped('POSIX directory permissions required.');
+        }
+        try {
+            (new AtomicReleaseSwitcher())->switch(
+                $this->releases, $this->current, $this->docroot, $this->next,
+                function (): bool {
+                    self::assertTrue(chmod($this->releases, 0777));
+                    return true;
+                },
+                static fn (): bool => true,
+            );
+            self::fail('Lost release-root mode must stop cutover before pointer mutation.');
+        } catch (DomainException $error) {
+            self::assertStringContainsString('Release root identity or permissions', $error->getMessage());
+            self::assertSame($this->old, realpath($this->current));
+            self::assertSame('v1', file_get_contents($this->docroot.'/index.php'));
+        } finally {
+            self::assertTrue(chmod($this->releases, 0700));
+        }
+    }
+
+    public function test_release_root_chmod_during_health_requires_manual_recovery(): void
+    {
+        if (PHP_OS_FAMILY === 'Windows') {
+            self::markTestSkipped('POSIX directory permissions required.');
+        }
+        try {
+            (new AtomicReleaseSwitcher())->switch(
+                $this->releases, $this->current, $this->docroot, $this->next,
+                static fn (): bool => true,
+                function (): bool {
+                    self::assertSame('v2', file_get_contents($this->docroot.'/index.php'));
+                    self::assertTrue(chmod($this->releases, 0777));
+                    return true;
+                },
+            );
+            self::fail('Changed release root must never produce a successful switch receipt.');
+        } catch (RuntimeException $error) {
+            self::assertStringContainsString('manual recovery required', $error->getMessage());
+            // Do not overwrite a potentially concurrent pointer while the
+            // release root lease has been lost after the code cutover.
+            self::assertSame($this->next, realpath($this->current));
+            self::assertSame('v2', file_get_contents($this->docroot.'/index.php'));
+        } finally {
+            self::assertTrue(chmod($this->releases, 0700));
+        }
+    }
+
     public function test_hard_linked_release_lock_denies_backup_and_pointer_swap(): void
     {
         $unrelated = $this->home.'/shared-release-lock';
