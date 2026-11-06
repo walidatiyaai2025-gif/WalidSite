@@ -53,6 +53,75 @@ String feed({
 });
 
 void main() {
+  testWidgets('MOBILE-02 five primary tabs stay visible without route stacking',
+      (tester) async {
+    await tester.pumpWidget(const WaleedTechApp(initiallyStarted: true));
+
+    NavigationBar bar() => tester.widget<NavigationBar>(
+      find.byType(NavigationBar),
+    );
+    expect(bar().destinations.length, 5);
+    expect(bar().selectedIndex, 0);
+    expect(find.byKey(const Key('mobile-home-scroll-feed')), findsOneWidget);
+    expect(find.text('Learn'), findsOneWidget);
+
+    // Primary destinations update their own selected state in place, rather
+    // than pushing a full-screen route that hides the five-tab bar.
+    await tester.tap(find.byKey(const Key('mobile-home-nav-learn')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('learning-unconfigured')), findsOneWidget);
+    expect(find.byType(NavigationBar), findsOneWidget);
+    expect(bar().selectedIndex, 1);
+
+    await tester.tap(find.byKey(const Key('mobile-home-nav-ai')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('ai-unconfigured')), findsOneWidget);
+    expect(find.byType(NavigationBar), findsOneWidget);
+    expect(bar().selectedIndex, 2);
+
+    await tester.tap(find.byKey(const Key('mobile-home-nav-library')));
+    await tester.pumpAndSettle();
+    expect(find.byType(NavigationBar), findsOneWidget);
+    expect(bar().selectedIndex, 3);
+
+    await tester.tap(find.byKey(const Key('mobile-home-nav-you')));
+    await tester.pumpAndSettle();
+    expect(find.byType(NavigationBar), findsOneWidget);
+    expect(bar().selectedIndex, 4);
+
+    await tester.tap(find.byKey(const Key('mobile-home-nav-home')));
+    await tester.pumpAndSettle();
+    expect(bar().selectedIndex, 0);
+    expect(find.byKey(const Key('mobile-home-scroll-feed')), findsOneWidget);
+    expect(find.byKey(const Key('mobile-home-filter-articles')), findsOneWidget);
+  });
+
+  testWidgets('MOBILE-02 Arabic primary Learn tab is translated and reversible',
+      (tester) async {
+    await tester.pumpWidget(const WaleedTechApp(initiallyStarted: true));
+    await tester.tap(find.byKey(const Key('mobile-home-language')));
+    await tester.pumpAndSettle();
+
+    expect(tester.widget<NavigationDestination>(
+      find.byKey(const Key('mobile-home-nav-learn')),
+    ).label, 'تعلّم');
+
+    await tester.tap(find.byKey(const Key('mobile-home-nav-learn')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('learning-unconfigured')), findsOneWidget);
+    expect(tester.widget<NavigationBar>(
+      find.byType(NavigationBar),
+    ).selectedIndex, 1);
+
+    await tester.tap(find.byKey(const Key('mobile-home-nav-home')));
+    await tester.pumpAndSettle();
+    expect(find.text('رفيق وليد التقني'), findsOneWidget);
+    expect(find.byKey(const Key('mobile-home-filter-for-you')), findsOneWidget);
+    expect(tester.widget<NavigationBar>(
+      find.byType(NavigationBar),
+    ).selectedIndex, 0);
+  });
+
   testWidgets('YouTube-style Home keeps its existing AI destination wired', (
     WidgetTester tester,
   ) async {
