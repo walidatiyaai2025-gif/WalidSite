@@ -22,7 +22,7 @@ import tempfile
 import time
 
 from qa.cpanel_first_run_http_probe import extract_verified_archive
-from qa.cpanel_https_setup_gate import AcceptanceError, accept
+from qa.cpanel_https_setup_gate import AcceptanceError, Client, accept
 
 
 def apache_config(home: Path, work: Path, port: int) -> str:
@@ -79,7 +79,8 @@ def run(package: Path, source_sha: str) -> dict:
         # same pinned ZIP snapshot whose bytes will be extracted.
         extract_verified_archive(package, home, expected_sha=source_sha)
         if (home / "application/.env").exists() or not (
-                home / "application/vendor/autoload.php").is_file():
+                home / "application/vendor/autoload.php").is_file() or (
+                home / "application/storage/app/site-first-run.json").exists()):
             raise AcceptanceError("Disposable Setup ZIP is not a clean install")
 
         cert, key = work / "localhost.crt", work / "localhost.key"
@@ -131,7 +132,15 @@ def run(package: Path, source_sha: str) -> dict:
                     time.sleep(0.1)
             else:
                 raise AcceptanceError("Disposable Apache HTTPS port did not open")
-            report = accept(f"https://localhost:{port}", home, cert)
+            # The private possession token does not exist until the first
+            # real HTTP boot. Prime it through localhost HTTPS in a separate
+            # cookie jar; accept() then independently verifies first-run
+            # possession, CSRF, ordering and private/public boundaries.
+            origin = f"https://localhost:{port}"
+            welcome = Client(origin, cert).request("/install")
+            if welcome.status != 200 or 'name="token"' not in welcome.body:
+                raise AcceptanceError("Fresh HTTPS installer did not initialize")
+            report = accept(origin, home, cert)
             if not report["first_run_http_possession_verified"]:
                 raise AcceptanceError("Real Apache first-run acceptance did not pass")
             return {
