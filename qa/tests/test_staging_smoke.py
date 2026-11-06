@@ -3,6 +3,7 @@ import io
 import json
 import os
 import socket
+import ssl
 import tempfile
 import threading
 import time
@@ -509,7 +510,9 @@ class StagingSmokeTest(unittest.TestCase):
         )
         self.assertEqual(observed["connection"]._pinned_ip, "1.1.1.1")
         self.assertEqual(observed["connection"].host, "staging.example.com")
-        self.assertIsNone(observed["options"]["context"])
+        self.assertIsInstance(observed["options"]["context"], ssl.SSLContext)
+        self.assertTrue(observed["options"]["context"].check_hostname)
+        self.assertEqual(observed["options"]["context"].verify_mode, ssl.CERT_REQUIRED)
         self.assertEqual(observed["url"],
                          "https://staging.example.com/api/v1/public/home")
 
