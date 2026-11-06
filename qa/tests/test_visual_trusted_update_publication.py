@@ -366,6 +366,7 @@ class TrustedUpdatePublicationTest(unittest.TestCase):
             self.skipTest('PHP ZIP extension required for publisher ZIP inspection')
         meta = self.make_update()
         meta.pop('publisher_signature_verified')
+        meta['release_notes'] = 'Fixes: backup and recovery\\n<script>alert(1)</script>'.replace('\\n', '\n')
         proc = subprocess.run(['php', '-r',
             '$kp=sodium_crypto_sign_keypair(); echo json_encode(['
             '"secret"=>base64_encode(sodium_crypto_sign_secretkey($kp)),'
@@ -374,6 +375,16 @@ class TrustedUpdatePublicationTest(unittest.TestCase):
         pair = json.loads(proc.stdout)
         script = Path(__file__).resolve().parents[1] / 'sign_trusted_update_release.php'
         env = dict(os.environ, WALIDSITE_PUBLISHER_SECRET_KEY_B64=pair['secret'])
+        # Never accept control characters, bidi spoofing or unbounded
+        # descriptive bytes, even if a publisher attempts to sign them.
+        for unsafe_notes in ('', 'hidden\\x00field'.replace('\\x00', chr(0)),
+                             'bidi ' + chr(0x202e), 'x' * 2049):
+            poisoned = dict(meta, release_notes=unsafe_notes)
+            rejected = subprocess.run(['php', str(script), str(self.root)],
+                                      input=json.dumps(poisoned).encode(),
+                                      capture_output=True, env=env)
+            self.assertNotEqual(rejected.returncode, 0)
+            self.assertFalse((self.root / 'latest.json').exists())
         payload = json.dumps(meta).encode()
         signed = subprocess.run(['php', str(script), str(self.root)], input=payload,
                                 capture_output=True, env=env)
@@ -381,6 +392,7 @@ class TrustedUpdatePublicationTest(unittest.TestCase):
         envelope = json.loads((self.root / 'latest.json').read_bytes())
         raw = base64.b64decode(envelope['payload'], validate=True)
         self.assertEqual(json.loads(raw), meta)
+        self.assertIn('<script>alert(1)</script>', json.loads(raw)['release_notes'])
         verify = subprocess.run(['php', '-r',
             '$e=json_decode(stream_get_contents(STDIN),true);'
             'exit(sodium_crypto_sign_verify_detached(base64_decode($e["signature"]),'
@@ -388,7 +400,9 @@ class TrustedUpdatePublicationTest(unittest.TestCase):
             input=json.dumps(envelope).encode(), env=dict(os.environ, PUB=pair['public']))
         self.assertEqual(verify.returncode, 0)
         # Replacing unsigned metadata cannot authorize a second publisher.
-        envelope['payload'] = base64.b64encode(raw.replace(b'1.2.3', b'2.2.3')).decode()
+        envelope['payload'] = base64.b64encode(
+            raw.replace(b'backup and recovery', b'backup and corrupted')
+        ).decode()
         verify = subprocess.run(['php', '-r',
             '$e=json_decode(stream_get_contents(STDIN),true);'
             'exit(sodium_crypto_sign_verify_detached(base64_decode($e["signature"]),'
