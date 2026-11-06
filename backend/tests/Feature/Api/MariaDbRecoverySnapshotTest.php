@@ -126,10 +126,30 @@ final class MariaDbRecoverySnapshotTest extends TestCase
             (string) file_get_contents($snapshot['directory'].'/manifest.json'),
             true, 16, JSON_THROW_ON_ERROR,
         );
+        self::assertSame(0600, fileperms($snapshot['directory'].'/manifest.json') & 0777);
         foreach ($manifest['tables'] as $table => $details) {
             $file = $snapshot['directory'].'/'.$table.'.jsonl';
             self::assertFileExists($file);
             self::assertSame(hash_file('sha256', $file), $details['file_sha256']);
+            self::assertSame(0600, fileperms($file) & 0777);
+        }
+        self::assertSame(['tables' => 2, 'rows' => 3],
+            (new MariaDbRecoverySnapshot())->restoreAndVerify(
+                $this->target, $snapshot['directory'], $snapshot['manifest_sha256'],
+            ));
+    }
+
+    public function test_snapshot_files_remain_private_with_permissive_process_umask(): void
+    {
+        $previous = umask(0000);
+        try {
+            $snapshot = $this->capture();
+        } finally {
+            umask($previous);
+        }
+
+        self::assertSame(0600, fileperms($snapshot['directory'].'/manifest.json') & 0777);
+        foreach (glob($snapshot['directory'].'/*.jsonl') ?: [] as $file) {
             self::assertSame(0600, fileperms($file) & 0777);
         }
         self::assertSame(['tables' => 2, 'rows' => 3],
