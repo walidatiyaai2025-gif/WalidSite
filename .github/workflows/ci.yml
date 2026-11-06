@@ -378,7 +378,7 @@ jobs:
           PY
 
       - name: Upload Issue 481 Admin runtime visual diagnostics
-        if: ${{ always() && (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'pull_request' && (startsWith(github.head_ref, 'feat/481-') || startsWith(github.head_ref, 'fix/481-') || startsWith(github.head_ref, 'chore/481-'))) }}
+        if: ${{ always() && ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'pull_request' && (startsWith(github.head_ref, 'feat/481-') || startsWith(github.head_ref, 'fix/481-') || startsWith(github.head_ref, 'chore/481-')))) }}
         uses: actions/upload-artifact@v4
         with:
           name: issue-481-admin-and-web-runtime-visual-diagnostics
