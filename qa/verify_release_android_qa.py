@@ -96,6 +96,30 @@ def hash_bounded_stream(stream, maximum: int, *, retain: bool) -> tuple[bytes | 
     return (bytes(data) if data is not None else None), digest.hexdigest(), total
 
 
+MAX_ZIP_ENTRIES = 20000
+
+
+def verify_bounded_zip_members(archive: zipfile.ZipFile, maximum: int) -> None:
+    """Reject expansive ZIP metadata before CRC testing decompresses entries.
+
+    Compressed archive bytes are independently bounded by read_verified.
+    The expanded byte ceiling is intentionally higher to accommodate
+    ordinary compressed Laravel assets while ruling out ZIP bombs.
+    """
+    entries = archive.infolist()
+    if not 2 <= len(entries) <= MAX_ZIP_ENTRIES:
+        raise ValueError("ZIP member count outside bounded acceptance")
+    total = 0
+    expanded_limit = maximum * 4
+    for member in entries:
+        if (member.file_size < 0 or member.compress_size < 0
+                or member.file_size > expanded_limit):
+            raise ValueError("ZIP member expands past byte budget")
+        total += member.file_size
+        if total > expanded_limit:
+            raise ValueError("ZIP expands past cumulative byte budget")
+
+
 def read_verified(fd: int, name: str, maximum: int, *, verify_zip: bool = False):
     """Read and hash one pinned single-link regular inode and its named path."""
     flags = os.O_RDONLY | os.O_NOFOLLOW | getattr(os, "O_NONBLOCK", 0)
@@ -115,7 +139,8 @@ def read_verified(fd: int, name: str, maximum: int, *, verify_zip: bool = False)
             stream.seek(0)
             try:
                 with zipfile.ZipFile(stream) as apk:
-                    if apk.testzip() is not None or len(apk.infolist()) < 2:
+                    verify_bounded_zip_members(apk, maximum)
+                    if apk.testzip() is not None:
                         raise ValueError("APK has damaged CRC or no compiled contents")
             except (zipfile.BadZipFile, EOFError) as exc:
                 raise ValueError("APK ZIP is invalid") from exc
