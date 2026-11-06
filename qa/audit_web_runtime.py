@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -42,6 +43,94 @@ FATAL_CODES = frozenset({
     "http_or_route_failure", "locale_or_direction_mismatch",
     "runtime_inspection_failure",
 })
+
+# A narrow, structural root-cause probe for the sole remaining owner-frozen
+# WEB-03 mobile overflow. Never copy text, href, IDs, form values or arbitrary
+# CSS class strings from the DOM into artifacts. Only known source class
+# prefixes are allowed; this diagnostic cannot certify visual equality.
+OVERFLOW_STRUCTURE = r"""() => {
+  const width = document.documentElement.clientWidth;
+  const maxNodes = 4000;
+  const nodes = document.body ? document.body.querySelectorAll('*') : [];
+  const candidates = [];
+  function safelyClipped(element) {
+    for (let parent = element.parentElement; parent && parent !== document.body;
+         parent = parent.parentElement) {
+      const style = getComputedStyle(parent);
+      if (/^(auto|scroll|hidden|clip)$/.test(style.overflowX)) {
+        const bounds = parent.getBoundingClientRect();
+        if (bounds.left >= -1 && bounds.right <= width + 1) return true;
+      }
+    }
+    return false;
+  }
+  for (let i = 0; i < Math.min(nodes.length, maxNodes); i++) {
+    const element = nodes[i];
+    const style = getComputedStyle(element);
+    if (style.display === 'none' || style.visibility === 'hidden' ||
+        !element.isConnected || element.closest('[hidden],[inert]')) continue;
+    const rect = element.getBoundingClientRect();
+    if (!rect.width || !rect.height || safelyClipped(element)) continue;
+    const overhang = Math.max(0, Math.ceil(rect.right - width),
+                              Math.ceil(-rect.left));
+    if (overhang <= 1) continue;
+    const component = Array.from(element.classList || []).find(
+      c => /^(?:expertise-|t007-|site-|wa-)[a-zA-Z0-9_-]{1,48}$/.test(c)
+    ) || '';
+    candidates.push({
+      tag: element.tagName.toLowerCase(),
+      component,
+      overhang_px: Math.min(100000, overhang)
+    });
+  }
+  candidates.sort((a, b) => b.overhang_px - a.overhang_px);
+  return {
+    viewport_px: width,
+    scanned_nodes: Math.min(nodes.length, maxNodes),
+    truncated: nodes.length > maxNodes,
+    candidates: candidates.slice(0, 8)
+  };
+}"""
+_ALLOWED_COMPONENT = re.compile(
+    r"^(?:expertise-|t007-|site-|wa-)[A-Za-z0-9_-]{1,48}$"
+)
+_ALLOWED_TAG = re.compile(r"^[a-z][a-z0-9-]{0,23}$")
+
+
+def safe_overflow_structure(raw: object) -> dict:
+    """Strictly bounded, source-class-only Chromium overflow diagnosis."""
+    absent = {"status": "unavailable", "candidates": []}
+    if not isinstance(raw, dict) or set(raw) != {
+        "viewport_px", "scanned_nodes", "truncated", "candidates"
+    }:
+        return absent
+    width, scanned = raw["viewport_px"], raw["scanned_nodes"]
+    if (type(width) is not int or not 100 <= width <= 10000 or
+            type(scanned) is not int or not 0 <= scanned <= 4000 or
+            type(raw["truncated"]) is not bool or
+            not isinstance(raw["candidates"], list) or
+            len(raw["candidates"]) > 8):
+        return absent
+    safe = []
+    for item in raw["candidates"]:
+        if not isinstance(item, dict) or set(item) != {
+            "tag", "component", "overhang_px"
+        }:
+            return absent
+        tag, component, px = item["tag"], item["component"], item["overhang_px"]
+        if (not isinstance(tag, str) or not _ALLOWED_TAG.fullmatch(tag) or
+                not isinstance(component, str) or
+                (component != "" and not _ALLOWED_COMPONENT.fullmatch(component)) or
+                type(px) is not int or not 2 <= px <= 100000):
+            return absent
+        safe.append({"tag": tag, "component": component, "overhang_px": px})
+    return {
+        "status": "structural_hint_only",
+        "viewport_px": width,
+        "scanned_nodes": scanned,
+        "truncated": raw["truncated"],
+        "candidates": safe,
+    }
 
 
 def inspect_page(page, url: str, locale: str) -> list[str]:
@@ -120,7 +209,7 @@ def audit_web(origin: str, sha: str, *, root: Path | None = None,
                             try:
                                 target = base + entry["route"] + "?lang=" + locale
                                 defects = inspect_page(page, target, locale)
-                                rows.append({
+                                row = {
                                     "screen": entry["screen_id"],
                                     "locale": locale,
                                     "viewport": viewport,
@@ -128,7 +217,16 @@ def audit_web(origin: str, sha: str, *, root: Path | None = None,
                                     "height": height,
                                     "status": "pass" if not defects else "defect",
                                     "defects": defects,
-                                })
+                                }
+                                if "document_horizontal_overflow" in defects:
+                                    # Execute only for an actual overflow defect,
+                                    # never on a private Admin/browser session.
+                                    try:
+                                        raw = page.evaluate(OVERFLOW_STRUCTURE)
+                                    except Exception:
+                                        raw = None
+                                    row["overflow_structure"] = safe_overflow_structure(raw)
+                                rows.append(row)
                             finally:
                                 page.close()
                     finally:
