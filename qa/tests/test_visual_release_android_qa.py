@@ -4,6 +4,7 @@ No fixture "signature" is presented as real Android signing; those native
 checks must run in the independently green main Android CI job.
 """
 import hashlib
+import io
 import json
 from pathlib import Path
 import tempfile
@@ -12,7 +13,7 @@ import zipfile
 
 from qa.android_qa_build_metadata import metadata
 from qa.verify_release_android_qa import (
-    APK_NAME, CHECKSUM_NAME, IDENTITY_NAME, PROOF_NAME, verify, verify_bundle,
+    APK_NAME, CHECKSUM_NAME, IDENTITY_NAME, PROOF_NAME, hash_bounded_stream, verify, verify_bundle,
     site_release_version,
 )
 
@@ -67,6 +68,24 @@ class ReleaseAndroidQaAttachmentTest(unittest.TestCase):
         (self.folder / IDENTITY_NAME).write_text(json.dumps(self.identity), encoding="utf-8")
         (self.folder / PROOF_NAME).write_text(json.dumps(self.proof), encoding="utf-8")
         return verify(self.folder, self.checkout, SHA)
+
+    def test_pinned_stream_enforces_actual_bytes_not_just_initial_file_size(self):
+        # Simulate a regular file growing after the fstat bound check:
+        # the streaming reader must reject at the first excess byte.
+        payload = b"0123456789"
+        for retain in (True, False):
+            with self.subTest(retain=retain):
+                kept, digest, count = hash_bounded_stream(
+                    io.BytesIO(payload), len(payload), retain=retain
+                )
+                self.assertEqual(count, len(payload))
+                self.assertEqual(digest, hashlib.sha256(payload).hexdigest())
+                self.assertEqual(kept, payload if retain else None)
+                with self.assertRaisesRegex(ValueError, "bounded byte budget"):
+                    hash_bounded_stream(io.BytesIO(payload + b"x"), len(payload),
+                                        retain=retain)
+        with self.assertRaisesRegex(ValueError, "byte budget"):
+            hash_bounded_stream(io.BytesIO(payload), 0, retain=True)
 
     def test_same_sha_native_debug_receipt_does_not_claim_production_release(self):
         result = self.attempt()
