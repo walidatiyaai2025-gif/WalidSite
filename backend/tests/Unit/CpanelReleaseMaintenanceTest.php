@@ -97,6 +97,58 @@ final class CpanelReleaseMaintenanceTest extends TestCase
         $this->assertFileExists($this->home.'/.walidsite-active-release.json');
     }
 
+    public function test_group_or_world_writable_cpanel_home_cannot_issue_a_maintenance_token(): void
+    {
+        $maintenance = new CpanelReleaseMaintenance();
+        $marker = $this->home.'/.walidsite-update-maintenance.json';
+
+        foreach ([0770, 0702, 0777] as $mode) {
+            $this->assertTrue(chmod($this->home, $mode));
+            clearstatcache(true, $this->home);
+            try {
+                $maintenance->begin($this->home, 'legacy', '0.1.1');
+                $this->fail('An account home writable by another principal authorized release maintenance.');
+            } catch (DomainException $error) {
+                $this->assertStringContainsString('home', $error->getMessage());
+                $this->assertFileDoesNotExist($marker);
+            } finally {
+                chmod($this->home, 0700);
+                clearstatcache(true, $this->home);
+            }
+        }
+    }
+
+    public function test_private_home_permission_regression_revokes_active_and_clear_authority(): void
+    {
+        $maintenance = new CpanelReleaseMaintenance();
+        $session = $maintenance->begin($this->home, 'legacy', '0.1.1');
+        $marker = $this->home.'/.walidsite-update-maintenance.json';
+
+        $this->assertTrue(chmod($this->home, 0777));
+        clearstatcache(true, $this->home);
+        try {
+            try {
+                $maintenance->assertActive($this->home, $session['token'], 'legacy');
+                $this->fail('Maintenance proof accepted a newly writable account home.');
+            } catch (DomainException) {
+                $this->assertFileExists($marker);
+            }
+            try {
+                $maintenance->clear($this->home, $session['token']);
+                $this->fail('An unsafe account home allowed the maintenance barrier to be cleared.');
+            } catch (DomainException) {
+                $this->assertFileExists($marker);
+            }
+        } finally {
+            chmod($this->home, 0700);
+            clearstatcache(true, $this->home);
+        }
+
+        $maintenance->assertActive($this->home, $session['token'], 'legacy');
+        $maintenance->clear($this->home, $session['token']);
+        $this->assertFileDoesNotExist($marker);
+    }
+
     public function test_unknown_release_identity_and_untrusted_link_are_forbidden(): void
     {
         $maintenance = new CpanelReleaseMaintenance();
