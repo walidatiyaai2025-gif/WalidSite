@@ -230,4 +230,49 @@ final class Web13SearchStageJourneyTest extends TestCase
             $this->assertSame(1, substr_count($response->getContent(), 'id="all-q"'));
         }
     }
+
+    public function test_verified_first_viewport_result_links_have_unique_bilingual_screen_reader_names(): void
+    {
+        $first = $this->publishedArticle('accessible-first');
+        $second = $this->publishedArticle('accessible-second');
+        $project = $this->publicProject('accessible-work');
+        $this->publishedArticle('private-draft', false);
+        $this->publicProject('unverified-work', false);
+
+        foreach (['en', 'ar'] as $lang) {
+            $response = $this->get(route('public.search', [
+                'lang' => $lang, 'q' => 'screenneedle', 'type' => 'all',
+            ]))->assertOk()
+                ->assertDontSee('web13-article-private-draft')
+                ->assertDontSee('web13-project-unverified-work');
+            $html = $response->getContent();
+
+            foreach ([$first, $second] as $article) {
+                $title = $lang === 'ar' ? $article->title_ar : $article->title_en;
+                $name = ($lang === 'ar' ? 'فتح الدليل التفصيلي: ' : 'Open detailed guide: ').$title;
+                $this->assertSame(1, substr_count($html, 'aria-label="'.e($name).'"'));
+            }
+
+            $projectName = ($lang === 'ar' ? 'عرض المشروع: ' : 'View project: ')
+                .'screenneedle project accessible-work';
+            $this->assertSame(1, substr_count($html, 'aria-label="'.e($projectName).'"'));
+
+            // The three verified cards retain their visual anchor copy and
+            // exact first-party detail destinations, including filter context.
+            $this->assertSame(3, substr_count($html, 'class="t012-search-card"'));
+            foreach ([$first, $second] as $article) {
+                $url = route('public.article', [
+                    'slug' => $article->slug, 'lang' => $lang, 'source' => 'search',
+                    'q' => 'screenneedle', 'type' => 'all',
+                ]);
+                $this->assertSame(1, substr_count($html, 'href="'.e($url).'"'));
+            }
+            $url = route('public.project', [
+                'slug' => $project->slug, 'lang' => $lang, 'source' => 'search',
+                'q' => 'screenneedle', 'type' => 'all',
+            ]);
+            $this->assertSame(1, substr_count($html, 'href="'.e($url).'"'));
+        }
+    }
+
 }
