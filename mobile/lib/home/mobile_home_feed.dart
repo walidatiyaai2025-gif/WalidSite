@@ -34,13 +34,17 @@ class MobileHomeProject {
   /// Build public project links from the verified application origin, never
   /// from an arbitrary URL carried in the Home response.
   @visibleForTesting
-  static Uri? publicDetailUrl(String slug, {Uri? origin}) {
+  static Uri? publicDetailUrl(String slug, {Uri? origin, bool arabic = false}) {
     if (!RegExp(r'^[A-Za-z0-9-]{1,180}$').hasMatch(slug)) return null;
     final safeOrigin = origin == null
         ? MobileHomeReader.configuredOrigin()
         : VerifiedArticleReader.validatedOrigin(origin.toString());
     if (safeOrigin == null) return null;
-    return safeOrigin.replace(path: '/projects/$slug', query: null, fragment: null);
+    return safeOrigin.replace(
+      path: '/projects/$slug',
+      queryParameters: {'lang': arabic ? 'ar' : 'en'},
+      fragment: null,
+    );
   }
 
   static MobileHomeProject fromJson(Object? value) {
