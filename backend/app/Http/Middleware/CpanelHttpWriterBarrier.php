@@ -5,6 +5,7 @@ namespace App\Http\Middleware;
 use App\Domain\Deployment\CpanelConsoleWriterLease;
 use Closure;
 use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use Throwable;
@@ -22,6 +23,8 @@ use Throwable;
  */
 final class CpanelHttpWriterBarrier
 {
+    private const BINARY_LEASE_ATTRIBUTE = '_walidsite_cpanel_binary_writer_lease';
+
     public function __construct(
         private readonly CpanelConsoleWriterLease $lease,
         private readonly ?string $applicationBase = null,
@@ -43,7 +46,15 @@ final class CpanelHttpWriterBarrier
         $deferred = false;
         try {
             $response = $next($request);
-            if ($response instanceof StreamedResponse) {
+            if ($response instanceof BinaryFileResponse) {
+                // sendContent() happens after ordinary middleware returns.
+                // Keep the lease alive through Kernel::terminate(), which runs
+                // after binary content has been sent, including X-Sendfile
+                // delegated responses. Store the lease on this *request*,
+                // rather than a singleton that can cross request boundaries.
+                $request->attributes->set(self::BINARY_LEASE_ATTRIBUTE, $this->lease);
+                $deferred = true;
+            } elseif ($response instanceof StreamedResponse) {
                 // Laravel sends streamDownload callbacks *after* ordinary
                 // middleware has returned. Retain the lock until those bytes
                 // (and any associated application work) are finished.
@@ -68,6 +79,19 @@ final class CpanelHttpWriterBarrier
             if (! $deferred) {
                 $this->lease->end();
             }
+        }
+    }
+
+    /**
+     * Laravel calls terminable middleware after the response is sent. For
+     * BinaryFileResponse the ordinary handle() finally is too early.
+     */
+    public function terminate(Request $request, Response $response): void
+    {
+        $lease = $request->attributes->get(self::BINARY_LEASE_ATTRIBUTE);
+        if ($lease instanceof CpanelConsoleWriterLease) {
+            $request->attributes->remove(self::BINARY_LEASE_ATTRIBUTE);
+            $lease->end();
         }
     }
 }

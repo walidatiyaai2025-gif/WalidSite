@@ -8,6 +8,7 @@ use DomainException;
 use Illuminate\Http\Request;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -131,6 +132,49 @@ final class CpanelHttpWriterBarrierTest extends TestCase
         }
         $this->assertTrue($streamed);
         $exclusive->beginExclusiveForUpdate($this->home);
+        $exclusive->end();
+    }
+
+    public function test_binary_file_response_holds_writer_lock_until_http_termination(): void
+    {
+        $file = $this->home.'/download.bin';
+        self::assertSame(13, file_put_contents($file, 'private bytes'));
+        $request = Request::create('/admin/reports/download', 'GET');
+        $middleware = $this->middleware();
+        $response = $middleware->handle(
+            $request,
+            static fn (): Response => new BinaryFileResponse($file),
+        );
+
+        self::assertInstanceOf(BinaryFileResponse::class, $response);
+        $exclusive = new CpanelConsoleWriterLease();
+        try {
+            $exclusive->beginExclusiveForUpdate($this->home);
+            self::fail('Owner update overtook pending binary-file response.');
+        } catch (DomainException) {
+            // File has not yet been sent: the request still owns its lease.
+        }
+
+        ob_start();
+        try {
+            $response->sendContent();
+            self::assertSame('private bytes', ob_get_contents());
+        } finally {
+            ob_end_clean();
+        }
+
+        // Kernel::terminate() runs only AFTER sendContent(), so the lock
+        // must still exclude a cutover until that lifecycle callback.
+        try {
+            $exclusive->beginExclusiveForUpdate($this->home);
+            self::fail('Binary response released its lease before termination.');
+        } catch (DomainException) {
+            // Still held pending HTTP kernel termination.
+        }
+        $middleware->terminate($request, $response);
+        $middleware->terminate($request, $response); // Idempotent.
+        $exclusive->beginExclusiveForUpdate($this->home);
+        $exclusive->assertExclusiveHeld();
         $exclusive->end();
     }
 
