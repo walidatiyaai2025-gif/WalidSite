@@ -164,10 +164,17 @@ class PublicArticleController extends Controller
         // Honor the Flutter verified category parser for legacy editorial
         // rows as well as current data. UTF-8 byte length is deliberately
         // conservative relative to the UI's UTF-16 string length.
+        // Match Flutter's verified-category parser. A legacy control,
+        // bidi override/isolate or malformed UTF-8 label must not poison
+        // the otherwise published article list.
+        $unsafeLabel = '/[\x00-\x1F\x7F\x{202A}-\x{202E}\x{2066}-\x{2069}]/u';
+
         return strlen($slug) <= 60
             && preg_match('/\A[a-z0-9]+(?:-[a-z0-9]+)*\z/D', $slug) === 1
             && trim($en) !== '' && strlen($en) <= 160
-            && trim($ar) !== '' && strlen($ar) <= 160;
+            && trim($ar) !== '' && strlen($ar) <= 160
+            && preg_match($unsafeLabel, $en) === 0
+            && preg_match($unsafeLabel, $ar) === 0;
     }
 
     /** @return array{slug:string,name:string} */
