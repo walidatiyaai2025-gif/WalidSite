@@ -91,7 +91,8 @@ final class AdminGithubProposalController extends Controller
             throw ValidationException::withMessages(['repository_slug' => 'Invalid repository slug.']);
         }
 
-        $proposal = DB::transaction(function () use ($request, $slug) {
+        try {
+            $proposal = DB::transaction(function () use ($request, $slug) {
             $actor = $this->actor($request, lock: true);
             abort_if(GithubAllowlistProposal::query()->where('repository_slug', $slug)->exists(),
                 409, 'Repository already proposed.');
@@ -107,7 +108,12 @@ final class AdminGithubProposalController extends Controller
                 'created_at' => now('UTC'),
             ]);
             return $item;
-        }, 3);
+            }, 3);
+        } catch (\Illuminate\Database\UniqueConstraintViolationException) {
+            // Two writers can pass the precheck. The normalized unique
+            // index decides the race; never expose database constraint text.
+            abort(409, 'Repository already proposed.');
+        }
 
         return response()->json(['data' => $this->output($proposal)], 201)
             ->header('Cache-Control', 'no-store, private');
