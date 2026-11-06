@@ -22,9 +22,9 @@ final class CpanelReleaseMaintenance
      */
     public function begin(string $homeDirectory, string $previousRoot, string $previousVersion, int $seconds = 180): array
     {
-        $home = realpath($homeDirectory);
-        if ($home === false || is_link($homeDirectory) || ! is_writable($home)
-            || $seconds < 30 || $seconds > 300
+        $homeIdentity = $this->privateHome($homeDirectory);
+        $home = $homeIdentity['path'];
+        if ($seconds < 30 || $seconds > 300
             || ! preg_match('/\A(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\z/D', $previousVersion)
             || ($previousRoot !== 'legacy'
                 && ! preg_match('#\A\.walidsite-releases/v'.preg_quote($previousVersion, '#').'-[a-f0-9]{40}\z#D', $previousRoot))) {
@@ -54,9 +54,37 @@ final class CpanelReleaseMaintenance
                 || ! fflush($stream) || (function_exists('fsync') && ! fsync($stream))) {
                 throw new RuntimeException('Cannot durably create update barrier.');
             }
+            // A private lease is valid only when its actual open inode and
+            // named inode are identical, single-linked and mode 0600. Never
+            // issue a probe token if another account principal could replace
+            // its parent directory while the marker was being written.
+            $this->assertHomeUnchanged($homeDirectory, $homeIdentity);
+            $opened = @fstat($stream);
+            $named = @lstat($path);
+            if (! is_array($opened) || ! is_array($named) || is_link($path)
+                || ($opened['mode'] & 0170000) !== 0100000
+                || ($named['mode'] & 0170000) !== 0100000
+                || ($opened['mode'] & 0777) !== 0600
+                || ($named['mode'] & 0777) !== 0600
+                || $opened['nlink'] !== 1 || $named['nlink'] !== 1
+                || $opened['dev'] !== $named['dev']
+                || $opened['ino'] !== $named['ino']
+                || $opened['size'] !== strlen($json)
+                || $named['size'] !== strlen($json)) {
+                throw new DomainException('Private maintenance lease changed during creation.');
+            }
+            $this->assertHomeUnchanged($homeDirectory, $homeIdentity);
         } catch (\Throwable $error) {
+            // Do not unlink an unrelated file swapped into the pathname by
+            // a concurrent actor. Keep the fail-closed marker for recovery.
+            $opened = @fstat($stream);
+            $named = @lstat($path);
             fclose($stream);
-            @unlink($path);
+            if (is_array($opened) && is_array($named) && ! is_link($path)
+                && $opened['dev'] === $named['dev'] && $opened['ino'] === $named['ino']
+                && $named['nlink'] === 1) {
+                @unlink($path);
+            }
             throw $error;
         }
         fclose($stream);
@@ -64,21 +92,52 @@ final class CpanelReleaseMaintenance
     }
 
     /**
+     * Resolve a cPanel account home only when other hosting principals
+     * cannot write its root. Mode 0711/0750 is supported; group/other write
+     * is never an acceptable boundary for a secret maintenance lease.
+     *
+     * @return array{path:string,dev:int,ino:int,mode:int,uid:int}
+     */
+    private function privateHome(string $homeDirectory): array
+    {
+        clearstatcache(true, $homeDirectory);
+        $details = @lstat($homeDirectory);
+        $resolved = realpath($homeDirectory);
+        if (! is_array($details) || $resolved === false
+            || $resolved !== $homeDirectory || is_link($homeDirectory)
+            || ! is_dir($resolved) || ! is_writable($resolved)
+            || ($details['mode'] & 0170000) !== 0040000
+            || ($details['mode'] & 0022) !== 0) {
+            throw new DomainException('Private cPanel account home permissions or identity are unsafe.');
+        }
+        return [
+            'path' => $resolved,
+            'dev' => (int) $details['dev'],
+            'ino' => (int) $details['ino'],
+            'mode' => (int) $details['mode'],
+            'uid' => (int) $details['uid'],
+        ];
+    }
+
+    /** @param array{path:string,dev:int,ino:int,mode:int,uid:int} $baseline */
+    private function assertHomeUnchanged(string $homeDirectory, array $baseline): void
+    {
+        if ($this->privateHome($homeDirectory) !== $baseline) {
+            throw new DomainException('Private cPanel account home changed during maintenance.');
+        }
+    }
+
+    /**
      * Read the maintenance marker through one pinned regular-file descriptor.
      * A hard link, loosened permissions or changed pathname must never prove
      * that the updater still owns the private release barrier.
      *
-     * @return array{string, mixed, array<string, int>}
+     * @return array{string, mixed, array<string, int>, array{path:string,dev:int,ino:int,mode:int,uid:int}}
      */
     private function readPrivateMarker(string $homeDirectory): array
     {
-        if (is_link($homeDirectory)) {
-            throw new DomainException('Private maintenance root unavailable.');
-        }
-        $home = realpath($homeDirectory);
-        if ($home === false) {
-            throw new DomainException('Private maintenance root unavailable.');
-        }
+        $homeIdentity = $this->privateHome($homeDirectory);
+        $home = $homeIdentity['path'];
         $path = $home.'/.walidsite-update-maintenance.json';
         if (is_link($path)) {
             throw new DomainException('Private maintenance lease unavailable.');
@@ -121,7 +180,8 @@ final class CpanelReleaseMaintenance
                     throw new DomainException('Private maintenance lease changed during read.');
                 }
             }
-            return [$path, json_decode($raw, true, 8, JSON_THROW_ON_ERROR), $opened];
+            $this->assertHomeUnchanged($homeDirectory, $homeIdentity);
+            return [$path, json_decode($raw, true, 8, JSON_THROW_ON_ERROR), $opened, $homeIdentity];
         } finally {
             fclose($stream);
         }
@@ -149,7 +209,7 @@ final class CpanelReleaseMaintenance
      */
     public function clear(string $homeDirectory, string $token): void
     {
-        [$path, $marker, $identity] = $this->readPrivateMarker($homeDirectory);
+        [$path, $marker, $identity, $homeIdentity] = $this->readPrivateMarker($homeDirectory);
         if (! is_array($marker)
             || array_keys($marker) !== ['schema', 'expires_at', 'previous_root', 'previous_version', 'probe_sha256']
             || $marker['schema'] !== 1
@@ -164,6 +224,7 @@ final class CpanelReleaseMaintenance
         // The cPanel account directory must remain private to the PHP owner:
         // PHP has no portable unlink-by-descriptor primitive for a hostile
         // account-level writer concurrently replacing this pathname.
+        $this->assertHomeUnchanged($homeDirectory, $homeIdentity);
         clearstatcache(true, $path);
         $named = @lstat($path);
         if ($named === false
