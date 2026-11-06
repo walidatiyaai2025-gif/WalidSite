@@ -24,6 +24,9 @@ final class CpanelOwnerBackupCoordinator
     /**
      * @param callable():bool $externalWritersStopped Independently verified
      *     host-level no-writer predicate; never user-controlled.
+     * @param ?CpanelConsoleWriterLease $ownerHttpLease Existing HTTP
+     *     request-scoped lease from Laravel DI after owner+CSRF checks, never
+     *     a value from request/session. Null for independent trusted CLI use.
      * @return array{id:string,version:string,files:int,bytes:int,tables:int,rows:int,file_sha256:string,database_sha256:string,code_update_performed:bool}
      */
     public function prove(
@@ -39,6 +42,7 @@ final class CpanelOwnerBackupCoordinator
         string $installedVersion,
         string $previousRoot,
         callable $externalWritersStopped,
+        ?CpanelConsoleWriterLease $ownerHttpLease = null,
     ): array {
         // Fail before creating even a lock file if the caller has not supplied
         // independent evidence of foreign writer isolation.
@@ -55,13 +59,21 @@ final class CpanelOwnerBackupCoordinator
             throw new DomainException('An original physical cPanel install is required for owner backup.');
         }
 
-        $writers = new CpanelConsoleWriterLease();
+        $writers = $ownerHttpLease ?? new CpanelConsoleWriterLease();
         $maintenance = new CpanelReleaseMaintenance();
         $token = null;
-        // No in-flight HTTP, queue or CLI work may remain when exclusive
-        // acquisition succeeds. The nonblocking lease must NEVER wait on an
-        // active customer request while a privileged owner action holds state.
-        $writers->beginExclusiveForUpdate($home);
+        // A future owner-only HTTP controller is already guarded by a
+        // shared lease. Convert THAT SAME held descriptor, rather than
+        // deadlocking by taking another lock against our own request.
+        // A failed nonblocking promotion abandons its stale shared proof;
+        // the caller must abort before ANY data or release mutation.
+        // CLI/host invocations without a request lease use the independent
+        // exclusive acquisition as before.
+        if ($ownerHttpLease !== null) {
+            $writers->promoteSharedForUpdate($home);
+        } else {
+            $writers->beginExclusiveForUpdate($home);
+        }
         try {
             $writers->assertExclusiveHeld();
             if ($externalWritersStopped() !== true) {
