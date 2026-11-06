@@ -340,28 +340,33 @@ class MobileAccountClient {
     if (!_uuid.hasMatch(articleId)) {
       throw const FormatException('Invalid published article identity');
     }
+    late final String raw;
     try {
-      final raw = await _request(
+      raw = await _request(
         'POST', '/api/v1/mobile/saved', bearer,
         body: {'resource_type': 'article', 'resource_id': articleId},
       );
-      await verifyOrReconcileArticleSave(
-        raw, bearer, articleId, saved,
-      );
     } on TimeoutException {
       await _resolveAmbiguousArticleSave(bearer, articleId);
+      return;
     } on SocketException {
       await _resolveAmbiguousArticleSave(bearer, articleId);
+      return;
     } on HttpException {
       // A disconnected response can follow a committed server-side Save.
       // Never issue a second POST without checking this account's Saved list.
       await _resolveAmbiguousArticleSave(bearer, articleId);
+      return;
     } on MobileAiHttpException catch (error) {
       if (error.statusCode == 401 || error.statusCode == 403) {
         throw const ArticleSaveAuthorizationException();
       }
       rethrow;
     }
+    // Parse and reconcile outside the transport catch block. A failed Saved
+    // reconciliation must not be interpreted as another transport failure
+    // and trigger duplicate GET requests.
+    await verifyOrReconcileArticleSave(raw, bearer, articleId, saved);
   }
 
   Future<void> remove(String bearer, MobileSavedResource item) async {
