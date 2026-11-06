@@ -7,6 +7,7 @@ declare(strict_types=1);
 
 require dirname(__DIR__).'/backend/vendor/autoload.php';
 
+use App\Domain\Deployment\CpanelOwnerBackupCoordinator;
 use App\Domain\Deployment\OwnerUpdateRecoveryBackup;
 use App\Domain\Deployment\PrivateRecoverySnapshot;
 use App\Domain\Deployment\MariaDbRecoverySnapshot;
@@ -76,13 +77,21 @@ try {
 
     $service = new OwnerUpdateRecoveryBackup();
     $calls = 0;
-    $result = $service->createAndProve(
+    // Prove the REAL cross-request writer lock + private maintenance
+    // transaction around the same disposable files/MariaDB restore. This is
+    // an isolated CI fixture, NOT evidence of production foreign-writer drain.
+    $result = (new CpanelOwnerBackupCoordinator())->prove(
         $live, $disposable,
         $app.'/.env', $app.'/storage/app', $web.'/uploads',
         $app, $web, $home.'/.walidsite-backups', $home.'/.walidsite-restore-drills',
-        '0.1.1',
+        '0.1.1', 'legacy',
         static function () use (&$calls): bool { ++$calls; return true; },
     );
+    if (is_file($home.'/.walidsite-update-maintenance.json')
+        || (fileperms($home.'/.walidsite-writer-drain.lock') & 0777) !== 0600
+        || $result['code_update_performed'] !== false) {
+        throw new RuntimeException('Owner backup did not safely release its cPanel isolation barrier.');
+    }
 
     if ($calls < 2 || $result['tables'] !== 1 || $result['rows'] !== 2
         || $result['files'] !== 3 || $result['version'] !== '0.1.1'
