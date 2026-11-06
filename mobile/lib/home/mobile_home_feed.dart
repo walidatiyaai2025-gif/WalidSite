@@ -9,6 +9,13 @@ import '../articles/verified_articles.dart';
 import '../runbooks/verified_online_runbooks.dart';
 import '../theme/waleed_theme.dart';
 
+// Published Home resource titles are display identities, not layout controls.
+// Never let a compromised feed inject newlines or bidi overrides/isolates.
+bool _unsafeHomeTitle(String title) => title.runes.any((code) =>
+    code < 32 || code == 127 ||
+    (code >= 0x202a && code <= 0x202e) ||
+    (code >= 0x2066 && code <= 0x2069));
+
 class MobileHomeProject {
   const MobileHomeProject({
     required this.slug,
@@ -42,6 +49,7 @@ class MobileHomeProject {
     if (slug is! String ||
         !RegExp(r'^[A-Za-z0-9-]{1,180}$').hasMatch(slug) ||
         title is! String || title.trim().isEmpty || title.length > 250 ||
+        _unsafeHomeTitle(title) ||
         summary is! String || summary.trim().isEmpty || summary.length > 5000 ||
         role is! String || role.trim().isEmpty || role.length > 220 ||
         evidence is! List || evidence.isEmpty || evidence.length > 50 ||
@@ -82,6 +90,7 @@ class MobileHomeArticle {
     if (slug is! String ||
         !RegExp(r'^[A-Za-z0-9-]{1,180}$').hasMatch(slug) ||
         title is! String || title.trim().isEmpty || title.length > 250 ||
+        _unsafeHomeTitle(title) ||
         url is! String || url.length > 2048 ||
         publishedAt is! String || publishedAt.length > 50 ||
         !RegExp(r'(?:Z|[+-][0-9]{2}:[0-9]{2})$').hasMatch(publishedAt) ||
