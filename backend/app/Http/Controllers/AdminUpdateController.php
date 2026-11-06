@@ -4,6 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Domain\Deployment\CpanelArchiveCodeOnlyPreflight;
 use App\Domain\Deployment\CpanelOwnerRecoveryHistory;
+use App\Domain\Deployment\CpanelOwnerBackupHost;
+use App\Domain\Deployment\CpanelOwnerBackupCoordinator;
+use Illuminate\Support\Facades\DB;
 use App\Domain\Deployment\CpanelPhysicalHostPreflight;
 use App\Domain\Deployment\CpanelTrustedCodeStager;
 use App\Domain\Deployment\TrustedReleaseArtifactDownloader;
@@ -165,8 +168,9 @@ final class AdminUpdateController extends Controller
         }
 
         $recoveryHistory = app(CpanelOwnerRecoveryHistory::class)->inspect(dirname(public_path()));
+        $hostBackupAvailable = app()->bound(CpanelOwnerBackupHost::class);
         return view('admin.updates.index', compact('status', 'installedVersion',
-            'verifiedUpload', 'hostPreflight', 'stagedCode', 'recoveryHistory'));
+            'verifiedUpload', 'hostPreflight', 'stagedCode', 'recoveryHistory', 'hostBackupAvailable'));
     }
 
     /**
@@ -512,6 +516,98 @@ final class AdminUpdateController extends Controller
         return redirect()->route('admin.updates.index', [
             'lang' => ($input['lang'] ?? 'en') === 'ar' ? 'ar' : 'en',
         ])->with('status', 'Signed code staged privately. It was NOT installed; recoverable backup, maintenance and health checks remain required.');
+    }
+
+    /**
+     * Owner-triggered recovery rehearsal, NOT a code update. A dedicated
+     * host-owned implementation must prove foreign writers are stopped on
+     * every coordinator callback and supply an empty, isolated restore DB.
+     * No browser flag, session receipt, or env boolean substitutes for it.
+     */
+    public function backupNow(Request $request, CpanelOwnerBackupCoordinator $coordinator): RedirectResponse
+    {
+        $this->authorizeOwner($request);
+        abort_unless(config('site.updates_enabled') === true, 403);
+        $input = $request->validate(['lang' => ['sometimes', 'in:en,ar']]);
+        if (array_diff(array_keys($request->query()), ['lang']) !== []
+            || array_diff(array_keys($request->request->all()), ['_token']) !== []) {
+            return back()->withErrors(['backup' => 'Unexpected backup parameter.']);
+        }
+
+        // The physical legacy layout is the only recovery transaction that
+        // CpanelOwnerBackupCoordinator currently proves. Switched code needs
+        // a separate chain-aware implementation; never certify the wrong root.
+        $home = dirname(public_path());
+        $application = $home.'/application';
+        $version = $this->pinnedInstalledVersion();
+        if ($version === null || base_path() !== $application
+            || public_path() !== $home.'/public_html'
+            || ! app()->bound(CpanelOwnerBackupHost::class)) {
+            return back()->withErrors(['backup' => 'Backup blocked: verified host isolation or installed code identity is unavailable.']);
+        }
+
+        try {
+            /** @var CpanelOwnerBackupHost $host */
+            $host = app(CpanelOwnerBackupHost::class);
+            if ($host->externalWritersStopped() !== true) {
+                throw new \DomainException('Independent host writer isolation is not established.');
+            }
+            $live = DB::connection()->getPdo();
+            $disposable = $host->disposableRestoreConnection();
+            if ($live === $disposable
+                || $live->getAttribute(\PDO::ATTR_DRIVER_NAME) !== 'mysql'
+                || $disposable->getAttribute(\PDO::ATTR_DRIVER_NAME) !== 'mysql') {
+                throw new \DomainException('Separate MariaDB recovery environment required.');
+            }
+            // Never allow the host adapter to hand us the live DB (including
+            // through a second PDO handle). Compare server identity and schema;
+            // also require an empty restore target, which the drill populates.
+            $identity = static function (\PDO $db): array {
+                $row = $db->query('SELECT @@hostname AS host, @@port AS port, DATABASE() AS db')
+                    ->fetch(\PDO::FETCH_ASSOC);
+                if (! is_array($row) || ! is_string($row['host'] ?? null)
+                    || ! is_string($row['db'] ?? null) || $row['db'] === '') {
+                    throw new \DomainException('Recovery database identity unavailable.');
+                }
+                return [$row['host'], (string) $row['port'], $row['db']];
+            };
+            if ($identity($live) === $identity($disposable)) {
+                throw new \DomainException('Production database cannot be its own restore target.');
+            }
+            $tables = $disposable->query(
+                'SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE()'
+            )->fetchColumn();
+            if (! is_numeric($tables) || (int) $tables !== 0) {
+                throw new \DomainException('Recovery target must be an empty database.');
+            }
+
+            $receipt = $coordinator->prove(
+                $live, $disposable, $application.'/.env',
+                $application.'/storage/app', $home.'/public_html/uploads',
+                $application, $home.'/public_html',
+                $home.'/.walidsite-backups', $home.'/.walidsite-restore-drills',
+                $version, 'legacy',
+                static fn (): bool => $host->externalWritersStopped() === true,
+                app(\App\Domain\Deployment\CpanelConsoleWriterLease::class),
+            );
+        } catch (Throwable $error) {
+            // Driver errors may carry passwords, SQL or private filesystem
+            // paths: never report() the raw exception or expose its message.
+            \Illuminate\Support\Facades\Log::warning('admin.updates.backup_blocked', [
+                'type' => $error::class,
+            ]);
+            return back()->withErrors(['backup' => 'Backup or independent recovery verification failed. No verified backup is claimed; inspect private recovery state.']);
+        }
+
+        return redirect()->route('admin.updates.index', [
+            'lang' => ($input['lang'] ?? 'en') === 'ar' ? 'ar' : 'en',
+        ])->with('owner_backup_receipt', [
+            'id' => $receipt['id'],
+            'version' => $receipt['version'],
+            'files' => $receipt['files'],
+            'tables' => $receipt['tables'],
+            'rows' => $receipt['rows'],
+        ])->with('status', 'Private backup and separate MariaDB restore rehearsal verified. No code update was performed.');
     }
 
     public function apply(Request $request, SiteUpdater $updater): RedirectResponse

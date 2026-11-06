@@ -399,6 +399,58 @@ class SiteMaintenanceTest extends TestCase
         $this->post('/admin/updates/recovery-history')->assertNotFound();
     }
 
+    public function test_owner_backup_now_fails_closed_without_independent_host_adapter(): void
+    {
+        $this->post('/admin/updates/backup-now')->assertRedirect('/admin/login');
+        $user = User::create([
+            'email' => 'backup-host-gate@example.test',
+            'password_hash' => 'unused', 'status' => 'active',
+        ]);
+        $user->roles()->attach(Role::firstOrCreate(['name' => 'admin'])->id);
+        $this->actingAs($user)->post('/admin/updates/backup-now')->assertForbidden();
+        $user->roles()->attach(Role::firstOrCreate(['name' => 'owner'])->id);
+        config(['site.updates_enabled' => true]);
+        $this->get('/admin/updates?lang=en')->assertOk()
+            ->assertSee('data-testid="owner-backup-now-form"', false)
+            ->assertSee('data-testid="owner-host-backup-provider-unavailable"', false)
+            ->assertSee('data-testid="owner-backup-now"', false)
+            ->assertSee('disabled', false);
+        $this->post('/admin/updates/backup-now')->assertRedirect()->assertSessionHasErrors('backup');
+        $this->assertNull(session('owner_backup_receipt'));
+        $this->get('/admin/updates?lang=ar')->assertOk()
+            ->assertSee('نسخة احتياطية مع اختبار الاستعادة');
+    }
+
+    public function test_host_adapter_cannot_accept_false_writer_isolation_as_backup_evidence(): void
+    {
+        $user = User::create([
+            'email' => 'backup-rejected-owner@example.test',
+            'password_hash' => 'unused', 'status' => 'active',
+        ]);
+        $user->roles()->attach(Role::firstOrCreate(['name' => 'owner'])->id);
+        $this->actingAs($user);
+        config(['site.updates_enabled' => true]);
+        $host = new class implements \App\Domain\Deployment\CpanelOwnerBackupHost {
+                public int $calls = 0;
+                public function externalWritersStopped(): bool
+                {
+                    $this->calls++;
+                    return false;
+                }
+                public function disposableRestoreConnection(): \PDO
+                {
+                    throw new \RuntimeException('A false writer guard must never touch the restore database.');
+                }
+            };
+        $this->app->instance(\App\Domain\Deployment\CpanelOwnerBackupHost::class, $host);
+        // Running under the test/application tree, not the approved physical
+        // cPanel layout, must fail before contacting the host implementation.
+        $this->post('/admin/updates/backup-now')
+            ->assertRedirect()->assertSessionHasErrors('backup');
+        $this->assertNull(session('owner_backup_receipt'));
+        $this->assertSame(0, $host->calls);
+    }
+
     public function test_manual_updates_can_be_disabled_without_hiding_status(): void
     {
         config(['site.updates_enabled' => false]);
