@@ -253,6 +253,21 @@ def _read_bounded_json_body(
     return bytes(body)
 
 
+def _unique_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    """Reject ambiguous duplicate keys, including escaped-key equivalents."""
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("Duplicate staging JSON key")
+        result[key] = value
+    return result
+
+
+def _reject_nonfinite_json(value: str) -> object:
+    # The Python decoder otherwise accepts NaN and Infinity outside JSON.
+    raise ValueError("Invalid non-finite staging JSON constant")
+
+
 def _check_one_transaction(origin: str, spec: Check, opener: Opener, timeout: int) -> dict:
     """One read-only probe; outer deadline protects even blocking HTTPS open."""
     deadline = time.monotonic() + timeout
@@ -302,7 +317,10 @@ def _check_one_transaction(origin: str, spec: Check, opener: Opener, timeout: in
                         reason = "oversized_json_response"
                     else:
                         try:
-                            decoded = json.loads(payload)
+                            decoded = json.loads(
+                                payload, object_pairs_hook=_unique_json_object,
+                                parse_constant=_reject_nonfinite_json,
+                            )
                         except (ValueError, UnicodeDecodeError, RecursionError):
                             # A small, deeply nested untrusted JSON body may
                             # exhaust the parser recursion budget. Record a
