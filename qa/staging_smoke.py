@@ -293,7 +293,7 @@ def _is_expected_media_type(headers: object, expected: str) -> bool:
     names: set[str] = set()
     for param in parts[1:]:
         match = re.fullmatch(
-            r'\\s*([A-Za-z][A-Za-z0-9_-]*)\\s*=\\s*(?:[A-Za-z0-9._-]+|"[A-Za-z0-9._-]+")\\s*',
+            r'\s*([A-Za-z][A-Za-z0-9_-]*)\s*=\s*(?:[A-Za-z0-9._-]+|"[A-Za-z0-9._-]+")\s*',
             param,
             flags=re.ASCII,
         )
