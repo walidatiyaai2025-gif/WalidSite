@@ -483,6 +483,64 @@ class SiteMaintenanceTest extends TestCase
             ->assertSee('تثبيت التحديث — الاستضافة أو الاستعادة غير جاهزة');
     }
 
+    public function test_owner_code_install_reauthenticates_current_password_before_any_host_operation(): void
+    {
+        $this->withoutMiddleware(\Illuminate\Routing\Middleware\ThrottleRequests::class);
+        $password = 'Strong-Owner-Install-Passphrase-2026';
+        $owner = User::create([
+            'email' => 'owner-reauth-install@example.test',
+            'password_hash' => $password, 'status' => 'active',
+        ]);
+        $owner->roles()->attach(Role::firstOrCreate(['name' => 'owner'])->id);
+        config(['site.updates_enabled' => true]);
+        $this->actingAs($owner);
+
+        // An authenticated owner browser session is not sufficient to
+        // install executable code, even if signed staging was attempted.
+        $this->post('/admin/updates/install-signed')
+            ->assertRedirect()->assertSessionHasErrors('install');
+        $this->assertSame('Owner password confirmation failed.',
+            session('errors')->first('install'));
+
+        $this->post('/admin/updates/install-signed', ['current_password' => 'wrong'])
+            ->assertRedirect()->assertSessionHasErrors('install');
+        $this->assertSame('Owner password confirmation failed.',
+            session('errors')->first('install'));
+
+        $this->post('/admin/updates/install-signed', [
+            'current_password' => ['malformed'],
+        ])->assertRedirect()->assertSessionHasErrors('install');
+        $this->assertSame('Owner password confirmation failed.',
+            session('errors')->first('install'));
+
+        // Fresh and correct credentials pass this reauthentication gate,
+        // but do NOT bypass the independently required signed ZIP, stage,
+        // writer isolation, disposable database and host health checks.
+        $this->post('/admin/updates/install-signed', [
+            'current_password' => $password,
+        ])->assertRedirect()->assertSessionHasErrors('install');
+        $this->assertStringContainsString('BLOCKED HOSTING:',
+            session('errors')->first('install'));
+
+        // The password is never saved to the session or echoed to the UI.
+        $this->assertNull(session('current_password'));
+        $this->assertNull(session('owner_update_installed'));
+
+        $this->post('/admin/updates/install-signed', [
+            'current_password' => $password,
+            'source_sha' => str_repeat('a', 40),
+        ])->assertRedirect()->assertSessionHasErrors('install');
+        $this->assertSame('Unexpected installation request parameter.',
+            session('errors')->first('install'));
+
+        // Privilege revocation remains authoritative even with the correct
+        // current password and a previously authenticated session.
+        $owner->roles()->detach();
+        $this->post('/admin/updates/install-signed', [
+            'current_password' => $password,
+        ])->assertForbidden();
+    }
+
     public function test_manual_updates_can_be_disabled_without_hiding_status(): void
     {
         config(['site.updates_enabled' => false]);

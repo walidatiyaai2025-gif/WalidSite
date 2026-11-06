@@ -195,6 +195,12 @@ button:disabled{background:#718096;cursor:not-allowed}
 <form method="post" action="{{ route('admin.updates.install-signed', ['lang' => $locale]) }}"
       data-testid="owner-signed-install-form">
 @csrf
+<label for="signed-install-owner-password">{{ $locale === 'ar'
+    ? 'أعد إدخال كلمة مرور المالك لتأكيد تثبيت الكود'
+    : 'Re-enter your owner password to authorize code installation' }}</label>
+<input id="signed-install-owner-password" name="current_password" type="password"
+       autocomplete="current-password" required maxlength="4096"
+       data-testid="owner-signed-install-password">
 <button type="submit" data-testid="owner-signed-install">
 {{ $locale === 'ar' ? 'تثبيت الإصدار الموقّع بعد اختبار الاستعادة' : 'Install signed release with verified recovery' }}</button>
 <p class="small">{{ $locale === 'ar'

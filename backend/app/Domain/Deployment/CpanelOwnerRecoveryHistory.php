@@ -71,6 +71,49 @@ final class CpanelOwnerRecoveryHistory
         }
     }
 
+    /**
+     * Private cutover attestation of the EXACT just-created recovery receipt.
+     * Never accepts an old receipt, guessed counts, or merely its presence in
+     * the owner-facing (20-entry) history list as current restore evidence.
+     * Returns only a boolean: no paths, SQL, secrets or digest in the UI.
+     *
+     * @param array{id:string,version:string,files:int,bytes:int,tables:int,rows:int,file_sha256:string,database_sha256:string} $proof
+     */
+    public function matchesFreshProof(string $homeDirectory, array $proof): bool
+    {
+        try {
+            $id = $proof['id'] ?? null;
+            if (! is_string($id) || preg_match('/\A[a-f0-9]{32}\z/D', $id) !== 1) {
+                return false;
+            }
+            $home = realpath($homeDirectory);
+            if ($home === false || $home !== $homeDirectory || is_link($homeDirectory)) {
+                return false;
+            }
+            $homeIdentity = $this->privateHomeIdentity($home);
+            $vault = $home.'/.walidsite-backups';
+            $vaultIdentity = $this->assertPrivateVault($vault, $home, $homeIdentity['uid']);
+            $receipt = $this->readReceipt($vault.'/receipt-'.$id.'.json', $id, true);
+            $ok = $receipt['id'] === $id
+                && is_string($proof['version'] ?? null)
+                && hash_equals($receipt['version'], $proof['version']);
+            foreach (['files', 'bytes', 'tables', 'rows'] as $field) {
+                $ok = $ok && is_int($proof[$field] ?? null)
+                    && $receipt[$field] === $proof[$field];
+            }
+            foreach (['file_sha256', 'database_sha256'] as $field) {
+                $ok = $ok && is_string($proof[$field] ?? null)
+                    && hash_equals($receipt[$field], $proof[$field]);
+            }
+            $this->assertPrivateVault($vault, $home, $homeIdentity['uid'], $vaultIdentity);
+            $this->assertPrivateHomeUnchanged($home, $homeIdentity);
+            return $ok;
+        } catch (\Throwable) {
+            // A missing/replaced/insecure receipt must never authorize cutover.
+            return false;
+        }
+    }
+
     /** @return array{dev:int,ino:int,mode:int,uid:int} */
     private function privateHomeIdentity(string $home): array
     {
@@ -121,7 +164,7 @@ final class CpanelOwnerRecoveryHistory
     }
 
     /** @return array{id:string,created_at:string,version:string,files:int,tables:int,rows:int} */
-    private function readReceipt(string $path, string $expectedId): array
+    private function readReceipt(string $path, string $expectedId, bool $privateProof = false): array
     {
         clearstatcache(true, $path);
         $named = @lstat($path);
@@ -186,10 +229,17 @@ final class CpanelOwnerRecoveryHistory
             || $data['code_update_performed'] !== false) {
             throw new DomainException('Recovery receipt identity invalid.');
         }
-        return [
+        $public = [
             'id' => $data['id'], 'created_at' => $data['created_at'],
             'version' => $data['installed_version'], 'files' => $data['files'],
             'tables' => $data['tables'], 'rows' => $data['rows'],
         ];
+        // Snapshot digests remain internal: the owner history UI receives only
+        // the existing deliberately limited public metadata.
+        return $privateProof ? [
+            ...$public, 'bytes' => $data['bytes'],
+            'file_sha256' => $data['file_sha256'],
+            'database_sha256' => $data['database_sha256'],
+        ] : $public;
     }
 }

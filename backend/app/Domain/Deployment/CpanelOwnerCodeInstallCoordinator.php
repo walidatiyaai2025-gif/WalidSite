@@ -104,25 +104,12 @@ final class CpanelOwnerCodeInstallCoordinator
             if ($quiesced() !== true) {
                 throw new DomainException('Write isolation lost after restore rehearsal.');
             }
-            $receiptValid = static function () use ($home, $proof, $installedVersion, $quiesced): bool {
-                try {
-                    if ($quiesced() !== true) {
-                        return false;
-                    }
-                    $history = (new CpanelOwnerRecoveryHistory())->inspect($home);
-                    foreach ($history['receipts'] as $item) {
-                        if ($item['id'] === $proof['id']
-                            && $item['version'] === $installedVersion
-                            && $item['files'] === $proof['files']
-                            && $item['tables'] === $proof['tables']
-                            && $item['rows'] === $proof['rows']) {
-                            return true;
-                        }
-                    }
-                    return false;
-                } catch (Throwable) {
-                    return false;
-                }
+            // A receipt's counts/version alone are not a backup proof: match
+            // the exact current private receipt and BOTH snapshot digests
+            // under pinned home/vault/receipt inode checks at every gate.
+            $receiptValid = static function () use ($home, $proof, $quiesced): bool {
+                return $quiesced() === true
+                    && (new CpanelOwnerRecoveryHistory())->matchesFreshProof($home, $proof);
             };
             $signedValid = static function () use (
                 $attestor, $envelope, $publisherKey, $origin,

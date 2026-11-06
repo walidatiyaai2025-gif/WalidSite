@@ -166,6 +166,51 @@ final class CpanelOwnerRecoveryHistoryTest extends TestCase
         }
     }
 
+    public function test_code_cutover_requires_exact_recent_receipt_counts_bytes_and_both_manifest_digests(): void
+    {
+        $history = new CpanelOwnerRecoveryHistory();
+        $receipt = $this->receipt();
+        $this->save($receipt);
+        $proof = [
+            'id' => $receipt['id'],
+            'version' => $receipt['installed_version'],
+            'files' => $receipt['files'], 'bytes' => $receipt['bytes'],
+            'tables' => $receipt['tables'], 'rows' => $receipt['rows'],
+            'file_sha256' => $receipt['file_sha256'],
+            'database_sha256' => $receipt['database_sha256'],
+        ];
+        self::assertTrue($history->matchesFreshProof($this->home, $proof));
+        self::assertArrayNotHasKey('file_sha256', $history->inspect($this->home)['receipts'][0]);
+        self::assertArrayNotHasKey('database_sha256', $history->inspect($this->home)['receipts'][0]);
+        self::assertArrayNotHasKey('bytes', $history->inspect($this->home)['receipts'][0]);
+
+        foreach ([
+            ['file_sha256' => str_repeat('c', 64)],
+            ['database_sha256' => str_repeat('d', 64)],
+            ['bytes' => $receipt['bytes'] + 1],
+            ['rows' => $receipt['rows'] + 1],
+            ['id' => str_repeat('b', 32)],
+        ] as $forged) {
+            self::assertFalse($history->matchesFreshProof(
+                $this->home, array_replace($proof, $forged),
+            ));
+        }
+
+        // Same public counts and valid SHA shapes do not make a replaced
+        // historical receipt the just-restored snapshot.
+        $this->save(array_replace($receipt, [
+            'file_sha256' => str_repeat('e', 64),
+        ]));
+        self::assertSame('history', $history->inspect($this->home)['state']);
+        self::assertFalse($history->matchesFreshProof($this->home, $proof));
+        $this->save($receipt);
+        self::assertTrue($history->matchesFreshProof($this->home, $proof));
+
+        $path = $this->vault.'/receipt-'.$this->id.'.json';
+        self::assertTrue(chmod($path, 0644));
+        self::assertFalse($history->matchesFreshProof($this->home, $proof));
+    }
+
     public function test_receipt_symlink_and_hardlink_are_not_followed(): void
     {
         $path = $this->vault.'/receipt-'.$this->id.'.json';
