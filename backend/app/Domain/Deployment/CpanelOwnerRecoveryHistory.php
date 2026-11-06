@@ -22,13 +22,21 @@ final class CpanelOwnerRecoveryHistory
         if ($home === false || $home !== $homeDirectory || is_link($homeDirectory)) {
             return ['state' => 'blocked', 'receipts' => []];
         }
+        try {
+            // An attacker-writable account HOME can replace the entire
+            // private vault immediately after a successful receipt check.
+            $homeIdentity = $this->privateHomeIdentity($home);
+        } catch (DomainException) {
+            return ['state' => 'blocked', 'receipts' => []];
+        }
         $vault = $home.'/.walidsite-backups';
         clearstatcache(true, $vault);
         if (@lstat($vault) === false) {
             return $empty;
         }
         try {
-            $this->assertPrivateVault($vault, $home);
+            $this->assertPrivateHomeUnchanged($home, $homeIdentity);
+            $this->assertPrivateVault($vault, $home, $homeIdentity['uid']);
             $names = @scandir($vault);
             if ($names === false || count($names) > 1000) {
                 throw new DomainException('Private backup inventory unavailable.');
@@ -46,7 +54,8 @@ final class CpanelOwnerRecoveryHistory
                 }
                 $receipts[] = $this->readReceipt($vault.'/'.$name, $match[1]);
             }
-            $this->assertPrivateVault($vault, $home);
+            $this->assertPrivateVault($vault, $home, $homeIdentity['uid']);
+            $this->assertPrivateHomeUnchanged($home, $homeIdentity);
             usort($receipts, static fn (array $a, array $b): int =>
                 strcmp($b['created_at'], $a['created_at']) ?: strcmp($b['id'], $a['id']));
             return ['state' => $receipts === [] ? 'none' : 'history', 'receipts' => array_slice($receipts, 0, 20)];
@@ -56,14 +65,38 @@ final class CpanelOwnerRecoveryHistory
         }
     }
 
-    private function assertPrivateVault(string $vault, string $home): void
+    /** @return array{dev:int,ino:int,mode:int,uid:int} */
+    private function privateHomeIdentity(string $home): array
+    {
+        clearstatcache(true, $home);
+        $stat = @lstat($home);
+        if (! is_array($stat) || ($stat['mode'] & 0170000) !== 0040000
+            || ($stat['mode'] & 0022) !== 0 || is_link($home)
+            || realpath($home) !== $home) {
+            throw new DomainException('Private recovery account home is unsafe.');
+        }
+        return [
+            'dev' => $stat['dev'], 'ino' => $stat['ino'],
+            'mode' => $stat['mode'], 'uid' => $stat['uid'],
+        ];
+    }
+
+    /** @param array{dev:int,ino:int,mode:int,uid:int} $expected */
+    private function assertPrivateHomeUnchanged(string $home, array $expected): void
+    {
+        if ($this->privateHomeIdentity($home) !== $expected) {
+            throw new DomainException('Private recovery account home changed.');
+        }
+    }
+
+    private function assertPrivateVault(string $vault, string $home, int $homeUid): void
     {
         clearstatcache(true, $vault);
         $stat = @lstat($vault);
         if (! is_array($stat) || ($stat['mode'] & 0170000) !== 0040000
-            || ($stat['mode'] & 0077) !== 0 || is_link($vault)
-            || realpath($vault) !== $vault || dirname($vault) !== $home
-            || ! is_readable($vault)) {
+            || ($stat['mode'] & 0077) !== 0 || $stat['uid'] !== $homeUid
+            || is_link($vault) || realpath($vault) !== $vault
+            || dirname($vault) !== $home || ! is_readable($vault)) {
             throw new DomainException('Private recovery vault identity invalid.');
         }
     }
