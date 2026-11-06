@@ -140,7 +140,9 @@ final class AdminUpdateController extends Controller
             && is_int($stagedClaim['created_at'] ?? null)
             && $stagedClaim['created_at'] <= time()
             && time() - $stagedClaim['created_at'] <= 300) {
-            $home = dirname(base_path());
+            // The running app may already live under a versioned release;
+            // only the stable physical document root identifies cPanel HOME.
+            $home = dirname(public_path());
             $candidate = $home.'/.walidsite-releases/v'.$verifiedUpload['version']
                 .'-'.$verifiedUpload['source_sha'];
             if (! is_link($candidate) && realpath($candidate) === $candidate
@@ -333,8 +335,10 @@ final class AdminUpdateController extends Controller
             // inventory, version identity, and stable public dispatcher.
             // This is read-only; no ZIP extraction or PHP/SQL execution.
             try {
+                // Future updates still use HOME even when base_path() points
+                // inside .walidsite-releases/vX/application.
                 $compatibility->assertCompatible(
-                    dirname(base_path()), public_path(), $verified['archive'],
+                    dirname(public_path()), public_path(), $verified['archive'],
                     $verified['artifact_sha256'], $installed, $verified['version'],
                 );
             } catch (\DomainException $incompatible) {
@@ -417,7 +421,7 @@ final class AdminUpdateController extends Controller
                 (string) config('site.trusted_release_public_key'),
                 (string) config('site.trusted_release_origin'),
                 $installed,
-                dirname(base_path()),
+                dirname(public_path()),
                 base_path('resources/deployment/cpanel-stable-index.php'),
                 $verified['directory'], $verified['archive'],
             );
