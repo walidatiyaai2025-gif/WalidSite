@@ -428,23 +428,46 @@ jobs:
 
           report = json.loads(Path(os.environ["WEB_A11Y_REPORT"]).read_text())
           rows = report.get("results")
-          expected = {(f"WEB-{i:02d}", lang, viewport)
-                      for i in range(1, 15) if i not in (5, 8)
+          # The fresh ZIP's *actual owner-approved project seeder* publishes
+          # verified README evidence; WEB-05 must be reached, not called
+          # pending from an empty synthetic project fixture. WEB-08 is included
+          # only if a real independently published article exists.
+          verified = report.get("dynamic_web_verified")
+          pending = report.get("dynamic_web_pending")
+          dynamic_ids = {"WEB-05", "WEB-08"}
+          if (not isinstance(verified, list) or
+                  not isinstance(pending, list) or
+                  not all(isinstance(x, str) for x in verified + pending) or
+                  set(verified) | set(pending) != dynamic_ids or
+                  set(verified) & set(pending) or
+                  len(set(verified)) != len(verified) or
+                  len(set(pending)) != len(pending) or
+                  "WEB-05" not in verified):
+              raise SystemExit("Source-verified public detail discovery missing or invalid")
+          expected_screens = {f"WEB-{i:02d}" for i in range(1, 15)
+                              if i not in (5, 8)} | set(verified)
+          expected = {(screen, lang, viewport)
+                      for screen in expected_screens
                       for lang in ("en", "ar")
                       for viewport in ("desktop", "tablet", "mobile")}
           sizes = {"desktop": (1440, 900), "tablet": (768, 1024),
                    "mobile": (390, 844)}
-          if (report.get("screen_checks") != 72 or
+          count = 72 + 6 * len(verified)
+          if (report.get("screen_checks") != count or
+                  report.get("static_checks") != 72 or
+                  report.get("dynamic_checks") != 6 * len(verified) or
+                  report.get("tested_sha") != os.environ["TESTED_SHA"] or
                   report.get("fatal_checks") != 0 or
                   report.get("visual_parity") != "not_attested" or
                   report.get("evidence_admitted") is not False or
-                  not isinstance(rows, list) or len(rows) != 72 or
+                  not isinstance(rows, list) or len(rows) != count or
                   {(r.get("screen"), r.get("locale"), r.get("viewport"))
                    for r in rows if isinstance(r, dict)} != expected or
                   any((r.get("width"), r.get("height")) != sizes[r["viewport"]]
                       for r in rows if isinstance(r, dict))):
-              raise SystemExit("Public Web responsive runtime report missing or invalid")
-          print("PUBLIC WEB A11Y MATRIX WRITTEN: 72/72 anonymous real browser checks")
+              raise SystemExit("Public Web dynamic runtime report missing or invalid")
+          print(f"PUBLIC WEB A11Y MATRIX WRITTEN: {count}/{count} anonymous "
+                "real browser checks incl. published WEB-05 detail")
           PY
 
       - name: Upload Issue 481 Admin runtime visual diagnostics
