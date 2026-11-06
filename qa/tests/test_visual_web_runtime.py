@@ -15,7 +15,8 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from qa.audit_web_runtime import (
-    FATAL_CODES, MAX_CHECKS, WEB_DOM_METRICS, audit_web, inspect_page, main,
+    FATAL_CODES, MAX_CHECKS, OVERFLOW_STRUCTURE, WEB_DOM_METRICS,
+    audit_web, inspect_page, main, safe_overflow_structure,
 )
 from qa.admin_visual_session import AdminSessionError
 
@@ -24,7 +25,10 @@ SHA = "a" * 40
 
 
 class FakePage:
-    def __init__(self):
+    emit_web03_overflow = False
+
+    def __init__(self, viewport_width=1440):
+        self.viewport_width = viewport_width
         self.url = ""
         self.status = 200
         self.locale = "en"
@@ -39,6 +43,8 @@ class FakePage:
     def goto(self, url, **kwargs):
         self.url = url
         self.locale = url.rsplit("lang=", 1)[-1]
+        if self.emit_web03_overflow and self.viewport_width == 390 and "/expertise?" in url:
+            self.dom["overflow_px"] = 24
         return SimpleNamespace(status=self.status)
 
     def locator(self, selector):
@@ -51,14 +57,28 @@ class FakePage:
         raise AssertionError("Unexpected browser selector")
 
     def evaluate(self, code):
-        return self.dom if "overflow_px" in code else True
+        if "overflow_px" in code:
+            return self.dom
+        if "querySelectorAll('*')" in code:
+            return {
+                "viewport_px": self.viewport_width,
+                "scanned_nodes": 120,
+                "truncated": False,
+                "candidates": [{
+                    "tag": "div",
+                    "component": "expertise-tab-nav",
+                    "overhang_px": 24,
+                }],
+            }
+        return True
 
     def close(self):
         self.closed = True
 
 
 class FakeContext:
-    def __init__(self):
+    def __init__(self, viewport_width=1440):
+        self.viewport_width = viewport_width
         self.pages = []
         self.routes = []
         self.closed = False
@@ -67,7 +87,7 @@ class FakeContext:
         self.routes.append((pattern, callback))
 
     def new_page(self):
-        page = FakePage()
+        page = FakePage(self.viewport_width)
         self.pages.append(page)
         return page
 
@@ -83,7 +103,7 @@ def fake_playwright():
         # The production public-audit path must never provide storage state.
         if "storage_state" in kwargs:
             raise AssertionError("Private session leaked into Web audit")
-        context = FakeContext()
+        context = FakeContext(kwargs.get("viewport", {}).get("width", 1440))
         contexts.append(context)
         return context
 
@@ -173,6 +193,65 @@ class WebRuntimeAuditTest(unittest.TestCase):
             external.abort.assert_called_once()
         browser.close.assert_called_once()
         self.assertNotIn("cookie", json.dumps(report).lower())
+
+    def test_overflow_structure_is_bounded_and_never_records_dom_text_or_url(self):
+        valid = {
+            "viewport_px": 390, "scanned_nodes": 200, "truncated": False,
+            "candidates": [
+                {"tag": "div", "component": "expertise-tab-nav", "overhang_px": 24},
+                {"tag": "svg", "component": "", "overhang_px": 3},
+            ],
+        }
+        self.assertIn("document.body.querySelectorAll('*')", OVERFLOW_STRUCTURE)
+        self.assertNotIn("innerText", OVERFLOW_STRUCTURE)
+        self.assertNotIn("outerHTML", OVERFLOW_STRUCTURE)
+        report = safe_overflow_structure(valid)
+        self.assertEqual(report["status"], "structural_hint_only")
+        self.assertEqual(report["candidates"][0]["component"], "expertise-tab-nav")
+        self.assertEqual(report["candidates"][0]["overhang_px"], 24)
+        self.assertNotIn("secret", json.dumps(report).lower())
+
+        malicious = dict(valid)
+        for bad in [
+            {"tag": "a", "component": "secret-token-PRIVATE", "overhang_px": 30},
+            {"tag": "div", "component": "expertise-tab-nav", "overhang_px": -1},
+            {"tag": "script", "component": "wa-foo", "overhang_px": 22,
+             "href": "https://private.example.test/secret"},
+        ]:
+            malicious["candidates"] = [bad]
+            report = safe_overflow_structure(malicious)
+            self.assertEqual(report, {"status": "unavailable", "candidates": []})
+            self.assertNotIn("private.example", json.dumps(report))
+        self.assertEqual(safe_overflow_structure({"arbitrary": "private"}),
+                         {"status": "unavailable", "candidates": []})
+        self.assertEqual(safe_overflow_structure(True),
+                         {"status": "unavailable", "candidates": []})
+
+    def test_real_audit_overflow_attribution_only_on_mobile_web03(self):
+        manager, contexts, browser = fake_playwright()
+        with patch.object(FakePage, "emit_web03_overflow", True), \
+             patch("qa.audit_web_runtime.exact_checkout"), \
+             patch.dict(os.environ, {"WALIDSITE_CAPTURE_STORAGE_STATE": ""}):
+            report = audit_web(
+                "http://127.0.0.1:8000", SHA, root=ROOT,
+                playwright_manager=manager,
+            )
+        affected = [r for r in report["results"]
+                    if "document_horizontal_overflow" in r["defects"]]
+        self.assertEqual(len(affected), 2)
+        self.assertEqual({r["screen"] for r in affected}, {"WEB-03"})
+        self.assertEqual({r["locale"] for r in affected}, {"en", "ar"})
+        self.assertEqual({r["viewport"] for r in affected}, {"mobile"})
+        self.assertTrue(all(r["overflow_structure"]["status"]
+                            == "structural_hint_only" for r in affected))
+        self.assertTrue(all(r["overflow_structure"]["candidates"][0]["component"]
+                            == "expertise-tab-nav" for r in affected))
+        self.assertEqual(report["failed_checks"], 2)
+        self.assertEqual(report["fatal_checks"], 0)
+        self.assertFalse(report["evidence_admitted"])
+        self.assertTrue(all("overflow_structure" not in r for r in report["results"]
+                            if r not in affected))
+        browser.close.assert_called_once()
 
     def test_rejects_remote_origin_private_state_and_source_mismatch_before_browser(self):
         manager, contexts, _ = fake_playwright()
