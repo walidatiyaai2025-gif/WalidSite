@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\AdminAiRouteController;
 use App\Http\Controllers\Api\AdminAiTaskRouteController;
 use App\Http\Controllers\Api\AdminArticleController;
 use App\Http\Controllers\Api\AdminProductController;
+use App\Http\Controllers\Api\AdminGithubAllowlistController;
 use App\Http\Controllers\Api\PublicPortfolioController;
 use App\Http\Controllers\Api\PublicAiExpertiseController;
 use App\Http\Controllers\Api\PublicHomeController;
@@ -125,6 +126,13 @@ Route::middleware([RequireSecureApiTransport::class, 'auth:sanctum'])->group(fun
         ->name('api.admin.github')->middleware('throttle:30,1');
     Route::post('/admin/github/sync', [AdminProductController::class, 'syncGithub'])
         ->name('api.admin.github.sync')->middleware('throttle:6,1');
+
+    Route::get('/admin/github/proposals', [AdminGithubAllowlistController::class, 'index'])
+        ->name('api.admin.github.proposals')->middleware('throttle:30,1');
+    Route::post('/admin/github/proposals', [AdminGithubAllowlistController::class, 'store'])
+        ->name('api.admin.github.proposals.store')->middleware('throttle:10,1');
+    Route::post('/admin/github/proposals/{id}/decision', [AdminGithubAllowlistController::class, 'decide'])
+        ->whereUuid('id')->name('api.admin.github.proposals.decision')->middleware('throttle:6,1');
     Route::get('/admin/projects', [AdminProductController::class, 'projects'])
         ->name('api.admin.projects')->middleware('throttle:60,1');
     Route::get('/admin/audience', [AdminProductController::class, 'audience'])
