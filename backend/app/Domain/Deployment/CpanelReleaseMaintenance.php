@@ -259,7 +259,15 @@ final class CpanelReleaseMaintenance
             || ! is_int($marker['expires_at']) || $marker['expires_at'] <= time()
             || ! is_string($marker['previous_root'])
             || ! is_string($marker['previous_version'])
+            || preg_match('/\A(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\z/D', $marker['previous_version']) !== 1
+            || ($marker['previous_root'] !== 'legacy'
+                && preg_match(
+                    '#\A\.walidsite-releases/v'.preg_quote($marker['previous_version'], '#').'-[a-f0-9]{40}\z#D',
+                    $marker['previous_root'],
+                ) !== 1)
             || ! is_string($marker['probe_sha256'])
+            || preg_match('/\A[a-f0-9]{64}\z/D', $marker['probe_sha256']) !== 1
+            || preg_match('/\A[a-f0-9]{64}\z/D', $token) !== 1
             || ! hash_equals($marker['probe_sha256'], hash('sha256', $token))) {
             throw new DomainException('Maintenance ownership is invalid or lease expired; recovery required.');
         }
