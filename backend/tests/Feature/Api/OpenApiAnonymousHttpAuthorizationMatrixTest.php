@@ -6,6 +6,7 @@ use App\Models\AiProvider;
 use App\Models\Role;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Routing\Middleware\ThrottleRequests;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\DB;
@@ -220,6 +221,11 @@ final class OpenApiAnonymousHttpAuthorizationMatrixTest extends TestCase
 
     public function test_every_contract_admin_method_rejects_reader_and_mobile_only_owner_bearers(): void
     {
+        // The role matrix intentionally traverses 44 requests in one test.
+        // Laravel rate limiting has its own dedicated security tests and can
+        // legitimately return 429 after the quota. Disable ONLY the throttle
+        // middleware here, keeping auth:sanctum and all controller RBAC live.
+        $this->withoutMiddleware(ThrottleRequests::class);
         $provider = $this->checkedProvider();
         [, $readerAdminBearer] = $this->bearer('reader', 'admin');
         [, $ownerMobileBearer] = $this->bearer('owner', 'mobile');
