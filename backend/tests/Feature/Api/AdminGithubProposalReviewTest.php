@@ -187,8 +187,16 @@ final class AdminGithubProposalReviewTest extends TestCase
                 ['html_url' => 'https://github.com@evil.example/trusted/repo'])],
             [200, $this->githubPublic('wrong/repo')],
         ];
+        // Register one response queue. Repeated Http::fake() calls in a
+        // single test append callbacks; the first wildcard would otherwise
+        // mask every later status and invalidate the provider-error matrix.
+        $sequence = Http::sequence();
+        foreach ($cases as [$status, $payload]) {
+            $sequence->push($payload, $status);
+        }
+        Http::fake(['api.github.com/repos/*' => $sequence]);
+
         foreach ($cases as $index => [$status, $payload]) {
-            Http::fake(['api.github.com/repos/*' => Http::response($payload, $status)]);
             $slug = 'trusted/repo-'.$index;
             $id = $this->asBearer($adminToken)
                 ->postJson('/api/v1/admin/github/proposals',
