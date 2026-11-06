@@ -94,7 +94,10 @@ class ReviewedRunbook {
         version is! int || version < 1 || version > 1000000000 ||
         timestamp is! String || timestamp.length > 50 ||
         !RegExp(r'(?:Z|[+-][0-9]{2}:[0-9]{2})$').hasMatch(timestamp) ||
-        at == null || !at.isUtc) {
+        at == null || !at.isUtc ||
+        // A not-yet-performed review must not be shown as verified.
+        // Permit minor clock skew between the public API and the device.
+        at.isAfter(DateTime.now().toUtc().add(const Duration(minutes: 5)))) {
       throw const FormatException('Unreviewed runbook response');
     }
     return ReviewedRunbook(
