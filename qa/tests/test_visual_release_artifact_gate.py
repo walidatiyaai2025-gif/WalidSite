@@ -67,6 +67,32 @@ class ReleaseArtifactGateTest(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     verify(self.root, self.manifest, SHA)
 
+    def test_manifest_prerelease_identifiers_require_canonical_semver(self):
+        # These previously passed the permissive regex, although semver.org
+        # forbids leading zeroes in numeric prerelease fields and empty fields.
+        invalid = (
+            "1.2.3-01", "1.2.3-alpha.01", "1.2.3-1.001",
+            "1.2.3-alpha..beta", "1.2.3-.alpha", "1.2.3-alpha.",
+            "1.2.3-foo_1",
+        )
+        for version in invalid:
+            with self.subTest(invalid=version):
+                self.data["version"] = version
+                self.save()
+                with self.assertRaisesRegex(ValueError, "three-part SemVer"):
+                    verify(self.root, self.manifest, SHA)
+        valid = (
+            "0.0.0", "1.2.3", "1.2.3-0", "1.2.3-alpha",
+            "1.2.3-alpha.1", "1.2.3-alpha-01", "1.2.3-rc.0",
+        )
+        for version in valid:
+            with self.subTest(valid=version):
+                self.data["version"] = version
+                self.save()
+                receipt = verify(self.root, self.manifest, SHA)
+                self.assertEqual(receipt["version"], version)
+                self.assertFalse(receipt["production_ready"])
+
     def test_path_traversal_duplicates_and_wrong_extension_fail(self):
         for name in ("../private.zip", "/etc/passwd", "nested/file.zip", ".hidden.zip",
                      "..zip", "bad\\path.zip", "evil%2F.zip"):
