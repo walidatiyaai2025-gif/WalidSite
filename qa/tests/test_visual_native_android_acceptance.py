@@ -1,6 +1,7 @@
 """Offline adversarial contract tests; these do NOT assert a native build ran."""
 import io
 import json
+import os
 import tempfile
 import unittest
 import warnings
@@ -9,6 +10,7 @@ from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 from subprocess import CompletedProcess
+from types import SimpleNamespace
 
 from qa.native_android_acceptance import ApkAcceptanceError, inspect, main
 
@@ -60,6 +62,80 @@ class NativeAndroidAcceptanceTest(unittest.TestCase):
         self.assertFalse(result["distribution_signing_identity_verified"])
         self.assertFalse(result["device_install_launch_verified"])
         self.assertEqual(result["source_sha_supplied_not_attested"], SHA)
+
+    def test_binary_snapshot_preserves_ctrl_z_and_crlf_on_windows(self):
+        with zipfile.ZipFile(self.apk, "w") as archive:
+            archive.writestr("AndroidManifest.xml", b"synthetic manifest")
+            archive.writestr("classes.dex", b"header\r\nbefore\x1aafter\r\n")
+        expected = self.apk.read_bytes()
+        real_open, real_read = os.open, os.read
+        native_binary = getattr(os, "O_BINARY", 0)
+        binary_flag = native_binary or (1 << 28)
+        source_descriptors = {}
+
+        def windows_open(path, flags, *args, **kwargs):
+            # Emulate Windows' default text mode on POSIX CI as well. The
+            # synthetic marker must not reach the host's real os.open.
+            host_flags = flags if native_binary else flags & ~binary_flag
+            descriptor = real_open(path, host_flags, *args, **kwargs)
+            if Path(path) == self.apk:
+                source_descriptors[descriptor] = bool(flags & binary_flag)
+            return descriptor
+
+        def windows_read(descriptor, size):
+            data = real_read(descriptor, size)
+            if descriptor in source_descriptors and not source_descriptors[descriptor]:
+                return data.split(b"\x1a", 1)[0].replace(b"\r\n", b"\n")
+            return data
+
+        def inspect_unchanged_bytes(argv):
+            self.assertEqual(Path(argv[-1]).read_bytes(), expected)
+            return self.command(argv)
+
+        with patch("qa.native_android_acceptance.os.O_BINARY", binary_flag, create=True):
+            with patch("qa.native_android_acceptance.os.open", side_effect=windows_open):
+                with patch("qa.native_android_acceptance.os.read", side_effect=windows_read):
+                    with patch("qa.native_android_acceptance._command",
+                               side_effect=inspect_unchanged_bytes):
+                        result = inspect(self.apk, **self.args)
+        self.assertTrue(source_descriptors)
+        self.assertTrue(all(source_descriptors.values()))
+        self.assertTrue(result["apk_integrity_verified"])
+
+    def test_descriptor_and_path_ctime_semantics_can_differ_without_mutation(self):
+        real_fstat = os.fstat
+
+        def descriptor_stat(descriptor):
+            info = real_fstat(descriptor)
+            return SimpleNamespace(
+                st_dev=info.st_dev, st_ino=info.st_ino, st_mode=info.st_mode,
+                st_size=info.st_size, st_mtime_ns=info.st_mtime_ns,
+                st_ctime_ns=info.st_ctime_ns - 100_000,
+            )
+
+        with patch("qa.native_android_acceptance.os.fstat", side_effect=descriptor_stat):
+            with patch("qa.native_android_acceptance._command", side_effect=self.command):
+                result = inspect(self.apk, **self.args)
+        self.assertTrue(result["apk_integrity_verified"])
+
+    def test_descriptor_path_identity_mismatch_fails_before_native_tools(self):
+        real_stat = os.stat
+
+        def replaced_path(path, *args, **kwargs):
+            info = real_stat(path, *args, **kwargs)
+            if Path(path) == self.apk and kwargs.get("follow_symlinks") is False:
+                return SimpleNamespace(
+                    st_dev=info.st_dev, st_ino=info.st_ino + 1, st_mode=info.st_mode,
+                    st_size=info.st_size, st_mtime_ns=info.st_mtime_ns,
+                    st_ctime_ns=info.st_ctime_ns,
+                )
+            return info
+
+        with patch("qa.native_android_acceptance.os.stat", side_effect=replaced_path):
+            with patch("qa.native_android_acceptance._command") as command:
+                with self.assertRaisesRegex(ApkAcceptanceError, "Unsafe"):
+                    inspect(self.apk, **self.args)
+                command.assert_not_called()
 
     def test_release_qa_requires_valid_signature_and_non_debuggable_manifest(self):
         release_args = {**self.args, "kind": "release-qa",
@@ -264,8 +340,10 @@ class NativeAndroidAcceptanceTest(unittest.TestCase):
             inspected.append(source)
             self.assertNotEqual(source, self.apk)
             self.assertTrue(source.is_file())
-            self.assertEqual(source.stat().st_mode & 0o777, 0o600)
-            self.assertEqual(source.parent.stat().st_mode & 0o777, 0o700)
+            # Windows chmod/stat do not implement POSIX group/other bits.
+            if os.name == "posix":
+                self.assertEqual(source.stat().st_mode & 0o777, 0o600)
+                self.assertEqual(source.parent.stat().st_mode & 0o777, 0o700)
             self.assertEqual(source.read_bytes(), self.apk.read_bytes())
             return self.command(argv)
 
