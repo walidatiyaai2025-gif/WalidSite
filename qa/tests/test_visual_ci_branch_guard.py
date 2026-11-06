@@ -14,6 +14,8 @@ BRANCH_CONDITION = "(" + " || ".join(
     for prefix in ("feat", "fix", "chore")
 ) + ")"
 PR_CONDITION = "github.event_name == 'pull_request' && " + BRANCH_CONDITION
+MAIN_CONDITION = "github.event_name == 'push' && github.ref == 'refs/heads/main'"
+VISUAL_CONDITION = "(" + MAIN_CONDITION + ") || (" + PR_CONDITION + ")"
 
 
 class Issue481VisualCiAdmissionTest(unittest.TestCase):
@@ -29,8 +31,8 @@ class Issue481VisualCiAdmissionTest(unittest.TestCase):
 
     def assert_ci_contract(self, source: str) -> None:
         lines = source.splitlines()
-        self.assertEqual(self.condition(lines, RUNTIME_NAME), PR_CONDITION)
-        self.assertEqual(self.condition(lines, UPLOAD_NAME), "always() && " + PR_CONDITION)
+        self.assertEqual(self.condition(lines, RUNTIME_NAME), VISUAL_CONDITION)
+        self.assertEqual(self.condition(lines, UPLOAD_NAME), "always() && (" + VISUAL_CONDITION + ")")
 
         upload_index = lines.index("      - name: " + UPLOAD_NAME)
         next_step = next((i for i in range(upload_index + 1, len(lines))
@@ -50,7 +52,8 @@ class Issue481VisualCiAdmissionTest(unittest.TestCase):
             source.replace("fix/481-", "fix/other-", 1),
             source.replace("chore/481-", "chore/other-", 1),
             source.replace("if-no-files-found: error", "if-no-files-found: warn", 1),
-            source.replace("always() && github.event_name", "github.event_name", 1),
+            source.replace("always() && (", "(", 1),
+            source.replace("refs/heads/main", "refs/heads/other", 1),
         ):
             with self.subTest(mutation=mutation != source):
                 self.assertNotEqual(mutation, source)
