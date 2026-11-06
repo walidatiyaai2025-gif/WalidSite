@@ -127,8 +127,8 @@ class InstalledVersionFailClosedTests(unittest.TestCase):
         first.mkdir(parents=True)
         public.mkdir()
         active.mkdir(parents=True)
-        (first / "VERSION").write_text("0.1.2\\n", encoding="ascii")
-        (active / "VERSION").write_text("0.1.3\\n", encoding="ascii")
+        (first / "VERSION").write_text("0.1.2\n", encoding="ascii")
+        (active / "VERSION").write_text("0.1.3\n", encoding="ascii")
         pointer = home / ".walidsite-active-release.json"
         pointer.write_text(json.dumps({
             "schema": 1, "version": "0.1.3",
