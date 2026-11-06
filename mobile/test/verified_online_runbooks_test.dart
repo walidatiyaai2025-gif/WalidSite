@@ -224,6 +224,29 @@ void main() {
     expect(ReviewedRunbook.fromJson(normal).title, normal['title']);
   });
 
+  test('future review timestamps cannot masquerade as verified', () {
+    final future = DateTime.now().toUtc().add(const Duration(days: 30))
+        .toIso8601String();
+    final nearlyNow = DateTime.now().toUtc().add(const Duration(minutes: 1))
+        .toIso8601String();
+    for (final timestamp in [future, '2099-01-01T00:00:00Z']) {
+      expect(
+        () => ReviewedRunbook.fromJson(
+            guide()..['validated_at'] = timestamp),
+        throwsFormatException,
+      );
+      expect(
+        () => ReviewedRunbookPage.parse(
+            response(1, [guide()..['validated_at'] = timestamp]), 1),
+        throwsFormatException,
+      );
+    }
+    final valid = ReviewedRunbook.fromJson(
+        guide()..['validated_at'] = nearlyNow);
+    expect(valid.validatedAt.isUtc, isTrue);
+    expect(valid.id, firstId);
+  });
+
   test('rejects untrusted, malformed and oversized runbook data', () {
     final invalid = <String>[
       '{}',
