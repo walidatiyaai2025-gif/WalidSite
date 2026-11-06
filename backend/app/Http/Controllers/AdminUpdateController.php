@@ -14,6 +14,7 @@ use Illuminate\Http\UploadedFile;
 use App\Support\Deployment\SiteUpdater;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\View\View;
 use Throwable;
 
@@ -523,7 +524,7 @@ final class AdminUpdateController extends Controller
             // or user-provided values. Do not let Laravel's default exception
             // reporter persist their message, stack or previous exception.
             // A class-only marker is sufficient for private diagnostics.
-            \\Illuminate\\Support\\Facades\\Log::warning('admin.updates.migration_blocked', [
+            Log::warning('admin.updates.migration_blocked', [
                 'type' => $exception::class,
             ]);
 
