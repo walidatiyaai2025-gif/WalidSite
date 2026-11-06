@@ -123,6 +123,49 @@ class ReleaseArtifactGateTest(unittest.TestCase):
         self.assertTrue(report["artifact_integrity_verified"])
         self.assertFalse(report["production_ready"])
 
+    def test_manifest_parent_must_be_private_even_when_manifest_is_read_only(self):
+        parent = self.root / "manifest-owner"
+        parent.mkdir(mode=0o700)
+        candidate = parent / "manifest.json"
+        self.manifest.rename(candidate)
+        original = parent.stat().st_mode & 0o777
+        try:
+            parent.chmod(0o770)
+            with self.assertRaisesRegex(ValueError, "directory changed"):
+                verify(self.root, candidate, SHA)
+            parent.chmod(0o702)
+            with self.assertRaisesRegex(ValueError, "directory changed"):
+                verify(self.root, candidate, SHA)
+        finally:
+            parent.chmod(original)
+        self.assertTrue(verify(self.root, candidate, SHA)["artifact_integrity_verified"])
+
+    def test_manifest_parent_swap_during_read_is_rejected(self):
+        parent = self.root / "manifest-owner"
+        parent.mkdir(mode=0o700)
+        candidate = parent / "manifest.json"
+        self.manifest.rename(candidate)
+        retired = self.root / "retired-manifest-owner"
+        original_reader = gate._stable_reader
+        swapped = False
+
+        @contextmanager
+        def swap_manifest_parent(path, *, dir_fd=None):
+            nonlocal swapped
+            with original_reader(path, dir_fd=dir_fd) as item:
+                yield item
+                if path == "manifest.json" and dir_fd is not None and not swapped:
+                    parent.rename(retired)
+                    parent.mkdir(mode=0o700)
+                    (parent / "manifest.json").write_bytes(
+                        (retired / "manifest.json").read_bytes())
+                    swapped = True
+
+        with patch.object(gate, "_stable_reader", swap_manifest_parent):
+            with self.assertRaisesRegex(ValueError, "directory changed"):
+                verify(self.root, candidate, SHA)
+        self.assertTrue(swapped)
+
     def test_artifact_directory_symlink_fails_closed(self):
         directory_link = self.root / "alias-artifacts"
         directory_link.symlink_to(self.root, target_is_directory=True)
@@ -221,8 +264,8 @@ class ReleaseArtifactGateTest(unittest.TestCase):
             nonlocal swapped
             with original_reader(path, dir_fd=dir_fd) as result:
                 yield result
-                if dir_fd is not None and not swapped:
-                    # Relative file reads remain securely pinned to the old
+                if path == self.pkg.name and dir_fd is not None and not swapped:
+                    # Relative artifact reads remain pinned to the old
                     # directory FD. The pathname now resolves to new bytes.
                     release_dir.rename(retired)
                     release_dir.mkdir()
