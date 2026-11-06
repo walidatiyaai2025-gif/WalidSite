@@ -69,6 +69,14 @@ CHECKS = (
     Check("/storage/logs/laravel.log", 404, "private_denied"),
     Check("/storage/app/site-first-run.json", 404, "private_denied"),
     Check("/site-first-run.json", 404, "private_denied"),
+    # Release-pointer and maintenance metadata must remain under the private
+    # cPanel account home. Leakage exposes rollback state and release layout;
+    # directory listings of previous code/backup snapshots are also forbidden.
+    Check("/.walidsite-active-release.json", 404, "private_denied"),
+    Check("/.walidsite-update-maintenance.json", 404, "private_denied"),
+    Check("/.walidsite-writer-drain.lock", 404, "private_denied"),
+    Check("/.walidsite-releases/", 404, "private_denied"),
+    Check("/.walidsite-backups/", 404, "private_denied"),
     Check("/contracts/owner-cv-baseline.json", 404, "private_denied"),
     Check("/api/v1/public/app-bootstrap", 200, "json", dict),
     Check("/api/v1/public/home", 200, "json", dict),
