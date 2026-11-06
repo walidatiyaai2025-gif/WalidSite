@@ -102,6 +102,61 @@ summary{cursor:pointer;min-height:44px;padding:8px}
 @if($errors->any())<div role="alert" class="panel warn"><strong>{{ $ar ? 'تعذر حفظ العملية' : 'The operation was not saved' }}</strong><ul>@foreach($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></div>@endif
 
 @if($section === 'github')
+<section class="panel" aria-labelledby="github-review-title">
+<h2 id="github-review-title">{{ $ar ? 'طلبات المستودعات ومراجعة المالك' : 'Repository proposals and owner review' }}</h2>
+<p class="muted">{{ $ar ? 'إرسال الطلب لا ينشر المستودع. تعتمد الإضافة على قرار مالك مستقل ثم التحقق من كونه عامًا.' : 'Submission never publishes a repository. Independent owner approval and public verification are mandatory.' }}</p>
+<form method="post" action="{{ route('admin.operations.github.propose', ['lang'=>$locale]) }}">
+@csrf
+<label for="repository-slug">{{ $ar ? 'مستودع GitHub (المالك/المستودع)' : 'GitHub repository (owner/repo)' }}</label>
+<input id="repository-slug" name="repository_slug" type="text" maxlength="140" required
+ autocomplete="off" spellcheck="false" pattern="[A-Za-z0-9_-]+/[A-Za-z0-9_.-]+"
+ value="{{ old('repository_slug','') }}" aria-describedby="repository-rule">
+<p id="repository-rule" class="muted">{{ $ar ? 'أدخل الاسم فقط، بدون رابط أو رمز وصول.' : 'Enter a repository name only, not a URL or token.' }}</p>
+<button type="submit">{{ $ar ? 'أرسل للمراجعة' : 'Submit for review' }}</button>
+</form>
+@if($githubProposals->isEmpty())
+<p role="status">{{ $ar ? 'لا توجد طلبات مراجعة.' : 'No review proposals yet.' }}</p>
+@else
+<div class="scroll"><table>
+<thead><tr>
+<th scope="col">{{ $ar ? 'المستودع المقترح' : 'Proposed repository' }}</th>
+<th scope="col">{{ $ar ? 'الحالة' : 'Status' }}</th>
+<th scope="col">{{ $ar ? 'تاريخ الطلب' : 'Submitted' }}</th>
+<th scope="col">{{ $ar ? 'قرار المالك' : 'Owner decision' }}</th>
+</tr></thead><tbody>
+@foreach($githubProposals as $proposal)
+<tr>
+<td>{{ $proposal->repository_slug }}</td>
+<td>{{ $proposal->status }}</td>
+<td><time datetime="{{ $proposal->created_at?->toIso8601String() }}">{{ $proposal->created_at?->toDateString() }}</time></td>
+<td>
+@if($canReviewGithub && $proposal->status === 'pending' && $proposal->submitted_by_user_id !== auth('web')->id())
+<form method="post" action="{{ route('admin.operations.github.decide', ['id'=>$proposal->id,'lang'=>$locale]) }}" class="inline-actions">
+@csrf
+<label for="reason-{{ $proposal->id }}">{{ $ar ? 'سبب القرار' : 'Decision reason' }}</label>
+<select id="reason-{{ $proposal->id }}" name="reason">
+<option value="source_verified">{{ $ar ? 'تحقق المصدر' : 'Source verified' }}</option>
+<option value="not_public">{{ $ar ? 'غير عام' : 'Not public' }}</option>
+<option value="owner_policy">{{ $ar ? 'سياسة المالك' : 'Owner policy' }}</option>
+<option value="out_of_scope">{{ $ar ? 'خارج النطاق' : 'Out of scope' }}</option>
+</select>
+<button type="submit" name="decision" value="approve">{{ $ar ? 'اعتماد بعد التحقق' : 'Verify and approve' }}</button>
+<button type="submit" name="decision" value="reject">{{ $ar ? 'رفض' : 'Reject' }}</button>
+</form>
+@else
+<span class="muted">{{ $ar ? 'لا يوجد إجراء متاح' : 'No action available' }}</span>
+@endif
+</td>
+</tr>
+@endforeach
+</tbody></table></div>
+<nav aria-label="{{ $ar ? 'صفحات الطلبات' : 'Proposal pages' }}">
+@if($githubProposals->previousPageUrl())<a href="{{ $githubProposals->previousPageUrl() }}">{{ $ar ? 'السابق' : 'Previous' }}</a>@endif
+<span>{{ $githubProposals->currentPage() }} / {{ $githubProposals->lastPage() }}</span>
+@if($githubProposals->nextPageUrl())<a href="{{ $githubProposals->nextPageUrl() }}">{{ $ar ? 'التالي' : 'Next' }}</a>@endif
+</nav>
+@endif
+</section>
 <section class="panel" aria-labelledby="github-title">
 <h2 id="github-title">{{ $ar ? 'قائمة المستودعات العامة المسموح بها' : 'Allowlisted public repository verification' }}</h2>
 <p class="muted">{{ $ar ? 'يتم التحقق من الحالة العامة عبر GitHub فقط. المستودعات الخاصة أو غير المتاحة لا تظهر أسماؤها ولا تُنشر.' : 'Only currently verified public GitHub repositories are displayed. Unavailable or private repository identifiers are never published.' }}</p>
