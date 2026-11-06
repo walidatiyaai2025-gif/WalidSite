@@ -115,6 +115,36 @@ class VisualDiagnosticsTest(unittest.TestCase):
         self.assertEqual(report["screens"]["WEB-01"]["status"], "wrong_dimensions")
         self.assertFalse((self.root / "qa/visual-diagnostics" / self.sha / "WEB-01.runtime.png").exists())
 
+    def test_wrong_dimensions_are_rejected_before_decoding_rgba(self):
+        # A tiny compressed PNG may claim a huge raster. Header dimensions
+        # must be checked before Pillow allocates/decompresses any RGBA pixels.
+        original_convert = Image.Image.convert
+        conversions = []
+
+        def guarded_convert(image, *args, **kwargs):
+            conversions.append(image.size)
+            if image.size != (2, 2):
+                raise AssertionError("Wrong-sized PNG was decoded before rejection")
+            return original_convert(image, *args, **kwargs)
+
+        def wrong_size(command, *, env, **kwargs):
+            Image.new("RGB", (24, 16), "white").save(
+                env["WALIDSITE_CAPTURE_PATH"], format="PNG"
+            )
+            return subprocess.CompletedProcess(command, 0)
+
+        with patch.object(Image.Image, "convert", guarded_convert):
+            report = self.run_diagnostics(wrong_size)
+        screen = report["screens"]["WEB-01"]
+        self.assertEqual(screen["status"], "wrong_dimensions")
+        self.assertEqual(screen["runtime_size"], [24, 16])
+        self.assertEqual(conversions, [(2, 2)])
+        self.assertFalse(
+            (self.root / "qa/visual-diagnostics" / self.sha /
+             "WEB-01.runtime.png").exists()
+        )
+        self.assertFalse(report["evidence_admitted"])
+
     def test_invalid_plan_and_wrong_head_preflight_without_running_or_writing(self):
         def forbidden(*args, **kwargs):
             self.fail("Renderer must not run for invalid plan")
