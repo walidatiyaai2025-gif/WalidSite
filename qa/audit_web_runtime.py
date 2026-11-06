@@ -2,8 +2,9 @@
 """Read-only, real anonymous Laravel Web accessibility and responsive diagnostics.
 
 This never certifies a pixel match, publishes source data, or modifies the
-immutable design ledger. It checks twelve static canonical Web routes; the two
-dynamic routes require legitimate published evidence and separate discovery.
+immutable design ledger. It checks twelve static canonical Web routes at
+desktop, tablet and mobile sizes. The two dynamic routes require legitimate
+published evidence and separate discovery.
 """
 from __future__ import annotations
 

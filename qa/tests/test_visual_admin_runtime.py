@@ -65,7 +65,8 @@ class FakePage:
 
 
 class FakeContext:
-    def __init__(self):
+    def __init__(self, viewport=None):
+        self.viewport = viewport
         self.pages = []
         self.routes = []
         self.closed = False
@@ -86,7 +87,7 @@ def fake_browser():
     contexts = []
     browser = Mock()
     def context_factory(**_kwargs):
-        context = FakeContext()
+        context = FakeContext(_kwargs.get("viewport"))
         contexts.append(context)
         return context
     browser.new_context.side_effect = context_factory
@@ -176,7 +177,7 @@ class AdminRuntimeAuditTest(unittest.TestCase):
             with self.assertRaises(AdminSessionError):
                 exact_checkout(ROOT, SHA)
 
-    def test_actual_session_matrix_covers_52_unique_authenticated_screen_checks(self):
+    def test_actual_session_matrix_covers_78_unique_authenticated_screen_checks(self):
         manager, contexts, browser = fake_browser()
         with patch("qa.audit_admin_runtime.exact_checkout"):
             report = audit_admin(
@@ -187,10 +188,17 @@ class AdminRuntimeAuditTest(unittest.TestCase):
         self.assertEqual(report["failed_checks"], 0)
         self.assertEqual(report["visual_parity"], "not_attested")
         self.assertEqual(len(contexts), 2 * len(VIEWPORTS))
+        self.assertEqual({(ctx.viewport["width"], ctx.viewport["height"])
+                          for ctx in contexts},
+                         {(1440, 900), (768, 1024), (390, 844)})
         self.assertEqual(len({
             (x["screen"], x["locale"], x["viewport"])
             for x in report["results"]
-        }), 52)
+        }), 78)
+        self.assertEqual({(x["viewport"], x["width"], x["height"])
+                          for x in report["results"]}, set(VIEWPORTS))
+        self.assertEqual({x["viewport"] for x in report["results"]},
+                         {"desktop", "tablet", "mobile"})
         self.assertTrue(all(x["status"] == "pass" for x in report["results"]))
         self.assertTrue(all(len(ctx.pages) == 13 and ctx.closed for ctx in contexts))
         self.assertTrue(all(p.closed for ctx in contexts for p in ctx.pages))

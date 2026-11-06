@@ -159,7 +159,7 @@ class WebRuntimeAuditTest(unittest.TestCase):
                          ["locale_or_direction_mismatch"])
         self.assertIn("http_or_route_failure", FATAL_CODES)
 
-    def test_48_real_route_slots_stay_anonymous_and_keep_external_domains_blocked(self):
+    def test_72_real_route_slots_stay_anonymous_and_keep_external_domains_blocked(self):
         manager, contexts, browser = fake_playwright()
         with patch("qa.audit_web_runtime.exact_checkout"), \
              patch.dict(os.environ, {"WALIDSITE_CAPTURE_STORAGE_STATE": ""}):
@@ -173,9 +173,13 @@ class WebRuntimeAuditTest(unittest.TestCase):
         self.assertFalse(report["evidence_admitted"])
         self.assertEqual(report["visual_parity"], "not_attested")
         self.assertEqual(report["dynamic_web_pending"], ["WEB-05", "WEB-08"])
-        self.assertEqual(len(contexts), 4)
+        self.assertEqual(len(contexts), 6)
+        self.assertEqual({ctx.viewport_width for ctx in contexts},
+                         {1440, 768, 390})
         self.assertEqual(len({(r["screen"], r["locale"], r["viewport"])
-                              for r in report["results"]}), 48)
+                              for r in report["results"]}), 72)
+        self.assertEqual({r["viewport"] for r in report["results"]},
+                         {"desktop", "tablet", "mobile"})
         self.assertTrue(all(len(ctx.pages) == 12 and ctx.closed
                             for ctx in contexts))
         self.assertTrue(all(p.closed for ctx in contexts for p in ctx.pages))
@@ -280,7 +284,7 @@ class WebRuntimeAuditTest(unittest.TestCase):
             "scope": "anonymous_public_web_runtime_accessibility_diagnostics_only",
             "visual_parity": "not_attested", "evidence_admitted": False,
             "dynamic_web_pending": ["WEB-05", "WEB-08"],
-            "screen_checks": 48, "failed_checks": 1,
+            "screen_checks": 72, "failed_checks": 1,
             "fatal_checks": 0, "results": [
                 {"screen": "WEB-07", "locale": "ar", "viewport": "mobile",
                  "status": "defect", "defects": ["multiple_visible_h1"]},
@@ -293,7 +297,7 @@ class WebRuntimeAuditTest(unittest.TestCase):
                 code = main(["--commit", SHA, "--output", str(output)])
             self.assertEqual(code, 1)
             self.assertTrue(output.is_file())
-            self.assertEqual(json.loads(output.read_text())["screen_checks"], 48)
+            self.assertEqual(json.loads(output.read_text())["screen_checks"], 72)
             self.assertEqual(json.loads(output.read_text())["failed_checks"], 1)
 
     def test_failed_cli_redacts_runtime_exceptions_and_writes_no_report(self):

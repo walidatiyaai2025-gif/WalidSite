@@ -329,13 +329,42 @@ jobs:
           print('MISMATCH COUNTS: ' + json.dumps(mismatches, sort_keys=True))
           PY
 
-          # Read-only Admin AR/EN desktop/mobile accessibility diagnostics.
+          # Read-only Admin AR/EN desktop/tablet/mobile accessibility diagnostics.
           # Defects stay recorded; pixel parity is never inferred from CI.
           set +e
           python3 -B qa/audit_admin_runtime.py --provider-id "$provider_id" --commit "$tested_sha" --output "/home/runner/work/WalidSite/WalidSite/qa/visual-diagnostics/$tested_sha/admin-runtime-a11y.json"
           a11y_exit=$?
           set -e
           if test "$a11y_exit" -gt 1; then exit "$a11y_exit"; fi
+          # Fail closed if an Admin breakpoint/locale/screen is missing from
+          # the actual authenticated browser report, even if the CLI did not
+          # report an application error. This is NOT pixel-parity admission.
+          admin_report="$PWD/qa/visual-diagnostics/$tested_sha/admin-runtime-a11y.json"
+          test -s "$admin_report"
+          ADMIN_A11Y_REPORT="$admin_report" TESTED_SHA="$tested_sha" python3 -B - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          report = json.loads(Path(os.environ["ADMIN_A11Y_REPORT"]).read_text())
+          rows = report.get("results")
+          expected = {(f"ADMIN-{i:02d}", lang, viewport)
+                      for i in range(1, 14)
+                      for lang in ("en", "ar")
+                      for viewport in ("desktop", "tablet", "mobile")}
+          sizes = {"desktop": (1440, 900), "tablet": (768, 1024),
+                   "mobile": (390, 844)}
+          if (report.get("screen_checks") != 78 or
+                  report.get("tested_sha") != os.environ["TESTED_SHA"] or
+                  report.get("visual_parity") != "not_attested" or
+                  not isinstance(rows, list) or len(rows) != 78 or
+                  {(r.get("screen"), r.get("locale"), r.get("viewport"))
+                   for r in rows if isinstance(r, dict)} != expected or
+                  any((r.get("width"), r.get("height")) != sizes[r["viewport"]]
+                      for r in rows if isinstance(r, dict))):
+              raise SystemExit("Admin responsive runtime report missing or invalid")
+          print("ADMIN REAL RESPONSIVE MATRIX WRITTEN: 78/78 authenticated browser checks")
+          PY
 
           # Real Web diagnostics reuse this already-verified local Laravel
           # server. The two dynamic pages require actual published source data;
@@ -379,7 +408,7 @@ jobs:
           PY
 
           # Independently inspect the 12 anonymous public routes in Arabic
-          # and English at desktop/mobile sizes. Accessibility defects are
+          # and English at desktop/tablet/mobile sizes. Accessibility defects are
           # recorded, not confused with a zero-RGBA screenshot attestation.
           # A failed route, unsafe origin, source drift or incomplete matrix
           # remains a fatal CI failure; ordinary defects stay in the artifact.
@@ -390,7 +419,7 @@ jobs:
           set -e
           if test "$web_a11y_exit" -gt 1; then exit "$web_a11y_exit"; fi
           # The report itself is a required deliverable. The artifact cannot
-          # silently omit the 48-check matrix even when the shell exits zero.
+          # silently omit the 72-check matrix even when the shell exits zero.
           test -s "$web_a11y_report"
           WEB_A11Y_REPORT="$web_a11y_report" python3 - <<'PY'
           import json
@@ -402,16 +431,20 @@ jobs:
           expected = {(f"WEB-{i:02d}", lang, viewport)
                       for i in range(1, 15) if i not in (5, 8)
                       for lang in ("en", "ar")
-                      for viewport in ("desktop", "mobile")}
-          if (report.get("screen_checks") != 48 or
+                      for viewport in ("desktop", "tablet", "mobile")}
+          sizes = {"desktop": (1440, 900), "tablet": (768, 1024),
+                   "mobile": (390, 844)}
+          if (report.get("screen_checks") != 72 or
                   report.get("fatal_checks") != 0 or
                   report.get("visual_parity") != "not_attested" or
                   report.get("evidence_admitted") is not False or
-                  not isinstance(rows, list) or
+                  not isinstance(rows, list) or len(rows) != 72 or
                   {(r.get("screen"), r.get("locale"), r.get("viewport"))
-                   for r in rows if isinstance(r, dict)} != expected):
-              raise SystemExit("Public Web runtime audit report missing or incomplete")
-          print("PUBLIC WEB A11Y MATRIX WRITTEN: 48/48 anonymous real browser checks")
+                   for r in rows if isinstance(r, dict)} != expected or
+                  any((r.get("width"), r.get("height")) != sizes[r["viewport"]]
+                      for r in rows if isinstance(r, dict))):
+              raise SystemExit("Public Web responsive runtime report missing or invalid")
+          print("PUBLIC WEB A11Y MATRIX WRITTEN: 72/72 anonymous real browser checks")
           PY
 
       - name: Upload Issue 481 Admin runtime visual diagnostics
