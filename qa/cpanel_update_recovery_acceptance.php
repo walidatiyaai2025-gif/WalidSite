@@ -72,6 +72,7 @@ try {
     $web = $home.'/public_html';
     mkdir($app.'/storage/app', 0700, true);
     mkdir($web.'/uploads', 0750, true);
+    file_put_contents($app.'/VERSION', "0.1.1\n");
     file_put_contents($app.'/.env', "APP_KEY=base64:RECOVERY_PRIVATE_CI_ONLY\n");
     file_put_contents($app.'/storage/app/personal.txt', 'private-avatar-example');
     file_put_contents($web.'/uploads/avatar.png', 'fixture-binary-content');
