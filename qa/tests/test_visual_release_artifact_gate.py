@@ -166,6 +166,55 @@ class ReleaseArtifactGateTest(unittest.TestCase):
                 verify(self.root, candidate, SHA)
         self.assertTrue(swapped)
 
+    def test_manifest_inode_swapped_during_artifact_hashing_is_rejected(self):
+        # The original verifier released the manifest descriptor immediately
+        # after parsing JSON. A later identical-byte replacement then passed.
+        original_reader = gate._stable_reader
+        retired = self.root / "retired-manifest.json"
+        swapped = False
+
+        @contextmanager
+        def swap_after_artifact(path, *, dir_fd=None):
+            nonlocal swapped
+            with original_reader(path, dir_fd=dir_fd) as item:
+                yield item
+                if path == self.pkg.name and dir_fd is not None and not swapped:
+                    self.manifest.rename(retired)
+                    self.manifest.write_bytes(retired.read_bytes())
+                    swapped = True
+
+        with patch.object(gate, "_stable_reader", swap_after_artifact):
+            with self.assertRaisesRegex(ValueError, "Release input pathname changed"):
+                verify(self.root, self.manifest, SHA)
+        self.assertTrue(swapped)
+
+    def test_manifest_parent_swapped_during_artifact_hashing_is_rejected(self):
+        # A pinned parent during manifest parsing is insufficient: the parent
+        # must remain the named directory throughout referenced ZIP hashing.
+        parent = self.root / "publisher-manifest"
+        parent.mkdir(mode=0o700)
+        candidate = parent / "manifest.json"
+        self.manifest.rename(candidate)
+        retired = self.root / "retired-publisher-manifest"
+        original_reader = gate._stable_reader
+        swapped = False
+
+        @contextmanager
+        def swap_after_artifact(path, *, dir_fd=None):
+            nonlocal swapped
+            with original_reader(path, dir_fd=dir_fd) as item:
+                yield item
+                if path == self.pkg.name and dir_fd is not None and not swapped:
+                    parent.rename(retired)
+                    parent.mkdir(mode=0o700)
+                    candidate.write_bytes((retired / "manifest.json").read_bytes())
+                    swapped = True
+
+        with patch.object(gate, "_stable_reader", swap_after_artifact):
+            with self.assertRaisesRegex(ValueError, "directory changed"):
+                verify(self.root, candidate, SHA)
+        self.assertTrue(swapped)
+
     def test_artifact_directory_symlink_fails_closed(self):
         directory_link = self.root / "alias-artifacts"
         directory_link.symlink_to(self.root, target_is_directory=True)
