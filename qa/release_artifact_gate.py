@@ -176,7 +176,10 @@ def _verify_manifest_payload(folder: Path, raw_manifest: bytes,
         obj = json.loads(raw_manifest.decode("utf-8"),
                          object_pairs_hook=_unique_json_object,
                          parse_constant=_reject_json_constant)
-    except (UnicodeError, ValueError) as exc:
+    except (UnicodeError, ValueError, RecursionError) as exc:
+        # An untrusted deeply nested JSON document can exceed the Python
+        # parser's recursion limit even below the 1 MiB size budget.
+        # Treat it as invalid metadata, never an unhandled verifier crash.
         raise ValueError("Invalid JSON release manifest") from exc
     if not isinstance(obj, dict) or set(obj) != {"schema", "version", "source_sha", "artifacts"}:
         raise ValueError("Unexpected release manifest schema")
