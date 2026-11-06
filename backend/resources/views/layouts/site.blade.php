@@ -84,9 +84,6 @@
     <link rel="sitemap" type="application/xml" href="{{ route('public.sitemap') }}">
     @stack('head')
     @stack('styles')
-    @if(request()->routeIs('public.expertise'))
-        @include('public.expertise-mobile-overflow-fix')
-    @endif
     @include('partials.web-fonts')
 </head>
 <body>
