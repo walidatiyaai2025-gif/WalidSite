@@ -143,11 +143,33 @@ def verify(folder: Path, manifest_path: Path, source_sha: str | None = None) -> 
         return _verify_manifest_payload(folder, raw_manifest, source_sha)
 
 
+def _unique_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    """Reject duplicate semantic JSON keys at every object nesting level.
+
+    JSON escapes are decoded before object_pairs_hook is invoked, so two
+    differently escaped spellings of e.g. source_sha cannot disagree across
+    independent release metadata consumers.
+    """
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("Duplicate release manifest key")
+        result[key] = value
+    return result
+
+
+def _reject_json_constant(value: str) -> object:
+    # Python accepts NaN/Infinity by default even though JSON does not.
+    raise ValueError("Non-finite release manifest JSON value")
+
+
 def _verify_manifest_payload(folder: Path, raw_manifest: bytes,
                              source_sha: str | None) -> dict:
     """Verify the inventory while the caller still owns manifest descriptors."""
     try:
-        obj = json.loads(raw_manifest.decode("utf-8"))
+        obj = json.loads(raw_manifest.decode("utf-8"),
+                         object_pairs_hook=_unique_json_object,
+                         parse_constant=_reject_json_constant)
     except (UnicodeError, ValueError) as exc:
         raise ValueError("Invalid JSON release manifest") from exc
     if not isinstance(obj, dict) or set(obj) != {"schema", "version", "source_sha", "artifacts"}:
