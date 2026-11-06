@@ -136,6 +136,16 @@ def verify(folder: Path, manifest_path: Path, source_sha: str | None = None) -> 
         raw_manifest = stream.read(MAX_MANIFEST_BYTES + 1)
         if not 0 < len(raw_manifest) <= MAX_MANIFEST_BYTES:
             raise ValueError("Invalid or oversized release manifest")
+        # Keep both the manifest inode AND its parent directory pinned until
+        # every referenced artifact has been hashed.  Returning a release
+        # receipt after closing either descriptor permits an intra-verification
+        # manifest/parent swap that the former short read-only scope missed.
+        return _verify_manifest_payload(folder, raw_manifest, source_sha)
+
+
+def _verify_manifest_payload(folder: Path, raw_manifest: bytes,
+                             source_sha: str | None) -> dict:
+    """Verify the inventory while the caller still owns manifest descriptors."""
     try:
         obj = json.loads(raw_manifest.decode("utf-8"))
     except (UnicodeError, ValueError) as exc:
