@@ -153,6 +153,31 @@ class CaptureRunnerTest(unittest.TestCase):
         self.assertFalse((self.root / "qa/visual-captures/WEB-01.png").exists())
         self.assertEqual(audit(self.root), ([], 0, 40))
 
+    def test_destination_created_after_preflight_cannot_be_overwritten(self):
+        # Simulate a competing process inserting a file between the earlier
+        # exists()/is_symlink() check and the final atomic create.
+        from unittest.mock import patch
+
+        destination = self.root / "qa/visual-captures/WEB-01.png"
+        previous_open = Path.open
+        attempted = []
+
+        def competing_create(path, mode="r", *args, **kwargs):
+            if Path(path) == destination and mode == "xb":
+                attempted.append(mode)
+                destination.write_bytes(b"independent-writer")
+                raise FileExistsError("racing file")
+            return previous_open(path, mode, *args, **kwargs)
+
+        with patch.object(Path, "open", competing_create):
+            with self.assertRaisesRegex(CaptureError, "destination already exists"):
+                self.run_capture()
+        self.assertEqual(attempted, ["xb"])
+        self.assertEqual(destination.read_bytes(), b"independent-writer")
+        self.assertEqual(self.record()["status"], "pending")
+        destination.unlink()
+        self.assertEqual(audit(self.root), ([], 0, 40))
+
     def test_renderer_mutating_source_cannot_advance_a_capture(self):
         from unittest.mock import patch
         # Initial source checkout attestation passes, but the renderer
