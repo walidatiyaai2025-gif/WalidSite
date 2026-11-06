@@ -171,9 +171,15 @@ def main(argv: list[str] | None = None) -> int:
     try:
         result = run(args.cpanel_zip, args.sha)
     except (AcceptanceError, ValueError, OSError, RuntimeError) as exc:
+        # AcceptanceError messages are authored fixed categories/step names;
+        # never echo raw exceptions from subprocess, network or PHP responses.
+        reason = str(exc) if isinstance(exc, AcceptanceError) else "unclassified"
+        if not re.fullmatch(r"[A-Za-z0-9 _:/.-]{1,160}", reason):
+            reason = "redacted"
         print(json.dumps({"actual_apache_https_verified": False,
                           "production_ready": False,
-                          "error": type(exc).__name__}), file=sys.stderr)
+                          "error": type(exc).__name__,
+                          "reason": reason}), file=sys.stderr)
         return 1
     print(json.dumps(result, sort_keys=True))
     return 0
