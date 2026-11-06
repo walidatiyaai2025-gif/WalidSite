@@ -8,6 +8,7 @@ from unittest.mock import patch
 from contextlib import contextmanager, redirect_stdout, redirect_stderr
 import io
 import os
+import sys
 
 from qa import release_artifact_gate as gate
 from qa.release_artifact_gate import verify, main, artifact_name, _stable_reader
@@ -96,7 +97,10 @@ class ReleaseArtifactGateTest(unittest.TestCase):
     def test_deeply_nested_manifest_is_rejected_without_traceback(self):
         # A small untrusted JSON file can exceed the stdlib parser recursion
         # limit; it must be rejected as invalid inventory metadata.
-        self.manifest.write_text("[" * 1200 + "0" + "]" * 1200,
+        # The runner may raise its recursion limit above Python defaults.
+        # Make the adversarial fixture deeper than that active limit.
+        depth = max(4096, sys.getrecursionlimit() + 256)
+        self.manifest.write_text("[" * depth + "0" + "]" * depth,
                                  encoding="utf-8")
         with self.assertRaisesRegex(ValueError, "Invalid JSON release manifest"):
             verify(self.root, self.manifest, SHA)
