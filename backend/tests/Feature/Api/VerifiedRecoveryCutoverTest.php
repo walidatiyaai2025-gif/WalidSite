@@ -236,6 +236,61 @@ final class VerifiedRecoveryCutoverTest extends TestCase
         }
     }
 
+    public function test_group_writable_disposable_restore_root_denies_backup_and_cutover(): void
+    {
+        if (PHP_OS_FAMILY === 'Windows') {
+            self::markTestSkipped('POSIX directory mode fixture required.');
+        }
+        self::assertTrue(chmod($this->drill, 0770));
+        try {
+            $this->execute();
+            self::fail('Other users must not write to the independent restore drill.');
+        } catch (DomainException $error) {
+            self::assertStringContainsString('private locations', $error->getMessage());
+            self::assertSame($this->old, realpath($this->current));
+            self::assertSame([], glob($this->vault.'/recovery-*') ?: []);
+            self::assertSame([], glob($this->vault.'/.mariadb-*') ?: []);
+            self::assertSame(0, (int) $this->recoveryDb->query(
+                'SELECT COUNT(*) FROM information_schema.tables WHERE TABLE_SCHEMA=DATABASE()'
+            )->fetchColumn());
+        } finally {
+            self::assertTrue(chmod($this->drill, 0700));
+        }
+    }
+
+    public function test_replaced_disposable_restore_root_during_maintenance_revokes_cutover(): void
+    {
+        if (PHP_OS_FAMILY === 'Windows') {
+            self::markTestSkipped('POSIX directory rename fixture required.');
+        }
+        $displaced = $this->drill.'-displaced';
+        $calls = 0;
+        $quiescence = function () use (&$calls, $displaced): bool {
+            ++$calls;
+            if ($calls === 2
+                && (! rename($this->drill, $displaced) || ! mkdir($this->drill, 0700))) {
+                throw new RuntimeException('Cannot simulate private restore root replacement.');
+            }
+            return true;
+        };
+        try {
+            $this->execute($quiescence);
+            self::fail('A new restore root inode must not inherit an earlier recovery proof.');
+        } catch (DomainException $error) {
+            self::assertStringContainsString('restore root identity', $error->getMessage());
+            self::assertSame(2, $calls);
+            self::assertSame($this->old, realpath($this->current));
+            self::assertSame([], glob($this->vault.'/recovery-*') ?: []);
+            self::assertSame([], glob($this->vault.'/.mariadb-*') ?: []);
+            self::assertSame('APP_KEY=preserved', file_get_contents($this->runtime.'/.env'));
+        } finally {
+            if (is_dir($displaced)) {
+                self::assertTrue(rmdir($this->drill));
+                self::assertTrue(rename($displaced, $this->drill));
+            }
+        }
+    }
+
     public function test_group_writable_recovery_lock_blocks_all_backup_mutations(): void
     {
         if (PHP_OS_FAMILY === 'Windows') {
