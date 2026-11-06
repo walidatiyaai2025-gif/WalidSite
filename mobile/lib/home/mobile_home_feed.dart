@@ -77,12 +77,17 @@ class MobileHomeArticle {
     final title = value['title'];
     final url = value['url'];
     final publishedAt = value['published_at'];
+    final publishedTime =
+        publishedAt is String ? DateTime.tryParse(publishedAt) : null;
     if (slug is! String ||
         !RegExp(r'^[A-Za-z0-9-]{1,180}$').hasMatch(slug) ||
         title is! String || title.trim().isEmpty || title.length > 250 ||
         url is! String || url.length > 2048 ||
-        publishedAt is! String ||
-        DateTime.tryParse(publishedAt) == null) {
+        publishedAt is! String || publishedAt.length > 50 ||
+        !RegExp(r'(?:Z|[+-][0-9]{2}:[0-9]{2})$').hasMatch(publishedAt) ||
+        publishedTime == null || !publishedTime.isUtc ||
+        publishedTime.isAfter(
+            DateTime.now().toUtc().add(const Duration(minutes: 5)))) {
       throw const FormatException('Unsafe home article');
     }
     return MobileHomeArticle(slug: slug, title: title);
@@ -101,7 +106,10 @@ class MobileHomeFeed {
   final List<ReviewedRunbook> runbooks;
 
   static MobileHomeFeed parse(String body, bool arabic) {
-    if (body.length > 1024 * 1024) {
+    // The transport limit is in UTF-8 bytes, not Dart UTF-16 units.
+    // Apply it to injected/direct parser calls as well as HTTP reads.
+    if (body.length > 1024 * 1024 ||
+        utf8.encode(body).length > 1024 * 1024) {
       throw const FormatException('Home response too large');
     }
     final decoded = jsonDecode(body);
