@@ -31,14 +31,22 @@ MAX_RENDERED_PNG_BYTES = 64 * 1024 * 1024
 
 def _compare_rgba(reference: Image.Image, actual: Image.Image, diff_path: Path) -> tuple[int, int]:
     """Count all differing RGBA pixels; save a binary preview, not an acceptance mask."""
-    pixels = list(zip(reference.getdata(), actual.getdata()))
-    count = sum(left != right for left, right in pixels)
+    # Avoid materializing a full list of (left, right) Python pixel tuples.
+    # At reference size (1440x860) that can consume hundreds of MiB during
+    # multi-screen Playwright diagnostics. One byte per output pixel is enough.
+    if reference.size != actual.size:
+        raise ValueError("Cannot compare screenshots with different dimensions")
+    total = reference.width * reference.height
+    mask = bytearray(total)
+    count = 0
+    for index, (left, right) in enumerate(zip(reference.getdata(), actual.getdata())):
+        if left != right:
+            mask[index] = 255
+            count += 1
     if count:
         # Opaque white = pixel differs in any R/G/B/A channel. No tolerance.
-        diagnostic = Image.new("L", reference.size)
-        diagnostic.putdata([255 if a != b else 0 for a, b in pixels])
-        diagnostic.save(diff_path, format="PNG")
-    return count, len(pixels)
+        Image.frombytes("L", reference.size, bytes(mask)).save(diff_path, format="PNG")
+    return count, total
 
 
 def diagnose(root: Path, plan: object, commit: str, *, runner=subprocess.run,
