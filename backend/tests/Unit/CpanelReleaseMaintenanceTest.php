@@ -149,6 +149,53 @@ final class CpanelReleaseMaintenanceTest extends TestCase
         $this->assertFileDoesNotExist($marker);
     }
 
+    public function test_real_live_probe_token_only_authorizes_private_unchanged_maintenance_identity(): void
+    {
+        $maintenance = new CpanelReleaseMaintenance();
+        $session = $maintenance->begin($this->home, 'legacy', '0.1.1');
+        $maintenance->assertLiveHealthProbe($this->home, $session['token']);
+
+        foreach ([str_repeat('0', 64), 'invalid', ''] as $wrong) {
+            try {
+                $maintenance->assertLiveHealthProbe($this->home, $wrong);
+                $this->fail('Foreign or malformed token was accepted as a live release probe.');
+            } catch (DomainException) {
+                // No change to the private lease or previously pinned code.
+                $this->assertFileExists($this->home.'/.walidsite-update-maintenance.json');
+            }
+        }
+
+        $maintenance->clear($this->home, $session['token']);
+        $this->expectException(DomainException::class);
+        $maintenance->assertLiveHealthProbe($this->home, $session['token']);
+    }
+
+    public function test_live_health_probe_rejects_tampered_version_or_expired_barrier(): void
+    {
+        $maintenance = new CpanelReleaseMaintenance();
+        $session = $maintenance->begin($this->home, 'legacy', '0.1.1');
+        $path = $this->home.'/.walidsite-update-maintenance.json';
+        $original = json_decode((string) file_get_contents($path), true, 8, JSON_THROW_ON_ERROR);
+        $tampered = $original;
+        $tampered['previous_version'] = 'not-a-version';
+        file_put_contents($path, json_encode($tampered, JSON_THROW_ON_ERROR));
+        try {
+            $maintenance->assertLiveHealthProbe($this->home, $session['token']);
+            $this->fail('Malformed previous release identity authorized a health probe.');
+        } catch (DomainException) {
+            $this->assertFileExists($path);
+        }
+
+        $original['expires_at'] = time() - 1;
+        file_put_contents($path, json_encode($original, JSON_THROW_ON_ERROR));
+        try {
+            $maintenance->assertLiveHealthProbe($this->home, $session['token']);
+            $this->fail('An expired health token must not reopen the new release.');
+        } catch (DomainException) {
+            $this->assertFileExists($path);
+        }
+    }
+
     public function test_unknown_release_identity_and_untrusted_link_are_forbidden(): void
     {
         $maintenance = new CpanelReleaseMaintenance();

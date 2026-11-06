@@ -34,12 +34,12 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
-def status(opener, port: int, probe: str | None = None) -> tuple[int, bytes]:
+def status(opener, port: int, probe: str | None = None, path: str = "/install") -> tuple[int, bytes]:
     headers = {"Host": "127.0.0.1"}
     if probe:
         headers["X-Walidsite-Release-Probe"] = probe
     request = urllib.request.Request(
-        f"http://127.0.0.1:{port}/install", headers=headers,
+        f"http://127.0.0.1:{port}{path}", headers=headers,
     )
     try:
         response = opener.open(request, timeout=5)
@@ -116,12 +116,17 @@ def main() -> None:
                     time.sleep(0.1)
             if not ready or code != 503 or b"maintenance" not in body.lower():
                 raise RuntimeError(f"Maintenance barrier failed closed: {code}")
-            code, body = status(opener, port, "0" * 64)
+            # Only the framework's read-only GET /up may pass maintenance.
+            # The same token must never open the install wizard or Admin routes.
+            code, body = status(opener, port, "0" * 64, "/up")
             if code != 503 or token.encode() in body:
                 raise RuntimeError("Untrusted probe passed update barrier")
+            code, body = status(opener, port, token, "/up")
+            if code != 200:
+                raise RuntimeError(f"Verified read-only health probe cannot reach the app: {code}")
             code, body = status(opener, port, token)
-            if code != 200 or b"WalidSite Installation" not in body:
-                raise RuntimeError(f"Verified health probe cannot reach the app: {code}")
+            if code != 503:
+                raise RuntimeError("Trusted health token unexpectedly opened the installer")
 
             # Simulate a crash AFTER an atomic pointer switch but BEFORE final
             # independent health verification. The lease has expired. The
@@ -135,9 +140,12 @@ def main() -> None:
             )
             marker["expires_at"] = int(time.time()) - 1
             marker_path.write_text(json.dumps(marker), encoding="ascii")
+            # An expired private marker still blocks dynamic writers. The
+            # stable dispatcher selects previous code, but the global lease
+            # must not reopen requests until the recovery marker is cleared.
             code, body = status(opener, port)
-            if code != 200 or b"WalidSite Installation" not in body:
-                raise RuntimeError(f"Expired update did not serve known previous code: {code}")
+            if code != 503 or b"maintenance" not in body.lower():
+                raise RuntimeError(f"Expired maintenance unexpectedly resumed writers: {code}")
             marker_path.unlink()
             code, body = status(opener, port)
             if code != 503 or b"release" not in body.lower():
@@ -149,7 +157,7 @@ def main() -> None:
             except subprocess.TimeoutExpired:
                 server.kill()
                 server.wait(timeout=5)
-    print("PASS: real HTTP maintenance denies visitors, authenticates a health probe and serves previous code after a crash")
+    print("PASS: real HTTP maintenance denies visitors, permits only verified GET /up, and blocks expired-marker writers")
 
 
 if __name__ == "__main__":
