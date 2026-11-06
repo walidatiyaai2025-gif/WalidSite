@@ -121,43 +121,6 @@ try {
         throw new RuntimeException('Rejected recovery operation issued a receipt.');
     }
 
-    // Prove a late vault mode mutation AFTER real file snapshot AND real
-    // MariaDB disposable restore cannot produce a second trusted receipt.
-    // We deliberately use a separate disposable DB: no production DB touched.
-    $previousReceipts = glob($home.'/.walidsite-backups/receipt-*.json') ?: [];
-    $lateCalls = 0;
-    try {
-        $service->createAndProve(
-            $live, $late,
-            $app.'/.env', $app.'/storage/app', $web.'/uploads',
-            $app, $web, $home.'/.walidsite-backups', $home.'/.walidsite-restore-drills',
-            '0.1.1',
-            static function () use (&$lateCalls, $home): bool {
-                ++$lateCalls;
-                if ($lateCalls === 3) {
-                    chmod($home.'/.walidsite-backups', 0777);
-                }
-                return true;
-            },
-        );
-        throw new RuntimeException('An exposed vault after DB/file restore produced a trusted receipt.');
-    } catch (DomainException $expected) {
-        if (! str_contains($expected->getMessage(), 'directory')) {
-            throw $expected;
-        }
-    } finally {
-        chmod($home.'/.walidsite-backups', 0700);
-    }
-    if ($lateCalls !== 3
-        || (glob($home.'/.walidsite-backups/receipt-*.json') ?: []) !== $previousReceipts
-        || (int) $late->query('SELECT COUNT(*) FROM records')->fetchColumn() !== 2
-        || $live->query('SELECT note FROM records WHERE id=1')->fetchColumn() !== 'retain-original'
-        || file_get_contents($app.'/.env') !== "APP_KEY=base64:RECOVERY_PRIVATE_CI_ONLY\n"
-        || file_get_contents($web.'/uploads/avatar.png') !== 'fixture-binary-content') {
-        throw new RuntimeException('Late owner recovery vault guard or live data preservation failed.');
-    }
-    echo "PASS: late post-MariaDB-restore vault chmod denies recovery receipt\n";
-
     // Tamper with a byte of the REAL private backup after successful creation.
     // The source .env and uploads must survive unchanged, and no restored copy
     // of the corrupted snapshot may be treated as valid.
@@ -205,6 +168,43 @@ try {
         || $live->query('SELECT note FROM records WHERE id=2')->fetchColumn() !== 'verify-database-restore') {
         throw new RuntimeException('Rejected recovery corrupted live state or dirtied target database.');
     }
+    // Prove a late vault mode mutation AFTER real file snapshot AND real
+    // MariaDB disposable restore cannot produce a second trusted receipt.
+    // We deliberately use a separate disposable DB: no production DB touched.
+    $previousReceipts = glob($home.'/.walidsite-backups/receipt-*.json') ?: [];
+    $lateCalls = 0;
+    try {
+        $service->createAndProve(
+            $live, $late,
+            $app.'/.env', $app.'/storage/app', $web.'/uploads',
+            $app, $web, $home.'/.walidsite-backups', $home.'/.walidsite-restore-drills',
+            '0.1.1',
+            static function () use (&$lateCalls, $home): bool {
+                ++$lateCalls;
+                if ($lateCalls === 3) {
+                    chmod($home.'/.walidsite-backups', 0777);
+                }
+                return true;
+            },
+        );
+        throw new RuntimeException('An exposed vault after DB/file restore produced a trusted receipt.');
+    } catch (DomainException $expected) {
+        if (! str_contains($expected->getMessage(), 'directory')) {
+            throw $expected;
+        }
+    } finally {
+        chmod($home.'/.walidsite-backups', 0700);
+    }
+    if ($lateCalls !== 3
+        || (glob($home.'/.walidsite-backups/receipt-*.json') ?: []) !== $previousReceipts
+        || (int) $late->query('SELECT COUNT(*) FROM records')->fetchColumn() !== 2
+        || $live->query('SELECT note FROM records WHERE id=1')->fetchColumn() !== 'retain-original'
+        || file_get_contents($app.'/.env') !== "APP_KEY=base64:RECOVERY_PRIVATE_CI_ONLY\n"
+        || file_get_contents($web.'/uploads/avatar.png') !== 'fixture-binary-content') {
+        throw new RuntimeException('Late owner recovery vault guard or live data preservation failed.');
+    }
+    echo "PASS: late post-MariaDB-restore vault chmod denies recovery receipt\n";
+
     echo "PASS: corrupt private-file/DB backups rejected; live data and empty recovery DB protected\n";
     echo "PASS: private .env/uploads/data and MariaDB rows restored independently; no live code changed\n";
 } finally {
