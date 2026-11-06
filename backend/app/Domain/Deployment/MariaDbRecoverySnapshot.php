@@ -65,6 +65,12 @@ final class MariaDbRecoverySnapshot
                     if ($out === false) {
                         throw new RuntimeException('Cannot create MariaDB data stream.');
                     }
+                    // Prevent exposing private database rows through the
+                    // process umask before the first byte is written.
+                    if (! @chmod($file, 0600)) {
+                        fclose($out);
+                        throw new RuntimeException('Cannot secure private MariaDB recovery stream.');
+                    }
                     $count = 0;
                     $hashes = [];
                     $fileHasher = hash_init('sha256');
@@ -86,7 +92,7 @@ final class MariaDbRecoverySnapshot
                             $hashes[] = hash('sha256', $this->canonical($encoded));
                         }
                         $stmt->closeCursor();
-                        if (! fflush($out) || ! @fsync($out) || ! chmod($file, 0600)) {
+                        if (! fflush($out) || ! @fsync($out)) {
                             throw new RuntimeException('Cannot durably finalize private database recovery bytes.');
                         }
                         // Do not re-open an attacker-swappable pathname to
