@@ -14,12 +14,24 @@ import sys
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from qa.admin_visual_session import AdminSessionError, local_origin, _playwright
-from qa.audit_admin_runtime import (
-    DOM_METRICS as ADMIN_DOM_METRICS, VIEWPORTS, exact_checkout,
-    fresh_output, metric_defects,
-)
-from qa.build_web_visual_plan import build_web_plan
+# Supports both unittest package import and direct CI CLI execution:
+# python3 -B qa/audit_web_runtime.py --commit ... --output ...
+try:
+    from qa.admin_visual_session import AdminSessionError, local_origin, _playwright
+    from qa.audit_admin_runtime import (
+        DOM_METRICS as ADMIN_DOM_METRICS, VIEWPORTS, exact_checkout,
+        fresh_output, metric_defects,
+    )
+    from qa.build_web_visual_plan import build_web_plan
+except ModuleNotFoundError as exc:
+    if exc.name != "qa":
+        raise
+    from admin_visual_session import AdminSessionError, local_origin, _playwright
+    from audit_admin_runtime import (
+        DOM_METRICS as ADMIN_DOM_METRICS, VIEWPORTS, exact_checkout,
+        fresh_output, metric_defects,
+    )
+    from build_web_visual_plan import build_web_plan
 
 # Public Blade uses main#main-content / #main-content, not Admin's #content.
 # Reuse the independently tested accessibility metric schema unchanged.
