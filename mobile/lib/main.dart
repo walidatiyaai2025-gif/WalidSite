@@ -44,7 +44,7 @@ Future<void> _openSavedAfterArticleSave(
 Future<void> _openVerifiedProject(
   BuildContext context, String slug, bool arabic,
 ) async {
-  final target = MobileHomeProject.publicDetailUrl(slug);
+  final target = MobileHomeProject.publicDetailUrl(slug, arabic: arabic);
   if (target != null) {
     try {
       if (await launchUrl(target, mode: LaunchMode.externalApplication)) return;
