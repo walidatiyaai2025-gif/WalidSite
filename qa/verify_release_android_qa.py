@@ -74,6 +74,28 @@ def pinned_directory(path: Path):
         os.close(fd)
 
 
+def hash_bounded_stream(stream, maximum: int, *, retain: bool) -> tuple[bytes | None, str, int]:
+    """Hash bounded bytes even if an opened regular file grows after fstat.
+
+    The before/after inode check below still rejects any mutation. This
+    additional in-flight cap prevents unbounded reads, hashing and memory
+    allocation while an attacker appends to a previously-small file.
+    """
+    if maximum < 1:
+        raise ValueError("Invalid artifact stream byte budget")
+    digest = hashlib.sha256()
+    data = bytearray() if retain else None
+    total = 0
+    while block := stream.read(min(1024 * 1024, maximum - total + 1)):
+        total += len(block)
+        if total > maximum:
+            raise ValueError("Artifact stream exceeds bounded byte budget")
+        digest.update(block)
+        if data is not None:
+            data.extend(block)
+    return (bytes(data) if data is not None else None), digest.hexdigest(), total
+
+
 def read_verified(fd: int, name: str, maximum: int, *, verify_zip: bool = False):
     """Read and hash one pinned single-link regular inode and its named path."""
     flags = os.O_RDONLY | os.O_NOFOLLOW | getattr(os, "O_NONBLOCK", 0)
@@ -86,12 +108,9 @@ def read_verified(fd: int, name: str, maximum: int, *, verify_zip: bool = False)
         if (not stat.S_ISREG(before.st_mode) or before.st_nlink != 1
                 or before.st_size < 1 or before.st_size > maximum):
             raise ValueError("Android artifact file is not a bounded regular inode")
-        h = hashlib.sha256()
-        data = bytearray() if not verify_zip else None
-        while block := stream.read(1024 * 1024):
-            h.update(block)
-            if data is not None:
-                data.extend(block)
+        data, digest, total = hash_bounded_stream(
+            stream, maximum, retain=not verify_zip
+        )
         if verify_zip:
             stream.seek(0)
             try:
@@ -108,7 +127,9 @@ def read_verified(fd: int, name: str, maximum: int, *, verify_zip: bool = False)
                        or getattr(before, key) != getattr(named, key)
                        for key in identity)):
             raise ValueError("Android artifact file changed while verified")
-        return (bytes(data) if data is not None else None), h.hexdigest(), before.st_size
+        if total != before.st_size:
+            raise ValueError("Artifact stream length changed while verified")
+        return data, digest, total
 
 
 def verify(directory: Path, checkout: Path, source_sha: str) -> dict:
