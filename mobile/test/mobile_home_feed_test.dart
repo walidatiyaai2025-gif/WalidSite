@@ -73,6 +73,51 @@ void main() {
     expect(arabic.runbooks, isEmpty);
   });
 
+  test('MOBILE-02 Home feed caps actual UTF-8 bytes before JSON parsing', () {
+    const limit = 1024 * 1024;
+    final baseline = feed();
+    // Additional metadata would otherwise be rejected only after decoding.
+    // Its UTF-16 length fits the cap but its encoded UTF-8 bytes do not.
+    final oversized = baseline.substring(0, baseline.length - 1) +
+        ',"padding":"' + ('é' * (limit ~/ 2)) + '"}';
+    expect(oversized.length, lessThan(limit));
+    expect(utf8.encode(oversized).length, greaterThan(limit));
+    expect(() => MobileHomeFeed.parse(oversized, false),
+        throwsFormatException);
+    expect(MobileHomeFeed.parse(baseline, false).articles, hasLength(1));
+  });
+
+  test('MOBILE-02 published article dates require real bounded UTC evidence',
+      () {
+    final base = {
+      'slug': 'reviewed-article',
+      'title': 'Reviewed article',
+      'url': 'https://portfolio.example.org/blog/reviewed-article',
+      'published_at': '2026-11-02T10:00:00Z',
+    };
+    for (final invalid in [
+      '2099-01-01T00:00:00Z',
+      DateTime.now().toUtc().add(const Duration(days: 30))
+          .toIso8601String(),
+      '2026-11-02T10:00:00',
+      '2026-11-02',
+      '2026-11-02T10:00:00Z' + ('x' * 60),
+    ]) {
+      final record = {...base, 'published_at': invalid};
+      expect(() => MobileHomeArticle.fromJson(record), throwsFormatException,
+          reason: invalid);
+      expect(
+        () => MobileHomeFeed.parse(feed(articles: [record]), false),
+        throwsFormatException,
+        reason: invalid,
+      );
+    }
+    final nearNow = DateTime.now().toUtc()
+        .add(const Duration(minutes: 1)).toIso8601String();
+    final valid = {...base, 'published_at': nearNow};
+    expect(MobileHomeArticle.fromJson(valid).slug, 'reviewed-article');
+  });
+
   test('MOBILE-02 parser fails closed on unapproved or inconsistent data', () {
     final invalid = <String>[
       feed(lang: 'ar'),
