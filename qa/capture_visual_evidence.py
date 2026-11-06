@@ -166,7 +166,16 @@ def capture(root: Path, screen_id: str, *, commit: str, locale: str,
         destination = root / relative
         if destination.exists() or destination.is_symlink():
             raise CaptureError("Refusing to overwrite an existing screenshot")
-        destination.write_bytes(incoming.read_bytes())
+        # The earlier existence check is not a synchronization primitive:
+        # another process may create a file (or symlink) before this write.
+        # Exclusive creation refuses to follow or overwrite either one.
+        try:
+            with destination.open("xb") as output:
+                output.write(incoming.read_bytes())
+        except FileExistsError as exc:
+            raise CaptureError("Capture destination already exists") from exc
+        except OSError as exc:
+            raise CaptureError("Capture destination could not be created") from exc
 
     # The private temp renderer output is removed before inspecting Git status;
     # only the canonical screen PNG is allowed to be untracked at this point.
