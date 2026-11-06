@@ -18,12 +18,16 @@ import unittest
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / "backend/app/Http/Controllers/AdminUpdateController.php"
 READER_SOURCE = ROOT / "backend/app/Domain/Deployment/TrustedInstalledVersion.php"
+PIN_SOURCE = ROOT / "backend/app/Domain/Deployment/TrustedInstalledReleasePin.php"
 PHP = shutil.which("php")
 RUNNER = r"""
 namespace App\Http\Controllers { class Controller {} }
 namespace {
     function base_path($path = '') {
         return getenv('WALIDSITE_IDENTITY_ROOT') . ($path === '' ? '' : '/' . $path);
+    }
+    function public_path($path = '') {
+        return getenv('WALIDSITE_IDENTITY_PUBLIC_ROOT') . ($path === '' ? '' : '/' . $path);
     }
     function config($name) {
         return $name === 'site.trusted_installed_version'
@@ -32,6 +36,7 @@ namespace {
     // Mirror the source-level harness: explicitly load both real files,
     // without requiring a Laravel bootstrap or Composer vendor autoload.
     require getenv('WALIDSITE_IDENTITY_READER_SOURCE');
+    require getenv('WALIDSITE_IDENTITY_PIN_SOURCE');
     require getenv('WALIDSITE_IDENTITY_SOURCE');
     $reader = new \ReflectionMethod(
         \App\Http\Controllers\AdminUpdateController::class,
@@ -45,7 +50,7 @@ namespace {
 """
 
 
-@unittest.skipUnless(PHP and SOURCE.is_file() and READER_SOURCE.is_file(),
+@unittest.skipUnless(PHP and SOURCE.is_file() and READER_SOURCE.is_file() and PIN_SOURCE.is_file(),
                      "PHP, controller and installed-version reader required")
 class InstalledVersionFailClosedTests(unittest.TestCase):
     def setUp(self):
@@ -53,11 +58,15 @@ class InstalledVersionFailClosedTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
         self.version = self.root / "VERSION"
+        self.public = self.root / "public"
+        self.public.mkdir()
 
-    def evaluate(self, pinned="0.1.2"):
+    def evaluate(self, pinned="0.1.2", runtime=None, public=None):
         env = os.environ.copy()
         env.update({
-            "WALIDSITE_IDENTITY_ROOT": str(self.root),
+            "WALIDSITE_IDENTITY_ROOT": str(runtime or self.root),
+            "WALIDSITE_IDENTITY_PUBLIC_ROOT": str(public or self.public),
+            "WALIDSITE_IDENTITY_PIN_SOURCE": str(PIN_SOURCE),
             "WALIDSITE_IDENTITY_PIN": pinned,
             "WALIDSITE_IDENTITY_SOURCE": str(SOURCE),
             "WALIDSITE_IDENTITY_READER_SOURCE": str(READER_SOURCE),
@@ -109,6 +118,27 @@ class InstalledVersionFailClosedTests(unittest.TestCase):
         self.assertIsNone(self.evaluate())
         self.version.chmod(0o644)
         self.assertEqual("0.1.2", self.evaluate())
+
+    def test_verified_pointer_lineage_allows_second_signed_update_without_env_rewrite(self):
+        home = self.root / "host"
+        first = home / "application"
+        public = home / "public_html"
+        active = home / ".walidsite-releases" / ("v0.1.3-" + "a" * 40) / "application"
+        first.mkdir(parents=True)
+        public.mkdir()
+        active.mkdir(parents=True)
+        (first / "VERSION").write_text("0.1.2\\n", encoding="ascii")
+        (active / "VERSION").write_text("0.1.3\\n", encoding="ascii")
+        pointer = home / ".walidsite-active-release.json"
+        pointer.write_text(json.dumps({
+            "schema": 1, "version": "0.1.3",
+            "root": ".walidsite-releases/v0.1.3-" + "a" * 40,
+        }), encoding="ascii")
+        pointer.chmod(0o600)
+        self.assertEqual("0.1.3", self.evaluate(runtime=active, public=public))
+        self.assertIsNone(self.evaluate(runtime=first, public=public))
+        pointer.write_text('{"schema":1,"version":"0.1.3","root":"../../unsafe"}', encoding="ascii")
+        self.assertIsNone(self.evaluate(runtime=active, public=public))
 
     def test_symlink_disk_identity_denied(self):
         destination = self.root / "external-version"
