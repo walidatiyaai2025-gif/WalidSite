@@ -37,6 +37,8 @@ Route::middleware('auth:web')->group(function (): void {
         ->middleware('throttle:2,1')->name('admin.updates.verify-upload');
     Route::post('/admin/updates/preflight', [AdminUpdateController::class, 'preflight'])
         ->middleware('throttle:2,1')->name('admin.updates.preflight');
+    Route::post('/admin/updates/stage', [AdminUpdateController::class, 'stage'])
+        ->middleware('throttle:1,1')->name('admin.updates.stage');
     Route::post('/admin/updates/apply', [AdminUpdateController::class, 'apply'])
         ->middleware('throttle:2,1')->name('admin.updates.apply');
 });

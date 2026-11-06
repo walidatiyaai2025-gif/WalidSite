@@ -96,7 +96,7 @@ final class TrustedOwnerUpdateInbox
      * Revalidates *every* file and the signed release on every later request.
      * Never trusts a receipt's claimed checksum or uploaded code directory.
      *
-     * @return array{directory:string,archive:string,version:string,source_sha:string,artifact_sha256:string,files:int}
+     * @return array{directory:string,archive:string,version:string,source_sha:string,artifact_sha256:string,files:int,envelope:string}
      */
     public function getVerified(
         string $id,
@@ -150,6 +150,9 @@ final class TrustedOwnerUpdateInbox
             'source_sha' => $release['source_sha'],
             'artifact_sha256' => $release['artifact_sha256'],
             'files' => $inventory['files'],
+            // Only the reauthenticated server-side updater may consume this
+            // already Ed25519-verified envelope; it never enters HTML/JSON.
+            'envelope' => $receipt['envelope'],
         ];
     }
 

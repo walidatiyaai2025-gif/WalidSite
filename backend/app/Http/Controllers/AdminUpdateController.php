@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Domain\Deployment\CpanelArchiveCodeOnlyPreflight;
 use App\Domain\Deployment\CpanelPhysicalHostPreflight;
+use App\Domain\Deployment\CpanelTrustedCodeStager;
 use App\Domain\Deployment\TrustedReleaseCatalog;
 use App\Domain\Deployment\TrustedInstalledVersion;
 use App\Domain\Deployment\TrustedOwnerUpdateInbox;
@@ -125,7 +126,36 @@ final class AdminUpdateController extends Controller
             $request->session()->forget('owner_update_host_preflight');
         }
 
-        return view('admin.updates.index', compact('status', 'installedVersion', 'verifiedUpload', 'hostPreflight'));
+        // Display only an existing privately staged candidate bound to the
+        // same revalidated owner ZIP/installed version. This is NOT a live
+        // code-update or a backup/health proof.
+        $stagedCode = null;
+        $stagedClaim = $request->session()->get('owner_update_staged_code');
+        if (is_array($stagedClaim) && $verifiedUpload !== null && $hostPreflight !== null
+            && is_string($inboxId) && ($stagedClaim['id'] ?? null) === $inboxId
+            && ($stagedClaim['version'] ?? null) === $verifiedUpload['version']
+            && ($stagedClaim['source_sha'] ?? null) === $verifiedUpload['source_sha']
+            && ($stagedClaim['artifact_sha256'] ?? null) === $verifiedUpload['artifact_sha256']
+            && ($stagedClaim['installed_version'] ?? null) === $installedVersion
+            && is_int($stagedClaim['created_at'] ?? null)
+            && $stagedClaim['created_at'] <= time()
+            && time() - $stagedClaim['created_at'] <= 300) {
+            // The running app may already live under a versioned release;
+            // only the stable physical document root identifies cPanel HOME.
+            $home = dirname(public_path());
+            $candidate = $home.'/.walidsite-releases/v'.$verifiedUpload['version']
+                .'-'.$verifiedUpload['source_sha'];
+            if (! is_link($candidate) && realpath($candidate) === $candidate
+                && is_file($candidate.'/application/VERSION')) {
+                $stagedCode = $stagedClaim;
+            }
+        }
+        if ($stagedCode === null) {
+            $request->session()->forget('owner_update_staged_code');
+        }
+
+        return view('admin.updates.index', compact('status', 'installedVersion',
+            'verifiedUpload', 'hostPreflight', 'stagedCode'));
     }
 
     /**
@@ -200,6 +230,7 @@ final class AdminUpdateController extends Controller
             'verified_owner_update_inbox',
             'trusted_release_check',
             'owner_update_host_preflight',
+            'owner_update_staged_code',
         ]);
         abort_unless(config('site.updates_enabled') === true, 403);
         $data = $request->validate([
@@ -254,7 +285,7 @@ final class AdminUpdateController extends Controller
         CpanelArchiveCodeOnlyPreflight $compatibility,
     ): RedirectResponse {
         $this->authorizeOwner($request);
-        $request->session()->forget('owner_update_host_preflight');
+        $request->session()->forget(['owner_update_host_preflight', 'owner_update_staged_code']);
         abort_unless(config('site.updates_enabled') === true, 403);
         $input = $request->validate(['lang' => ['sometimes', 'in:en,ar']]);
         if (array_diff(array_keys($request->query()), ['lang']) !== []
@@ -304,8 +335,10 @@ final class AdminUpdateController extends Controller
             // inventory, version identity, and stable public dispatcher.
             // This is read-only; no ZIP extraction or PHP/SQL execution.
             try {
+                // Future updates still use HOME even when base_path() points
+                // inside .walidsite-releases/vX/application.
                 $compatibility->assertCompatible(
-                    dirname(base_path()), public_path(), $verified['archive'],
+                    dirname(public_path()), public_path(), $verified['archive'],
                     $verified['artifact_sha256'], $installed, $verified['version'],
                 );
             } catch (\DomainException $incompatible) {
@@ -333,6 +366,84 @@ final class AdminUpdateController extends Controller
         return redirect()->route('admin.updates.index', [
             'lang' => ($input['lang'] ?? 'en') === 'ar' ? 'ar' : 'en',
         ])->with('status', 'Physical hosting and code-only ZIP compatibility checked. Backups, write isolation and code installation are NOT verified.');
+    }
+
+    /**
+     * Owner-triggered CODE STAGING ONLY. A verified ZIP and a green stored
+     * preflight cannot authorize a code switch: rerun both physical hosting
+     * and code-only dependency/migration checks over the pinned ZIP inside
+     * CpanelTrustedCodeStager. No production files or database are changed.
+     */
+    public function stage(
+        Request $request,
+        TrustedOwnerUpdateInbox $inbox,
+        CpanelTrustedCodeStager $stager,
+    ): RedirectResponse {
+        $this->authorizeOwner($request);
+        abort_unless(config('site.updates_enabled') === true, 403);
+        $input = $request->validate(['lang' => ['sometimes', 'in:en,ar']]);
+        if (array_diff(array_keys($request->query()), ['lang']) !== []
+            || array_diff(array_keys($request->request->all()), ['_token']) !== []) {
+            return back()->withErrors(['stage' => 'Unexpected code staging parameter.']);
+        }
+
+        $installed = $this->pinnedInstalledVersion();
+        $id = $request->session()->get('verified_owner_update_inbox');
+        $proof = $request->session()->get('owner_update_host_preflight');
+        $request->session()->forget('owner_update_staged_code');
+        if ($installed === null || ! is_string($id) || ! is_array($proof)
+            || ! hash_equals($id, (string) ($proof['id'] ?? ''))
+            || ! hash_equals($installed, (string) ($proof['installed_version'] ?? ''))
+            || ! is_int($proof['checked_at'] ?? null)
+            || $proof['checked_at'] > time() || time() - $proof['checked_at'] > 300
+            || ! filled(config('site.trusted_release_origin'))
+            || ! filled(config('site.trusted_release_public_key'))) {
+            return back()->withErrors(['stage' => 'Verify the ZIP and physical hosting compatibility first.']);
+        }
+
+        try {
+            $inboxRoot = storage_path('app/private/verified-updates');
+            if (! is_dir($inboxRoot) || is_link($inboxRoot)) {
+                throw new \DomainException('Verified private owner inbox unavailable.');
+            }
+            $verified = $inbox->getVerified(
+                $id, (string) $request->user()->getKey(),
+                $inboxRoot, public_path(),
+                (string) config('site.trusted_release_origin'),
+                (string) config('site.trusted_release_public_key'), $installed,
+            );
+            if (! hash_equals($verified['version'], (string) ($proof['version'] ?? ''))
+                || ! hash_equals($verified['artifact_sha256'], (string) ($proof['artifact_sha256'] ?? ''))) {
+                throw new \DomainException('Verified code or hosting preflight changed.');
+            }
+            $result = $stager->stage(
+                $verified['envelope'],
+                (string) config('site.trusted_release_public_key'),
+                (string) config('site.trusted_release_origin'),
+                $installed,
+                dirname(public_path()),
+                base_path('resources/deployment/cpanel-stable-index.php'),
+                $verified['directory'], $verified['archive'],
+            );
+        } catch (Throwable $error) {
+            // Do not leak a path, publisher identity, session or executable
+            // candidate bytes in a flash message or public server log.
+            \Illuminate\Support\Facades\Log::warning('admin.updates.code_stage_blocked', [
+                'type' => $error::class,
+            ]);
+            return back()->withErrors(['stage' => 'Private signed-code staging blocked. No code update, backup or database operation was performed.']);
+        }
+
+        $request->session()->put('owner_update_staged_code', [
+            'id' => $id, 'installed_version' => $installed,
+            'version' => $result['version'],
+            'source_sha' => $result['source_sha'],
+            'artifact_sha256' => $result['artifact_sha256'],
+            'created_at' => time(),
+        ]);
+        return redirect()->route('admin.updates.index', [
+            'lang' => ($input['lang'] ?? 'en') === 'ar' ? 'ar' : 'en',
+        ])->with('status', 'Signed code staged privately. It was NOT installed; recoverable backup, maintenance and health checks remain required.');
     }
 
     public function apply(Request $request, SiteUpdater $updater): RedirectResponse

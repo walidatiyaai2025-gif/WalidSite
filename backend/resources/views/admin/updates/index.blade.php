@@ -99,6 +99,37 @@ button:disabled{background:#718096;cursor:not-allowed}
 </form>
 @endif
 @if($hostPreflight)
+<form method="post" action="{{ route('admin.updates.stage', ['lang' => $locale]) }}"
+    data-testid="owner-private-code-stage-form">
+@csrf
+<button type="submit" data-testid="stage-owner-signed-code">
+{{ $locale === 'ar'
+    ? 'تجهيز ملفات الإصدار الموقّع في مساحة خاصة — دون تثبيت'
+    : 'Stage verified code privately — do not install' }}
+</button>
+<p class="small">{{ $locale === 'ar'
+    ? 'يُعاد التحقق من توقيع الحزمة وتوافق الاستضافة وقاعدة الترحيلات والتبعيات قبل نسخ الكود. يبقى الموقع على إصداره الحالي.'
+    : 'Rechecks signed ZIP bytes, hosting, migrations and dependencies before preparing an immutable private version. The live site stays on its current version.' }}</p>
+</form>
+@endif
+@if($stagedCode)
+<div class="success" role="status" data-testid="owner-code-staged-not-installed">
+<strong>{{ $locale === 'ar' ? 'ملفات إصدار موقّع مُجهّزة فقط؛ لم تُثبّت.' : 'Signed code staged privately — NOT installed.' }}</strong>
+<p>{{ $locale === 'ar' ? 'الإصدار المستهدف:' : 'Target version:' }}
+<code>{{ $stagedCode['version'] }}</code> —
+{{ $locale === 'ar' ? 'معرّف المصدر:' : 'Source SHA:' }}
+<code>{{ $stagedCode['source_sha'] }}</code></p>
+<p>{{ $locale === 'ar'
+    ? 'التجهيز لا يعني اعتماد الإصدار. تبقى النسخة الاحتياطية واختبار الاستعادة وإيقاف الكتابة وفحص التشغيل والتثبيت محجوبة إلى أن تثبت بشكل مستقل.'
+    : 'Staging is not release approval. Backup, restored-data proof, isolated writers, health check and Install remain blocked until independently verified.' }}</p>
+</div>
+@endif
+@if($errors->has('stage'))
+<p class="error" role="alert" data-testid="owner-code-stage-blocked">{{ $locale === 'ar'
+    ? 'تعذّر تجهيز الكود في المساحة الخاصة؛ لم يُنفّذ أي تثبيت أو ترحيل أو نسخة احتياطية.'
+    : $errors->first('stage') }}</p>
+@endif
+@if($hostPreflight)
 <div class="success" role="status" data-testid="owner-host-preflight-verified">
 <strong>{{ $locale === 'ar' ? 'اجتاز تخطيط الاستضافة وتوافق حزمة الكود الفحص المبدئي.' : 'Physical hosting and code-only ZIP compatibility preflight passed.' }}</strong>
 <p>{{ $locale === 'ar'
