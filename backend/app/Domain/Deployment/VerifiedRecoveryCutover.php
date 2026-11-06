@@ -47,6 +47,7 @@ final class VerifiedRecoveryCutover
         $vault = realpath($privateBackupRoot);
         $vaultStat = $vault === false ? false : @lstat($vault);
         $restoration = realpath($disposableFileRestoreRoot);
+        $restoreStat = $restoration === false ? false : @lstat($restoration);
         $release = realpath($releaseRoot);
         $public = realpath($publicDocumentRoot);
         if ($vault === false || $restoration === false || $release === false || $public === false
@@ -59,7 +60,12 @@ final class VerifiedRecoveryCutover
             || ! is_array($vaultStat)
             || ($vaultStat['mode'] & 0170000) !== 0040000
             || ($vaultStat['mode'] & 0022) !== 0
-            || ! is_dir($restoration) || ! is_writable($restoration)) {
+            || ! is_dir($restoration) || ! is_writable($restoration)
+            || is_link($disposableFileRestoreRoot)
+            || ! is_array($restoreStat)
+            || ($restoreStat['mode'] & 0170000) !== 0040000
+            || ($restoreStat['mode'] & 0077) !== 0
+            || $restoreStat['uid'] !== $vaultStat['uid']) {
             throw new DomainException('Backups and restore drills require separate private locations.');
         }
 
@@ -77,7 +83,9 @@ final class VerifiedRecoveryCutover
             // the verified files and MariaDB backups, not just its lock file.
             // A chmod or directory rename during a callback revokes authority
             // before backups or the executable code pointer can be changed.
-            $lockCheck = function () use ($lock, $lockFile, $vault, $vaultStat): bool {
+            $lockCheck = function () use (
+                $lock, $lockFile, $vault, $vaultStat, $restoration, $restoreStat,
+            ): bool {
                 clearstatcache(true, $vault);
                 $currentVault = @lstat($vault);
                 if (! is_array($currentVault) || is_link($vault)
@@ -88,6 +96,22 @@ final class VerifiedRecoveryCutover
                     || $currentVault['ino'] !== $vaultStat['ino']
                     || $currentVault['mode'] !== $vaultStat['mode']) {
                     throw new DomainException('Unsafe recovery vault identity or permissions; operation must stop.');
+                }
+                // The disposable restore tree can be poisoned or replaced
+                // independently of the backup vault. It must retain its
+                // original private directory inode throughout callbacks,
+                // file and DB drills, and the eventual code switch.
+                clearstatcache(true, $restoration);
+                $currentRestore = @lstat($restoration);
+                if (! is_array($currentRestore) || is_link($restoration)
+                    || realpath($restoration) !== $restoration
+                    || ($currentRestore['mode'] & 0170000) !== 0040000
+                    || ($currentRestore['mode'] & 0077) !== 0
+                    || $currentRestore['dev'] !== $restoreStat['dev']
+                    || $currentRestore['ino'] !== $restoreStat['ino']
+                    || $currentRestore['mode'] !== $restoreStat['mode']
+                    || $currentRestore['uid'] !== $restoreStat['uid']) {
+                    throw new DomainException('Unsafe disposable restore root identity; operation must stop.');
                 }
                 return $this->assertSecureLockIdentity($lock, $lockFile);
             };
