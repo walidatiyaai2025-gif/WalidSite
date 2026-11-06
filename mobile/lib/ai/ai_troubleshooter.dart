@@ -235,37 +235,63 @@ class MobileAiClient {
       throw MobileAiHttpException(response.key);
     }
 
-    final decoded = jsonDecode(response.value);
+    return parseLoginResponse(response.value);
+  }
+
+  /// Enforce the exact bearer-login identity before any private AI or Save
+  /// action receives a session. This method is also used by real transport.
+  @visibleForTesting
+  static MobileAiSession parseLoginResponse(String raw) {
+    if (raw.length > 16384 || utf8.encode(raw).length > 16384) {
+      throw const FormatException('Invalid login response size');
+    }
+    final decoded = jsonDecode(raw);
     if (decoded is! Map<String, dynamic> ||
         decoded.length != 1 ||
         decoded['data'] is! Map<String, dynamic>) {
       throw const FormatException('Invalid login response');
     }
     final data = decoded['data'] as Map<String, dynamic>;
-    if (data.keys.toSet().difference({
-          'token',
-          'token_type',
-          'expires_at',
-        }).isNotEmpty ||
-        data['token'] is! String ||
-        data['token_type'] != 'Bearer' ||
-        (data['token'] as String).isEmpty ||
-        (data['token'] as String).length > 8192) {
+    final bearer = data['token'];
+    if (data.length != 3 ||
+        data.keys.toSet().difference({'token', 'token_type', 'expires_at'}).isNotEmpty ||
+        bearer is! String || bearer.isEmpty || bearer.length > 8192 ||
+        // Sanctum tokens are printable ASCII, not newline/header directives.
+        !RegExp(r'^[!-~]+$').hasMatch(bearer) ||
+        data['token_type'] != 'Bearer') {
       throw const FormatException('Invalid mobile token response');
     }
     final expiresRaw = data['expires_at'];
-    final expires = expiresRaw == null
-        ? null
-        : expiresRaw is String
-            ? DateTime.tryParse(expiresRaw)
-            : null;
-    if (expiresRaw != null && expires == null) {
-      throw const FormatException('Invalid token expiry');
+    DateTime? expires;
+    if (expiresRaw != null) {
+      if (expiresRaw is! String || expiresRaw.length > 50) {
+        throw const FormatException('Invalid token expiry');
+      }
+      // DateTime.parse normalizes invalid calendar values (e.g. Feb 30).
+      // Require complete UTC-aware ISO-8601, then validate the calendar.
+      final stamp = RegExp(
+        r'^([0-9]{4})-(0[1-9]|1[0-2])-([0-2][0-9]|3[01])'
+        r'T(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]'
+        r'(?:[.][0-9]{1,6})?(?:Z|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])$',
+      ).firstMatch(expiresRaw);
+      if (stamp == null) {
+        throw const FormatException('Invalid token expiry');
+      }
+      final year = int.parse(stamp.group(1)!);
+      final month = int.parse(stamp.group(2)!);
+      final day = int.parse(stamp.group(3)!);
+      final calendar = DateTime.utc(year, month, day);
+      if (calendar.year != year || calendar.month != month ||
+          calendar.day != day) {
+        throw const FormatException('Invalid token expiry');
+      }
+      expires = DateTime.tryParse(expiresRaw);
+      if (expires == null || !expires.isUtc ||
+          !expires.isAfter(DateTime.now().toUtc())) {
+        throw const FormatException('Invalid token expiry');
+      }
     }
-    return MobileAiSession(
-      token: data['token'] as String,
-      expiresAt: expires?.toUtc(),
-    );
+    return MobileAiSession(token: bearer, expiresAt: expires);
   }
 
   Future<MobileAiJob> diagnose(
@@ -346,12 +372,30 @@ class MobileAiClient {
     if (response.key != HttpStatus.ok) {
       throw MobileAiHttpException(response.key);
     }
-    final decoded = jsonDecode(response.value);
+    verifyRunbookSavedResponse(response.value, runbookId);
+  }
+
+  /// A 200 response proves no Save until the server acknowledges the exact
+  /// typed published runbook identity with no unexpected response fields.
+  @visibleForTesting
+  static void verifyRunbookSavedResponse(String raw, String runbookId) {
+    if (!MobileAiJob.isValidId(runbookId) ||
+        raw.length > 16384 || utf8.encode(raw).length > 16384) {
+      throw const FormatException('Invalid runbook save receipt');
+    }
+    final decoded = jsonDecode(raw);
     if (decoded is! Map<String, dynamic> ||
-        decoded['data'] is! Map<String, dynamic> ||
-        (decoded['data'] as Map<String, dynamic>)['saved'] != true ||
-        (decoded['data'] as Map<String, dynamic>)['resource_id'] != runbookId) {
-      throw const FormatException('Invalid save response');
+        decoded.length != 1 ||
+        decoded['data'] is! Map<String, dynamic>) {
+      throw const FormatException('Invalid runbook save receipt');
+    }
+    final data = decoded['data'] as Map<String, dynamic>;
+    if (data.length != 3 ||
+        data.keys.toSet().difference({'resource_type', 'resource_id', 'saved'}).isNotEmpty ||
+        data['resource_type'] != 'runbook' ||
+        data['resource_id'] != runbookId ||
+        data['saved'] != true) {
+      throw const FormatException('Invalid runbook save receipt');
     }
   }
 
