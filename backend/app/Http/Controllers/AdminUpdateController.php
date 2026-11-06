@@ -150,7 +150,11 @@ final class AdminUpdateController extends Controller
             $candidate = $home.'/.walidsite-releases/v'.$verifiedUpload['version']
                 .'-'.$verifiedUpload['source_sha'];
             if (! is_link($candidate) && realpath($candidate) === $candidate
-                && is_file($candidate.'/application/VERSION')) {
+                // A stale browser receipt must not advertise success after
+                // the staged release identity was replaced or tampered with.
+                // TrustedInstalledVersion rejects linked/unsafe VERSION files.
+                && (new TrustedInstalledVersion())->read($candidate.'/application/VERSION')
+                    === $verifiedUpload['version']) {
                 $stagedCode = $stagedClaim;
             }
         }

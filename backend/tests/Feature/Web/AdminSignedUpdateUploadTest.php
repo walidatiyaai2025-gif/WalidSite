@@ -114,6 +114,32 @@ final class AdminSignedUpdateUploadTest extends TestCase
                 ->assertDontSee($pub)
                 ->assertDontSee($envelope);
 
+            // A forged or stale browser stage receipt cannot advertise that
+            // a different VERSION file was staged, even if the ZIP itself
+            // remains valid and a preflight session claim has been planted.
+            $candidate = dirname(public_path()).'/.walidsite-releases/v0.1.3-'.str_repeat('a', 40);
+            $this->assertTrue(mkdir($candidate.'/application', 0700, true));
+            file_put_contents($candidate.'/application/VERSION', '0.1.4');
+            session()->put('owner_update_host_preflight', [
+                'id' => $id, 'installed_version' => '0.1.2',
+                'version' => '0.1.3',
+                'artifact_sha256' => hash('sha256', $validArchiveBytes),
+                'checked_at' => time(),
+            ]);
+            session()->put('owner_update_staged_code', [
+                'id' => $id, 'installed_version' => '0.1.2',
+                'version' => '0.1.3', 'source_sha' => str_repeat('a', 40),
+                'artifact_sha256' => hash('sha256', $validArchiveBytes),
+                'created_at' => time(),
+            ]);
+            $this->get('https://localhost/admin/updates')->assertOk()
+                ->assertDontSee('data-testid="owner-code-staged-not-installed"', false);
+            $this->assertNull(session('owner_update_staged_code'));
+            @unlink($candidate.'/application/VERSION');
+            @rmdir($candidate.'/application');
+            @rmdir($candidate);
+            @rmdir(dirname($candidate));
+
             // The CI working tree is NOT a physical /home/user/application
             // plus /home/user/public_html cPanel installation. This real
             // owner POST must fail closed without staging PHP, creating a
