@@ -421,7 +421,7 @@ jobs:
           # The report itself is a required deliverable. The artifact cannot
           # silently omit the 72-check matrix even when the shell exits zero.
           test -s "$web_a11y_report"
-          WEB_A11Y_REPORT="$web_a11y_report" python3 - <<'PY'
+          WEB_A11Y_REPORT="$web_a11y_report" TESTED_SHA="$tested_sha" python3 - <<'PY'
           import json
           import os
           from pathlib import Path
