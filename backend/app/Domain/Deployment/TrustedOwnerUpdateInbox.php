@@ -167,7 +167,7 @@ final class TrustedOwnerUpdateInbox
      * Revalidates *every* file and the signed release on every later request.
      * Never trusts a receipt's claimed checksum or uploaded code directory.
      *
-     * @return array{directory:string,archive:string,version:string,source_sha:string,artifact_sha256:string,files:int,envelope:string}
+     * @return array{directory:string,archive:string,version:string,source_sha:string,artifact_sha256:string,files:int,envelope:string,release_notes?:string}
      */
     public function getVerified(
         string $id,
@@ -214,7 +214,7 @@ final class TrustedOwnerUpdateInbox
         }
         $archive = $directory.'/'.$name;
         $inventory = (new TrustedReleaseArchive())->inspect($release, $directory, $archive);
-        return [
+        $verified = [
             'directory' => $directory,
             'archive' => $archive,
             'version' => $release['version'],
@@ -225,6 +225,13 @@ final class TrustedOwnerUpdateInbox
             // already Ed25519-verified envelope; it never enters HTML/JSON.
             'envelope' => $receipt['envelope'],
         ];
+        // Never trust a cached receipt's descriptive text: only the notes
+        // decoded from this request's freshly verified signed envelope.
+        if (isset($release['release_notes'])) {
+            $verified['release_notes'] = $release['release_notes'];
+        }
+
+        return $verified;
     }
 
     /**
