@@ -29,6 +29,7 @@ EXPECTED = {APK_NAME, PROOF_NAME, IDENTITY_NAME, CHECKSUM_NAME}
 MAX_APK_BYTES = 536870912
 MAX_JSON_BYTES = 65536
 MAX_RELEASE_ZIP_BYTES = 1073741824
+MAX_BUILD_INFO_BYTES = 1048576
 SEMVER = re.compile(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\Z")
 
 
@@ -227,6 +228,44 @@ def verify_bundle(directory: Path, checkout: Path, source_sha: str,
                     or checksum_bytes != f"{digest}  {name}\n".encode("ascii")):
                 raise ValueError("Release ZIP identity differs from manifest or sidecar")
             digests[kind] = digest
+        # Build Info must describe these exact verified ZIP bytes and source,
+        # not just carry an independently checksummed but unrelated document.
+        build_name = f"WalidSite-Build-Info-v{version}.json"
+        build_bytes, build_digest, _ = read_verified(fd, build_name, MAX_BUILD_INFO_BYTES)
+        build_sidecar, _, _ = read_verified(fd, build_name + ".sha256", 256)
+        if build_sidecar != f"{build_digest}  {build_name}\n".encode("ascii"):
+            raise ValueError("Build Info SHA256 sidecar mismatch")
+        try:
+            build_info = json.loads(build_bytes.decode("utf-8"))
+        except (UnicodeError, ValueError) as exc:
+            raise ValueError("Build Info must be valid JSON") from exc
+        described = manifest.get("build_info")
+        dependencies = build_info.get("production_dependencies") if isinstance(build_info, dict) else None
+        migrations = build_info.get("migration_sha256") if isinstance(build_info, dict) else None
+        if (not isinstance(described, dict)
+                or not isinstance(build_info, dict)
+                or described.get("file") != build_name
+                or described.get("sha256") != build_digest
+                or build_info.get("schema") != "walidsite.unpublished-build-info.v1"
+                or build_info.get("product") != "walidsite"
+                or build_info.get("version") != version
+                or build_info.get("source_sha") != source_sha
+                or build_info.get("setup_sha256") != digests["setup"]
+                or build_info.get("update_sha256") != digests["update"]
+                or not isinstance(build_info.get("composer_lock_sha256"), str)
+                or not re.fullmatch(r"[a-f0-9]{64}", build_info["composer_lock_sha256"])
+                or described.get("composer_lock_sha256") != build_info["composer_lock_sha256"]
+                or not isinstance(dependencies, list)
+                or type(described.get("production_dependencies")) is not int
+                or described["production_dependencies"] != len(dependencies)
+                or not isinstance(migrations, dict)
+                or type(described.get("migration_files")) is not int
+                or described["migration_files"] != len(migrations)
+                or build_info.get("minimum_php") != manifest["update"].get("min_php")
+                or build_info.get("publisher_signature_verified") is not False
+                or build_info.get("upgrade_compatibility_verified") is not False
+                or build_info.get("production_ready") is not False):
+            raise ValueError("Build Info does not match source-pinned release archives")
         if (php.get("schema") != "walidsite.signed-zip-ci-acceptance.v1"
                 or php.get("version") != version
                 or php.get("source_sha") != source_sha
@@ -248,6 +287,7 @@ def verify_bundle(directory: Path, checkout: Path, source_sha: str,
         "android_apk_sha256": android["apk_sha256"],
         "setup_sha256": digests["setup"],
         "update_sha256": digests["update"],
+        "build_info_sha256": build_digest,
         "native_and_web_version_match": True,
         "same_sha_assets_verified": True,
         "php_zip_negative_rejections": php["negative_rejections"],
