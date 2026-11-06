@@ -93,6 +93,26 @@ class ReleaseArtifactGateTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             verify(self.root, alternative, SHA)
 
+    def test_group_or_world_writable_release_inputs_are_not_attested(self):
+        # Rehashing attacker-writable files is not a release-provenance proof:
+        # another local hosting principal can change the pathname after PASS.
+        for subject in ("artifact", "manifest", "directory"):
+            with self.subTest(subject=subject):
+                path = {"artifact": self.pkg, "manifest": self.manifest,
+                        "directory": self.root}[subject]
+                original_mode = path.stat().st_mode & 0o777
+                try:
+                    path.chmod(original_mode | 0o020)
+                    with self.assertRaisesRegex(ValueError, "changed during verification"):
+                        verify(self.root, self.manifest, SHA)
+                    path.chmod(original_mode | 0o002)
+                    with self.assertRaisesRegex(ValueError, "changed during verification"):
+                        verify(self.root, self.manifest, SHA)
+                finally:
+                    path.chmod(original_mode)
+                self.assertTrue(verify(self.root, self.manifest, SHA)[
+                    "artifact_integrity_verified"])
+
     def test_manifest_outside_artifact_directory_is_supported(self):
         # Publication keeps the manifest beside (not necessarily inside)
         # the directory containing the actual release artifacts.

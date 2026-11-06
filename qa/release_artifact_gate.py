@@ -44,6 +44,9 @@ def _assert_named_file_identity(path: str | Path, opened: os.stat_result,
     except OSError as exc:
         raise ValueError("Release input pathname changed during verification") from exc
     if (not stat.S_ISREG(named.st_mode) or not stat.S_ISREG(opened.st_mode)
+            # A release artifact or manifest writable by other local users
+            # is not a trusted immutable candidate, even when its hash matches.
+            or (named.st_mode & 0o022) != 0 or (opened.st_mode & 0o022) != 0
             or named.st_nlink != 1 or opened.st_nlink != 1
             or (named.st_dev, named.st_ino) != (opened.st_dev, opened.st_ino)):
         raise ValueError("Release input pathname changed during verification")
@@ -57,6 +60,9 @@ def _assert_named_directory_identity(directory: Path, descriptor: int) -> None:
     except OSError as exc:
         raise ValueError("Release artifact directory changed during verification") from exc
     if (not stat.S_ISDIR(opened.st_mode) or not stat.S_ISDIR(named.st_mode)
+            # An untrusted principal must not be able to replace the release
+            # pathname immediately after verification has completed.
+            or (opened.st_mode & 0o022) != 0 or (named.st_mode & 0o022) != 0
             or (opened.st_dev, opened.st_ino) != (named.st_dev, named.st_ino)):
         raise ValueError("Release artifact directory changed during verification")
 
