@@ -265,7 +265,7 @@ final class OwnerUpdateRecoveryBackupSafetyTest extends TestCase
             'code_update_performed' => false,
         ];
 
-        $method = new \\ReflectionMethod(OwnerUpdateRecoveryBackup::class, 'saveReceipt');
+        $method = new \ReflectionMethod(OwnerUpdateRecoveryBackup::class, 'saveReceipt');
         $method->invoke(new OwnerUpdateRecoveryBackup(), $path, $receipt);
 
         self::assertSame(0600, fileperms($path) & 0777);
@@ -278,7 +278,7 @@ final class OwnerUpdateRecoveryBackupSafetyTest extends TestCase
         try {
             $method->invoke(new OwnerUpdateRecoveryBackup(), $path, ['id' => 'REPLACEMENT']);
             self::fail('An existing verified receipt must never be overwritten.');
-        } catch (\\RuntimeException $error) {
+        } catch (\RuntimeException $error) {
             self::assertStringContainsString('Cannot create private recovery receipt', $error->getMessage());
         }
         self::assertSame(
