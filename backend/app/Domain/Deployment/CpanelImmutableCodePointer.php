@@ -347,14 +347,14 @@ final class CpanelImmutableCodePointer
 
         $entries = [];
         $totalBytes = 0;
-        $iterator = new \\RecursiveIteratorIterator(
-            new \\RecursiveDirectoryIterator($root, \\FilesystemIterator::SKIP_DOTS),
-            \\RecursiveIteratorIterator::SELF_FIRST,
+        $iterator = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($root, \FilesystemIterator::SKIP_DOTS),
+            \RecursiveIteratorIterator::SELF_FIRST,
         );
         foreach ($iterator as $entry) {
             $path = $entry->getPathname();
             $relative = substr($path, strlen($root) + 1);
-            if ($relative === '' || str_contains($relative, "\\0")
+            if ($relative === '' || str_contains($relative, "\0")
                 || str_starts_with($relative, '..'.DIRECTORY_SEPARATOR)
                 || is_link($path) || realpath($path) !== $path) {
                 throw new DomainException('Previous immutable release contains an unsafe path.');
@@ -435,7 +435,7 @@ final class CpanelImmutableCodePointer
             }
         }
         sort($entries, SORT_STRING);
-        return hash('sha256', implode("\\n", $entries));
+        return hash('sha256', implode("\n", $entries));
     }
 
     /**
