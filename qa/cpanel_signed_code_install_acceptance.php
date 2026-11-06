@@ -404,22 +404,27 @@ try {
                 $schemas[] = $deniedSchema;
                 $deniedRestore = codeDb($deniedSchema, $pass);
                 $nextHost->acceptHealthyRetry();
+                // The first mandatory writer-lease gate must reject a new
+                // request before any updater code or second HTTP health probe
+                // runs. A different exception is NOT sufficient evidence.
                 $deniedLease = new CpanelConsoleWriterLease();
-                $deniedLease->beginForConsole($running);
-                $retryAccepted = false;
+                $writerDeniedByMaintenance = false;
                 try {
-                    (new CpanelOwnerCodeInstallCoordinator())->install(
-                        $nextHost, $deniedLease, $live, $deniedRestore,
-                        $nextEnvelope, $key, 'https://updates.walidatiya.com',
-                        $version, $home, $inbox, $nextArchive, $running,
-                    );
-                    $retryAccepted = true;
-                } catch (Throwable) {
-                    // Rejection is expected, regardless of the error text.
-                } finally {
-                    $deniedLease->end();
+                    $deniedLease->beginForConsole($running);
+                } catch (DomainException $blocked) {
+                    $writerDeniedByMaintenance = $blocked->getMessage()
+                        === 'cPanel release maintenance blocks background writers.';
                 }
-                if ($retryAccepted || $nextHost->probes !== 1
+                if (! $writerDeniedByMaintenance) {
+                    $deniedLease->end();
+                    throw new RuntimeException(
+                        'Tampered chained rollback allowed a new writer lease.'
+                    );
+                }
+                if ($nextHost->probes !== 1
+                    || (int) $deniedRestore->query(
+                        "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE()"
+                    )->fetchColumn() !== 0
                     || ! is_file($home.'/.walidsite-update-maintenance.json')
                     || $live->query('SELECT note FROM owner_records WHERE id=1')->fetchColumn()
                         !== 'PRESERVE_ROW'
