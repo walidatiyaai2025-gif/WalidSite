@@ -623,6 +623,75 @@ final class TrustedReleaseUpdateJourneyTest extends TestCase
         }
     }
 
+    public function test_group_writable_backup_vault_rejects_signed_update_before_promotion(): void
+    {
+        if (PHP_OS_FAMILY === 'Windows') {
+            self::markTestSkipped('POSIX directory permissions required.');
+        }
+        $vault = $this->paths['backup_vault'];
+        self::assertTrue(chmod($vault, 0770));
+        try {
+            $this->update($this->signedZip());
+            self::fail('Group-writable recovery vault must never anchor a code update.');
+        } catch (DomainException $error) {
+            self::assertStringContainsString('private vault', $error->getMessage());
+            self::assertSame('LIVE-vA', file_get_contents($this->paths['public'].'/index.php'));
+            self::assertSame([], glob($this->paths['releases'].'/v1.2*') ?: []);
+            self::assertSame([], glob($vault.'/mariadb-*') ?: []);
+            self::assertSame(1, (int) $this->liveDb->query('SELECT COUNT(*) FROM billing')->fetchColumn());
+        } finally {
+            self::assertTrue(chmod($vault, 0700));
+        }
+    }
+
+    public function test_group_writable_existing_update_lock_is_rejected(): void
+    {
+        if (PHP_OS_FAMILY === 'Windows') {
+            self::markTestSkipped('POSIX file permissions required.');
+        }
+        $lockPath = $this->paths['backup_vault'].'/.trusted-update.lock';
+        self::assertSame(0, file_put_contents($lockPath, ''));
+        self::assertTrue(chmod($lockPath, 0660));
+        try {
+            $this->update($this->signedZip());
+            self::fail('A group-writable lock cannot enforce exclusive maintenance.');
+        } catch (DomainException $error) {
+            self::assertStringContainsString('lock path or inode', $error->getMessage());
+            self::assertSame('LIVE-vA', file_get_contents($this->paths['public'].'/index.php'));
+            self::assertSame([], glob($this->paths['releases'].'/v1.2*') ?: []);
+            self::assertSame([], glob($this->paths['backup_vault'].'/mariadb-*') ?: []);
+            self::assertSame(1, (int) $this->liveDb->query('SELECT COUNT(*) FROM billing')->fetchColumn());
+        } finally {
+            self::assertTrue(chmod($lockPath, 0600));
+        }
+    }
+
+    public function test_vault_permission_change_during_maintenance_aborts_before_promotion(): void
+    {
+        if (PHP_OS_FAMILY === 'Windows') {
+            self::markTestSkipped('POSIX directory permissions required.');
+        }
+        $vault = $this->paths['backup_vault'];
+        $writes = static function () use ($vault): bool {
+            if (! chmod($vault, 0777)) {
+                throw new RuntimeException('Cannot simulate unsafe recovery vault chmod.');
+            }
+            return true;
+        };
+        try {
+            $this->update($this->signedZip(), $writes);
+            self::fail('Changing vault permissions during update must revoke the lock.');
+        } catch (DomainException $error) {
+            self::assertStringContainsString('vault identity or permissions', $error->getMessage());
+            self::assertSame('LIVE-vA', file_get_contents($this->paths['public'].'/index.php'));
+            self::assertSame([], glob($this->paths['releases'].'/v1.2*') ?: []);
+            self::assertSame([], glob($vault.'/mariadb-*') ?: []);
+            self::assertSame(1, (int) $this->liveDb->query('SELECT COUNT(*) FROM billing')->fetchColumn());
+        } finally {
+            self::assertTrue(chmod($vault, 0700));
+        }
+    }
+
     public function test_hard_linked_trusted_lock_is_rejected_before_backup_or_cutover(): void
     {
         if (! function_exists('link')) {

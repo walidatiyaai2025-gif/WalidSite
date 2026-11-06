@@ -376,7 +376,11 @@ final class TrustedReleaseUpdateJourney
     {
         $vault = realpath($paths['backup_vault'] ?? '');
         $public = realpath($paths['public'] ?? '');
+        $vaultStat = $vault === false ? false : @lstat($vault);
         if ($vault === false || ! is_dir($vault) || ! is_writable($vault)
+            || ! is_array($vaultStat)
+            || ($vaultStat['mode'] & 0170000) !== 0040000
+            || ($vaultStat['mode'] & 0022) !== 0
             || is_link($paths['backup_vault'] ?? '')
             || $vault !== ($paths['backup_vault'] ?? '')
             || $public === false
@@ -396,13 +400,31 @@ final class TrustedReleaseUpdateJourney
         }
 
         try {
-            $lockCheck = function () use ($stream, $lockPath): void {
+            $lockCheck = function () use ($stream, $lockPath, $vault, $vaultStat): void {
+                // A writable/replaced backup directory lets another local
+                // account swap the lock or recovery files while PHP is busy.
+                // Recheck the directory around every maintenance, snapshot,
+                // health and cutover callback, not just before acquiring flock.
+                clearstatcache(true, $vault);
+                $currentVault = @lstat($vault);
+                if (! is_array($currentVault) || is_link($vault)
+                    || realpath($vault) !== $vault
+                    || ($currentVault['mode'] & 0170000) !== 0040000
+                    || ($currentVault['mode'] & 0022) !== 0
+                    || $currentVault['dev'] !== $vaultStat['dev']
+                    || $currentVault['ino'] !== $vaultStat['ino']
+                    || $currentVault['mode'] !== $vaultStat['mode']) {
+                    throw new DomainException('Trusted update private vault identity or permissions changed.');
+                }
+
                 clearstatcache(true, $lockPath);
                 $opened = @fstat($stream);
                 $named = @lstat($lockPath);
                 if (! is_array($opened) || ! is_array($named)
                     || ($opened['mode'] & 0170000) !== 0100000
                     || ($named['mode'] & 0170000) !== 0100000
+                    || ($opened['mode'] & 0022) !== 0
+                    || ($named['mode'] & 0022) !== 0
                     || ($opened['nlink'] ?? 0) !== 1 || ($named['nlink'] ?? 0) !== 1
                     || $opened['ino'] !== $named['ino'] || $opened['dev'] !== $named['dev']
                     || is_link($lockPath)) {
