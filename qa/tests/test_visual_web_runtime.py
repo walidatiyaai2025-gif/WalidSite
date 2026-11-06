@@ -241,7 +241,7 @@ class WebRuntimeAuditTest(unittest.TestCase):
         manager, contexts, browser = fake_playwright(
             published={"WEB-05": [{"slug": "approved-public-project"}]},
         )
-        with patch("qa.audit_web_runtime.exact_checkout"), \\
+        with patch("qa.audit_web_runtime.exact_checkout"), \
              patch.dict(os.environ, {"WALIDSITE_CAPTURE_STORAGE_STATE": ""}):
             report = audit_web(
                 "http://127.0.0.1:8000", SHA, root=ROOT,
@@ -269,7 +269,7 @@ class WebRuntimeAuditTest(unittest.TestCase):
             "WEB-05": [{"slug": "approved-project"}],
             "WEB-08": [{"slug": "verified-article"}],
         })
-        with patch("qa.audit_web_runtime.exact_checkout"), \\
+        with patch("qa.audit_web_runtime.exact_checkout"), \
              patch.dict(os.environ, {"WALIDSITE_CAPTURE_STORAGE_STATE": ""}):
             report = audit_web(
                 "http://127.0.0.1:8000", SHA, root=ROOT,
@@ -292,7 +292,7 @@ class WebRuntimeAuditTest(unittest.TestCase):
                 manager, contexts, _ = fake_playwright(
                     published=published, detail_status=status,
                 )
-                with patch("qa.audit_web_runtime.exact_checkout"), \\
+                with patch("qa.audit_web_runtime.exact_checkout"), \
                      patch.dict(os.environ, {"WALIDSITE_CAPTURE_STORAGE_STATE": ""}):
                     with self.assertRaises(AdminSessionError):
                         audit_web("http://127.0.0.1:8000", SHA, root=ROOT,
