@@ -136,17 +136,22 @@ summary{cursor:pointer;min-height:44px;padding:8px}
 <td><time datetime="{{ $proposal->created_at?->toIso8601String() }}">{{ $proposal->created_at?->toDateString() }}</time></td>
 <td>
 @if($canReviewGithub && $proposal->status === 'pending' && $proposal->submitted_by_user_id !== auth('web')->id())
-<form method="post" action="{{ route('admin.operations.github.decide', ['id'=>$proposal->id,'lang'=>$locale]) }}" class="inline-actions">
+{{-- Approval and rejection have different audited reasons. Separate
+     forms make contradictory receipts impossible through the regular UI. --}}
+<form method="post" action="{{ route('admin.operations.github.decide', ['id'=>$proposal->id,'lang'=>$locale]) }}" class="inline-actions" aria-label="{{ $ar ? 'اعتماد مستودع متحقق منه' : 'Approve verified repository' }}">
 @csrf
-<label for="reason-{{ $proposal->id }}">{{ $ar ? 'سبب القرار' : 'Decision reason' }}</label>
+<input type="hidden" name="reason" value="source_verified">
+<button type="submit" name="decision" value="approve">{{ $ar ? 'اعتماد بعد التحقق' : 'Verify and approve' }}</button>
+</form>
+<form method="post" action="{{ route('admin.operations.github.decide', ['id'=>$proposal->id,'lang'=>$locale]) }}" class="inline-actions" aria-label="{{ $ar ? 'رفض طلب المستودع' : 'Reject repository proposal' }}">
+@csrf
+<label for="reason-{{ $proposal->id }}">{{ $ar ? 'سبب الرفض' : 'Rejection reason' }}</label>
 <select id="reason-{{ $proposal->id }}" name="reason" required>
-<option value="" disabled selected>{{ $ar ? 'اختر سبب القرار' : 'Choose the decision reason' }}</option>
-<option value="source_verified">{{ $ar ? 'تحقق المصدر' : 'Source verified' }}</option>
+<option value="" disabled selected>{{ $ar ? 'اختر سبب الرفض' : 'Choose rejection reason' }}</option>
 <option value="not_public">{{ $ar ? 'غير عام' : 'Not public' }}</option>
 <option value="owner_policy">{{ $ar ? 'سياسة المالك' : 'Owner policy' }}</option>
 <option value="out_of_scope">{{ $ar ? 'خارج النطاق' : 'Out of scope' }}</option>
 </select>
-<button type="submit" name="decision" value="approve">{{ $ar ? 'اعتماد بعد التحقق' : 'Verify and approve' }}</button>
 <button type="submit" name="decision" value="reject">{{ $ar ? 'رفض' : 'Reject' }}</button>
 </form>
 @else

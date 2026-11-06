@@ -215,6 +215,56 @@ final class AdminGithubProposalReviewTest extends TestCase
         }
     }
 
+    public function test_owner_decision_reason_cannot_contradict_its_audit_action(): void
+    {
+        [, $adminToken] = $this->identity('admin');
+        [, $ownerToken] = $this->identity('owner');
+        Http::fake();
+        $endpoint = '/api/v1/admin/github/proposals';
+        $approvalId = $this->asBearer($adminToken)->postJson($endpoint, [
+            'repository_slug' => 'trusted/audit-approval',
+        ])->assertCreated()->json('data.id');
+        $rejectionId = $this->asBearer($adminToken)->postJson($endpoint, [
+            'repository_slug' => 'trusted/audit-rejection',
+        ])->assertCreated()->json('data.id');
+
+        foreach ([
+            [$approvalId, 'approve', 'not_public'],
+            [$approvalId, 'approve', 'owner_policy'],
+            [$approvalId, 'approve', 'out_of_scope'],
+            [$rejectionId, 'reject', 'source_verified'],
+        ] as [$id, $decision, $reason]) {
+            $this->asBearer($ownerToken)->postJson(
+                $endpoint.'/'.$id.'/decision',
+                ['decision' => $decision, 'reason' => $reason],
+            )->assertUnprocessable()->assertJsonValidationErrors(['reason']);
+        }
+
+        foreach ([$approvalId, $rejectionId] as $id) {
+            $proposal = GithubAllowlistProposal::findOrFail($id);
+            $this->assertSame('pending', $proposal->status);
+            $this->assertNull($proposal->reviewed_by_user_id);
+            $this->assertNull($proposal->reviewed_at);
+            $this->assertNull($proposal->verified_at);
+            $this->assertNull($proposal->decision_reason);
+            $this->assertSame(['submitted'], GithubAllowlistProposalEvent::query()
+                ->where('proposal_id', $id)->pluck('action')->all());
+        }
+        Http::assertNothingSent();
+
+        // A legacy API caller may omit a reason; the rejection receipt
+        // still uses an honest and deterministic owner-policy default.
+        $this->asBearer($ownerToken)->postJson(
+            $endpoint.'/'.$rejectionId.'/decision',
+            ['decision' => 'reject'],
+        )->assertOk()->assertJsonPath('data.decision_reason', 'owner_policy');
+        $this->assertSame('owner_policy', GithubAllowlistProposalEvent::query()
+            ->where('proposal_id', $rejectionId)->where('action', 'rejected')
+            ->value('reason'));
+        $this->assertSame('pending', GithubAllowlistProposal::findOrFail($approvalId)->status);
+        Http::assertNothingSent();
+    }
+
     public function test_reason_is_audit_safe_and_cannot_contain_secrets(): void
     {
         [, $adminToken] = $this->identity('admin');

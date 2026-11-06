@@ -52,10 +52,19 @@ final class GithubProposalWorkflow
 
     public function decide(callable $actor, string $id, string $decision, ?string $reason = null): GithubAllowlistProposal
     {
-        if (! in_array($decision, ['approve', 'reject'], true)
-            || ($reason !== null && ! in_array($reason,
-                ['source_verified', 'not_public', 'owner_policy', 'out_of_scope'], true))) {
+        if (! in_array($decision, ['approve', 'reject'], true)) {
             throw ValidationException::withMessages(['decision' => 'Invalid decision.']);
+        }
+        // Every persisted reason is an audit receipt. A rejection cannot
+        // claim source verification, nor can an approval cite rejection policy.
+        // API callers may omit the reason to use a compatible safe default.
+        $reasons = $decision === 'approve'
+            ? ['source_verified']
+            : ['not_public', 'owner_policy', 'out_of_scope'];
+        if ($reason !== null && ! in_array($reason, $reasons, true)) {
+            throw ValidationException::withMessages([
+                'reason' => 'Decision reason is incompatible with the selected action.',
+            ]);
         }
         $owner = $actor(false);
         abort_unless($owner instanceof User && $owner->canAccessAdmin()

@@ -205,6 +205,64 @@ final class AdminGithubOwnerReviewJourneyTest extends TestCase
             ->assertSee('dir="rtl"', false);
     }
 
+    public function test_owner_review_forms_only_offer_compatible_audited_reasons(): void
+    {
+        $admin = $this->account('admin');
+        $owner = $this->account('owner');
+        $proposal = $this->makeProposal($admin, 'acme/audited-reasons');
+        Http::fake();
+
+        $this->actingAs($owner, 'web');
+        foreach (['en', 'ar'] as $lang) {
+            $response = $this->get('/admin/github?lang='.$lang)->assertOk();
+            $markup = $response->getContent();
+            $this->assertStringContainsString(
+                'name="reason" value="source_verified"', $markup
+            );
+            $this->assertStringContainsString(
+                'name="decision" value="approve"', $markup
+            );
+            $this->assertStringContainsString(
+                'name="decision" value="reject"', $markup
+            );
+            $this->assertStringContainsString('name="reason" required', $markup);
+            // Source verification belongs to the approval form only.
+            $this->assertStringNotContainsString(
+                '<option value="source_verified">', $markup
+            );
+            $this->assertStringContainsString(
+                '<option value="owner_policy">', $markup
+            );
+            $this->assertStringContainsString(
+                $lang === 'ar' ? 'سبب الرفض' : 'Rejection reason', $markup
+            );
+        }
+
+        $path = '/admin/github/proposals/'.$proposal->id.'/decision';
+        foreach ([
+            ['decision' => 'reject', 'reason' => 'source_verified'],
+            ['decision' => 'approve', 'reason' => 'not_public'],
+            ['decision' => 'approve', 'reason' => 'out_of_scope'],
+        ] as $payload) {
+            $this->post($path, $payload)->assertSessionHasErrors(['reason']);
+        }
+        $this->assertSame('pending', $proposal->fresh()->status);
+        $this->assertNull($proposal->fresh()->reviewed_at);
+        $this->assertSame(['submitted'], GithubAllowlistProposalEvent::query()
+            ->where('proposal_id', $proposal->id)->pluck('action')->all());
+        Http::assertNothingSent();
+
+        $this->post($path.'?lang=ar', [
+            'decision' => 'reject', 'reason' => 'owner_policy',
+        ])->assertRedirect('/admin/github?lang=ar');
+        $this->assertSame('rejected', $proposal->fresh()->status);
+        $this->assertSame('owner_policy', $proposal->fresh()->decision_reason);
+        $this->assertSame('owner_policy', GithubAllowlistProposalEvent::query()
+            ->where('proposal_id', $proposal->id)
+            ->where('action', 'rejected')->value('reason'));
+        Http::assertNothingSent();
+    }
+
     public function test_web_owner_decision_requires_explicit_audit_reason(): void
     {
         $admin = $this->account('admin');
