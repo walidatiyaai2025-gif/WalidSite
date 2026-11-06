@@ -32,7 +32,10 @@ class VerifiedArticleCategory {
       final slug = item['slug'] as String;
       final name = item['name'] as String;
       if (slug.length > 60 || !validSlug.hasMatch(slug) ||
-          !seen.add(slug) || name.trim().isEmpty || name.length > 160) {
+          !seen.add(slug) || name.trim().isEmpty || name.length > 160 ||
+          name.runes.any((ch) => ch < 32 || ch == 127 ||
+              (ch >= 0x202a && ch <= 0x202e) ||
+              (ch >= 0x2066 && ch <= 0x2069))) {
         throw const FormatException('Unsafe article category');
       }
       categories.add(VerifiedArticleCategory(slug: slug, name: name));
@@ -153,6 +156,9 @@ class VerifiedArticle {
           title is! String ||
           title.trim().isEmpty ||
           title.length > 250 ||
+          title.runes.any((ch) => ch < 32 || ch == 127 ||
+              (ch >= 0x202a && ch <= 0x202e) ||
+              (ch >= 0x2066 && ch <= 0x2069)) ||
           body is! String ||
           body.trim().isEmpty ||
           body.length > 60000 ||
