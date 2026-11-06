@@ -105,6 +105,41 @@ final class CpanelOwnerRecoveryHistoryTest extends TestCase
         self::assertSame('blocked', $history->inspect($this->home)['state']);
     }
 
+    public function test_untrusted_account_home_cannot_attest_receipts_or_claim_empty_history(): void
+    {
+        $history = new CpanelOwnerRecoveryHistory();
+        $this->save($this->receipt());
+        self::assertSame('history', $history->inspect($this->home)['state']);
+
+        foreach ([0770, 0702, 0777] as $unsafeMode) {
+            self::assertTrue(chmod($this->home, $unsafeMode));
+            clearstatcache(true, $this->home);
+            try {
+                self::assertSame(['state' => 'blocked', 'receipts' => []],
+                    $history->inspect($this->home));
+            } finally {
+                chmod($this->home, 0700);
+                clearstatcache(true, $this->home);
+            }
+        }
+        self::assertSame('history', $history->inspect($this->home)['state']);
+
+        // A missing vault is never interpreted as a clean history when its
+        // parent account home itself lacks private ownership protection.
+        self::assertTrue(unlink($this->vault.'/receipt-'.$this->id.'.json'));
+        self::assertTrue(rmdir($this->vault));
+        self::assertTrue(chmod($this->home, 0777));
+        clearstatcache(true, $this->home);
+        try {
+            self::assertSame(['state' => 'blocked', 'receipts' => []],
+                $history->inspect($this->home));
+        } finally {
+            chmod($this->home, 0700);
+            mkdir($this->vault, 0700);
+        }
+        self::assertSame('none', $history->inspect($this->home)['state']);
+    }
+
     public function test_receipt_symlink_and_hardlink_are_not_followed(): void
     {
         $path = $this->vault.'/receipt-'.$this->id.'.json';
