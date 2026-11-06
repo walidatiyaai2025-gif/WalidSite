@@ -303,7 +303,10 @@ def _check_one_transaction(origin: str, spec: Check, opener: Opener, timeout: in
                     else:
                         try:
                             decoded = json.loads(payload)
-                        except (ValueError, UnicodeDecodeError):
+                        except (ValueError, UnicodeDecodeError, RecursionError):
+                            # A small, deeply nested untrusted JSON body may
+                            # exhaust the parser recursion budget. Record a
+                            # failed probe, never crash or reveal its bytes.
                             reason = "invalid_json_response"
                         else:
                             if not isinstance(decoded, dict):
