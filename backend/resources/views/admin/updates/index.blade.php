@@ -152,9 +152,36 @@ button:disabled{background:#718096;cursor:not-allowed}
     ? 'لا يمكن اعتماد جاهزية استضافة cPanel للتحديث حتى الآن؛ لم يحدث أي تغيير للبيانات أو الكود.'
     : $errors->first('hosting') }}</p>
 @endif
+<section aria-labelledby="backup-now-title" data-testid="owner-backup-action">
+<h3 id="backup-now-title">{{ $locale === 'ar' ? 'نسخة احتياطية مع اختبار الاستعادة' : 'Backup Now — verified recovery rehearsal' }}</h3>
+<p class="small">{{ $locale === 'ar'
+    ? 'لا تتاح العملية إلا باستضافة مجهّزة للتحقق المستقل من إيقاف جميع الكتّاب الخارجيين وقاعدة MariaDB اختبارية فارغة ومنفصلة. لا يتم تغيير إصدار الموقع.'
+    : 'Requires a server-installed provider that independently verifies all external writers are stopped and supplies a separate, empty recovery MariaDB database. Does not install code.' }}</p>
+@if($errors->has('backup'))
+<p class="error" role="alert" data-testid="owner-backup-blocked">{{ $locale === 'ar'
+    ? 'تعذّر إثبات العزل أو النسخ والاستعادة. لا توجد نسخة احتياطية معتمدة من هذا الطلب؛ راجع حالة الاستعادة الخاصة.'
+    : $errors->first('backup') }}</p>
+@endif
+@if(session('owner_backup_receipt'))
+<div class="success" role="status" data-testid="owner-backup-verified">
+<strong>{{ $locale === 'ar' ? 'اكتمل اختبار استعادة هذه النسخة. لم يتم تحديث الكود.' : 'Backup and separate restore drill verified. Code not updated.' }}</strong>
+<p>{{ $locale === 'ar' ? 'رقم الإيصال:' : 'Receipt:' }} <code>{{ session('owner_backup_receipt.id') }}</code>
+— {{ $locale === 'ar' ? 'الإصدار:' : 'Version:' }} <code>{{ session('owner_backup_receipt.version') }}</code></p>
+</div>
+@endif
+<form method="post" action="{{ route('admin.updates.backup-now', ['lang' => $locale]) }}" data-testid="owner-backup-now-form">
+@csrf
+<button type="submit" data-testid="owner-backup-now" @disabled(!config('site.updates_enabled') || !$hostBackupAvailable)>{{ $locale === 'ar' ? 'إنشاء نسخة واختبار الاستعادة الآن' : 'Backup Now & Verify Restore' }}</button>
+</form>
+@if(!$hostBackupAvailable)
+<p class="blocked" role="status" data-testid="owner-host-backup-provider-unavailable">{{ $locale === 'ar'
+    ? 'محجوب: مزوّد إثبات عزل الكتابات الخارجية وقاعدة الاستعادة المنفصلة غير مثبّت على الخادم.'
+    : 'Blocked hosting: independent external-writer evidence and disposable database provider are not installed.' }}</p>
+@endif
+</section>
 <p class="blocked">{{ $locale === 'ar'
-    ? 'Backup Now وInstall Update سيظلان متوقفين حتى يتوفر إثبات نسخ احتياطي قابل للاسترجاع وفحص توافق الاستضافة والتبديل الآمن وإيقاف الكتابة أثناء التحديث.'
-    : 'Backup Now and Install Update remain blocked until independently restorable backups, hosting-compatible atomic cutover, write quiescence and verified recovery are available.' }}</p>
+    ? 'Install Update يظل متوقفًا حتى توفر التبديل الآمن والتحقق الكامل من الإصدار وحالة الاستعادة الحالية. نجاح Backup Now لا يصرّح بالتثبيت تلقائيًا.'
+    : 'Install Update remains blocked until signed code cutover and current recovery verification are integrated. A successful Backup Now does not authorize installation.' }}</p>
 <button type="button" disabled aria-describedby="code-updates-title">{{ $locale === 'ar' ? 'تثبيت التحديث — غير متاح بعد' : 'Install Update — Hosting/Recovery Blocked' }}</button>
 </section>
 
