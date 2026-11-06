@@ -171,7 +171,7 @@ class ReleaseAndroidQaAttachmentTest(unittest.TestCase):
             "schema": "walidsite.signed-zip-ci-acceptance.v1",
             "source_sha": SHA, "version": "1.2.3",
             "artifact_sha256": archives["update"]["sha256"],
-            "verified_files": 5, "negative_rejections": 4,
+            "verified_files": 5, "negative_rejections": 7,
             "test_only_ephemeral_key": True,
             "publisher_signature_verified": False,
             "code_update_performed": False, "production_ready": False,
@@ -197,6 +197,7 @@ class ReleaseAndroidQaAttachmentTest(unittest.TestCase):
         self.assertEqual(receipt["source_sha"], SHA)
         self.assertEqual(receipt["android_apk_sha256"], self.proof["apk_sha256"])
         self.assertEqual(receipt["update_sha256"], self.php["artifact_sha256"])
+        self.assertEqual(receipt["php_zip_negative_rejections"], 7)
         self.assertTrue(receipt["native_and_web_version_match"])
         self.assertTrue(receipt["same_sha_assets_verified"])
         self.assertFalse(receipt["production_ready"])
@@ -225,7 +226,7 @@ class ReleaseAndroidQaAttachmentTest(unittest.TestCase):
         for key, value in (
             ("artifact_sha256", "0" * 64),
             ("test_only_ephemeral_key", False),
-            ("negative_rejections", 3),
+            ("negative_rejections", 4),
             ("publisher_signature_verified", True),
             ("code_update_performed", True),
             ("production_ready", True),
