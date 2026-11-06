@@ -657,7 +657,10 @@ jobs:
       - name: Retain source-pinned UNPUBLISHED Setup and Update release train
         uses: actions/upload-artifact@v4
         with:
-          name: WalidSite-UNPUBLISHED-release-train-${{ github.sha }}
+          # On pull_request, github.sha is the synthetic merge SHA, not the
+          # checked-out source head. Label the artifact with the exact source
+          # commit whose Setup and Update ZIPs were built and tested.
+          name: WalidSite-UNPUBLISHED-release-train-${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           path: |
             dist/release-train/*
             dist/release-train-receipt.json
