@@ -220,7 +220,7 @@ class CompanionWelcome extends StatelessWidget {
   }
 }
 
-class CompanionHome extends StatelessWidget {
+class CompanionHome extends StatefulWidget {
   const CompanionHome({
     required this.arabic,
     required this.onToggleLanguage,
@@ -231,6 +231,9 @@ class CompanionHome extends StatelessWidget {
   final bool arabic;
   final VoidCallback onToggleLanguage;
   final ValueChanged<bool>? onSetLanguage;
+
+  @override
+  State<CompanionHome> createState() => _CompanionHomeState();
 
   static const List<_Topic> _topics = [
     _Topic(
@@ -255,9 +258,17 @@ class CompanionHome extends StatelessWidget {
       icon: Icons.auto_awesome_outlined,
     ),
   ];
+}
+
+class _CompanionHomeState extends State<CompanionHome> {
+  int _selectedTab = 0;
 
   @override
   Widget build(BuildContext context) {
+    final arabic = widget.arabic;
+    final onToggleLanguage = widget.onToggleLanguage;
+    final onSetLanguage = widget.onSetLanguage;
+
     void push(Widget page) {
       Navigator.of(context).push<void>(
         MaterialPageRoute<void>(builder: (_) => page),
@@ -266,7 +277,7 @@ class CompanionHome extends StatelessWidget {
 
     return Scaffold(
       key: const Key('mobile-youtube-home'),
-      appBar: AppBar(
+      appBar: _selectedTab == 0 ? AppBar(
         title: Text(
           arabic ? 'رفيق وليد التقني' : 'Waleed Tech Companion',
           style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w700),
@@ -348,27 +359,17 @@ class CompanionHome extends StatelessWidget {
             ),
           ),
         ),
-      ),
+      ) : null,
       bottomNavigationBar: NavigationBar(
         height: 64,
-        selectedIndex: 0,
+        selectedIndex: _selectedTab,
         labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
         onDestinationSelected: (index) {
-          switch (index) {
-            case 1:
-              push(VerifiedLearningLibrary(arabic: arabic));
-            case 2:
-              push(AiTroubleshooterScreen(arabic: arabic));
-            case 3:
-              push(MobileAccountJourney(
-                arabic: arabic,
-                initialSection: MobileAccountSection.saved,
-              ));
-            case 4:
-              push(MobileAccountJourney(
-                arabic: arabic,
-                initialSection: MobileAccountSection.profile,
-              ));
+          if (index != _selectedTab) {
+            // Primary tabs share one navigation shell. Detail/category routes
+            // remain explicit pushes, but the five primary destinations are
+            // always accessible without stacking duplicate paid AI screens.
+            setState(() => _selectedTab = index);
           }
         },
         destinations: [
@@ -380,8 +381,8 @@ class CompanionHome extends StatelessWidget {
           ),
           NavigationDestination(
             key: const Key('mobile-home-nav-learn'),
-            icon: const Icon(Icons.explore_outlined),
-            label: arabic ? 'استكشف' : 'Explore',
+            icon: const Icon(Icons.school_outlined),
+            label: arabic ? 'تعلّم' : 'Learn',
           ),
           const NavigationDestination(
             key: const Key('mobile-home-nav-ai'),
@@ -400,7 +401,8 @@ class CompanionHome extends StatelessWidget {
           ),
         ],
       ),
-      body: SafeArea(
+      body: switch (_selectedTab) {
+        0 => SafeArea(
         child: ListView(
           key: const Key('mobile-home-scroll-feed'),
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
@@ -689,7 +691,7 @@ class CompanionHome extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 12),
-            ..._topics.map(
+            ...CompanionHome._topics.map(
               (topic) => Padding(
                 padding: const EdgeInsets.only(bottom: 12),
                 child: Card(
@@ -722,6 +724,18 @@ class CompanionHome extends StatelessWidget {
           ],
         ),
       ),
+        1 => VerifiedLearningLibrary(arabic: arabic),
+        2 => AiTroubleshooterScreen(arabic: arabic),
+        3 => MobileAccountJourney(
+          arabic: arabic,
+          initialSection: MobileAccountSection.saved,
+        ),
+        4 => MobileAccountJourney(
+          arabic: arabic,
+          initialSection: MobileAccountSection.profile,
+        ),
+        _ => const SizedBox.shrink(),
+      },
     );
   }
 }
