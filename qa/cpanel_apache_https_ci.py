@@ -37,9 +37,13 @@ def apache_config(home: Path, work: Path, port: int) -> str:
     return "\n".join([
         'ServerRoot "/etc/apache2"',
         'ServerName localhost',
+        # Ubuntu mod_ssl's ssl.conf interpolates APACHE_RUN_DIR. Keep its
+        # session-cache file in this isolated account instead of relying on
+        # the runner's ambient apache environment.
+        'Define APACHE_RUN_DIR "' + str(work) + '"',
         'Listen 127.0.0.1:' + str(port),
         'PidFile "' + str(work / "apache.pid") + '"',
-        'Mutex file:"' + str(work) + '" default',
+        'Mutex "file:' + str(work) + '" default',
         'IncludeOptional "/etc/apache2/mods-enabled/*.load"',
         'IncludeOptional "/etc/apache2/mods-enabled/*.conf"',
         'TypesConfig /etc/mime.types',
