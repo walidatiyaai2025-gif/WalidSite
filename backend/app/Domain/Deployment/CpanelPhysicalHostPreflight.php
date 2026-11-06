@@ -85,6 +85,41 @@ final class CpanelPhysicalHostPreflight
             throw new DomainException('The live dispatcher is not the immutable trusted cPanel entrypoint.');
         }
 
+        // A shared CLI writer lease may already exist from queue:work or
+        // schedule:run. Preflight must never label a host READY when that
+        // lock has been replaced, linked or made writable by other users.
+        // Checking identity here is read-only: a *valid* busy lease is not
+        // itself proof of stopped writers and must be acquired exclusively
+        // later by the trusted backup/update orchestrator.
+        $writerLock = $home.'/.walidsite-writer-drain.lock';
+        clearstatcache(true, $writerLock);
+        if (@lstat($writerLock) !== false) {
+            $stream = @fopen($writerLock, 'rb');
+            if ($stream === false) {
+                throw new DomainException('Private cPanel writer lease cannot be verified.');
+            }
+            try {
+                clearstatcache(true, $writerLock);
+                $opened = @fstat($stream);
+                $named = @lstat($writerLock);
+                if (! is_array($opened) || ! is_array($named)
+                    || is_link($writerLock) || realpath($writerLock) !== $writerLock
+                    || ($opened['mode'] & 0170000) !== 0100000
+                    || ($named['mode'] & 0170000) !== 0100000
+                    || ($opened['mode'] & 0777) !== 0600
+                    || ($named['mode'] & 0777) !== 0600
+                    || $opened['nlink'] !== 1 || $named['nlink'] !== 1
+                    || $opened['uid'] !== $homeStat['uid']
+                    || $named['uid'] !== $homeStat['uid']
+                    || $opened['dev'] !== $named['dev']
+                    || $opened['ino'] !== $named['ino']) {
+                    throw new DomainException('Unsafe private cPanel writer lease identity.');
+                }
+            } finally {
+                fclose($stream);
+            }
+        }
+
         // A damaged or stale maintenance marker means a prior transaction may
         // still be unverified; do not certify readiness for another update.
         $maintenance = $home.'/.walidsite-update-maintenance.json';

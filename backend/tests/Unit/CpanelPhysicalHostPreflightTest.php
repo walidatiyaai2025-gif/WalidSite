@@ -111,6 +111,45 @@ final class CpanelPhysicalHostPreflightTest extends TestCase
         self::assertSame('hosting_layout_verified', $this->inspect()['state']);
     }
 
+    public function test_existing_cli_writer_lock_must_be_private_unlinked_and_owner_controlled(): void
+    {
+        $lock = $this->home.'/.walidsite-writer-drain.lock';
+        file_put_contents($lock, '');
+        self::assertTrue(chmod($lock, 0600));
+        self::assertSame('hosting_layout_verified', $this->inspect()['state']);
+
+        foreach ([0644, 0660] as $mode) {
+            self::assertTrue(chmod($lock, $mode));
+            clearstatcache(true, $lock);
+            try {
+                $this->inspect();
+                self::fail('An exposed existing writer lock passed physical host preflight.');
+            } catch (DomainException) {
+                self::assertSame($mode, fileperms($lock) & 0777);
+            }
+        }
+        self::assertTrue(chmod($lock, 0600));
+
+        $alias = $this->home.'/writer-lock-alias';
+        if (@link($lock, $alias)) {
+            try {
+                $this->expectPreflightRejection();
+                self::assertFileExists($alias);
+            } finally {
+                unlink($alias);
+                clearstatcache(true, $lock);
+            }
+        }
+        self::assertSame('hosting_layout_verified', $this->inspect()['state']);
+
+        $target = $this->home.'/original-writer-lock';
+        self::assertTrue(rename($lock, $target));
+        if (@symlink($target, $lock)) {
+            $this->expectPreflightRejection();
+            self::assertSame('', file_get_contents($target));
+        }
+    }
+
     public function test_after_code_pointer_switch_uses_versioned_code_not_original_version(): void
     {
         $sha = str_repeat('a', 40);
