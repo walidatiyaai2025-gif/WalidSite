@@ -8,6 +8,7 @@ from unittest.mock import patch
 from contextlib import contextmanager, redirect_stdout, redirect_stderr
 import io
 import os
+import sys
 
 from qa import release_artifact_gate as gate
 from qa.release_artifact_gate import verify, main, artifact_name, _stable_reader
@@ -92,6 +93,29 @@ class ReleaseArtifactGateTest(unittest.TestCase):
                 receipt = verify(self.root, self.manifest, SHA)
                 self.assertEqual(receipt["version"], version)
                 self.assertFalse(receipt["production_ready"])
+
+    def test_deeply_nested_manifest_is_rejected_without_traceback(self):
+        # A small untrusted JSON file can exceed the stdlib parser recursion
+        # limit; it must be rejected as invalid inventory metadata.
+        # The runner may raise its recursion limit above Python defaults.
+        # Use ample depth beyond the active limit and the C JSON parser's\n        # independent nesting allowance (which can exceed sys.getrecursionlimit()).
+        depth = max(12000, sys.getrecursionlimit() + 256)
+        self.manifest.write_text("[" * depth + "0" + "]" * depth,
+                                 encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "Invalid JSON release manifest"):
+            verify(self.root, self.manifest, SHA)
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with redirect_stdout(stdout), redirect_stderr(stderr):
+            code = main(["--dir", str(self.root), "--manifest",
+                         str(self.manifest), "--sha", SHA])
+        self.assertEqual(code, 1)
+        self.assertEqual(stdout.getvalue(), "")
+        self.assertNotIn("Traceback", stderr.getvalue())
+        report = json.loads(stderr.getvalue())
+        self.assertFalse(report["artifact_integrity_verified"])
+        self.assertFalse(report["production_ready"])
+        self.save()
+        self.assertTrue(verify(self.root, self.manifest, SHA)["artifact_integrity_verified"])
 
     def test_path_traversal_duplicates_and_wrong_extension_fail(self):
         for name in ("../private.zip", "/etc/passwd", "nested/file.zip", ".hidden.zip",
