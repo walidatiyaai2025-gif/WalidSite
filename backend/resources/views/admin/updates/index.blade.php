@@ -202,6 +202,41 @@ button:disabled{background:#718096;cursor:not-allowed}
 <li><strong>{{ $locale === 'ar' ? 'تطبيق الملفات والترحيلات' : 'Install code and migrations' }}</strong><span class="status">{{ $locale === 'ar' ? 'استبدال الكود الكامل غير متاح؛ الترحيلات المحلية منفصلة أدناه.' : 'Full code replacement is not available; local migrations are handled separately below.' }}</span></li>
 <li><strong>{{ $locale === 'ar' ? 'التحقق من الصحة والاستعادة' : 'Verify health and recovery' }}</strong><span class="status">{{ $locale === 'ar' ? 'لا توجد نتيجة تحقق أو سجل تحديث كود.' : 'No code-update health receipt or version history exists.' }}</span></li>
 </ol>
+<section class="panel" aria-labelledby="recovery-history-title" data-testid="owner-recovery-history">
+<h3 id="recovery-history-title">{{ $locale === 'ar' ? 'سجل النسخ الاحتياطي واختبار الاستعادة' : 'Backup & recovery history' }}</h3>
+<p class="small">{{ $locale === 'ar'
+    ? 'هذه إيصالات تاريخية مقروءة من المخزن الخاص بعد فحص سلامتها. لا تثبت أن نسخة قديمة ما زالت قابلة للاستعادة ولا تسمح ببدء تحديث أو استعادة مباشرة.'
+    : 'These are historical receipts from a protected private vault. They do not prove that old snapshots remain restorable and never authorize a new update or an automatic restore.' }}</p>
+@if($recoveryHistory['state'] === 'blocked')
+<p class="error" role="alert" data-testid="recovery-history-blocked">{{ $locale === 'ar'
+    ? 'تعذّر التحقق من سلامة سجل الاستعادة الخاص؛ لا يمكن عرض إيصالات غير موثوقة.'
+    : 'Private recovery history could not be verified. No untrusted receipts are displayed.' }}</p>
+@elseif($recoveryHistory['state'] === 'none')
+<p class="blocked" role="status" data-testid="recovery-history-empty">{{ $locale === 'ar'
+    ? 'لا توجد إيصالات استعادة موثقة في المخزن الخاص لهذا التثبيت.'
+    : 'No recovery rehearsal receipts found in this installation’s private vault.' }}</p>
+@else
+<div class="migrations" role="region" aria-label="{{ $locale === 'ar' ? 'إيصالات الاستعادة' : 'Recovery receipts' }}" tabindex="0">
+<table data-testid="recovery-history-table" style="width:100%;border-collapse:collapse;text-align:start">
+<thead><tr>
+<th scope="col">{{ $locale === 'ar' ? 'وقت الاختبار (UTC)' : 'Restore drill time (UTC)' }}</th>
+<th scope="col">{{ $locale === 'ar' ? 'الإصدار' : 'Version' }}</th>
+<th scope="col">{{ $locale === 'ar' ? 'ملفات' : 'Files' }}</th>
+<th scope="col">{{ $locale === 'ar' ? 'جداول' : 'Tables' }}</th>
+<th scope="col">{{ $locale === 'ar' ? 'صفوف' : 'Rows' }}</th>
+</tr></thead>
+<tbody>
+@foreach($recoveryHistory['receipts'] as $receipt)
+<tr>
+<td><time datetime="{{ $receipt['created_at'] }}">{{ $receipt['created_at'] }}</time></td>
+<td><code>{{ $receipt['version'] }}</code></td>
+<td>{{ $receipt['files'] }}</td><td>{{ $receipt['tables'] }}</td><td>{{ $receipt['rows'] }}</td>
+</tr>
+@endforeach
+</tbody></table>
+</div>
+@endif
+</section>
 </section>
 
 <section class="panel" aria-labelledby="migration-title">

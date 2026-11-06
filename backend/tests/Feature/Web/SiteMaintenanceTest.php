@@ -376,6 +376,29 @@ class SiteMaintenanceTest extends TestCase
             ->once();
     }
 
+    public function test_owner_recovery_history_is_read_only_and_hidden_from_guests(): void
+    {
+        $this->get('/admin/updates?lang=en')->assertRedirect('/admin/login');
+        $owner = User::create([
+            'email' => 'history-owner@example.test',
+            'password_hash' => 'unused',
+            'status' => 'active',
+        ]);
+        $owner->roles()->attach(Role::firstOrCreate(['name' => 'owner'])->id);
+        $this->actingAs($owner);
+
+        foreach (['en' => 'Backup & recovery history', 'ar' => 'سجل النسخ الاحتياطي واختبار الاستعادة'] as $lang => $heading) {
+            $this->get('/admin/updates?lang='.$lang)->assertOk()
+                ->assertSee($heading)
+                ->assertSee('data-testid="owner-recovery-history"', false)
+                ->assertSee('data-testid="trusted-code-update-unavailable"', false)
+                ->assertDontSee('APP_KEY=')
+                ->assertDontSee('PRIVATE-DB-PASSWORD');
+        }
+        // Receipt history never becomes an additional unverified Apply route.
+        $this->post('/admin/updates/recovery-history')->assertNotFound();
+    }
+
     public function test_manual_updates_can_be_disabled_without_hiding_status(): void
     {
         config(['site.updates_enabled' => false]);
