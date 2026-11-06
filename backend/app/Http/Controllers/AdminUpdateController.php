@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Domain\Deployment\CpanelArchiveCodeOnlyPreflight;
 use App\Domain\Deployment\CpanelOwnerRecoveryHistory;
+use App\Domain\Deployment\CpanelOwnerCodeUpdateHistory;
 use App\Domain\Deployment\CpanelOwnerBackupHost;
 use App\Domain\Deployment\CpanelOwnerBackupCoordinator;
 use App\Domain\Deployment\CpanelOwnerCodeUpdateHost;
@@ -172,10 +173,16 @@ final class AdminUpdateController extends Controller
         }
 
         $recoveryHistory = app(CpanelOwnerRecoveryHistory::class)->inspect(dirname(public_path()));
+        // A separately MAC-authenticated LOCAL code-update history, distinct
+        // from recovery receipts and current installed-code authorization.
+        $codeUpdateHistory = app(CpanelOwnerCodeUpdateHistory::class)->inspect(
+            dirname(public_path()), (string) config('app.key'),
+        );
         $hostBackupAvailable = app()->bound(CpanelOwnerBackupHost::class);
         $hostCodeUpdateAvailable = app()->bound(CpanelOwnerCodeUpdateHost::class);
         return view('admin.updates.index', compact('status', 'installedVersion',
-            'verifiedUpload', 'hostPreflight', 'stagedCode', 'recoveryHistory', 'hostBackupAvailable', 'hostCodeUpdateAvailable'));
+            'verifiedUpload', 'hostPreflight', 'stagedCode', 'recoveryHistory',
+            'codeUpdateHistory', 'hostBackupAvailable', 'hostCodeUpdateAvailable'));
     }
 
     /**
@@ -718,13 +725,31 @@ final class AdminUpdateController extends Controller
             return back()->withErrors(['install' => 'Signed code installation or recovery verification failed. Inspect private maintenance and recovery state; no successful update is claimed.']);
         }
 
+        // The core installer has ALREADY completed the signed code cutover,
+        // independent restore rehearsal, health probe and maintenance clear.
+        // Journal failure must NEVER report that no installation occurred or
+        // attempt a blind rollback after the site has resumed serving code.
+        $historyRecorded = false;
+        try {
+            app(CpanelOwnerCodeUpdateHistory::class)->record(
+                $home, $result, (string) config('app.key'),
+            );
+            $historyRecorded = true;
+        } catch (Throwable $error) {
+            Log::warning('admin.updates.private_history_unavailable', [
+                'type' => $error::class,
+            ]);
+        }
         $request->session()->forget([
             'verified_owner_update_inbox', 'owner_update_host_preflight',
             'owner_update_staged_code', 'trusted_release_check',
         ]);
+        $message = 'Signed code release '.$result['version']
+            .' passed independent backup/restore, atomic cutover and live health verification.';
         return redirect()->route('admin.updates.index', [
             'lang' => ($input['lang'] ?? 'en') === 'ar' ? 'ar' : 'en',
-        ])->with('status', 'Signed code release '.$result['version'].' passed independent backup/restore, atomic cutover and live health verification.');
+        ])->with('status', $message)
+          ->with('code_update_history_warning', ! $historyRecorded);
     }
 
     public function apply(Request $request, SiteUpdater $updater): RedirectResponse

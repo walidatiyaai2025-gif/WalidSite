@@ -75,6 +75,7 @@ class InstallerDocumentationContractTest(unittest.TestCase):
         self.assertIn("SITE_AUTO_MIGRATE=false", en)
         self.assertIn("SITE_AUTO_MIGRATE=false", ar)
         self.assertIn("## Trusted patch and migration handling", en)
+        self.assertIn("### Admin-signed code-only ZIP updates and local update history", en)
         self.assertIn("migrate:rollback", en)
         self.assertIn("migrate:rollback", ar)
         self.assertIn("not live installation evidence", en)

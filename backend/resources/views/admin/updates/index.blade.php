@@ -5,6 +5,7 @@
 @php($signedCandidateVerified = $trustedState === 'signed_release_available')
 @php($releaseNotes = $verifiedUpload ? ($verifiedUpload['release_notes'] ?? null) : ($signedCandidateVerified ? ($trustedCheck['release_notes'] ?? null) : null))
 @php($releaseNotesVersion = $verifiedUpload ? $verifiedUpload['version'] : ($signedCandidateVerified ? $trustedCheck['version'] : null))
+@php($codeUpdateHistory = $codeUpdateHistory ?? ['state' => 'none', 'receipts' => []])
 @php($identifiedRelease = $releaseRef !== '' && $releaseRef !== 'unidentified')
 <!doctype html>
 <html lang="{{ $locale }}" dir="{{ $locale === 'ar' ? 'rtl' : 'ltr' }}">
@@ -44,6 +45,11 @@ button:disabled{background:#718096;cursor:not-allowed}
 </nav>
 <h1>{{ $locale === 'ar' ? 'النظام — التحديثات' : 'System — Updates' }}</h1>
 @if(session('status'))<p class="success" role="status" data-testid="owner-update-action-result">{{ session('status') }}</p>@endif
+@if(session('code_update_history_warning'))
+<p class="error" role="alert" data-testid="owner-code-update-history-write-warning">{{ $locale === 'ar'
+    ? 'اكتمل تثبيت الكود والتحقق من صحته، لكن تعذّر تسجيل إيصال السجل الخاص. لا تعتبر السجل مكتملًا؛ راجع صلاحيات المسار الخاص وسجلات المشغّل.'
+    : 'Code installation and health verification completed, but the private history receipt could not be saved. The audit trail is incomplete; review private host permissions and operator logs.' }}</p>
+@endif
 <p>{{ $locale === 'ar'
     ? 'هذه الصفحة تميّز بين تحديث ملفات الموقع كاملة وبين ترحيلات قاعدة البيانات الموجودة بالفعل على الخادم.'
     : 'This page distinguishes full application code releases from migrations already checked into the deployed server.' }}</p>
@@ -352,6 +358,43 @@ button:disabled{background:#718096;cursor:not-allowed}
 <td><time datetime="{{ $receipt['created_at'] }}">{{ $receipt['created_at'] }}</time></td>
 <td><code>{{ $receipt['version'] }}</code></td>
 <td>{{ $receipt['files'] }}</td><td>{{ $receipt['tables'] }}</td><td>{{ $receipt['rows'] }}</td>
+</tr>
+@endforeach
+</tbody></table>
+</div>
+@endif
+</section>
+<section class="panel" aria-labelledby="code-update-history-title" data-testid="owner-code-update-history">
+<h3 id="code-update-history-title">{{ $locale === 'ar' ? 'سجل تحديثات الكود المكتملة' : 'Completed code update history' }}</h3>
+<p class="small">{{ $locale === 'ar'
+    ? 'يظهر فقط إيصال محلي حُفظ بعد نجاح التحديث الموقّع وفحص الصحة والاستعادة. لا يُعد السجل توقيعًا جديدًا من الناشر أو إذنًا لتحديث آخر، ولا يثبت صحة الموقع الحالية.'
+    : 'Local integrity-checked receipts are recorded only after a signed code update reports verified cutover, recovery and health. Historical entries are not fresh publisher signatures, authorization for another update, or current runtime health proof.' }}</p>
+@if($codeUpdateHistory['state'] === 'blocked')
+<p class="error" role="alert" data-testid="owner-code-update-history-blocked">{{ $locale === 'ar'
+    ? 'تعذّر التحقق من سجل تحديثات الكود الخاص. تم حجب بيانات السجل غير الموثوقة.'
+    : 'Private code update history failed integrity checks. Untrusted entries are hidden.' }}</p>
+@elseif($codeUpdateHistory['state'] === 'none')
+<p class="blocked" role="status" data-testid="owner-code-update-history-empty">{{ $locale === 'ar'
+    ? 'لا توجد إيصالات محفوظة لتحديثات كود مكتملة على هذه الاستضافة.'
+    : 'No completed code update receipts have been recorded on this host.' }}</p>
+@else
+<div class="migrations" role="region" aria-label="{{ $locale === 'ar' ? 'سجل تحديث الكود' : 'Code update receipts' }}" tabindex="0">
+<table data-testid="owner-code-update-history-table" style="width:100%;border-collapse:collapse;text-align:start">
+<thead><tr>
+<th scope="col">{{ $locale === 'ar' ? 'الوقت (UTC)' : 'Installed at (UTC)' }}</th>
+<th scope="col">{{ $locale === 'ar' ? 'من' : 'Previous' }}</th>
+<th scope="col">{{ $locale === 'ar' ? 'إلى' : 'Installed' }}</th>
+<th scope="col">{{ $locale === 'ar' ? 'Git SHA' : 'Git SHA' }}</th>
+<th scope="col">{{ $locale === 'ar' ? 'إيصال الاستعادة' : 'Recovery receipt' }}</th>
+</tr></thead>
+<tbody>
+@foreach($codeUpdateHistory['receipts'] as $receipt)
+<tr>
+<td><time datetime="{{ $receipt['created_at'] }}">{{ $receipt['created_at'] }}</time></td>
+<td><code>{{ $receipt['from'] }}</code></td>
+<td><code>{{ $receipt['version'] }}</code></td>
+<td><code>{{ $receipt['source_sha'] }}</code></td>
+<td><code>{{ substr($receipt['backup_id'], 0, 8) }}</code></td>
 </tr>
 @endforeach
 </tbody></table>
