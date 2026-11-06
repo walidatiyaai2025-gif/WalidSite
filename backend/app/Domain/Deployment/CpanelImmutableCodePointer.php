@@ -16,6 +16,9 @@ use Throwable;
  */
 final class CpanelImmutableCodePointer
 {
+    private ?CpanelVerifiedCodeRollback $issuedRollback = null;
+    private ?array $rollbackIdentity = null;
+
     /**
      * @param callable():bool $maintenanceReady
      * @param callable():bool $recoveryVerified
@@ -35,6 +38,11 @@ final class CpanelImmutableCodePointer
         callable $signedCandidateVerified,
         callable $healthCheck,
     ): array {
+        // Only a proof issued by THIS invocation may permit recovery. A
+        // callback can construct the exception class but cannot mint this
+        // private object identity or replace our original entrypoint pins.
+        $this->issuedRollback = null;
+        $this->rollbackIdentity = null;
         $home = realpath($homeDirectory);
         $candidate = realpath($candidateDirectory);
         $front = realpath($trustedFrontController);
@@ -85,12 +93,6 @@ final class CpanelImmutableCodePointer
             $this->assertPhysicalIdentityUnchanged(
                 $home, $candidate, $front, $version, $releaseIdentity,
             );
-            if ($maintenanceReady() !== true || $recoveryVerified() !== true
-                || $signedCandidateVerified() !== true) {
-                throw new DomainException('Code installation requires write isolation, signed release and restored backup.');
-            }
-            $this->assertLockIdentity($lock, $lockPath);
-
             $previous = $this->read($pointer, $home);
             $oldRoot = $previous === null ? $home : $home.'/'.$previous['root'];
             if (! is_dir($oldRoot) || is_link($oldRoot)
@@ -103,11 +105,23 @@ final class CpanelImmutableCodePointer
             (new CpanelReleaseMaintenance())->assertActive($home, $maintenanceToken, $previousRoot);
             $oldVersionFile = $oldRoot.'/application/VERSION';
             $oldVersionSnapshot = $this->readPinnedPhysicalFile($oldVersionFile, 32);
+            // Pin the complete previously running immutable release before
+            // any callback, backup, or provisional pointer switch. A version
+            // file alone cannot prove the old PHP tree remained intact.
+            $oldReleaseFingerprint = $previous === null
+                ? ''
+                : $this->releaseSeal($oldRoot);
             $oldVersion = trim($oldVersionSnapshot['bytes']);
             if (! preg_match('/\A(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\z/D', $oldVersion)
                 || version_compare($version, $oldVersion, '<=')) {
                 throw new DomainException('The signed release must be newer than installed code.');
             }
+
+            if ($maintenanceReady() !== true || $recoveryVerified() !== true
+                || $signedCandidateVerified() !== true) {
+                throw new DomainException('Code installation requires write isolation, signed release and restored backup.');
+            }
+            $this->assertLockIdentity($lock, $lockPath);
 
             // Migrations are not modified by a code-only update; database
             // rollback of arbitrary migrations is never assumed safe.
@@ -126,6 +140,9 @@ final class CpanelImmutableCodePointer
             if ($this->readPinnedPhysicalFile($oldVersionFile, 32)['fingerprint']
                 !== $oldVersionSnapshot['fingerprint']) {
                 throw new DomainException('Installed release version identity changed during update.');
+            }
+            if ($previous !== null && ! hash_equals($oldReleaseFingerprint, $this->releaseSeal($oldRoot))) {
+                throw new DomainException('Previous release code tree changed before cutover.');
             }
             // Preload only non-executable static assets before pointer switch.
             // Public name collisions with different bytes fail closed.
@@ -217,6 +234,37 @@ final class CpanelImmutableCodePointer
                     }
                 } else {
                     $this->replace($pointer, $previous);
+                    $proof = new CpanelVerifiedCodeRollback(
+                        $previous,
+                        $previous['root'],
+                        $oldVersion,
+                        $oldVersionSnapshot['fingerprint'],
+                        $oldReleaseFingerprint,
+                    );
+                    $this->issuedRollback = $proof;
+                    $this->rollbackIdentity = [
+                        'home' => $home,
+                        'token' => $maintenanceToken,
+                        'front' => $front,
+                        'entrypoints' => array_intersect_key($releaseIdentity, array_flip([
+                            'trusted_front', 'installed_front', 'installed_rewrite',
+                        ])),
+                    ];
+                    // Issue the recovery capability only after independently
+                    // re-reading the restored pointer and previous release
+                    // through pinned inodes while this pointer lock is held.
+                    try {
+                        $this->assertVerifiedRollback(
+                            $home, $oldRoot.'/application', $home.'/public_html',
+                            $front, $maintenanceToken, $proof,
+                        );
+                        $this->assertLockIdentity($lock, $lockPath);
+                    } catch (Throwable $rollbackFailure) {
+                        $this->issuedRollback = null;
+                        $this->rollbackIdentity = null;
+                        throw $rollbackFailure;
+                    }
+                    throw $proof;
                 }
                 throw new RuntimeException('New release health failed; old code pointer restored.', 0, $failure);
             }
@@ -225,6 +273,231 @@ final class CpanelImmutableCodePointer
             flock($lock, LOCK_UN);
             fclose($lock);
         }
+    }
+
+    /**
+     * Independently re-attest a chained previous release after a failed
+     * candidate health check. The caller must still hold the original
+     * exclusive HTTP writer lease; this method proves only the restored
+     * pointer/runtime identity, never authorizes a new update.
+     */
+    public function assertVerifiedRollback(
+        string $homeDirectory,
+        string $runningApplication,
+        string $publicDocumentRoot,
+        string $trustedFrontController,
+        string $maintenanceToken,
+        CpanelVerifiedCodeRollback $proof,
+    ): void {
+        if ($this->issuedRollback !== $proof || $this->rollbackIdentity === null
+            || $this->rollbackIdentity['home'] !== $homeDirectory
+            || $this->rollbackIdentity['token'] !== $maintenanceToken
+            || $this->rollbackIdentity['front'] !== $trustedFrontController) {
+            throw new DomainException('Rollback proof was not issued by this code switch.');
+        }
+        $home = realpath($homeDirectory);
+        $public = realpath($publicDocumentRoot);
+        $running = realpath($runningApplication);
+        if ($home === false || $home !== $homeDirectory
+            || $public !== $home.'/public_html'
+            || $running === false || $running !== $runningApplication
+            || is_link($homeDirectory) || is_link($publicDocumentRoot)
+            || is_link($runningApplication)
+            || $proof->previousRoot === 'legacy'
+            || ! preg_match(
+                '#\\A\\.walidsite-releases/v'.preg_quote($proof->previousVersion, '#').'-[a-f0-9]{40}\\z#D',
+                $proof->previousRoot,
+            )) {
+            throw new DomainException('Previous release identity is not safe to resume.');
+        }
+
+        (new CpanelReleaseMaintenance())->assertActive(
+            $home, $maintenanceToken, $proof->previousRoot,
+        );
+
+        $expectedPointer = [
+            'schema' => 1,
+            'version' => $proof->previousVersion,
+            'root' => $proof->previousRoot,
+        ];
+        $pointer = $this->read($home.'/.walidsite-active-release.json', $home);
+        if ($proof->previousPointer !== $expectedPointer || $pointer !== $expectedPointer) {
+            throw new DomainException('Restored release pointer does not match its verified rollback proof.');
+        }
+
+        $release = $home.'/'.$proof->previousRoot;
+        $application = $release.'/application';
+        $releasePublic = $release.'/public_html';
+        if (realpath($release) !== $release || is_link($release)
+            || realpath($application) !== $running || is_link($application)
+            || ! is_dir($releasePublic) || is_link($releasePublic)) {
+            throw new DomainException('Previous immutable release tree cannot be independently verified.');
+        }
+
+        $version = $this->readPinnedPhysicalFile($application.'/VERSION', 32);
+        if (trim($version['bytes']) !== $proof->previousVersion
+            || ! hash_equals($proof->previousVersionFingerprint, $version['fingerprint'])
+            || ! hash_equals($proof->previousReleaseFingerprint, $this->releaseSeal($release))) {
+            throw new DomainException('Previous release code tree changed during rollback.');
+        }
+
+        $trustedFront = $this->readPinnedPhysicalFile($trustedFrontController, 1048576);
+        $stableFront = $this->readPinnedPhysicalFile($public.'/index.php', 1048576);
+        $releaseFront = $this->readPinnedPhysicalFile($releasePublic.'/index.php', 1048576);
+        $stableRewrite = $this->readPinnedPhysicalFile($public.'/.htaccess', 1048576);
+        $releaseRewrite = $this->readPinnedPhysicalFile($releasePublic.'/.htaccess', 1048576);
+        foreach ([
+            'trusted_front' => $trustedFront,
+            'installed_front' => $stableFront,
+            'installed_rewrite' => $stableRewrite,
+        ] as $name => $entrypoint) {
+            if (! hash_equals($this->rollbackIdentity['entrypoints'][$name], $entrypoint['fingerprint'])) {
+                throw new DomainException('Original web entrypoint identity changed during rollback.');
+            }
+        }
+        foreach ([$stableFront, $releaseFront] as $front) {
+            if (! hash_equals(
+                hash('sha256', $trustedFront['bytes']),
+                hash('sha256', $front['bytes']),
+            )) {
+                throw new DomainException('Previous release stable front controller changed; recovery barrier remains.');
+            }
+        }
+        if (! hash_equals(
+            hash('sha256', $stableRewrite['bytes']),
+            hash('sha256', $releaseRewrite['bytes']),
+        )) {
+            throw new DomainException('Previous release rewrite entrypoint changed; recovery barrier remains.');
+        }
+
+        (new CpanelReleaseMaintenance())->assertActive(
+            $home, $maintenanceToken, $proof->previousRoot,
+        );
+    }
+
+    /**
+     * Deterministic, no-symlink/no-hardlink fingerprint of a complete
+     * immutable release tree. Each regular file is hashed through one pinned
+     * inode and rechecked after reading; directory and file modes are included.
+     */
+    private function releaseSeal(string $releaseRoot): string
+    {
+        $root = realpath($releaseRoot);
+        clearstatcache(true, $releaseRoot);
+        $rootStat = @lstat($releaseRoot);
+        if ($root === false || $root !== $releaseRoot || is_link($releaseRoot)
+            || ! is_array($rootStat) || ($rootStat['mode'] & 0170000) !== 0040000) {
+            throw new DomainException('Previous immutable release root cannot be sealed.');
+        }
+
+        $entries = [];
+        $directories = [];
+        $directoryFields = array_flip(['dev', 'ino', 'uid', 'gid', 'mode']);
+        $fileFields = array_flip(['dev', 'ino', 'uid', 'gid', 'mode', 'nlink', 'size', 'mtime', 'ctime']);
+        // Include the root AND its private release vault/home in the seal.
+        // Per-call checks alone would miss a chmod or replacement between
+        // the original baseline and a later rollback attestation.
+        foreach ([$root => 0077, dirname($root) => 0077, dirname(dirname($root)) => 0022] as $path => $forbidden) {
+            clearstatcache(true, $path);
+            $info = @lstat($path);
+            if (! is_array($info) || is_link($path) || realpath($path) !== $path
+                || ($info['mode'] & 0170000) !== 0040000
+                || $info['uid'] !== $rootStat['uid'] || ($info['mode'] & $forbidden) !== 0) {
+                throw new DomainException('Previous immutable release ancestry is unsafe.');
+            }
+            $directories[$path] = array_intersect_key($info, $directoryFields);
+            $entries[] = 'A'.chr(0).base64_encode($path).chr(0)
+                .json_encode($directories[$path], JSON_THROW_ON_ERROR);
+        }
+
+        $totalBytes = 0;
+        $iterator = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($root, \FilesystemIterator::SKIP_DOTS),
+            \RecursiveIteratorIterator::SELF_FIRST,
+        );
+        foreach ($iterator as $entry) {
+            $path = $entry->getPathname();
+            $relative = substr($path, strlen($root) + 1);
+            if (count($entries) >= 100000 || $relative === '' || str_contains($relative, "\0")
+                || str_starts_with($relative, '..'.DIRECTORY_SEPARATOR)
+                || is_link($path) || realpath($path) !== $path) {
+                throw new DomainException('Previous immutable release contains an unsafe or unbounded path.');
+            }
+            clearstatcache(true, $path);
+            $before = @lstat($path);
+            if (! is_array($before) || $before['uid'] !== $rootStat['uid']
+                || ($before['mode'] & 0022) !== 0) {
+                throw new DomainException('Previous immutable release inventory is unsafe.');
+            }
+            $type = $before['mode'] & 0170000;
+            if ($type === 0040000) {
+                if (! $entry->isDir()) {
+                    throw new DomainException('Previous immutable release directory changed.');
+                }
+                $directories[$path] = array_intersect_key($before, $directoryFields);
+                $entries[] = 'D'.chr(0).base64_encode($relative).chr(0)
+                    .json_encode($directories[$path], JSON_THROW_ON_ERROR);
+                continue;
+            }
+            if ($type !== 0100000 || ! $entry->isFile()
+                || ($before['nlink'] ?? 0) !== 1
+                || ! is_int($before['size']) || $before['size'] < 0
+                || ($totalBytes += $before['size']) > 1073741824) {
+                throw new DomainException('Previous immutable release contains a special or unbounded file.');
+            }
+            $identity = array_intersect_key($before, $fileFields);
+            $stream = @fopen($path, 'rb');
+            if ($stream === false) {
+                throw new DomainException('Previous immutable release file cannot be opened.');
+            }
+            try {
+                $opened = @fstat($stream);
+                if (! is_array($opened) || array_intersect_key($opened, $fileFields) !== $identity) {
+                    throw new DomainException('Previous immutable release file identity changed.');
+                }
+                $hash = hash_init('sha256');
+                $read = 0;
+                while (! feof($stream)) {
+                    $chunk = fread($stream, 1048576);
+                    if ($chunk === false) {
+                        throw new DomainException('Previous immutable release file read failed.');
+                    }
+                    if ($chunk === '') {
+                        break;
+                    }
+                    $read += strlen($chunk);
+                    if ($read > $before['size']) {
+                        throw new DomainException('Previous immutable release file grew while sealing.');
+                    }
+                    hash_update($hash, $chunk);
+                }
+                clearstatcache(true, $path);
+                $after = @fstat($stream);
+                $named = @lstat($path);
+                if (! is_array($after) || ! is_array($named)
+                    || $read !== $before['size'] || is_link($path) || realpath($path) !== $path
+                    || array_intersect_key($after, $fileFields) !== $identity
+                    || array_intersect_key($named, $fileFields) !== $identity) {
+                    throw new DomainException('Previous immutable release file changed while sealing.');
+                }
+                // Same-content replacements still change dev/ino/owner and
+                // must not inherit the previously pinned code's authority.
+                $entries[] = 'F'.chr(0).base64_encode($relative).chr(0)
+                    .json_encode($identity, JSON_THROW_ON_ERROR).chr(0).hash_final($hash);
+            } finally {
+                fclose($stream);
+            }
+        }
+        foreach ($directories as $directory => $identity) {
+            clearstatcache(true, $directory);
+            $after = @lstat($directory);
+            if (! is_array($after) || is_link($directory) || realpath($directory) !== $directory
+                || array_intersect_key($after, $directoryFields) !== $identity) {
+                throw new DomainException('Previous immutable release directory identity changed while sealing.');
+            }
+        }
+        sort($entries, SORT_STRING);
+        return hash('sha256', implode("\n", $entries));
     }
 
     /**
