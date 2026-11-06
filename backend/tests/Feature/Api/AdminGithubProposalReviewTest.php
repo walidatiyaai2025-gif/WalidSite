@@ -7,6 +7,7 @@ use App\Models\GithubAllowlistProposalEvent;
 use App\Models\Role;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Routing\Middleware\ThrottleRequests;
@@ -30,6 +31,7 @@ final class AdminGithubProposalReviewTest extends TestCase
     {
         // Sanctum/Illuminate guard may cache an earlier request user in a
         // multi-identity test; always re-resolve the bearer on each request.
+        Auth::forgetGuards();
         Auth::forgetGuards();
         $this->withToken($token);
         return $this;
@@ -95,6 +97,7 @@ final class AdminGithubProposalReviewTest extends TestCase
 
     public function test_proposals_reject_malformed_urls_traversal_and_extra_fields(): void
     {
+        $this->withoutMiddleware(\Illuminate\Routing\Middleware\ThrottleRequests::class);
         Http::fake();
         [, $token] = $this->identity('admin');
         foreach ([
