@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Domain\Deployment\CpanelArchiveCodeOnlyPreflight;
 use App\Domain\Deployment\CpanelPhysicalHostPreflight;
 use App\Domain\Deployment\CpanelTrustedCodeStager;
+use App\Domain\Deployment\TrustedReleaseArtifactDownloader;
 use App\Domain\Deployment\TrustedReleaseCatalog;
 use App\Domain\Deployment\TrustedInstalledVersion;
 use App\Domain\Deployment\TrustedOwnerUpdateInbox;
@@ -271,6 +272,63 @@ final class AdminUpdateController extends Controller
         return redirect()->route('admin.updates.index', [
             'lang' => $request->query('lang') === 'ar' ? 'ar' : 'en',
         ])->with('status', 'Signed update package verified. No code was installed or changed.');
+    }
+
+    /**
+     * Fresh publisher catalog -> authenticated HTTPS archive download ->
+     * private owner-bound ZIP receipt. Download is NOT code staging or Apply.
+     * Neither a stale browser discovery result nor user-supplied URL controls
+     * the package identity, the filesystem destination or the signing key.
+     */
+    public function downloadSigned(
+        Request $request,
+        TrustedOwnerUpdateInbox $inbox,
+        TrustedReleaseCatalog $catalog,
+        TrustedReleaseArtifactDownloader $downloader,
+    ): RedirectResponse {
+        $this->authorizeOwner($request);
+        $request->session()->forget([
+            'verified_owner_update_inbox',
+            'trusted_release_check',
+            'owner_update_host_preflight',
+            'owner_update_staged_code',
+        ]);
+        abort_unless(config('site.updates_enabled') === true, 403);
+        $input = $request->validate(['lang' => ['sometimes', 'in:en,ar']]);
+        if (array_diff(array_keys($request->query()), ['lang']) !== []
+            || array_diff(array_keys($request->request->all()), ['_token']) !== []) {
+            return back()->withErrors(['download' => 'Unexpected signed release download parameter.']);
+        }
+        $installed = $this->pinnedInstalledVersion();
+        if ($installed === null
+            || ! filled(config('site.trusted_release_origin'))
+            || ! filled(config('site.trusted_release_public_key'))) {
+            return back()->withErrors(['download' => 'Configure the installed version and approved publisher first.']);
+        }
+
+        try {
+            $verified = $inbox->downloadSigned(
+                $catalog, $downloader,
+                (string) config('site.trusted_release_origin'),
+                (string) config('site.trusted_release_public_key'),
+                $installed,
+                (string) $request->user()->getKey(),
+                storage_path('app/private/verified-updates'),
+                public_path(),
+            );
+        } catch (Throwable $error) {
+            \Illuminate\Support\Facades\Log::warning('admin.updates.publisher_download_blocked', [
+                'type' => $error::class,
+            ]);
+            return back()->withErrors([
+                'download' => 'Signed publisher download was rejected or interrupted. No code or database was changed.',
+            ]);
+        }
+
+        $request->session()->put('verified_owner_update_inbox', $verified['id']);
+        return redirect()->route('admin.updates.index', [
+            'lang' => ($input['lang'] ?? 'en') === 'ar' ? 'ar' : 'en',
+        ])->with('status', 'Publisher-signed ZIP downloaded and verified privately. No update was installed.');
     }
 
     /**
