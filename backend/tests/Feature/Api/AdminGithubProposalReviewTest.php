@@ -8,6 +8,8 @@ use App\Models\Role;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Routing\Middleware\ThrottleRequests;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Tests\TestCase;
@@ -15,6 +17,23 @@ use Tests\TestCase;
 final class AdminGithubProposalReviewTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        // Exercise all negative cases without consuming a shared test-IP quota.
+        // Real API routes keep their production throttling middleware.
+        $this->withoutMiddleware(ThrottleRequests::class);
+    }
+
+    private function asBearer(string $token): static
+    {
+        // Sanctum/Illuminate guard may cache an earlier request user in a
+        // multi-identity test; always re-resolve the bearer on each request.
+        Auth::forgetGuards();
+        $this->withToken($token);
+        return $this;
+    }
 
     private function identity(string $role): array
     {
@@ -49,10 +68,10 @@ final class AdminGithubProposalReviewTest extends TestCase
 
         $this->postJson($url, ['repository_slug' => 'Trusted/Repo'])->assertUnauthorized();
         [$reader, $readerToken] = $this->identity('reader');
-        $this->withToken($readerToken)->postJson($url,
+        $this->asBearer($readerToken)->postJson($url,
             ['repository_slug' => 'Trusted/Repo'])->assertForbidden();
 
-        $created = $this->withToken($token)->postJson($url,
+        $created = $this->asBearer($token)->postJson($url,
             ['repository_slug' => 'Trusted/Repo'])->assertCreated()
             ->assertJsonPath('data.repository_slug', 'trusted/repo')
             ->assertJsonPath('data.status', 'pending');
@@ -83,7 +102,7 @@ final class AdminGithubProposalReviewTest extends TestCase
             'owner/repo?token=private', 'owner/repo/extra',
             'owner/repo.', 'owner//repo', 'one', 'owner/..',
         ] as $value) {
-            $this->withToken($token)->postJson('/api/v1/admin/github/proposals',
+            $this->asBearer($token)->postJson('/api/v1/admin/github/proposals',
                 ['repository_slug' => $value])->assertUnprocessable();
         }
         $this->postJson('/api/v1/admin/github/proposals',
@@ -101,16 +120,16 @@ final class AdminGithubProposalReviewTest extends TestCase
         Http::fake(['api.github.com/repos/*' => Http::response(
             $this->githubPublic('trusted/repo'), 200,
         )]);
-        $created = $this->withToken($submitToken)
+        $created = $this->asBearer($submitToken)
             ->postJson('/api/v1/admin/github/proposals',
                 ['repository_slug' => 'Trusted/Repo'])->assertCreated();
         Http::assertNothingSent();
         $id = $created->json('data.id');
         $path = '/api/v1/admin/github/proposals/'.$id.'/decision';
-        $this->withToken($otherToken)->postJson($path,
+        $this->asBearer($otherToken)->postJson($path,
             ['decision' => 'approve'])->assertForbidden();
 
-        $this->withToken($ownerToken)->postJson($path,
+        $this->asBearer($ownerToken)->postJson($path,
             ['decision' => 'approve'])->assertOk()
             ->assertJsonPath('data.status', 'approved')
             ->assertJsonPath('data.repository_slug', 'trusted/repo');
@@ -136,13 +155,13 @@ final class AdminGithubProposalReviewTest extends TestCase
         [$owner, $ownerToken] = $this->identity('owner');
         [, $otherOwnerToken] = $this->identity('owner');
         Http::fake();
-        $id = $this->withToken($ownerToken)
+        $id = $this->asBearer($ownerToken)
             ->postJson('/api/v1/admin/github/proposals',
                 ['repository_slug' => 'example/public'])->assertCreated()
             ->json('data.id');
         $path = '/api/v1/admin/github/proposals/'.$id.'/decision';
         $this->postJson($path, ['decision' => 'approve'])->assertForbidden();
-        $this->withToken($otherOwnerToken)->postJson($path,
+        $this->asBearer($otherOwnerToken)->postJson($path,
             ['decision' => 'reject'])->assertOk()
             ->assertJsonPath('data.status', 'rejected')
             ->assertJsonPath('data.verified_at', null);
@@ -171,11 +190,11 @@ final class AdminGithubProposalReviewTest extends TestCase
         foreach ($cases as $index => [$status, $payload]) {
             Http::fake(['api.github.com/repos/*' => Http::response($payload, $status)]);
             $slug = 'trusted/repo-'.$index;
-            $id = $this->withToken($adminToken)
+            $id = $this->asBearer($adminToken)
                 ->postJson('/api/v1/admin/github/proposals',
                     ['repository_slug' => $slug])->assertCreated()
                 ->json('data.id');
-            $this->withToken($ownerToken)->postJson(
+            $this->asBearer($ownerToken)->postJson(
                 '/api/v1/admin/github/proposals/'.$id.'/decision',
                 ['decision' => 'approve'],
             )->assertStatus(in_array($status, [403, 429, 503], true) ? 503 : 409);
@@ -193,12 +212,12 @@ final class AdminGithubProposalReviewTest extends TestCase
         [, $adminToken] = $this->identity('admin');
         [, $ownerToken] = $this->identity('owner');
         Http::fake();
-        $id = $this->withToken($adminToken)->postJson(
+        $id = $this->asBearer($adminToken)->postJson(
             '/api/v1/admin/github/proposals',
             ['repository_slug' => 'safe/project'],
         )->assertCreated()->json('data.id');
         $path = '/api/v1/admin/github/proposals/'.$id.'/decision';
-        $this->withToken($ownerToken)->postJson($path, [
+        $this->asBearer($ownerToken)->postJson($path, [
             'decision' => 'reject', 'reason' => 'api_key=SECRET',
         ])->assertUnprocessable();
         $this->postJson($path, [
@@ -218,12 +237,12 @@ final class AdminGithubProposalReviewTest extends TestCase
     {
         [, $adminToken] = $this->identity('admin');
         [$owner, $ownerToken] = $this->identity('owner');
-        $id = $this->withToken($adminToken)->postJson(
+        $id = $this->asBearer($adminToken)->postJson(
             '/api/v1/admin/github/proposals', ['repository_slug' => 'demo/approved'],
         )->assertCreated()->json('data.id');
         $owner->roles()->detach();
         Http::fake();
-        $this->withToken($ownerToken)->postJson(
+        $this->asBearer($ownerToken)->postJson(
             '/api/v1/admin/github/proposals/'.$id.'/decision',
             ['decision' => 'approve'],
         )->assertForbidden();
