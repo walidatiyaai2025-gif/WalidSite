@@ -2306,7 +2306,11 @@ Route::get('/search', function (Request $request) {
     $totalPages = max(1, (int) ceil(max($articleTotal, $projectTotal) / $perPage));
     abort_if($page > $totalPages, 404);
 
-    return view('public.search', compact('search', 'articles', 'projects', 'type', 'page', 'totalPages'));
+    // Report totals counted AFTER publication/revocation checks, not only the
+    // current ten-row slice. Never cache revocable public search evidence.
+    return response()->view('public.search', compact('search', 'articles', 'projects',
+        'type', 'page', 'totalPages', 'articleTotal', 'projectTotal'))
+        ->header('Cache-Control', 'no-store');
 })->name('public.search')->middleware('throttle:60,1');
 
 
