@@ -8,6 +8,7 @@ use App\Domain\Deployment\CpanelTrustedCodeStager;
 use App\Domain\Deployment\TrustedReleaseArtifactDownloader;
 use App\Domain\Deployment\TrustedReleaseCatalog;
 use App\Domain\Deployment\TrustedInstalledVersion;
+use App\Domain\Deployment\TrustedInstalledReleasePin;
 use App\Domain\Deployment\TrustedOwnerUpdateInbox;
 use Illuminate\Http\UploadedFile;
 use App\Support\Deployment\SiteUpdater;
@@ -40,10 +41,12 @@ final class AdminUpdateController extends Controller
 
     private function pinnedInstalledVersion(): ?string
     {
-        $disk = $this->installedVersion();
-        $configured = config('site.trusted_installed_version');
-        return $disk !== null && is_string($configured) && hash_equals($disk, $configured)
-            ? $disk : null;
+        // The first-install environment pin remains unchanged. Subsequent
+        // signed releases are derived only from the running verified private
+        // cPanel pointer, not from an untrusted environment version claim.
+        return (new TrustedInstalledReleasePin())->read(
+            base_path(), public_path(), config('site.trusted_installed_version'),
+        );
     }
 
     /** Non-secret fingerprint to invalidate a previously verified flash result. */

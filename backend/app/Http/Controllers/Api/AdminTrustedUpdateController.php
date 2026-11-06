@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Domain\Deployment\TrustedReleaseCatalog;
 use App\Domain\Deployment\TrustedInstalledVersion;
+use App\Domain\Deployment\TrustedInstalledReleasePin;
 use App\Http\Controllers\Controller;
 use DomainException;
 use Illuminate\Http\JsonResponse;
@@ -58,7 +59,9 @@ final class AdminTrustedUpdateController extends Controller
         $lang = $query['lang'] ?? 'en';
 
         $deployed = $this->installedVersion();
-        $pinned = config('site.trusted_installed_version');
+        $pinned = (new TrustedInstalledReleasePin())->read(
+            base_path(), public_path(), config('site.trusted_installed_version'),
+        );
         $origin = config('site.trusted_release_origin');
         $publisher = config('site.trusted_release_public_key');
         $enabled = config('site.updates_enabled') === true;
