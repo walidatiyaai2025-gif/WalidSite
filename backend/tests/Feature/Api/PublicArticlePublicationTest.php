@@ -198,13 +198,13 @@ class PublicArticlePublicationTest extends TestCase
         $article->categories()->attach($safe);
 
         foreach ([
-            ['slug' => 'label-with-newline', 'name_en' => "Ops\\nPrivate",
+            ['slug' => 'label-with-newline', 'name_en' => "Ops\nPrivate",
                 'name_ar' => 'اسم عام'],
-            ['slug' => 'label-with-bidi', 'name_en' => "Ops\\u{202E}hidden",
+            ['slug' => 'label-with-bidi', 'name_en' => "Ops\u{202E}hidden",
                 'name_ar' => 'اسم عام'],
             ['slug' => 'arabic-with-isolate', 'name_en' => 'Safe title',
-                'name_ar' => "عنوان\\u{2066}مخفي"],
-            ['slug' => 'label-with-delete', 'name_en' => "Title\\x7f",
+                'name_ar' => "عنوان\u{2066}مخفي"],
+            ['slug' => 'label-with-delete', 'name_en' => "Title\x7f",
                 'name_ar' => 'اسم عام'],
         ] as $unsafe) {
             $article->categories()->attach(Category::create($unsafe));
