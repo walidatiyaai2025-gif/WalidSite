@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:waleed_tech_companion/account/account_journey.dart';
+import 'package:waleed_tech_companion/ai/ai_troubleshooter.dart';
 import 'package:waleed_tech_companion/articles/verified_articles.dart';
 
 const articleId = '00000000-0000-4000-8000-000000000077';
@@ -335,6 +336,40 @@ void main() {
         throwsA(isA<TimeoutException>()),
       );
       expect(checks, 1);
+    }
+  });
+
+  test('unclear 200 receipt and expired account Saved session require re-login', () async {
+    for (final status in [401, 403]) {
+      var checks = 0;
+      await expectLater(
+        MobileAccountClient.verifyOrReconcileArticleSave(
+          '{"data":{"saved":true}}', 'expired-bearer', articleId,
+          (bearer, arabic, page) async {
+            expect(bearer, 'expired-bearer');
+            expect(page, 1);
+            checks++;
+            throw MobileAiHttpException(status);
+          },
+        ),
+        throwsA(isA<ArticleSaveAuthorizationException>()),
+      );
+      expect(checks, 1, reason: 'Do not re-fetch or retry an expired session');
+    }
+
+    for (final error in [429, 500, 503]) {
+      var checks = 0;
+      await expectLater(
+        MobileAccountClient.verifyOrReconcileArticleSave(
+          '{"data":{"saved":false}}', 'same-account-only', articleId,
+          (_, __, ___) async {
+            checks++;
+            throw MobileAiHttpException(error);
+          },
+        ),
+        throwsA(isA<TimeoutException>()),
+      );
+      expect(checks, 1, reason: 'Never turn a failed Saved read into success');
     }
   });
 
