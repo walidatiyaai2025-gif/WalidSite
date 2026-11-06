@@ -242,6 +242,34 @@ class StagingSmokeTest(unittest.TestCase):
                 self.assertEqual([x["path"] for x in report["checks"] if not x["passed"]],
                                  ["/api/v1/public/home"])
 
+    def test_deeply_nested_public_json_fails_closed_without_losing_receipt(self):
+        # Valid-sized JSON can still exceed the Python decoder recursion
+        # budget. The read-only staging audit must return a normal failed
+        # check instead of an uncaught worker exception or traceback.
+        # A 12,000-deep payload also exceeds runners with raised limits.
+        secret = "PRIVATE_MARKER_NEVER_REPORT"
+        hostile = (b"[" * 12000 + json.dumps(secret).encode("utf-8")
+                   + b"]" * 12000)
+        self.assertLess(len(hostile), 1024 * 1024)
+        fake = FakeOpener({
+            "/api/v1/public/home": (200, "json", hostile),
+        })
+        report = permitted_run("https://staging.example.com", fake)
+        self.assertFalse(report["http_smoke_passed"])
+        failures = [row for row in report["checks"] if not row["passed"]]
+        self.assertEqual(
+            [(row["path"], row["reason"]) for row in failures],
+            [("/api/v1/public/home", "invalid_json_response")],
+        )
+        self.assertEqual(len(report["checks"]), len(CHECKS))
+        self.assertFalse(report["production_ready"])
+        self.assertNotIn(secret, json.dumps(report))
+        self.assertTrue(all(response.closed for response in fake.responses))
+        # A rejected hostile response must not poison later valid probes.
+        self.assertTrue(permitted_run(
+            "https://staging.example.com", FakeOpener(),
+        )["http_smoke_passed"])
+
     def test_json_body_drip_is_stopped_by_wall_clock_budget(self):
         """One byte at a time cannot keep the release smoke hung forever."""
         clock = [0.0]
