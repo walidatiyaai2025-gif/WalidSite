@@ -425,6 +425,15 @@ class ReleaseAndroidQaAttachmentTest(unittest.TestCase):
         self.assertIn("verify-source-pinned-release-bundle:", ci)
         self.assertIn("needs: [required-ci-gate, build-cpanel-package, build-android-qa-apk]", ci)
         self.assertIn("WalidSite-UNPUBLISHED-release-train-${{ github.sha }}", ci)
+        self.assertIn(
+            "name: WalidSite-UNPUBLISHED-release-train-"
+            "${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}",
+            ci,
+        )
+        self.assertIn(
+            "ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}",
+            ci,
+        )
         self.assertIn("WalidSite-Android-debug-QA-${{ github.sha }}", ci)
         self.assertIn("--candidates dist/source-proof/release/release-train", ci)
         self.assertIn("WalidSite-UNPUBLISHED-unified-build-proof-", ci)
