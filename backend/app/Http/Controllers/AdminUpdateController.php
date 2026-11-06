@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Domain\Deployment\CpanelArchiveCodeOnlyPreflight;
+use App\Domain\Deployment\CpanelOwnerRecoveryHistory;
 use App\Domain\Deployment\CpanelPhysicalHostPreflight;
 use App\Domain\Deployment\CpanelTrustedCodeStager;
 use App\Domain\Deployment\TrustedReleaseArtifactDownloader;
@@ -163,8 +164,9 @@ final class AdminUpdateController extends Controller
             $request->session()->forget('owner_update_staged_code');
         }
 
+        $recoveryHistory = app(CpanelOwnerRecoveryHistory::class)->inspect(dirname(public_path()));
         return view('admin.updates.index', compact('status', 'installedVersion',
-            'verifiedUpload', 'hostPreflight', 'stagedCode'));
+            'verifiedUpload', 'hostPreflight', 'stagedCode', 'recoveryHistory'));
     }
 
     /**
