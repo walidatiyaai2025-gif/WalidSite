@@ -242,6 +242,44 @@ class StagingSmokeTest(unittest.TestCase):
                 self.assertEqual([x["path"] for x in report["checks"] if not x["passed"]],
                                  ["/api/v1/public/home"])
 
+    def test_ambiguous_or_nonfinite_public_json_fails_closed(self):
+        # urllib smoke must use strict JSON semantics: last-key-wins and
+        # non-standard NaN/Infinity can otherwise yield a false PASS.
+        cases = {
+            "duplicate_top_level": b'{"data":[],"data":{"ok":true}}',
+            "escaped_duplicate": b'{"\\u0064ata":[],"data":{"ok":true}}',
+            "duplicate_nested": b'{"data":{"status":0,"status":1}}',
+            "nonfinite_nan": b'{"data":{"ratio":NaN}}',
+            "nonfinite_infinity": b'{"data":{"ratio":Infinity}}',
+            "nonfinite_negative": b'{"data":{"ratio":-Infinity}}',
+        }
+        for name, payload in cases.items():
+            with self.subTest(name=name):
+                fake = FakeOpener({
+                    "/api/v1/public/home": (200, "json", payload),
+                })
+                report = permitted_run("https://staging.example.com", fake)
+                self.assertFalse(report["http_smoke_passed"])
+                self.assertEqual(
+                    [(x["path"], x["reason"]) for x in report["checks"]
+                     if not x["passed"]],
+                    [("/api/v1/public/home", "invalid_json_response")],
+                )
+                self.assertEqual(len(report["checks"]), len(CHECKS))
+                self.assertFalse(report["production_ready"])
+                self.assertTrue(all(x.closed for x in fake.responses))
+                self.assertNotIn(payload.decode("utf-8"), json.dumps(report))
+
+        # Duplicate-free nested JSON remains a valid staging response.
+        clean = FakeOpener({
+            "/api/v1/public/home": (
+                200, "json", b'{"data":{"status":"healthy","ratio":0.5}}',
+            ),
+        })
+        self.assertTrue(permitted_run(
+            "https://staging.example.com", clean,
+        )["http_smoke_passed"])
+
     def test_deeply_nested_public_json_fails_closed_without_losing_receipt(self):
         # Valid-sized JSON can still exceed the Python decoder recursion
         # budget. The read-only staging audit must return a normal failed
