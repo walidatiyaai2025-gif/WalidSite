@@ -266,6 +266,57 @@ class StagingSmokeTest(unittest.TestCase):
                     )
                     self.assertTrue(all(x.closed for x in fake.responses))
 
+    def test_repeated_or_ambiguous_mime_headers_fail_without_reading_body(self):
+        from email.message import Message
+
+        class HeaderOpener(FakeOpener):
+            def __init__(self, values, path):
+                super().__init__()
+                self.values = values
+                self.path = path
+
+            def open(self, request, timeout):
+                response = super().open(request, timeout)
+                if request.full_url.endswith(self.path):
+                    headers = Message()
+                    for value in self.values:
+                        headers["Content-Type"] = value
+                    response.headers = headers
+                return response
+
+        for path, valid, invalid in (
+            ("/up", ["text/html; charset=UTF-8"],
+             [["text/html", "text/html"],
+              ["text/html", "application/json"],
+              ["text/html, application/json"],
+              ["text/html; charset=UTF-8; CHARSET=ASCII"],
+              ["text/html; charset="],
+              ["text/html; charset=UTF-8\\nX-Injected: yes"]]),
+            ("/api/v1/public/home", ["application/json; charset=\"utf-8\""],
+             [["application/json", "application/json"],
+              ["application/json", "text/html"],
+              ["application/json, text/html"],
+              ["application/json; charset=UTF-8; charset=ASCII"],
+              ["application/json; charset="],
+              ["application/json; charset=UTF-8\\rX-Injected: yes"]]),
+        ):
+            fake = HeaderOpener(valid, path)
+            self.assertTrue(permitted_run(
+                "https://staging.example.com", fake)["http_smoke_passed"])
+            self.assertTrue(all(response.closed for response in fake.responses))
+            for values in invalid:
+                with self.subTest(path=path, values=values):
+                    fake = HeaderOpener(values, path)
+                    receipt = permitted_run("https://staging.example.com", fake)
+                    self.assertFalse(receipt["http_smoke_passed"])
+                    self.assertEqual(
+                        [(item["path"], item["reason"]) for item in
+                         receipt["checks"] if not item["passed"]],
+                        [(path, "non_html_response" if path == "/up"
+                          else "non_json_response")],
+                    )
+                    self.assertTrue(all(response.closed for response in fake.responses))
+
     def test_public_json_payloads_must_have_matching_data_shape(self):
         for override in [
             (200, "html", b'<html></html>'),
