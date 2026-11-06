@@ -103,6 +103,14 @@ def run(package: Path, source_sha: str) -> dict:
                 check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                 timeout=10,
             )
+            modules = subprocess.run(
+                ["apache2", "-M", "-f", str(configuration)], check=True,
+                capture_output=True, text=True, timeout=10,
+            ).stdout
+            if any(name not in modules for name in (
+                    "php_module", "ssl_module", "rewrite_module",
+                    "mpm_prefork_module")):
+                raise AcceptanceError("Apache TLS/PHP modules are unavailable")
         except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
             raise AcceptanceError("Disposable Apache TLS setup failed") from None
 
