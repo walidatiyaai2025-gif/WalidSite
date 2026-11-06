@@ -3,6 +3,8 @@
 @php($trustedCheck = session('trusted_release_check'))
 @php($trustedState = is_array($trustedCheck) ? ($trustedCheck['state'] ?? null) : null)
 @php($signedCandidateVerified = $trustedState === 'signed_release_available')
+@php($releaseNotes = $verifiedUpload ? ($verifiedUpload['release_notes'] ?? null) : ($signedCandidateVerified ? ($trustedCheck['release_notes'] ?? null) : null))
+@php($releaseNotesVersion = $verifiedUpload ? $verifiedUpload['version'] : ($signedCandidateVerified ? $trustedCheck['version'] : null))
 @php($identifiedRelease = $releaseRef !== '' && $releaseRef !== 'unidentified')
 <!doctype html>
 <html lang="{{ $locale }}" dir="{{ $locale === 'ar' ? 'rtl' : 'ltr' }}">
@@ -52,7 +54,7 @@ button:disabled{background:#718096;cursor:not-allowed}
 <div><dt>{{ $locale === 'ar' ? 'معرّف الإصدار الموجود' : 'Configured deployed release' }}</dt>
 <dd><code>{{ $identifiedRelease ? $releaseRef : ($locale === 'ar' ? 'غير محدد' : 'Unidentified') }}</code></dd></div>
 <div><dt>{{ $locale === 'ar' ? 'الإصدار المتاح' : 'Available version' }}</dt>
-<dd>{{ $signedCandidateVerified ? $trustedCheck['version'] : ($locale === 'ar' ? 'غير متحقق منه' : 'Not verified') }}</dd></div>
+<dd data-testid="latest-verified-package-version">{{ $releaseNotesVersion ?? ($locale === 'ar' ? 'غير متحقق منه' : 'Not verified') }}</dd></div>
 <div><dt>{{ $locale === 'ar' ? 'النسخة الاحتياطية' : 'Backup status' }}</dt>
 <dd data-testid="owner-backup-status">
 @if($recoveryHistory['state'] === 'blocked')
@@ -76,6 +78,21 @@ button:disabled{background:#718096;cursor:not-allowed}
 @endif
 </dd></div>
 </dl>
+
+@if($releaseNotesVersion !== null)
+<section class="panel" aria-labelledby="signed-release-notes-title" data-testid="publisher-signed-release-notes">
+<h2 id="signed-release-notes-title">{{ $locale === 'ar' ? 'ملاحظات الإصدار الموقّع' : 'Publisher-signed release notes' }}</h2>
+<p class="small">{{ $locale === 'ar' ? 'الإصدار المستهدف:' : 'Target version:' }} <code>{{ $releaseNotesVersion }}</code></p>
+@if(is_string($releaseNotes))
+<p data-testid="verified-release-notes-content" style="white-space:pre-wrap;overflow-wrap:anywhere">{{ $releaseNotes }}</p>
+@else
+<p class="small" data-testid="signed-release-notes-not-provided">{{ $locale === 'ar' ? 'لم يرفق الناشر ملاحظات موقّعة لهذا الإصدار.' : 'The publisher did not supply signed release notes for this version.' }}</p>
+@endif
+<p class="small">{{ $locale === 'ar'
+    ? 'هذه الملاحظات جزء من بيان الناشر الذي تم التحقق من توقيعه. عرضها لا يعني تثبيت التحديث أو نجاح الاستعادة.'
+    : 'These notes come only from verified publisher metadata. Displaying them does not install code or attest backup/recovery.' }}</p>
+</section>
+@endif
 
 <section class="panel" aria-labelledby="code-updates-title">
 <h2 id="code-updates-title">{{ $locale === 'ar' ? 'تحديث ملفات الموقع كاملة' : 'Complete application code update' }}</h2>

@@ -16,7 +16,7 @@ final class TrustedReleaseMetadata
     private const MAX_ARTIFACT_BYTES = 1073741824;
 
     /**
-     * @return array{product:string,version:string,source_sha:string,artifact_sha256:string,artifact_size:int,min_php:string,artifact_url:string}
+     * @return array{product:string,version:string,source_sha:string,artifact_sha256:string,artifact_size:int,min_php:string,artifact_url:string,release_notes?:string}
      */
     public function verify(
         string $envelopeJson,
@@ -42,9 +42,19 @@ final class TrustedReleaseMetadata
         }
 
         $metadata = $this->decodeObject($payload);
-        $this->requireKeys($metadata, [
+        $required = [
             'product', 'version', 'source_sha', 'artifact_sha256', 'artifact_size', 'min_php', 'artifact_file',
-        ]);
+        ];
+        // Older publisher envelopes without notes remain valid. New notes
+        // MUST be part of the exact Ed25519-signed payload, never a sidecar.
+        $hasNotes = array_key_exists('release_notes', $metadata);
+        if ($hasNotes) {
+            $required[] = 'release_notes';
+        }
+        $this->requireKeys($metadata, $required);
+        if ($hasNotes && ! self::validReleaseNotes($metadata['release_notes'])) {
+            throw new DomainException('Invalid publisher-signed release notes.');
+        }
 
         foreach (['product', 'version', 'source_sha', 'artifact_sha256', 'min_php', 'artifact_file'] as $field) {
             if (! is_string($metadata[$field])) {
@@ -85,7 +95,7 @@ final class TrustedReleaseMetadata
         // unsafe hostnames, even if an envelope has a valid signature.
         self::assertPinnedHttpsOrigin($approvedOrigin);
 
-        return [
+        $verified = [
             'product' => $metadata['product'],
             'version' => $metadata['version'],
             'source_sha' => $metadata['source_sha'],
@@ -94,6 +104,23 @@ final class TrustedReleaseMetadata
             'min_php' => $metadata['min_php'],
             'artifact_url' => $approvedOrigin.'/releases/'.$filename,
         ];
+        if ($hasNotes) {
+            $verified['release_notes'] = $metadata['release_notes'];
+        }
+
+        return $verified;
+    }
+
+    /**
+     * Plain UTF-8 text only: newline is allowed for changelogs, but terminal
+     * controls and bidi overrides/isolates must never be rendered as signed
+     * metadata. Views still HTML-escape every character, including markup.
+     */
+    public static function validReleaseNotes(mixed $notes): bool
+    {
+        return is_string($notes) && strlen($notes) >= 1 && strlen($notes) <= 2048
+            && preg_match('//u', $notes) === 1
+            && preg_match('/[\\x00-\\x09\\x0B-\\x1F\\x7F\\x{202A}-\\x{202E}\\x{2066}-\\x{2069}]/u', $notes) === 0;
     }
 
     /**

@@ -92,6 +92,7 @@ final class AdminSignedUpdateDownloadTest extends TestCase
             'artifact_size' => strlen($bytes),
             'min_php' => '8.3.0',
             'artifact_file' => 'WalidSite-update-v'.$version.'.zip',
+            'release_notes' => "Security and recovery improvements\n<script>alert(1)</script>",
         ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
         $envelope = json_encode([
             'payload' => base64_encode($payload),
@@ -138,6 +139,10 @@ final class AdminSignedUpdateDownloadTest extends TestCase
         $this->get('https://localhost/admin/updates?lang=ar')->assertOk()
             ->assertSee('data-testid="owner-publisher-download-form"', false)
             ->assertSee('data-testid="download-publisher-signed-update"', false)
+            ->assertSee('data-testid="publisher-signed-release-notes"', false)
+            ->assertSee('Security and recovery improvements')
+            ->assertSee('&lt;script&gt;alert(1)&lt;/script&gt;', false)
+            ->assertDontSee('<script>alert(1)</script>', false)
             ->assertDontSee($fixture['public']);
 
         $this->post('https://localhost/admin/updates/fetch-signed?lang=ar')
@@ -153,6 +158,7 @@ final class AdminSignedUpdateDownloadTest extends TestCase
             trim(file_get_contents(base_path('VERSION'))),
         );
         self::assertSame($fixture['version'], $verified['version']);
+        self::assertSame("Security and recovery improvements\n<script>alert(1)</script>", $verified['release_notes']);
         self::assertSame($fixture['bytes'], file_get_contents($verified['archive']));
         self::assertSame(7, $verified['files']);
         self::assertTrue(str_starts_with($verified['directory'], storage_path('app/private/')));
@@ -161,6 +167,12 @@ final class AdminSignedUpdateDownloadTest extends TestCase
         $this->get('https://localhost/admin/updates?lang=ar')->assertOk()
             ->assertSee('data-testid="owner-signed-upload-verified"', false)
             ->assertSee('data-testid="owner-host-preflight-form"', false)
+            ->assertSee('data-testid="publisher-signed-release-notes"', false)
+            ->assertSee('data-testid="latest-verified-package-version"', false)
+            ->assertSee($fixture['version'])
+            ->assertSee('Security and recovery improvements')
+            ->assertSee('&lt;script&gt;alert(1)&lt;/script&gt;', false)
+            ->assertDontSee('<script>alert(1)</script>', false)
             ->assertDontSee('data-testid="owner-code-staged-not-installed"', false)
             ->assertDontSee($fixture['public']);
         // The test checkout is NOT a real sibling-directory cPanel host.

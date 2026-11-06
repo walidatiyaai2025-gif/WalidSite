@@ -218,6 +218,12 @@ final class AdminUpdateController extends Controller
                         'source_sha' => $release['source_sha'],
                         'artifact_sha256' => $release['artifact_sha256'],
                     ];
+                    // Release notes are never browser inputs or an unsigned
+                    // document. The catalog verifier authenticates them under
+                    // the same publisher key/version/source/short-lived flash.
+                    if (isset($release['release_notes'])) {
+                        $state['release_notes'] = $release['release_notes'];
+                    }
                 } catch (Throwable $exception) {
                     // The transport error may contain private hostnames or
                     // paths; never echo it, the untrusted feed or signing key.

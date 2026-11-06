@@ -40,6 +40,17 @@ $keys = ['product','version','source_sha','artifact_sha256','artifact_size','min
 if (! is_array($meta) || array_is_list($meta)) {
     failClosed();
 }
+// Optional descriptive notes are authenticated ONLY as part of the exact
+// Ed25519-signed payload. Keep historical seven-field publisher inputs valid.
+if (array_key_exists('release_notes', $meta)) {
+    $keys[] = 'release_notes';
+    $notes = $meta['release_notes'];
+    if (! is_string($notes) || strlen($notes) < 1 || strlen($notes) > 2048
+        || preg_match('//u', $notes) !== 1
+        || preg_match('/[\\x00-\\x09\\x0B-\\x1F\\x7F\\x{202A}-\\x{202E}\\x{2066}-\\x{2069}]/u', $notes) !== 0) {
+        failClosed();
+    }
+}
 $actual = array_keys($meta);
 sort($actual);
 sort($keys);
