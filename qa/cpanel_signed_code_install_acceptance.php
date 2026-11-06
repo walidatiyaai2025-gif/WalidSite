@@ -100,7 +100,7 @@ try {
             $payload, sodium_crypto_sign_secretkey($keys))),
     ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
 
-    foreach (['ok', 'rejected-health'] as $mode) {
+    foreach (['ok', 'rejected-health', 'late-populated-restore'] as $mode) {
         $home = $base.'/'.$mode;
         mkdir($home, 0700);
         unpackCodeFixture($setup, $home);
@@ -136,13 +136,29 @@ try {
         $live->exec('CREATE TABLE owner_records (id INT PRIMARY KEY, note VARCHAR(50)) ENGINE=InnoDB');
         $live->exec("INSERT INTO owner_records VALUES (1,'PRESERVE_ROW'),(2,'RECOVERY_CHECK')");
 
-        $host = new class($home, $mode === 'ok', $version, $sha, $restore)
+        $host = new class($home, $mode === 'ok', $version, $sha, $restore,
+            $mode === 'late-populated-restore')
             implements CpanelOwnerCodeUpdateHost {
             public int $probes = 0;
+            public int $isolationChecks = 0;
             public function __construct(private string $home,
                 private bool $healthy, private string $version,
-                private string $sha, private PDO $db) {}
-            public function externalWritersStopped(): bool { return true; }
+                private string $sha, private PDO $db,
+                private bool $populateAfterPreflight) {}
+            public function externalWritersStopped(): bool
+            {
+                ++$this->isolationChecks;
+                // First call precedes the initial database guard. A second
+                // host check occurs after exclusive lease acquisition; use
+                // this fixture to poison the recovery database during the
+                // intervening signature and staging checks.
+                if ($this->populateAfterPreflight && $this->isolationChecks === 2) {
+                    $this->db->exec(
+                        'CREATE TABLE unexpected_owner_data (id INT PRIMARY KEY) ENGINE=InnoDB'
+                    );
+                }
+                return true;
+            }
             public function disposableRestoreConnection(): PDO { return $this->db; }
             public function probeNewRelease(string $token, string $version, string $sha): bool
             {
@@ -169,14 +185,30 @@ try {
                 throw new RuntimeException('Unverified source or update was accepted.');
             }
         } catch (Throwable $error) {
-            if ($mode !== 'rejected-health'
-                || !str_contains($error->getMessage(), 'old code pointer restored')) {
+            $expectedFailure = $mode === 'rejected-health'
+                ? 'old code pointer restored'
+                : ($mode === 'late-populated-restore'
+                    ? 'Disposable recovery target is not empty.'
+                    : null);
+            if ($expectedFailure === null
+                || !str_contains($error->getMessage(), $expectedFailure)) {
                 throw $error;
             }
             $rejected = true;
         } finally { $lease->end(); }
 
-        if (($mode === 'rejected-health') !== $rejected || $host->probes !== 1
+        if ($mode === 'late-populated-restore') {
+            if (!$rejected || $host->probes !== 0
+                || $host->isolationChecks !== 2
+                || is_file($home.'/.walidsite-active-release.json')
+                || is_file($home.'/.walidsite-update-maintenance.json')
+                || is_dir($home.'/.walidsite-backups')
+                || (int) $restore->query(
+                    "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE()"
+                )->fetchColumn() !== 1) {
+                throw new RuntimeException('Late-populated recovery schema was not blocked pre-backup.');
+            }
+        } elseif (($mode === 'rejected-health') !== $rejected || $host->probes !== 1
             || file_get_contents($app.'/.env') !== "APP_KEY=base64:DISPOSABLE_CI_ONLY\n"
             || file_get_contents($app.'/storage/app/owner.txt') !== 'KEEP_OWNER'
             || file_get_contents($public.'/uploads/avatar.png') !== 'KEEP_UPLOAD'
@@ -195,6 +227,7 @@ try {
         'signed_code_cutover_fixture' => true,
         'disposable_mariadb_restore' => true,
         'failed_health_pointer_reverted' => true,
+        'late_populated_restore_blocked' => true,
         'real_https_host_verified' => false,
         'independent_foreign_writer_isolation' => false,
         'publisher_signature_verified_for_production' => false,
