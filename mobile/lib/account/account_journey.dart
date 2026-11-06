@@ -267,10 +267,27 @@ class MobileAccountClient {
     try {
       verifyArticleSaved(raw, articleId);
     } on FormatException {
-      final confirmed = await confirmArticleInSavedList(
-        bearer, articleId, readSaved,
-      );
-      if (!confirmed) {
+      try {
+        final confirmed = await confirmArticleInSavedList(
+          bearer, articleId, readSaved,
+        );
+        if (!confirmed) {
+          throw TimeoutException('Article Save acknowledgement is unverified');
+        }
+      } on MobileAiHttpException catch (error) {
+        // Reconciliation reads the same bearer-scoped Saved list. A revoked
+        // session must not be treated as a transient retryable Save failure.
+        if (error.statusCode == 401 || error.statusCode == 403) {
+          throw const ArticleSaveAuthorizationException();
+        }
+        throw TimeoutException('Article Save acknowledgement is unverified');
+      } on ArticleSaveAuthorizationException {
+        rethrow;
+      } on TimeoutException {
+        rethrow;
+      } catch (_) {
+        // Incomplete, offline or malformed Saved data proves nothing. Never
+        // expose transport details or retry the possibly committed POST.
         throw TimeoutException('Article Save acknowledgement is unverified');
       }
     }
