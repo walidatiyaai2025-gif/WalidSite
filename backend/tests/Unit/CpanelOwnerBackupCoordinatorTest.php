@@ -169,6 +169,47 @@ final class CpanelOwnerBackupCoordinatorTest extends TestCase
         $this->assertOwnerDataPreserved();
     }
 
+    public function test_backup_now_rejects_untrusted_disposable_pdo_before_maintenance_or_snapshot(): void
+    {
+        // Code install already validates the actual PDOs. The independent
+        // Backup Now entrypoint must not create a maintenance marker or
+        // recovery vault before rejecting identical/unsupported databases.
+        $app = $this->home.'/application';
+        $source = new PDO('sqlite::memory:');
+        foreach ([
+            ['target' => $source, 'message' => 'Production PDO cannot be used for recovery.'],
+            ['target' => new PDO('sqlite::memory:'),
+                'message' => 'MariaDB connections are required for recovery.'],
+        ] as $scenario) {
+            $hostChecks = 0;
+            try {
+                (new CpanelOwnerBackupCoordinator())->prove(
+                    $source, $scenario['target'],
+                    $app.'/.env',
+                    $app.'/storage/app',
+                    $this->home.'/public_html/uploads',
+                    $app,
+                    $this->home.'/public_html',
+                    $this->home.'/.walidsite-backups',
+                    $this->home.'/.walidsite-restore-drills',
+                    '0.1.2', 'legacy',
+                    static function () use (&$hostChecks): bool {
+                        ++$hostChecks;
+                        return true;
+                    },
+                );
+                self::fail('Backup Now accepted an unsafe restore connection.');
+            } catch (DomainException $error) {
+                self::assertStringContainsString($scenario['message'], $error->getMessage());
+            }
+            self::assertSame(2, $hostChecks, 'PDO identity check must follow exclusive writer isolation.');
+            self::assertFileDoesNotExist($this->home.'/.walidsite-update-maintenance.json');
+            self::assertDirectoryDoesNotExist($this->home.'/.walidsite-backups');
+            self::assertDirectoryDoesNotExist($this->home.'/.walidsite-restore-drills');
+            $this->assertOwnerDataPreserved();
+        }
+    }
+
     public function test_failed_disposable_database_restore_clears_unchanged_code_barrier(): void
     {
         // SQLite is deliberately NOT an acceptable MariaDB backup source.
