@@ -642,6 +642,9 @@ jobs:
           assert proof["disposable_mariadb_restore"] is True
           assert proof["failed_health_pointer_reverted"] is True
           assert proof["late_populated_restore_blocked"] is True
+          assert proof["chained_code_only_fixture_tested"] is True
+          assert proof["chained_health_failure_previous_pointer_restored"] is True
+          assert proof["chained_fixture_source_sha_not_git_attested"] is True
           assert proof["real_https_host_verified"] is False
           assert proof["independent_foreign_writer_isolation"] is False
           assert proof["publisher_signature_verified_for_production"] is False

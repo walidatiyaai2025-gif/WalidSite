@@ -79,6 +79,47 @@ function codeDb(string $name, string $pass): PDO
     return new PDO('mysql:host=127.0.0.1;port=3306;dbname='.$name.';charset=utf8mb4',
         'root', $pass, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
 }
+/** Second version exists ONLY inside disposable CI, not a published release. */
+function synthesizeSecondSignedCodeZip(string $previous, string $target, string $nextVersion): void
+{
+    $source = new ZipArchive();
+    if ($source->open($previous, ZipArchive::RDONLY | ZipArchive::CHECKCONS) !== true)
+        throw new RuntimeException('Cannot inspect first actual update ZIP.');
+    $dest = new ZipArchive();
+    if ($dest->open($target, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
+        $source->close();
+        throw new RuntimeException('Cannot create disposable second code ZIP.');
+    }
+    $versionPresent = false;
+    try {
+        for ($i = 0; $i < $source->numFiles; $i++) {
+            $info = $source->statIndex($i);
+            if (!is_array($info) || !is_string($info['name'] ?? null))
+                throw new RuntimeException('Invalid source ZIP member.');
+            $name = $info['name'];
+            if (str_ends_with($name, '/')) {
+                if (!$dest->addEmptyDir($name))
+                    throw new RuntimeException('Cannot add test directory.');
+                continue;
+            }
+            $bytes = $source->getFromIndex($i);
+            if (!is_string($bytes))
+                throw new RuntimeException('Cannot read test archive content.');
+            if ($name === 'application/VERSION') {
+                $bytes = $nextVersion."\n";
+                $versionPresent = true;
+            }
+            if (!$dest->addFromString($name, $bytes))
+                throw new RuntimeException('Cannot copy test archive member.');
+        }
+        if (!$versionPresent)
+            throw new RuntimeException('Second release lacks version identity.');
+    } finally {
+        $dest->close();
+        $source->close();
+    }
+}
+
 try {
     $keys = sodium_crypto_sign_keypair();
     $key = base64_encode(sodium_crypto_sign_publickey($keys));
@@ -100,7 +141,7 @@ try {
             $payload, sodium_crypto_sign_secretkey($keys))),
     ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
 
-    foreach (['ok', 'rejected-health', 'late-populated-restore'] as $mode) {
+    foreach (['ok', 'chained-health', 'rejected-health', 'late-populated-restore'] as $mode) {
         $home = $base.'/'.$mode;
         mkdir($home, 0700);
         unpackCodeFixture($setup, $home);
@@ -136,7 +177,7 @@ try {
         $live->exec('CREATE TABLE owner_records (id INT PRIMARY KEY, note VARCHAR(50)) ENGINE=InnoDB');
         $live->exec("INSERT INTO owner_records VALUES (1,'PRESERVE_ROW'),(2,'RECOVERY_CHECK')");
 
-        $host = new class($home, $mode === 'ok', $version, $sha, $restore,
+        $host = new class($home, in_array($mode, ['ok', 'chained-health'], true), $version, $sha, $restore,
             $mode === 'late-populated-restore')
             implements CpanelOwnerCodeUpdateHost {
             public int $probes = 0;
@@ -179,7 +220,7 @@ try {
             $result = (new CpanelOwnerCodeInstallCoordinator())->install(
                 $host, $lease, $live, $restore, $envelope, $key,
                 'https://updates.walidatiya.com', $old, $home, $inbox, $artifact);
-            if ($mode !== 'ok' || $result['state'] !== 'installed_verified'
+            if (!in_array($mode, ['ok', 'chained-health'], true) || $result['state'] !== 'installed_verified'
                 || $result['version'] !== $version || $result['from'] !== $old
                 || $result['source_sha'] !== $sha || !isset($result['backup_id'])) {
                 throw new RuntimeException('Unverified source or update was accepted.');
@@ -218,8 +259,119 @@ try {
             || file_get_contents($public.'/uploads/avatar.png') !== 'KEEP_UPLOAD'
             || $live->query('SELECT note FROM owner_records WHERE id=1')->fetchColumn() !== 'PRESERVE_ROW'
             || (int) $restore->query('SELECT COUNT(*) FROM owner_records')->fetchColumn() !== 2
-            || ($mode === 'ok') !== is_file($home.'/.walidsite-active-release.json')) {
+            || in_array($mode, ['ok', 'chained-health'], true) !== is_file($home.'/.walidsite-active-release.json')) {
             throw new RuntimeException('Owner data/recovery or release pointer was not preserved.');
+        }
+        // A second, CI-only signed CODE-ONLY candidate is derived from the
+        // exact source-attested Update ZIP by changing solely VERSION. The
+        // ephemeral signing key and synthetic SHA are not publisher authority
+        // or proof of a real second release generated from a Git commit.
+        if (in_array($mode, ['ok', 'chained-health'], true)) {
+            $nextParts = array_map('intval', explode('.', $version));
+            ++$nextParts[2];
+            $nextVersion = implode('.', $nextParts);
+            $nextSha = hash('sha1', 'DISPOSABLE-CHAIN-FIXTURE:'.$sha);
+            $nextArchive = $inbox.'/WalidSite-update-v'.$nextVersion.'.zip';
+            synthesizeSecondSignedCodeZip($update, $nextArchive, $nextVersion);
+            if (!chmod($nextArchive, 0600))
+                throw new RuntimeException('Cannot secure second fixture ZIP.');
+            $nextCandidate = $home.'/.walidsite-releases/v'.$nextVersion.'-'.$nextSha;
+            if (!mkdir($nextCandidate, 0700, true))
+                throw new RuntimeException('Cannot create second candidate directory.');
+            unpackCodeFixture($nextArchive, $nextCandidate);
+
+            $nextHash = hash_file('sha256', $nextArchive);
+            $nextSize = filesize($nextArchive);
+            if (!$nextHash || !$nextSize)
+                throw new RuntimeException('Empty second fixture ZIP.');
+            $nextPayload = json_encode([
+                'product' => 'walidsite',
+                'version' => $nextVersion,
+                'source_sha' => $nextSha,
+                'artifact_sha256' => $nextHash,
+                'artifact_size' => $nextSize,
+                'min_php' => '8.3.0',
+                'artifact_file' => 'WalidSite-update-v'.$nextVersion.'.zip',
+            ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+            $nextEnvelope = json_encode([
+                'payload' => base64_encode($nextPayload),
+                'signature' => base64_encode(sodium_crypto_sign_detached(
+                    $nextPayload, sodium_crypto_sign_secretkey($keys))),
+            ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+
+            $nextSchema = 'ci_release_restore_next_'.$mode.'_'.$id;
+            $nextSchema = str_replace('-', '_', $nextSchema);
+            $root->exec('CREATE DATABASE '.chr(96).$nextSchema.chr(96).' CHARACTER SET utf8mb4');
+            $schemas[] = $nextSchema;
+            $secondRestore = codeDb($nextSchema, $pass);
+            $nextHost = new class($home, $mode === 'ok', $nextVersion, $nextSha)
+                implements CpanelOwnerCodeUpdateHost {
+                public int $probes = 0;
+                public function __construct(
+                    private string $home, private bool $healthy,
+                    private string $version, private string $sha,
+                ) {}
+                public function externalWritersStopped(): bool { return true; }
+                public function disposableRestoreConnection(): PDO
+                {
+                    throw new RuntimeException('Fixture supplies its separate recovery database directly.');
+                }
+                public function probeNewRelease(string $token, string $version, string $sha): bool
+                {
+                    ++$this->probes;
+                    (new CpanelReleaseMaintenance())->assertLiveHealthProbe($this->home, $token);
+                    $pointer = json_decode((string) file_get_contents(
+                        $this->home.'/.walidsite-active-release.json'), true, 8, JSON_THROW_ON_ERROR);
+                    return $this->healthy && $version === $this->version
+                        && $sha === $this->sha
+                        && ($pointer['root'] ?? null) === '.walidsite-releases/v'.$version.'-'.$sha;
+                }
+            };
+
+            // The second HTTP worker really boots the previously activated
+            // immutable application. An original HOME/application claim would
+            // be a forged running-root identity at this point.
+            $running = $candidate.'/application';
+            $secondLease = new CpanelConsoleWriterLease();
+            $secondLease->beginForConsole($running);
+            $secondFailed = false;
+            try {
+                $second = (new CpanelOwnerCodeInstallCoordinator())->install(
+                    $nextHost, $secondLease, $live, $secondRestore,
+                    $nextEnvelope, $key, 'https://updates.walidatiya.com',
+                    $version, $home, $inbox, $nextArchive, $running,
+                );
+                if ($mode !== 'ok' || $second['state'] !== 'installed_verified'
+                    || $second['version'] !== $nextVersion
+                    || $second['from'] !== $version || !isset($second['backup_id'])) {
+                    throw new RuntimeException('Chained signed code cutover was not verified.');
+                }
+            } catch (Throwable $failure) {
+                if ($mode !== 'chained-health'
+                    || !str_contains($failure->getMessage(), 'old code pointer restored')) {
+                    throw $failure;
+                }
+                $secondFailed = true;
+            } finally { $secondLease->end(); }
+
+            $afterPointer = json_decode((string) file_get_contents(
+                $home.'/.walidsite-active-release.json'), true, 8, JSON_THROW_ON_ERROR);
+            $expectedRoot = $mode === 'ok'
+                ? '.walidsite-releases/v'.$nextVersion.'-'.$nextSha
+                : '.walidsite-releases/v'.$version.'-'.$sha;
+            if ($afterPointer['root'] !== $expectedRoot
+                || $afterPointer['version'] !== ($mode === 'ok' ? $nextVersion : $version)
+                || $nextHost->probes !== 1
+                || ($mode === 'chained-health') !== $secondFailed
+                || ($mode === 'chained-health') !== is_file(
+                    $home.'/.walidsite-update-maintenance.json')
+                || file_get_contents($app.'/.env') !== "APP_KEY=base64:DISPOSABLE_CI_ONLY\n"
+                || file_get_contents($app.'/storage/app/owner.txt') !== 'KEEP_OWNER'
+                || file_get_contents($public.'/uploads/avatar.png') !== 'KEEP_UPLOAD'
+                || $live->query('SELECT note FROM owner_records WHERE id=1')->fetchColumn() !== 'PRESERVE_ROW'
+                || (int) $secondRestore->query('SELECT COUNT(*) FROM owner_records')->fetchColumn() !== 2) {
+                throw new RuntimeException('Second signed update corrupted previous release or private owner data.');
+            }
         }
     }
 
@@ -232,6 +384,9 @@ try {
         'disposable_mariadb_restore' => true,
         'failed_health_pointer_reverted' => true,
         'late_populated_restore_blocked' => true,
+        'chained_code_only_fixture_tested' => true,
+        'chained_health_failure_previous_pointer_restored' => true,
+        'chained_fixture_source_sha_not_git_attested' => true,
         'real_https_host_verified' => false,
         'independent_foreign_writer_isolation' => false,
         'publisher_signature_verified_for_production' => false,
