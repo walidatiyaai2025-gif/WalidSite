@@ -173,6 +173,39 @@ final class TrustedCodeCandidatePromoterTest extends TestCase
         self::assertSame('NEXT-v2', file_get_contents($result['directory'].'/public_html/index.php'));
     }
 
+    public function test_physical_cpanel_docroot_requires_explicit_exact_private_sibling_layout(): void
+    {
+        [$file, $signed] = $this->signedArchive();
+        $home = $this->home.'/physical-host';
+        $releases = $home.'/.walidsite-releases';
+        $public = $home.'/public_html';
+        self::assertTrue(mkdir($releases, 0700, true));
+        self::assertTrue(mkdir($public, 0700));
+
+        $invoke = fn (bool $approved): array => (new TrustedCodeCandidatePromoter())->promote(
+            $signed, $this->publicKey, 'https://updates.example.com', '1.0.0',
+            $this->quarantine, $this->incoming, $file,
+            $releases, $public, verifiedPhysicalCpanelLayout: $approved,
+        );
+
+        $this->reject(fn () => $invoke(false));
+        self::assertSame([], glob($releases.'/v1.2*') ?: []);
+        $result = $invoke(true);
+        self::assertSame('1.2.0', $result['version']);
+        self::assertSame('NEXT-v2', file_get_contents($result['directory'].'/public_html/index.php'));
+        // The physical web document root was NEVER switched by staging.
+        self::assertSame([], glob($public.'/*') ?: []);
+
+        // An unrelated physical document root cannot obtain the opt-in.
+        $wrongPublic = $this->home.'/other-public';
+        self::assertTrue(mkdir($wrongPublic, 0700));
+        $this->reject(fn () => (new TrustedCodeCandidatePromoter())->promote(
+            $signed, $this->publicKey, 'https://updates.example.com', '1.0.0',
+            $this->quarantine, $this->incoming, $file,
+            $releases, $wrongPublic, verifiedPhysicalCpanelLayout: true,
+        ));
+    }
+
     private function reject(callable $callback): void
     {
         try {
