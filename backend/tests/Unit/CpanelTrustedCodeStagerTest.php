@@ -160,6 +160,58 @@ final class CpanelTrustedCodeStagerTest extends TestCase
         }
     }
 
+    public function test_staged_code_requires_full_signed_zip_byte_attestation(): void
+    {
+        [$archive, $envelope] = $this->signedZip();
+        $this->stage($archive, $envelope);
+        $target = $this->home.'/.walidsite-releases/v0.1.3-'.$this->sourceSha;
+        $attestor = new \App\Domain\Deployment\CpanelSignedCandidateAttestor();
+        $attest = fn (): array => $attestor->attest(
+            $envelope, $this->publisherPublic, 'https://updates.example.com',
+            '0.1.2', $this->inbox, $archive, $this->home,
+        );
+        self::assertSame('signed_candidate_attested', $attest()['state']);
+        self::assertSame(8, $attest()['files']);
+
+        // An unchanged VERSION is not proof the PHP application is unchanged.
+        $appFile = $target.'/application/bootstrap/app.php';
+        $bytes = file_get_contents($appFile);
+        file_put_contents($appFile, '<?php return false;');
+        try {
+            $attest();
+            self::fail('Modified executable survived signed code attestation.');
+        } catch (DomainException) {
+            $this->assertLiveUntouched();
+        }
+        file_put_contents($appFile, $bytes);
+        self::assertSame(8, $attest()['files']);
+
+        $extra = $target.'/application/bootstrap/foreign.php';
+        file_put_contents($extra, '<?php');
+        try {
+            $attest();
+            self::fail('Unsigned executable was accepted.');
+        } catch (DomainException) {
+            $this->assertLiveUntouched();
+        }
+        unlink($extra);
+        self::assertSame(8, $attest()['files']);
+
+        $alias = $target.'/application/bootstrap/alias.php';
+        if (function_exists('symlink') && @symlink($appFile, $alias)) {
+            try {
+                $attest();
+                self::fail('Unsigned linked source code was accepted.');
+            } catch (DomainException) {
+                $this->assertLiveUntouched();
+            } finally {
+                unlink($alias);
+            }
+        }
+        self::assertSame(8, $attest()['files']);
+        $this->assertLiveUntouched();
+    }
+
     public function test_parallel_staging_is_blocked_before_any_version_is_prepared(): void
     {
         [$file, $envelope] = $this->signedZip();

@@ -9,6 +9,7 @@ use App\Domain\Deployment\CpanelOwnerBackupCoordinator;
 use Illuminate\Support\Facades\DB;
 use App\Domain\Deployment\CpanelPhysicalHostPreflight;
 use App\Domain\Deployment\CpanelTrustedCodeStager;
+use App\Domain\Deployment\CpanelSignedCandidateAttestor;
 use App\Domain\Deployment\TrustedReleaseArtifactDownloader;
 use App\Domain\Deployment\TrustedReleaseCatalog;
 use App\Domain\Deployment\TrustedInstalledVersion;
@@ -497,6 +498,20 @@ final class AdminUpdateController extends Controller
                 base_path('resources/deployment/cpanel-stable-index.php'),
                 $verified['directory'], $verified['archive'],
             );
+            // Stage success is not trusted until EVERY physically staged file
+            // matches its publisher-signed archive (not only VERSION).
+            $attested = app(CpanelSignedCandidateAttestor::class)->attest(
+                $verified['envelope'],
+                (string) config('site.trusted_release_public_key'),
+                (string) config('site.trusted_release_origin'),
+                $installed, $verified['directory'], $verified['archive'],
+                dirname(public_path()),
+            );
+            if ($attested['version'] !== $result['version']
+                || $attested['source_sha'] !== $result['source_sha']
+                || $attested['files'] !== $result['files']) {
+                throw new \DomainException('Staged candidate differs from signed release.');
+            }
         } catch (Throwable $error) {
             // Do not leak a path, publisher identity, session or executable
             // candidate bytes in a flash message or public server log.
