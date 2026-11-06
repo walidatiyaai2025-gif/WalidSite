@@ -129,6 +129,42 @@ final class AdminUpdateStatusTruthTest extends TestCase
         $this->assertStringNotContainsString('Backup and restore have not been verified.', $html);
     }
 
+    public function test_owner_sees_separate_completed_code_update_history_without_fake_success(): void
+    {
+        $this->actingAs($this->owner(), 'web');
+        $this->get('/admin/updates?lang=en')->assertOk()
+            ->assertSee('data-testid="owner-code-update-history"', false)
+            ->assertSee('data-testid="owner-code-update-history-empty"', false)
+            ->assertDontSee('data-testid="owner-code-update-history-table"', false);
+
+        $html = view('admin.updates.index', [
+            'status' => ['ready' => true, 'history_mismatch' => false, 'pending' => []],
+            'installedVersion' => '0.1.2',
+            'verifiedUpload' => null,
+            'hostPreflight' => null,
+            'stagedCode' => null,
+            'hostBackupAvailable' => false,
+            'hostCodeUpdateAvailable' => false,
+            'recoveryHistory' => ['state' => 'none', 'receipts' => []],
+            'codeUpdateHistory' => [
+                'state' => 'history',
+                'receipts' => [[
+                    'id' => str_repeat('a', 32),
+                    'created_at' => '2026-11-06T12:50:00Z',
+                    'from' => '0.1.2',
+                    'version' => '0.1.3',
+                    'source_sha' => str_repeat('b', 40),
+                    'backup_id' => str_repeat('c', 32),
+                ]],
+            ],
+        ])->render();
+        $this->assertStringContainsString('Completed code update history', $html);
+        $this->assertStringContainsString('owner-code-update-history-table', $html);
+        $this->assertStringContainsString('0.1.3', $html);
+        $this->assertStringContainsString('Historical entries are not fresh publisher signatures', $html);
+        $this->assertStringContainsString('Code installation remains blocked without trusted host integration.', $html);
+    }
+
     public function test_non_owner_cannot_observe_release_status_or_claim_update(): void
     {
         $this->withoutMiddleware(ThrottleRequests::class);
