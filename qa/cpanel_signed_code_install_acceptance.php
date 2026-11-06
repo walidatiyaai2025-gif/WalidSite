@@ -79,6 +79,47 @@ function codeDb(string $name, string $pass): PDO
     return new PDO('mysql:host=127.0.0.1;port=3306;dbname='.$name.';charset=utf8mb4',
         'root', $pass, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
 }
+/** Second version exists ONLY inside disposable CI, not a published release. */
+function synthesizeSecondSignedCodeZip(string $previous, string $target, string $nextVersion): void
+{
+    $source = new ZipArchive();
+    if ($source->open($previous, ZipArchive::RDONLY | ZipArchive::CHECKCONS) !== true)
+        throw new RuntimeException('Cannot inspect first actual update ZIP.');
+    $dest = new ZipArchive();
+    if ($dest->open($target, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
+        $source->close();
+        throw new RuntimeException('Cannot create disposable second code ZIP.');
+    }
+    $versionPresent = false;
+    try {
+        for ($i = 0; $i < $source->numFiles; $i++) {
+            $info = $source->statIndex($i);
+            if (!is_array($info) || !is_string($info['name'] ?? null))
+                throw new RuntimeException('Invalid source ZIP member.');
+            $name = $info['name'];
+            if (str_ends_with($name, '/')) {
+                if (!$dest->addEmptyDir($name))
+                    throw new RuntimeException('Cannot add test directory.');
+                continue;
+            }
+            $bytes = $source->getFromIndex($i);
+            if (!is_string($bytes))
+                throw new RuntimeException('Cannot read test archive content.');
+            if ($name === 'application/VERSION') {
+                $bytes = $nextVersion."\n";
+                $versionPresent = true;
+            }
+            if (!$dest->addFromString($name, $bytes))
+                throw new RuntimeException('Cannot copy test archive member.');
+        }
+        if (!$versionPresent)
+            throw new RuntimeException('Second release lacks version identity.');
+    } finally {
+        $dest->close();
+        $source->close();
+    }
+}
+
 try {
     $keys = sodium_crypto_sign_keypair();
     $key = base64_encode(sodium_crypto_sign_publickey($keys));
@@ -100,7 +141,7 @@ try {
             $payload, sodium_crypto_sign_secretkey($keys))),
     ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
 
-    foreach (['ok', 'rejected-health', 'late-populated-restore'] as $mode) {
+    foreach (['ok', 'chained-health', 'rejected-health', 'late-populated-restore'] as $mode) {
         $home = $base.'/'.$mode;
         mkdir($home, 0700);
         unpackCodeFixture($setup, $home);
@@ -136,7 +177,7 @@ try {
         $live->exec('CREATE TABLE owner_records (id INT PRIMARY KEY, note VARCHAR(50)) ENGINE=InnoDB');
         $live->exec("INSERT INTO owner_records VALUES (1,'PRESERVE_ROW'),(2,'RECOVERY_CHECK')");
 
-        $host = new class($home, $mode === 'ok', $version, $sha, $restore,
+        $host = new class($home, in_array($mode, ['ok', 'chained-health'], true), $version, $sha, $restore,
             $mode === 'late-populated-restore')
             implements CpanelOwnerCodeUpdateHost {
             public int $probes = 0;
@@ -179,7 +220,7 @@ try {
             $result = (new CpanelOwnerCodeInstallCoordinator())->install(
                 $host, $lease, $live, $restore, $envelope, $key,
                 'https://updates.walidatiya.com', $old, $home, $inbox, $artifact);
-            if ($mode !== 'ok' || $result['state'] !== 'installed_verified'
+            if (!in_array($mode, ['ok', 'chained-health'], true) || $result['state'] !== 'installed_verified'
                 || $result['version'] !== $version || $result['from'] !== $old
                 || $result['source_sha'] !== $sha || !isset($result['backup_id'])) {
                 throw new RuntimeException('Unverified source or update was accepted.');
@@ -218,7 +259,7 @@ try {
             || file_get_contents($public.'/uploads/avatar.png') !== 'KEEP_UPLOAD'
             || $live->query('SELECT note FROM owner_records WHERE id=1')->fetchColumn() !== 'PRESERVE_ROW'
             || (int) $restore->query('SELECT COUNT(*) FROM owner_records')->fetchColumn() !== 2
-            || ($mode === 'ok') !== is_file($home.'/.walidsite-active-release.json')) {
+            || in_array($mode, ['ok', 'chained-health'], true) !== is_file($home.'/.walidsite-active-release.json')) {
             throw new RuntimeException('Owner data/recovery or release pointer was not preserved.');
         }
     }
