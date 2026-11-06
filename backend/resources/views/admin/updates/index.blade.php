@@ -79,6 +79,11 @@ button:disabled{background:#718096;cursor:not-allowed}
 <button type="submit" @disabled(!config('site.updates_enabled')) data-testid="verify-signed-update-zip">
 {{ $locale === 'ar' ? 'فحص أصالة الحزمة ومحتوياتها' : 'Verify Package' }}</button>
 </form>
+@if($errors->has('download'))
+<p class="error" role="alert" data-testid="owner-publisher-download-blocked">{{ $locale === 'ar'
+    ? 'تعذّر تنزيل الحزمة المعتمدة أو التحقق منها؛ لم يتغير الموقع أو قاعدة البيانات.'
+    : $errors->first('download') }}</p>
+@endif
 @if($errors->has('upload'))
 <p class="error" role="alert">{{ $errors->first('upload') }}</p>
 @endif
@@ -168,6 +173,18 @@ button:disabled{background:#718096;cursor:not-allowed}
 <p>{{ $locale === 'ar' ? 'بصمة الحزمة الموقّعة SHA-256:' : 'Signed archive SHA-256:' }} <code>{{ $trustedCheck['artifact_sha256'] }}</code></p>
 <p>{{ $locale === 'ar' ? 'هذا فحص قراءة فقط. لم يتم تنزيل كود أو تطبيق تحديث أو إنشاء نسخة احتياطية.' : 'Read-only discovery only: no code downloaded, no update applied and no backup performed.' }}</p>
 </div>
+<form method="post" action="{{ route('admin.updates.fetch-signed', ['lang' => $locale]) }}"
+    data-testid="owner-publisher-download-form">
+@csrf
+<button type="submit" data-testid="download-publisher-signed-update">
+{{ $locale === 'ar'
+    ? 'تنزيل الحزمة الموقّعة مباشرة من الناشر والتحقق منها'
+    : 'Download & verify signed ZIP from approved publisher' }}
+</button>
+<p class="small">{{ $locale === 'ar'
+    ? 'يُجلب أحدث بيان موقع من الناشر مرة أخرى، ثم تُنزّل الحزمة في مخزن خاص ويُفحص التوقيع والبصمة والأمان. لا تُنصّب ملفات أو تُغيّر بيانات.'
+    : 'Rechecks the approved publisher signature, then privately downloads and inspects the exact signed ZIP. No code installation or database change.' }}</p>
+</form>
 @elseif($trustedState === 'not_configured')
 <p class="blocked" role="status" data-testid="trusted-release-not-configured">{{ $locale === 'ar'
     ? 'إعدادات نسخة التثبيت ومصدر الإصدارات والمفتاح العام الموثوق غير مكتملة على الخادم. لم يُجرَ اتصال خارجي.'
