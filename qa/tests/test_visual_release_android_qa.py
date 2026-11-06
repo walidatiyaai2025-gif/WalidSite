@@ -176,6 +176,33 @@ class ReleaseAndroidQaAttachmentTest(unittest.TestCase):
             "publisher_signature_verified": False,
             "code_update_performed": False, "production_ready": False,
         }
+        self.build_info = {
+            "schema": "walidsite.unpublished-build-info.v1",
+            "product": "walidsite", "version": "1.2.3",
+            "source_sha": SHA,
+            "setup_sha256": archives["setup"]["sha256"],
+            "update_sha256": archives["update"]["sha256"],
+            "composer_lock_sha256": "b" * 64,
+            "production_dependencies": [{"name": "laravel/framework", "version": "v12.0.0"}],
+            "migration_sha256": {"2026_01_01_create_table.php": "c" * 64},
+            "minimum_php": "8.3.0",
+            "publisher_signature_verified": False,
+            "upgrade_compatibility_verified": False,
+            "production_ready": False,
+        }
+        self.release_manifest["update"]["min_php"] = "8.3.0"
+        build_name = "WalidSite-Build-Info-v1.2.3.json"
+        build_bytes = (json.dumps(self.build_info, sort_keys=True) + "\n").encode("utf-8")
+        (directory / build_name).write_bytes(build_bytes)
+        build_hash = hashlib.sha256(build_bytes).hexdigest()
+        (directory / (build_name + ".sha256")).write_text(
+            build_hash + "  " + build_name + "\n", encoding="ascii"
+        )
+        self.release_manifest["build_info"] = {
+            "file": build_name, "sha256": build_hash,
+            "composer_lock_sha256": "b" * 64,
+            "production_dependencies": 1, "migration_files": 1,
+        }
         self.release_dir = directory
         (directory / "WalidSite-Release-Notes-v1.2.3.md").write_text(
             "# WalidSite v1.2.3 - UNPUBLISHED candidate\n",
@@ -208,6 +235,7 @@ class ReleaseAndroidQaAttachmentTest(unittest.TestCase):
         self.assertEqual(receipt["source_sha"], SHA)
         self.assertEqual(receipt["android_apk_sha256"], self.proof["apk_sha256"])
         self.assertEqual(receipt["update_sha256"], self.php["artifact_sha256"])
+        self.assertEqual(receipt["build_info_sha256"], self.release_manifest["build_info"]["sha256"])
         self.assertEqual(receipt["php_zip_negative_rejections"], 7)
         self.assertTrue(receipt["native_and_web_version_match"])
         self.assertTrue(receipt["same_sha_assets_verified"])
@@ -275,6 +303,47 @@ class ReleaseAndroidQaAttachmentTest(unittest.TestCase):
                 self.release_dir.joinpath(name).unlink()
                 self.release_dir.joinpath("signed-zip-acceptance.json").unlink()
                 # Restore the release directory for the next independent case.
+                import shutil
+                shutil.rmtree(self.release_dir)
+
+    def test_unified_release_rejects_build_info_tampering_and_forged_identity(self):
+        build_name = "WalidSite-Build-Info-v1.2.3.json"
+        for tamper in ("missing_sidecar", "changed_bytes", "forged_source",
+                       "forged_update", "false_production_claim"):
+            with self.subTest(tamper=tamper):
+                self.make_candidate()
+                self.verify_candidate()
+                document = self.release_dir / build_name
+                sidecar = self.release_dir / (build_name + ".sha256")
+                if tamper == "missing_sidecar":
+                    sidecar.unlink()
+                elif tamper == "changed_bytes":
+                    with document.open("ab") as stream:
+                        stream.write(b"UNAPPROVED CHANGE")
+                else:
+                    modified = dict(self.build_info)
+                    if tamper == "forged_source":
+                        modified["source_sha"] = "f" * 40
+                    elif tamper == "forged_update":
+                        modified["update_sha256"] = "0" * 64
+                    else:
+                        modified["production_ready"] = True
+                    data = (json.dumps(modified, sort_keys=True) + "\n").encode()
+                    document.write_bytes(data)
+                    digest = hashlib.sha256(data).hexdigest()
+                    sidecar.write_text(digest + "  " + build_name + "\n", encoding="ascii")
+                    # A malicious bundle rehashing all unsigned documents
+                    # must still fail because cross-archive identity disagrees.
+                    self.release_manifest["build_info"]["sha256"] = digest
+                    manifest_file = self.release_dir / "WalidSite-Release-Manifest-v1.2.3.json"
+                    manifest_bytes = json.dumps(self.release_manifest).encode()
+                    manifest_file.write_bytes(manifest_bytes)
+                    (self.release_dir / (manifest_file.name + ".sha256")).write_text(
+                        hashlib.sha256(manifest_bytes).hexdigest()
+                        + "  " + manifest_file.name + "\n", encoding="ascii"
+                    )
+                with self.assertRaises(ValueError):
+                    verify_bundle(self.folder, self.checkout, SHA, self.release_dir)
                 import shutil
                 shutil.rmtree(self.release_dir)
 
