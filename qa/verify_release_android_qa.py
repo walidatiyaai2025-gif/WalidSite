@@ -223,7 +223,7 @@ def verify_bundle(directory: Path, checkout: Path, source_sha: str,
                 or php.get("artifact_sha256") != digests["update"]
                 or type(php.get("verified_files")) is not int
                 or php["verified_files"] < 4
-                or php.get("negative_rejections") != 4
+                or php.get("negative_rejections") != 7
                 or php.get("test_only_ephemeral_key") is not True
                 or php.get("publisher_signature_verified") is not False
                 or php.get("code_update_performed") is not False
@@ -240,7 +240,7 @@ def verify_bundle(directory: Path, checkout: Path, source_sha: str,
         "update_sha256": digests["update"],
         "native_and_web_version_match": True,
         "same_sha_assets_verified": True,
-        "php_zip_negative_rejections": 4,
+        "php_zip_negative_rejections": php["negative_rejections"],
         "test_only_ephemeral_key": True,
         "publisher_signature_verified": False,
         "android_distribution_signing_verified": False,
