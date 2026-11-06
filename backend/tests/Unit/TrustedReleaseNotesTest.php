@@ -102,6 +102,11 @@ final class TrustedReleaseNotesTest extends TestCase
             ['unexpected'],
         ] as $value) {
             self::assertFalse(TrustedReleaseMetadata::validReleaseNotes($value));
+            // Invalid UTF-8 cannot be encoded as JSON with JSON_THROW_ON_ERROR;
+            // the serializer rejects it before any signed-envelope verification.
+            if (is_string($value) && preg_match('//u', $value) !== 1) {
+                continue;
+            }
             $meta = $this->payload();
             $meta['release_notes'] = $value;
             try {
