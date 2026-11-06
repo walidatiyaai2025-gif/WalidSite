@@ -68,7 +68,11 @@ final class CpanelOwnerBackupCoordinator
         $activePointer = $home.'/.walidsite-active-release.json';
         clearstatcache(true, $activePointer);
         if ($actualVersion === null || ! hash_equals($actualVersion, $installedVersion)
-            || @lstat($activePointer) !== false) {
+            || @lstat($activePointer) !== false
+            // This coordinator attests only the original first installation.
+            // A claimed versioned prior root without an active pointer is
+            // not a provable running-release lineage.
+            || $previousRoot !== 'legacy') {
             throw new DomainException('Installed code identity is not verified for a first-install recovery.');
         }
 
