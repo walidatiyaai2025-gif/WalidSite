@@ -145,13 +145,43 @@ def safe_overflow_structure(raw: object) -> dict:
     }
 
 
-def discover_published_details(browser, base: str) -> dict[str, str]:
-    """Select a real anonymous published slug from each canonical public API.
+def _public_json(response) -> dict:
+    """Fail closed on malformed, unbounded or non-JSON public API responses."""
+    if (response.status != 200 or
+            response.headers.get("content-type", "").split(";", 1)[0]
+                .strip().lower() != "application/json"):
+        raise AdminSessionError("Public detail discovery HTTP/JSON check failed")
+    raw = response.body()
+    if not isinstance(raw, bytes) or len(raw) > MAX_DISCOVERY_BYTES:
+        raise AdminSessionError("Public detail discovery exceeded response budget")
+    try:
+        payload = json.loads(raw.decode("utf-8", errors="strict"))
+    except (UnicodeError, ValueError):
+        raise AdminSessionError("Public detail discovery JSON was invalid") from None
+    if not isinstance(payload, dict):
+        raise AdminSessionError("Public detail discovery JSON shape was invalid")
+    return payload
 
-    The API list already enforces evidence/publication/rights gates; the
-    matching API detail endpoint must independently confirm HTTP 200. Fixed
-    loopback-only paths prevent network probing or caller-provided slugs.
-    Private record titles, IDs, URLs, or response bodies are NEVER reported.
+
+def _verified_detail_identity(payload: dict, slug: str, screen: str) -> bool:
+    """A 200 alone is not publication proof: pin identity and reviewed sources."""
+    data = payload.get("data")
+    if not isinstance(data, dict) or data.get("slug") != slug:
+        return False
+    evidence_key = "evidence_urls" if screen == "WEB-05" else "citations"
+    sources = data.get(evidence_key)
+    return (isinstance(sources, list) and bool(sources) and
+            all(isinstance(url, str) and 0 < len(url) <= 2048 and
+                url.startswith("https://") for url in sources))
+
+
+def discover_published_details(browser, base: str) -> dict[str, str]:
+    """Discover only anonymous, evidence-backed published detail identities.
+
+    Both list and detail must satisfy strict bounded JSON contracts. The
+    matching detail's canonical slug and reviewed source list must agree with
+    the listing, not merely return HTTP 200. Only the local test origin is
+    queried; never serialize titles, evidence URLs, slugs or response bodies.
     """
     found: dict[str, str] = {}
     context = browser.new_context(
@@ -162,16 +192,8 @@ def discover_published_details(browser, base: str) -> dict[str, str]:
         for screen, listing, detail in PUBLIC_DETAIL_ENDPOINTS:
             response = context.request.get(base + listing, timeout=10000,
                                            max_redirects=0)
-            if response.status != 200:
-                raise AdminSessionError("Public detail discovery HTTP check failed")
-            raw = response.body()
-            if not isinstance(raw, bytes) or len(raw) > MAX_DISCOVERY_BYTES:
-                raise AdminSessionError("Public detail discovery exceeded response budget")
-            try:
-                payload = json.loads(raw.decode("utf-8", errors="strict"))
-            except (UnicodeError, ValueError):
-                raise AdminSessionError("Public detail discovery JSON was invalid") from None
-            data = payload.get("data") if isinstance(payload, dict) else None
+            payload = _public_json(response)
+            data = payload.get("data")
             if not isinstance(data, list) or len(data) > 12:
                 raise AdminSessionError("Public detail listing shape is invalid")
             if not data:
@@ -182,10 +204,9 @@ def discover_published_details(browser, base: str) -> dict[str, str]:
                 raise AdminSessionError("Published detail slug was unsafe")
             verified = context.request.get(base + detail + slug + "?lang=en",
                                            timeout=10000, max_redirects=0)
-            if (verified.status != 200
-                    or not verified.headers.get("content-type", "").lower()
-                        .startswith("application/json")):
-                raise AdminSessionError("Published detail did not match public API")
+            detail_payload = _public_json(verified)
+            if not _verified_detail_identity(detail_payload, slug, screen):
+                raise AdminSessionError("Published detail identity or proof was invalid")
             found[screen] = slug
     except AdminSessionError:
         raise

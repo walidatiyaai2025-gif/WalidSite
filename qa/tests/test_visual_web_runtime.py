@@ -15,7 +15,8 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from qa.audit_web_runtime import (
-    FATAL_CODES, MAX_CHECKS, OVERFLOW_STRUCTURE, WEB_DOM_METRICS,
+    FATAL_CODES, MAX_CHECKS, MAX_DISCOVERY_BYTES, OVERFLOW_STRUCTURE,
+    WEB_DOM_METRICS,
     audit_web, discover_published_details, inspect_page, main,
     safe_overflow_structure,
 )
@@ -78,19 +79,22 @@ class FakePage:
 
 
 class FakeApiResponse:
-    def __init__(self, payload, status=200):
+    def __init__(self, payload, status=200, *, content_type="application/json",
+                 raw=None):
         self.status = status
-        self.headers = {"content-type": "application/json"}
+        self.headers = {"content-type": content_type}
         self.payload = payload
+        self.raw = raw
 
     def body(self):
-        return json.dumps(self.payload).encode("utf-8")
+        return self.raw if self.raw is not None else json.dumps(self.payload).encode("utf-8")
 
 
 class FakeApiRequest:
-    def __init__(self, published, detail_status):
+    def __init__(self, published, detail_status, detail_response=None):
         self.published = published
         self.detail_status = detail_status
+        self.detail_response = detail_response
         self.urls = []
 
     def get(self, url, *, timeout, max_redirects):
@@ -104,17 +108,26 @@ class FakeApiRequest:
         if "/public/articles?lang=" in url:
             return FakeApiResponse({"data": self.published.get("WEB-08", [])})
         if "/public/projects/" in url or "/public/articles/" in url:
-            return FakeApiResponse({"data": {}}, self.detail_status)
+            if self.detail_response is not None:
+                return self.detail_response
+            is_project = "/public/projects/" in url
+            slug = url.split("/public/projects/" if is_project else "/public/articles/", 1)[1].split("?", 1)[0]
+            proof = "evidence_urls" if is_project else "citations"
+            return FakeApiResponse({"data": {
+                "slug": slug,
+                proof: ["https://github.com/owner/approved-repository"],
+            }}, self.detail_status)
         raise AssertionError("Unexpected discovery URL")
 
 
 class FakeContext:
-    def __init__(self, viewport_width=1440, published=None, detail_status=200):
+    def __init__(self, viewport_width=1440, published=None, detail_status=200,
+                 detail_response=None):
         self.viewport_width = viewport_width
         self.pages = []
         self.routes = []
         self.closed = False
-        self.request = FakeApiRequest(published or {}, detail_status)
+        self.request = FakeApiRequest(published or {}, detail_status, detail_response)
 
     def route(self, pattern, callback):
         self.routes.append((pattern, callback))
@@ -128,7 +141,7 @@ class FakeContext:
         self.closed = True
 
 
-def fake_playwright(*, published=None, detail_status=200):
+def fake_playwright(*, published=None, detail_status=200, detail_response=None):
     contexts = []
     browser = Mock()
 
@@ -137,7 +150,8 @@ def fake_playwright(*, published=None, detail_status=200):
         if "storage_state" in kwargs:
             raise AssertionError("Private session leaked into Web audit")
         context = FakeContext(kwargs.get("viewport", {}).get("width", 1440),
-                              published=published, detail_status=detail_status)
+                              published=published, detail_status=detail_status,
+                              detail_response=detail_response)
         contexts.append(context)
         return context
 
@@ -300,6 +314,57 @@ class WebRuntimeAuditTest(unittest.TestCase):
                 self.assertEqual(len(contexts), 1)
                 self.assertTrue(contexts[0].closed)
                 self.assertEqual(contexts[0].pages, [])
+
+    def test_detail_identity_evidence_and_json_integrity_fail_closed(self):
+        approved = {"WEB-05": [{"slug": "approved-project"}]}
+        good_data = {"slug": "approved-project", "evidence_urls": [
+            "https://github.com/owner/approved-repository",
+        ]}
+        malicious = [
+            FakeApiResponse({"data": {"slug": "another-project",
+                                      "evidence_urls": good_data["evidence_urls"]}}),
+            FakeApiResponse({"data": {"slug": "approved-project", "evidence_urls": []}}),
+            FakeApiResponse({"data": {"slug": "approved-project",
+                                      "citations": good_data["evidence_urls"]}}),
+            FakeApiResponse({"data": {"slug": "approved-project",
+                                      "evidence_urls": ["http://untrusted.invalid"]}}),
+            FakeApiResponse({"data": [good_data]}),
+            FakeApiResponse({"data": good_data}, content_type="text/html"),
+            FakeApiResponse({"data": good_data}, raw=b"\xff"),
+            FakeApiResponse({"data": good_data}, raw=b"not-json"),
+            FakeApiResponse({"data": good_data},
+                            raw=b"x" * (MAX_DISCOVERY_BYTES + 1)),
+            FakeApiResponse({"data": good_data}, status=404),
+        ]
+        for detail in malicious:
+            with self.subTest(detail=detail.status, type=detail.headers["content-type"]):
+                manager, contexts, browser = fake_playwright(
+                    published=approved, detail_response=detail)
+                with patch("qa.audit_web_runtime.exact_checkout"), \
+                     patch.dict(os.environ, {"WALIDSITE_CAPTURE_STORAGE_STATE": ""}):
+                    with self.assertRaises(AdminSessionError) as rejected:
+                        audit_web("http://127.0.0.1:8000", SHA, root=ROOT,
+                                  playwright_manager=manager)
+                self.assertEqual(len(contexts), 1)
+                self.assertEqual(contexts[0].pages, [])
+                self.assertTrue(contexts[0].closed)
+                self.assertNotIn("approved-project", str(rejected.exception))
+                browser.close.assert_called_once()
+
+        # WEB-08 must independently prove its own pinned slug and citations,
+        # not a different publication's evidence_urls.
+        manager, contexts, _ = fake_playwright(
+            published={"WEB-08": [{"slug": "approved-article"}]},
+            detail_response=FakeApiResponse({"data": {
+                "slug": "approved-article",
+                "evidence_urls": ["https://github.com/owner/repo"],
+            }}))
+        with patch("qa.audit_web_runtime.exact_checkout"), \
+             patch.dict(os.environ, {"WALIDSITE_CAPTURE_STORAGE_STATE": ""}):
+            with self.assertRaises(AdminSessionError):
+                audit_web("http://127.0.0.1:8000", SHA, root=ROOT,
+                          playwright_manager=manager)
+        self.assertTrue(contexts[0].closed)
 
     def test_overflow_structure_is_bounded_and_never_records_dom_text_or_url(self):
         valid = {
