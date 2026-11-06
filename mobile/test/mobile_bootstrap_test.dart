@@ -71,6 +71,25 @@ void main() {
     expect(ar.privacyUri, Uri.parse('$origin/privacy?lang=ar'));
   });
 
+  test('MOBILE-01 parser enforces 128 KiB encoded UTF-8, not code units', () {
+    const limit = 128 * 1024;
+    final safe = bootstrap(arabic: true);
+    final oversized = safe.substring(0, safe.length - 1) +
+        ',"padding":"' + ('é' * (limit ~/ 2)) + '"}';
+    expect(oversized.length, lessThan(limit));
+    expect(utf8.encode(oversized).length, greaterThan(limit));
+    expect(
+      () => MobileBootstrapCapabilities.parse(
+        oversized, true, Uri.parse(origin)),
+      throwsA(isA<FormatException>().having(
+        (error) => error.message, 'message', 'Bootstrap response too large')),
+    );
+    expect(
+      MobileBootstrapCapabilities.parse(safe, true, Uri.parse(origin)).locale,
+      'ar',
+    );
+  });
+
   test('MOBILE-01 bootstrap parser rejects unsafe or stale capability claims', () {
     final invalid = <String>[
       bootstrap(privacy: 17),
