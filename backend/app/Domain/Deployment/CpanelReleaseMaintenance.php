@@ -187,6 +187,39 @@ final class CpanelReleaseMaintenance
         }
     }
 
+    /**
+     * Read-only, token-bound admission of the *health endpoint only* while an
+     * update owns maintenance. The stable public_html dispatcher authenticates
+     * this same secret before booting Laravel; the HTTP writer barrier MUST
+     * independently verify the private inode instead of trusting a header.
+     *
+     * No update authority or database/file write permission is granted here.
+     */
+    public function assertLiveHealthProbe(string $homeDirectory, string $token): void
+    {
+        if (! preg_match('/\A[a-f0-9]{64}\z/D', $token)) {
+            throw new DomainException('Release health probe token is invalid.');
+        }
+        [, $marker] = $this->readPrivateMarker($homeDirectory);
+        if (! is_array($marker)
+            || array_keys($marker) !== ['schema', 'expires_at', 'previous_root', 'previous_version', 'probe_sha256']
+            || $marker['schema'] !== 1
+            || ! is_string($marker['previous_root']) || ! is_string($marker['previous_version'])
+            || ! preg_match('/\A(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\z/D', $marker['previous_version'])
+            || ($marker['previous_root'] !== 'legacy'
+                && ! preg_match(
+                    '#\A\.walidsite-releases/v'.preg_quote($marker['previous_version'], '#').'-[a-f0-9]{40}\z#D',
+                    $marker['previous_root'],
+                ))) {
+            throw new DomainException('Release health probe maintenance identity is invalid.');
+        }
+
+        // Second pinned read via assertActive verifies live expiry, exact
+        // same previous release and SHA-256 token with hash_equals. A changed
+        // marker between checks must fail closed; nothing is ever logged.
+        $this->assertActive($homeDirectory, $token, $marker['previous_root']);
+    }
+
     public function assertActive(string $homeDirectory, string $token, string $previousRoot): void
     {
         [, $marker] = $this->readPrivateMarker($homeDirectory);

@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Domain\Deployment\CpanelConsoleWriterLease;
+use App\Domain\Deployment\CpanelReleaseMaintenance;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
@@ -28,10 +29,40 @@ final class CpanelHttpWriterBarrier
     public function __construct(
         private readonly CpanelConsoleWriterLease $lease,
         private readonly ?string $applicationBase = null,
+        private readonly ?string $homeDirectory = null,
     ) {}
 
     public function handle(Request $request, Closure $next): Response
     {
+        // The immutable cPanel dispatcher admits this 256-bit token ONLY
+        // during an active maintenance lease. Verify it again from the pinned
+        // private marker before Laravel's global writer-lock middleware.
+        // A health probe cannot acquire LOCK_SH while the owner updater holds
+        // LOCK_EX. Bypass is restricted to the read-only framework GET /up,
+        // never an Admin, API, upload, POST, query or arbitrary route.
+        if ($request->isMethod('GET') && $request->path() === 'up'
+            && $request->query() === []
+            && $request->headers->has('X-Walidsite-Release-Probe')) {
+            try {
+                $token = $request->headers->get('X-Walidsite-Release-Probe');
+                if (! is_string($token)) {
+                    throw new \DomainException('Malformed health probe token.');
+                }
+                (new CpanelReleaseMaintenance())->assertLiveHealthProbe(
+                    $this->homeDirectory ?? dirname(public_path()), $token,
+                );
+            } catch (Throwable) {
+                return new Response('Site maintenance is unavailable.', 503, [
+                    'Cache-Control' => 'no-store',
+                    'Retry-After' => '30',
+                ]);
+            }
+
+            $response = $next($request);
+            $response->headers->set('Cache-Control', 'no-store');
+            return $response;
+        }
+
         try {
             $this->lease->beginForConsole($this->applicationBase ?? base_path());
         } catch (Throwable) {
