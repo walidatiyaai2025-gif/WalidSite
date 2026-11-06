@@ -176,6 +176,61 @@ final class AdminGithubOwnerReviewJourneyTest extends TestCase
             ->configuredSlugs());
     }
 
+    public function test_arabic_proposal_pages_keep_the_language_and_do_not_replay_unverified_repo_queries(): void
+    {
+        $admin = $this->account('admin');
+        for ($i = 0; $i < 22; $i++) {
+            $this->makeProposal($admin, 'acme/entry-'.str_pad((string) $i, 2, '0', STR_PAD_LEFT));
+        }
+        $this->actingAs($admin, 'web');
+        $page = $this->get('/admin/github?lang=ar')->assertOk()
+            ->assertSee('dir="rtl"', false);
+        preg_match_all('/href="([^"]+)"/', $page->getContent(), $links);
+        $pagination = false;
+        foreach ($links[1] as $encoded) {
+            $href = html_entity_decode($encoded, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+            $parts = parse_url($href);
+            if (($parts['path'] ?? null) !== '/admin/github') {
+                continue;
+            }
+            parse_str($parts['query'] ?? '', $query);
+            if (($query['page'] ?? null) === '2') {
+                $pagination = true;
+                $this->assertSame('ar', $query['lang'] ?? null);
+                $this->assertArrayNotHasKey('repo', $query);
+            }
+        }
+        $this->assertTrue($pagination, 'Arabic review list must have an accessible second page');
+        $this->get('/admin/github?lang=ar&page=2')->assertOk()
+            ->assertSee('dir="rtl"', false);
+    }
+
+    public function test_web_owner_decision_requires_explicit_audit_reason(): void
+    {
+        $admin = $this->account('admin');
+        $owner = $this->account('owner');
+        $item = $this->makeProposal($admin, 'acme/reason-required');
+        Http::fake();
+        $this->actingAs($owner, 'web');
+        $url = '/admin/github/proposals/'.$item->id.'/decision';
+        $page = $this->get('/admin/github')->assertOk();
+        $this->assertStringContainsString(
+            'name="reason" required', $page->getContent()
+        );
+        $this->post($url, ['decision' => 'reject'])
+            ->assertSessionHasErrors(['reason']);
+        $this->assertSame('pending', $item->fresh()->status);
+        $this->assertSame(1, GithubAllowlistProposalEvent::where(
+            'proposal_id', $item->id)->count());
+        $this->post($url, ['decision' => 'reject', 'reason' => 'owner_policy'])
+            ->assertRedirect('/admin/github?lang=en');
+        $this->assertSame('rejected', $item->fresh()->status);
+        $this->assertSame('owner_policy', $item->fresh()->decision_reason);
+        $this->assertSame('owner_policy', GithubAllowlistProposalEvent::where(
+            'proposal_id', $item->id)->where('action', 'rejected')->value('reason'));
+        Http::assertNothingSent();
+    }
+
     public function test_malformed_repo_secret_fields_and_revoked_owner_role_fail_closed(): void
     {
         Http::fake();

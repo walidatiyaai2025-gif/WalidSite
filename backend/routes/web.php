@@ -2346,7 +2346,8 @@ Route::middleware('auth:web')->prefix('admin')->group(function (): void {
             'selectedRepo' => $selectedRepo,
             'configuredCount' => count($directory->configuredSlugs()),
             'githubProposals' => \App\Models\GithubAllowlistProposal::query()
-                ->orderByDesc('created_at')->orderBy('id')->paginate(20),
+                ->orderByDesc('created_at')->orderBy('id')->paginate(20)
+                ->appends(['lang' => $input['lang'] ?? 'en']),
             'canReviewGithub' => $request->user()->hasRole('owner'),
         ])->header('Cache-Control', 'no-store, private');
     })->name('admin.operations.github')->middleware('throttle:30,1');
@@ -2391,7 +2392,7 @@ Route::middleware('auth:web')->prefix('admin')->group(function (): void {
         }
         $input = $request->validate([
             'decision' => ['required', 'in:approve,reject'],
-            'reason' => ['sometimes', 'in:source_verified,not_public,owner_policy,out_of_scope'],
+            'reason' => ['required', 'in:source_verified,not_public,owner_policy,out_of_scope'],
         ]);
         $ownerId = $request->user()->getKey();
         $workflow->decide(static function (bool $lock) use ($ownerId): \App\Models\User {

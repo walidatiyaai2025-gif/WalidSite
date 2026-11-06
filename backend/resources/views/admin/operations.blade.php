@@ -134,7 +134,8 @@ summary{cursor:pointer;min-height:44px;padding:8px}
 <form method="post" action="{{ route('admin.operations.github.decide', ['id'=>$proposal->id,'lang'=>$locale]) }}" class="inline-actions">
 @csrf
 <label for="reason-{{ $proposal->id }}">{{ $ar ? 'سبب القرار' : 'Decision reason' }}</label>
-<select id="reason-{{ $proposal->id }}" name="reason">
+<select id="reason-{{ $proposal->id }}" name="reason" required>
+<option value="" disabled selected>{{ $ar ? 'اختر سبب القرار' : 'Choose the decision reason' }}</option>
 <option value="source_verified">{{ $ar ? 'تحقق المصدر' : 'Source verified' }}</option>
 <option value="not_public">{{ $ar ? 'غير عام' : 'Not public' }}</option>
 <option value="owner_policy">{{ $ar ? 'سياسة المالك' : 'Owner policy' }}</option>
