@@ -369,7 +369,7 @@ final class CpanelImmutableCodePointer
                 if (! $entry->isDir()) {
                     throw new DomainException('Previous immutable release directory changed.');
                 }
-                $entries[] = 'D'.chr(0).$relative.chr(0).(string) ($before['mode'] & 0777);
+                $entries[] = 'D'.chr(0).base64_encode($relative).chr(0).(string) ($before['mode'] & 0777);
                 continue;
             }
             if ($type !== 0100000 || ! $entry->isFile()
@@ -427,7 +427,7 @@ final class CpanelImmutableCodePointer
                     || $named['nlink'] !== 1) {
                     throw new DomainException('Previous immutable release file changed while sealing.');
                 }
-                $entries[] = 'F'.chr(0).$relative.chr(0)
+                $entries[] = 'F'.chr(0).base64_encode($relative).chr(0)
                     .(string) ($before['mode'] & 0777).chr(0)
                     .(string) $before['size'].chr(0).hash_final($hash);
             } finally {
