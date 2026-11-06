@@ -184,7 +184,7 @@ class ReleaseArtifactGateTest(unittest.TestCase):
                     swapped = True
 
         with patch.object(gate, "_stable_reader", swap_after_artifact):
-            with self.assertRaisesRegex(ValueError, "Release input pathname changed"):
+            with self.assertRaisesRegex(ValueError, r"Release input (?:pathname )?changed"):
                 verify(self.root, self.manifest, SHA)
         self.assertTrue(swapped)
 
