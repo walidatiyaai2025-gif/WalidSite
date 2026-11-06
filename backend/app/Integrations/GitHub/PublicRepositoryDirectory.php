@@ -2,6 +2,7 @@
 
 namespace App\Integrations\GitHub;
 
+use App\Models\GithubAllowlistProposal;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Throwable;
@@ -26,7 +27,9 @@ final class PublicRepositoryDirectory
     {
         $configured = config('portfolio.github_public_repos', []);
         if (! is_array($configured)) {
-            return [];
+            // A malformed legacy environment value must not block the
+            // separately approved DB allowlist.
+            $configured = [];
         }
 
         $seen = [];
@@ -42,8 +45,51 @@ final class PublicRepositoryDirectory
             $seen[$normalized] = true;
             $slugs[] = $candidate;
             if (count($slugs) === 20) {
-                break;
+                return $slugs;
             }
+        }
+
+        // Existing environment entries stay first and retain their prior
+        // behavior. Only independently owner-approved DB candidates with a
+        // real verification receipt can fill remaining slots. A pending or
+        // rejected proposal is never permission for public disclosure.
+        // Do not query the database when all 20 env slots are occupied.
+        try {
+            foreach (GithubAllowlistProposal::query()
+                ->where('status', 'approved')
+                ->whereNotNull('reviewed_by_user_id')
+                ->whereNotNull('reviewed_at')
+                ->where('reviewed_at', '<=', now('UTC'))
+                ->whereColumn('reviewed_by_user_id', '!=', 'submitted_by_user_id')
+                ->whereNotNull('verified_at')
+                ->where('verified_at', '<=', now('UTC'))
+                ->whereExists(static function ($query): void {
+                    // A mutable status field alone is not owner approval.
+                    // Require the persisted independent decision receipt.
+                    $query->selectRaw('1')
+                        ->from('github_allowlist_proposal_events as review_events')
+                        ->whereColumn('review_events.proposal_id', 'github_allowlist_proposals.id')
+                        ->whereColumn('review_events.actor_user_id', 'github_allowlist_proposals.reviewed_by_user_id')
+                        ->where('review_events.action', 'approved');
+                })
+                ->orderBy('created_at')->orderBy('id')
+                ->limit(200)->pluck('repository_slug') as $candidate) {
+                if (! is_string($candidate) || ! $this->validSlug($candidate)) {
+                    continue;
+                }
+                $normalized = strtolower($candidate);
+                if (isset($seen[$normalized])) {
+                    continue;
+                }
+                $seen[$normalized] = true;
+                $slugs[] = $normalized;
+                if (count($slugs) === 20) {
+                    break;
+                }
+            }
+        } catch (Throwable) {
+            // During first-install migrations or a database outage, preserve
+            // configured entries without claiming unverified DB approvals.
         }
 
         return $slugs;
