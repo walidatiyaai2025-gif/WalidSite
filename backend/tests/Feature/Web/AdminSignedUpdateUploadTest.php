@@ -197,6 +197,10 @@ final class AdminSignedUpdateUploadTest extends TestCase
 
     public function test_non_owner_cannot_upload_executable_release_zip(): void
     {
+        // The stage endpoint has an intentionally strict 1/min production
+        // throttle. Isolate the access-control assertion from that separate
+        // rate limit rather than accepting 429 as an authorization proof.
+        $this->withoutMiddleware(ThrottleRequests::class);
         $user = User::create([
             'email' => 'unauthorized-update@example.test',
             'password_hash' => Hash::make('test-password'),
