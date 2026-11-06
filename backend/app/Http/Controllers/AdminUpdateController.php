@@ -649,6 +649,8 @@ final class AdminUpdateController extends Controller
         $staged = $request->session()->get('owner_update_staged_code');
         $preflight = $request->session()->get('owner_update_host_preflight');
         $home = dirname(public_path());
+        $runningApplication = base_path();
+        $firstVersion = (new TrustedInstalledVersion())->read($home.'/application/VERSION');
         if ($installed === null || ! is_string($id)
             || ! is_array($staged) || ! is_array($preflight)
             || ! hash_equals($id, (string) ($staged['id'] ?? ''))
@@ -659,8 +661,11 @@ final class AdminUpdateController extends Controller
             || $staged['created_at'] > time() || time() - $staged['created_at'] > 300
             || ! is_int($preflight['checked_at'] ?? null)
             || $preflight['checked_at'] > time() || time() - $preflight['checked_at'] > 300
-            || base_path() !== $home.'/application'
+            || $firstVersion === null
             || public_path() !== $home.'/public_html'
+            || (new TrustedInstalledReleasePin())->read(
+                $runningApplication, public_path(), $firstVersion,
+            ) !== $installed
             || ! app()->bound(CpanelOwnerCodeUpdateHost::class)
             || ! filled(config('site.trusted_release_origin'))
             || ! filled(config('site.trusted_release_public_key'))) {
@@ -698,6 +703,7 @@ final class AdminUpdateController extends Controller
                 (string) config('site.trusted_release_public_key'),
                 (string) config('site.trusted_release_origin'),
                 $installed, $home, $verified['directory'], $verified['archive'],
+                $runningApplication,
             );
         } catch (Throwable $error) {
             // Never expose driver credentials, private recovery locations,
