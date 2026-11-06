@@ -226,6 +226,46 @@ class StagingSmokeTest(unittest.TestCase):
                     )
                     self.assertEqual(private_response.body.tell(), 0)
 
+    def test_response_mime_essence_must_match_without_substring_bypass(self):
+        class MimeOpener(FakeOpener):
+            def __init__(self, content_type, path):
+                super().__init__()
+                self.content_type = content_type
+                self.path = path
+
+            def open(self, request, timeout):
+                response = super().open(request, timeout)
+                if request.full_url.endswith(self.path):
+                    response.headers["Content-Type"] = self.content_type
+                return response
+
+        for path, valid, invalid in (
+            ("/up", ("text/html", "Text/HTML; charset=utf-8"),
+             ("text/html-extra", "x-text/html", "text/plain;type=text/html")),
+            ("/api/v1/public/home",
+             ("application/json", "Application/JSON; charset=utf-8"),
+             ("application/json-extra", "text/application/json",
+              "text/plain; type=application/json")),
+        ):
+            for mime in valid:
+                with self.subTest(path=path, mime=mime):
+                    fake = MimeOpener(mime, path)
+                    self.assertTrue(permitted_run(
+                        "https://staging.example.com", fake)["http_smoke_passed"])
+                    self.assertTrue(all(x.closed for x in fake.responses))
+            for mime in invalid:
+                with self.subTest(path=path, mime=mime):
+                    fake = MimeOpener(mime, path)
+                    receipt = permitted_run("https://staging.example.com", fake)
+                    self.assertFalse(receipt["http_smoke_passed"])
+                    self.assertEqual(
+                        [(r["path"], r["reason"]) for r in receipt["checks"]
+                         if not r["passed"]],
+                        [(path, "non_html_response" if path == "/up"
+                          else "non_json_response")],
+                    )
+                    self.assertTrue(all(x.closed for x in fake.responses))
+
     def test_public_json_payloads_must_have_matching_data_shape(self):
         for override in [
             (200, "html", b'<html></html>'),
