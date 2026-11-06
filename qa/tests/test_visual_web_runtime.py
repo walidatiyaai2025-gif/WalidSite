@@ -16,7 +16,8 @@ from unittest.mock import Mock, patch
 
 from qa.audit_web_runtime import (
     FATAL_CODES, MAX_CHECKS, OVERFLOW_STRUCTURE, WEB_DOM_METRICS,
-    audit_web, inspect_page, main, safe_overflow_structure,
+    audit_web, discover_published_details, inspect_page, main,
+    safe_overflow_structure,
 )
 from qa.admin_visual_session import AdminSessionError
 
@@ -76,12 +77,44 @@ class FakePage:
         self.closed = True
 
 
+class FakeApiResponse:
+    def __init__(self, payload, status=200):
+        self.status = status
+        self.headers = {"content-type": "application/json"}
+        self.payload = payload
+
+    def body(self):
+        return json.dumps(self.payload).encode("utf-8")
+
+
+class FakeApiRequest:
+    def __init__(self, published, detail_status):
+        self.published = published
+        self.detail_status = detail_status
+        self.urls = []
+
+    def get(self, url, *, timeout, max_redirects):
+        self.urls.append(url)
+        if timeout != 10000 or max_redirects != 0:
+            raise AssertionError("Unsafe public API discovery request")
+        if not url.startswith("http://127.0.0.1:8000/api/v1/public/"):
+            raise AssertionError("Unsafe discovery origin")
+        if "/public/projects?lang=" in url:
+            return FakeApiResponse({"data": self.published.get("WEB-05", [])})
+        if "/public/articles?lang=" in url:
+            return FakeApiResponse({"data": self.published.get("WEB-08", [])})
+        if "/public/projects/" in url or "/public/articles/" in url:
+            return FakeApiResponse({"data": {}}, self.detail_status)
+        raise AssertionError("Unexpected discovery URL")
+
+
 class FakeContext:
-    def __init__(self, viewport_width=1440):
+    def __init__(self, viewport_width=1440, published=None, detail_status=200):
         self.viewport_width = viewport_width
         self.pages = []
         self.routes = []
         self.closed = False
+        self.request = FakeApiRequest(published or {}, detail_status)
 
     def route(self, pattern, callback):
         self.routes.append((pattern, callback))
@@ -95,7 +128,7 @@ class FakeContext:
         self.closed = True
 
 
-def fake_playwright():
+def fake_playwright(*, published=None, detail_status=200):
     contexts = []
     browser = Mock()
 
@@ -103,7 +136,8 @@ def fake_playwright():
         # The production public-audit path must never provide storage state.
         if "storage_state" in kwargs:
             raise AssertionError("Private session leaked into Web audit")
-        context = FakeContext(kwargs.get("viewport", {}).get("width", 1440))
+        context = FakeContext(kwargs.get("viewport", {}).get("width", 1440),
+                              published=published, detail_status=detail_status)
         contexts.append(context)
         return context
 
@@ -173,17 +207,22 @@ class WebRuntimeAuditTest(unittest.TestCase):
         self.assertFalse(report["evidence_admitted"])
         self.assertEqual(report["visual_parity"], "not_attested")
         self.assertEqual(report["dynamic_web_pending"], ["WEB-05", "WEB-08"])
-        self.assertEqual(len(contexts), 6)
-        self.assertEqual({ctx.viewport_width for ctx in contexts},
+        self.assertEqual(report["dynamic_web_verified"], [])
+        self.assertEqual(report["static_checks"], 72)
+        self.assertEqual(report["dynamic_checks"], 0)
+        self.assertEqual(len(contexts), 7)
+        self.assertEqual(contexts[0].pages, [])
+        self.assertTrue(contexts[0].closed)
+        self.assertEqual({ctx.viewport_width for ctx in contexts[1:]},
                          {1440, 768, 390})
         self.assertEqual(len({(r["screen"], r["locale"], r["viewport"])
                               for r in report["results"]}), 72)
         self.assertEqual({r["viewport"] for r in report["results"]},
                          {"desktop", "tablet", "mobile"})
         self.assertTrue(all(len(ctx.pages) == 12 and ctx.closed
-                            for ctx in contexts))
-        self.assertTrue(all(p.closed for ctx in contexts for p in ctx.pages))
-        for context in contexts:
+                            for ctx in contexts[1:]))
+        self.assertTrue(all(p.closed for ctx in contexts[1:] for p in ctx.pages))
+        for context in contexts[1:]:
             callback = context.routes[0][1]
             permitted = SimpleNamespace(request=SimpleNamespace(
                 url="http://127.0.0.1:8000/assets/site.css"),
@@ -197,6 +236,70 @@ class WebRuntimeAuditTest(unittest.TestCase):
             external.abort.assert_called_once()
         browser.close.assert_called_once()
         self.assertNotIn("cookie", json.dumps(report).lower())
+
+    def test_real_published_project_adds_six_anonymous_detail_browser_checks(self):
+        manager, contexts, browser = fake_playwright(
+            published={"WEB-05": [{"slug": "approved-public-project"}]},
+        )
+        with patch("qa.audit_web_runtime.exact_checkout"), \\
+             patch.dict(os.environ, {"WALIDSITE_CAPTURE_STORAGE_STATE": ""}):
+            report = audit_web(
+                "http://127.0.0.1:8000", SHA, root=ROOT,
+                playwright_manager=manager,
+            )
+        self.assertEqual(report["screen_checks"], 78)
+        self.assertEqual(report["static_checks"], 72)
+        self.assertEqual(report["dynamic_checks"], 6)
+        self.assertEqual(report["dynamic_web_verified"], ["WEB-05"])
+        self.assertEqual(report["dynamic_web_pending"], ["WEB-08"])
+        detail = [x for x in report["results"] if x["screen"] == "WEB-05"]
+        self.assertEqual(len(detail), 6)
+        self.assertEqual({(x["locale"], x["viewport"]) for x in detail},
+                         {(lang, view) for lang in ("en", "ar")
+                          for view in ("desktop", "tablet", "mobile")})
+        self.assertTrue(all(x["status"] == "pass" for x in detail))
+        self.assertEqual(len(contexts), 7)
+        self.assertEqual(sum(len(ctx.pages) for ctx in contexts), 78)
+        self.assertNotIn("approved-public-project", json.dumps(report))
+        self.assertFalse(report["evidence_admitted"])
+        browser.close.assert_called_once()
+
+    def test_both_really_published_details_require_twelve_extra_browser_checks(self):
+        manager, contexts, _ = fake_playwright(published={
+            "WEB-05": [{"slug": "approved-project"}],
+            "WEB-08": [{"slug": "verified-article"}],
+        })
+        with patch("qa.audit_web_runtime.exact_checkout"), \\
+             patch.dict(os.environ, {"WALIDSITE_CAPTURE_STORAGE_STATE": ""}):
+            report = audit_web(
+                "http://127.0.0.1:8000", SHA, root=ROOT,
+                playwright_manager=manager,
+            )
+        self.assertEqual(report["screen_checks"], 84)
+        self.assertEqual(report["dynamic_checks"], 12)
+        self.assertEqual(report["dynamic_web_pending"], [])
+        self.assertEqual(report["dynamic_web_verified"], ["WEB-05", "WEB-08"])
+        self.assertTrue(all(len(ctx.pages) == 14 for ctx in contexts[1:]))
+        self.assertNotIn("verified-article", json.dumps(report))
+
+    def test_private_or_invalid_detail_discovery_fails_closed_before_browser_capture(self):
+        for published, status in [
+            ({"WEB-05": [{"slug": "../private"}]}, 200),
+            ({"WEB-08": [{"slug": "valid-public-article"}]}, 404),
+            ({"WEB-05": [{"slug": "not/allowed"}]}, 200),
+        ]:
+            with self.subTest(published=published, status=status):
+                manager, contexts, _ = fake_playwright(
+                    published=published, detail_status=status,
+                )
+                with patch("qa.audit_web_runtime.exact_checkout"), \\
+                     patch.dict(os.environ, {"WALIDSITE_CAPTURE_STORAGE_STATE": ""}):
+                    with self.assertRaises(AdminSessionError):
+                        audit_web("http://127.0.0.1:8000", SHA, root=ROOT,
+                                  playwright_manager=manager)
+                self.assertEqual(len(contexts), 1)
+                self.assertTrue(contexts[0].closed)
+                self.assertEqual(contexts[0].pages, [])
 
     def test_overflow_structure_is_bounded_and_never_records_dom_text_or_url(self):
         valid = {
