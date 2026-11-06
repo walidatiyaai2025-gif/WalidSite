@@ -183,7 +183,17 @@ def verify_bundle(directory: Path, checkout: Path, source_sha: str,
     version = android["site_release_version"]
     with pinned_directory(candidates) as fd:
         manifest_file = f"WalidSite-Release-Manifest-v{version}.json"
-        manifest_bytes, _, _ = read_verified(fd, manifest_file, MAX_JSON_BYTES)
+        notes_file = f"WalidSite-Release-Notes-v{version}.md"
+        manifest_bytes, manifest_sha, _ = read_verified(fd, manifest_file, MAX_JSON_BYTES)
+        # Independently validate the immutable candidate document bytes, not
+        # just the archive checksums within the manifest. A changed or missing
+        # document sidecar must fail the unified web/native release receipt.
+        for name, digest in ((manifest_file, manifest_sha), (notes_file, None)):
+            if digest is None:
+                _, digest, _ = read_verified(fd, name, MAX_JSON_BYTES)
+            checksum_bytes, _, _ = read_verified(fd, name + ".sha256", 256)
+            if checksum_bytes != f"{digest}  {name}\n".encode("ascii"):
+                raise ValueError("Release document SHA256 sidecar mismatch")
         php_bytes, _, _ = read_verified(fd, "signed-zip-acceptance.json", MAX_JSON_BYTES)
         try:
             manifest = json.loads(manifest_bytes.decode("utf-8"))

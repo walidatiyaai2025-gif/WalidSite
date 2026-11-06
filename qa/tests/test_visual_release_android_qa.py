@@ -177,12 +177,23 @@ class ReleaseAndroidQaAttachmentTest(unittest.TestCase):
             "code_update_performed": False, "production_ready": False,
         }
         self.release_dir = directory
+        (directory / "WalidSite-Release-Notes-v1.2.3.md").write_text(
+            "# WalidSite v1.2.3 - UNPUBLISHED candidate\n",
+            encoding="utf-8",
+        )
         return directory
 
     def verify_candidate(self):
-        (self.release_dir / "WalidSite-Release-Manifest-v1.2.3.json").write_text(
+        manifest_name = "WalidSite-Release-Manifest-v1.2.3.json"
+        (self.release_dir / manifest_name).write_text(
             json.dumps(self.release_manifest), encoding="utf-8"
         )
+        for name in (manifest_name, "WalidSite-Release-Notes-v1.2.3.md"):
+            document = self.release_dir / name
+            (self.release_dir / (name + ".sha256")).write_text(
+                hashlib.sha256(document.read_bytes()).hexdigest()
+                + "  " + name + "\n", encoding="ascii"
+            )
         (self.release_dir / "signed-zip-acceptance.json").write_text(
             json.dumps(self.php), encoding="utf-8"
         )
@@ -241,6 +252,31 @@ class ReleaseAndroidQaAttachmentTest(unittest.TestCase):
             output.write(b"altered")
         with self.assertRaises(ValueError):
             self.verify_candidate()
+
+    def test_unified_bundle_rejects_tampered_or_missing_document_checksums(self):
+        manifest_name = "WalidSite-Release-Manifest-v1.2.3.json"
+        notes_name = "WalidSite-Release-Notes-v1.2.3.md"
+        for name in (manifest_name, notes_name):
+            with self.subTest(document=name):
+                self.make_candidate()
+                self.verify_candidate()
+                document = self.release_dir / name
+                sidecar = self.release_dir / (name + ".sha256")
+                # A valid parseable manifest or plausible notes still fail
+                # once their immutable, SHA-pinned release bytes change.
+                with document.open("ab") as stream:
+                    stream.write(b"UNAPPROVED CHANGE")
+                with self.assertRaises(ValueError):
+                    verify_bundle(self.folder, self.checkout, SHA, self.release_dir)
+                self.verify_candidate()
+                sidecar.unlink()
+                with self.assertRaises(ValueError):
+                    verify_bundle(self.folder, self.checkout, SHA, self.release_dir)
+                self.release_dir.joinpath(name).unlink()
+                self.release_dir.joinpath("signed-zip-acceptance.json").unlink()
+                # Restore the release directory for the next independent case.
+                import shutil
+                shutil.rmtree(self.release_dir)
 
     def test_real_repository_native_and_web_versions_match(self):
         source_root = Path(__file__).resolve().parents[2]
