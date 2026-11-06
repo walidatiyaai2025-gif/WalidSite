@@ -87,6 +87,62 @@ void main() {
     expect(arabic.runbooks, isEmpty);
   });
 
+  test('MOBILE-02 projects open only canonical first-party HTTPS routes', () {
+    final trusted = Uri.parse('https://portfolio.example.org');
+    expect(
+      MobileHomeProject.publicDetailUrl('verified-project', origin: trusted)
+          .toString(),
+      'https://portfolio.example.org/projects/verified-project',
+    );
+    for (final slug in <String>[
+      '', '../private', 'project?token=secret', 'project#fragment',
+      'project/other', 'bad%2Fslug', 'x' * 181,
+    ]) {
+      expect(MobileHomeProject.publicDetailUrl(slug, origin: trusted), isNull,
+          reason: 'A project link must not escape the first-party route');
+    }
+    for (final raw in <String>[
+      'http://portfolio.example.org',
+      'https://user:pass@portfolio.example.org',
+      'https://portfolio.example.org:8443',
+      'https://127.0.0.1',
+      'https://internal.local',
+      'https://portfolio.example.org/unverified',
+      'https://portfolio.example.org?redirect=unsafe',
+    ]) {
+      expect(
+        MobileHomeProject.publicDetailUrl(
+          'verified-project', origin: Uri.parse(raw)),
+        isNull,
+        reason: raw,
+      );
+    }
+  });
+
+  testWidgets('MOBILE-02 project card dispatches its exact verified slug',
+      (tester) async {
+    String? selected;
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: ListView(children: [
+          MobileHomeFeedPanel(
+            arabic: false,
+            fetch: (_) async => MobileHomeFeed.parse(feed(), false),
+            onOpenArticles: () {},
+            onOpenRunbooks: () {},
+            onOpenProject: (slug) => selected = slug,
+          ),
+        ]),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    final card = find.byKey(const Key('mobile-home-project-verified-project'));
+    await tester.ensureVisible(card);
+    await tester.tapAt(tester.getTopLeft(card) + const Offset(20, 35));
+    await tester.pump();
+    expect(selected, 'verified-project');
+  });
+
   test('MOBILE-02 rejects title controls and bidi identity spoofing', () {
     final normalProject = {
       'slug': 'verified-project',
