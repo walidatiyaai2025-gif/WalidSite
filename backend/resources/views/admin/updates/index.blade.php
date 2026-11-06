@@ -41,6 +41,7 @@ button:disabled{background:#718096;cursor:not-allowed}
 <a href="{{ route('admin.updates.index', ['lang' => $locale === 'ar' ? 'en' : 'ar']) }}" hreflang="{{ $locale === 'ar' ? 'en' : 'ar' }}" lang="{{ $locale === 'ar' ? 'en' : 'ar' }}">{{ $locale === 'ar' ? 'English' : 'العربية' }}</a>
 </nav>
 <h1>{{ $locale === 'ar' ? 'النظام — التحديثات' : 'System — Updates' }}</h1>
+@if(session('status'))<p class="success" role="status" data-testid="owner-update-action-result">{{ session('status') }}</p>@endif
 <p>{{ $locale === 'ar'
     ? 'هذه الصفحة تميّز بين تحديث ملفات الموقع كاملة وبين ترحيلات قاعدة البيانات الموجودة بالفعل على الخادم.'
     : 'This page distinguishes full application code releases from migrations already checked into the deployed server.' }}</p>
@@ -53,9 +54,27 @@ button:disabled{background:#718096;cursor:not-allowed}
 <div><dt>{{ $locale === 'ar' ? 'الإصدار المتاح' : 'Available version' }}</dt>
 <dd>{{ $signedCandidateVerified ? $trustedCheck['version'] : ($locale === 'ar' ? 'غير متحقق منه' : 'Not verified') }}</dd></div>
 <div><dt>{{ $locale === 'ar' ? 'النسخة الاحتياطية' : 'Backup status' }}</dt>
-<dd>{{ $locale === 'ar' ? 'لم يتم التحقق' : 'Not verified' }}</dd></div>
+<dd data-testid="owner-backup-status">
+@if($recoveryHistory['state'] === 'blocked')
+{{ $locale === 'ar' ? 'تعذّر التحقق من سجل الاستعادة' : 'Recovery history cannot be verified' }}
+@elseif($recoveryHistory['state'] === 'history')
+{{ $locale === 'ar' ? 'إيصالات استعادة تاريخية — ليست موافقة حالية على التحديث' : 'Historical restore receipts — not current update approval' }}
+@else
+{{ $locale === 'ar' ? 'لا توجد إيصالات استعادة مسجّلة' : 'No recorded restore receipts' }}
+@endif
+</dd></div>
 <div><dt>{{ $locale === 'ar' ? 'تحديث الكود من الإدارة' : 'Admin code upgrade' }}</dt>
-<dd>{{ $locale === 'ar' ? 'غير جاهز' : 'Not available' }}</dd></div>
+<dd data-testid="owner-code-upgrade-status">
+@if(config('site.updates_enabled') !== true)
+{{ $locale === 'ar' ? 'التحديثات معطّلة من الخادم' : 'Updates disabled by server' }}
+@elseif(!$hostCodeUpdateAvailable)
+{{ $locale === 'ar' ? 'محجوب: تكامل الاستضافة غير متاح' : 'Blocked: host integration unavailable' }}
+@elseif($stagedCode)
+{{ $locale === 'ar' ? 'الحزمة مجهّزة؛ لم يُثبّت التحديث بعد' : 'Signed code staged; update not installed' }}
+@else
+{{ $locale === 'ar' ? 'تكامل الاستضافة مسجّل؛ التثبيت يحتاج تحققًا مستقلًا' : 'Host integration registered; install still gated' }}
+@endif
+</dd></div>
 </dl>
 
 <section class="panel" aria-labelledby="code-updates-title">
@@ -256,10 +275,36 @@ button:disabled{background:#718096;cursor:not-allowed}
     : 'Publisher transport or signature verification failed. No release was accepted. Review private server configuration and logs.' }}</p>
 @endif
 <ol class="steps" aria-label="{{ $locale === 'ar' ? 'مراحل تحديث الإصدار الكامل' : 'Full code update requirements' }}">
-<li><strong>{{ $locale === 'ar' ? 'فحص إصدار موثوق' : 'Check authenticated release' }}</strong><span class="status">{{ $locale === 'ar' ? 'اضغط فحص الإصدار للتحقق من كتالوج الناشر المثبت على الخادم؛ النتيجة تظهر أعلاه.' : 'Use Check to verify the server-pinned publisher catalog; the result appears above.' }}</span></li>
-<li><strong>{{ $locale === 'ar' ? 'فحص التوافق والنسخ الاحتياطي' : 'Preflight and recoverable backup' }}</strong><span class="status">{{ $locale === 'ar' ? 'لم تُنفّذ نسخة احتياطية أو تجربة استعادة.' : 'Backup and restore have not been verified.' }}</span></li>
-<li><strong>{{ $locale === 'ar' ? 'تطبيق الملفات والترحيلات' : 'Install code and migrations' }}</strong><span class="status">{{ $locale === 'ar' ? 'استبدال الكود الكامل غير متاح؛ الترحيلات المحلية منفصلة أدناه.' : 'Full code replacement is not available; local migrations are handled separately below.' }}</span></li>
-<li><strong>{{ $locale === 'ar' ? 'التحقق من الصحة والاستعادة' : 'Verify health and recovery' }}</strong><span class="status">{{ $locale === 'ar' ? 'لا توجد نتيجة تحقق أو سجل تحديث كود.' : 'No code-update health receipt or version history exists.' }}</span></li>
+<li><strong>{{ $locale === 'ar' ? 'فحص إصدار موثوق' : 'Check authenticated release' }}</strong><span class="status" data-testid="owner-update-step-check">
+@if($verifiedUpload)
+{{ $locale === 'ar' ? 'تم التحقق من أصالة حزمة ZIP؛ لم تُثبّت.' : 'Publisher-authenticated ZIP verified; not installed.' }}
+@elseif($signedCandidateVerified)
+{{ $locale === 'ar' ? 'تم التحقق من بيان الناشر فقط؛ لم تُنزّل الحزمة.' : 'Signed publisher catalog verified; ZIP not yet downloaded.' }}
+@else
+{{ $locale === 'ar' ? 'يجب فحص بيان الناشر أو رفع حزمة موقّعة قبل التثبيت.' : 'Verify the signed publisher catalog or upload a trusted ZIP first.' }}
+@endif
+</span></li>
+<li><strong>{{ $locale === 'ar' ? 'فحص التوافق والنسخ الاحتياطي' : 'Preflight and recoverable backup' }}</strong><span class="status" data-testid="owner-update-step-recovery">
+@if($hostPreflight)
+{{ $locale === 'ar' ? 'نجح فحص التوافق فقط؛ النسخ والاستعادة والعزل تُفحص مجددًا عند التنفيذ.' : 'Compatibility preflight only passed; backup, restore and writer isolation must be proven again during install.' }}
+@elseif($recoveryHistory['state'] === 'history')
+{{ $locale === 'ar' ? 'توجد إيصالات تاريخية؛ لا تُجيز تحديثًا جديدًا دون اختبار استعادة مستقل.' : 'Historical recovery receipts exist; a new update still requires an independent restore drill.' }}
+@else
+{{ $locale === 'ar' ? 'لا يوجد إثبات استعادة حالي يجيز تثبيت إصدار جديد.' : 'No current recovery proof authorizes a code installation.' }}
+@endif
+</span></li>
+<li><strong>{{ $locale === 'ar' ? 'تطبيق ملفات الكود الموقّع' : 'Install signed application code' }}</strong><span class="status" data-testid="owner-update-step-install">
+@if($stagedCode)
+{{ $locale === 'ar' ? 'تم تجهيز ملفات موثوقة دون تثبيت؛ يتطلب التطبيق موافقة المالك وعزلًا واستعادة وفحص HTTPS.' : 'Trusted code staged, not installed; owner confirmation, isolation, recovery and HTTPS health are required.' }}
+@elseif($hostCodeUpdateAvailable && config('site.updates_enabled') === true)
+{{ $locale === 'ar' ? 'مسار التحديث متاح بشرط تجهيز الحزمة واجتياز ضوابط التشغيل؛ لم يُنفّذ تبديل كود.' : 'Host update capability is registered, but no code cutover was performed.' }}
+@else
+{{ $locale === 'ar' ? 'التحديث محجوب حتى يتوفر تكامل استضافة موثوق.' : 'Code installation remains blocked without trusted host integration.' }}
+@endif
+</span></li>
+<li><strong>{{ $locale === 'ar' ? 'التحقق من الصحة والاستعادة' : 'Verify health and recovery' }}</strong><span class="status" data-testid="owner-update-step-health">
+{{ $locale === 'ar' ? 'الإيصالات التاريخية لا تُثبت سلامة التحديث الحالي؛ يُطلب فحص HTTPS بعد كل تثبيت.' : 'Historical receipts do not establish current release health; each installation requires its own HTTPS health proof.' }}
+</span></li>
 </ol>
 <section class="panel" aria-labelledby="recovery-history-title" data-testid="owner-recovery-history">
 <h3 id="recovery-history-title">{{ $locale === 'ar' ? 'سجل النسخ الاحتياطي واختبار الاستعادة' : 'Backup & recovery history' }}</h3>
@@ -304,7 +349,6 @@ button:disabled{background:#718096;cursor:not-allowed}
     ? 'هذه العملية لا تنزّل إصدارًا جديدًا ولا تستبدل ملفات PHP أو الواجهة. لا تعتبر نجاحها دليلاً على تحديث الموقع.'
     : 'This action neither downloads a new release nor replaces PHP or website files. A successful migration is not a code upgrade.' }}</p>
 <a href="{{ route('admin.updates.index', ['lang' => $locale]) }}">{{ $locale === 'ar' ? 'إعادة فحص الترحيلات' : 'Refresh migration status' }}</a>
-@if(session('status'))<p class="success" role="status">{{ session('status') }}</p>@endif
 @if($errors->any())<div role="alert" class="error">@foreach($errors->all() as $error)<p>{{ $error }}</p>@endforeach</div>@endif
 @if($status['history_mismatch'] ?? false)
 <p role="alert" class="error">{{ $locale === 'ar'

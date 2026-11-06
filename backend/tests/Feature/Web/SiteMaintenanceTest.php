@@ -613,7 +613,8 @@ class SiteMaintenanceTest extends TestCase
             ->assertSee('data-testid="installed-package-version"', false)
             ->assertSee('0.1.2')
             ->assertSee('Not verified')
-            ->assertSee('Not available');
+            ->assertSee('data-testid="owner-code-upgrade-status"', false)
+            ->assertSee('Blocked: host integration unavailable');
     }
 
     public function test_owner_can_check_real_ed25519_publisher_release_without_applying_code(): void
