@@ -13,7 +13,7 @@ body:has(.recruiter-screen) .header-links a[href*="/contact"]{background:#00A999
     min-height:326px;padding:34px 0;background:#EAF5FB}
 .recruiter-hero::before{content:"";position:absolute;z-index:-1;inset:0 auto 0 50%;width:100vw;transform:translateX(-50%);background:#EAF5FB}
 .recruiter-kicker{display:inline-block;min-width:190px;padding:7px 15px;margin:0 0 20px;border-radius:15px;background:#D8F4EF;color:#078E80;font-size:16px;font-weight:800}
-.recruiter-hero h1{font-size:clamp(34px,4vw,48px);color:#1C4976;line-height:1.2;margin:0 0 18px}
+.recruiter-hero .recruiter-title{font-size:clamp(34px,4vw,48px);color:#1C4976;line-height:1.2;margin:0 0 18px;font-weight:700}
 .recruiter-hero p{color:#315471;font-size:19px;margin:0;max-width:700px}
 .recruiter-hero-actions{display:flex;flex-wrap:wrap;gap:18px;margin-top:25px}
 .recruiter-hero-actions a{display:inline-flex;min-height:54px;align-items:center;justify-content:center;min-width:190px;
@@ -59,7 +59,7 @@ body:has(.recruiter-screen) .header-links a[href*="/contact"]{background:#00A999
     <header class="recruiter-hero">
         <div>
             <span class="recruiter-kicker">{{ $locale === 'ar' ? 'للجهات الباحثة عن الخبرات' : 'HIRING VIEW' }}</span>
-            <h1 id="recruiter-title">{{ $locale === 'ar' ? 'وضع التوظيف' : 'Recruiter Mode' }}</h1>
+            <h2 class="recruiter-title" id="recruiter-title">{{ $locale === 'ar' ? 'وضع التوظيف' : 'Recruiter Mode' }}</h2>
             <p>{{ $locale === 'ar'
                 ? 'راجع المهارات المنشورة بالأدلة والسيرة المهنية القابلة للطباعة والمشاريع المتحقَّق منها قبل التواصل.'
                 : 'Explore published expertise, evidence-backed case studies and the printable public CV before getting in touch.' }}</p>

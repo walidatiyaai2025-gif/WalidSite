@@ -8,7 +8,7 @@
 @endpush
 @push('styles')
 <style>
-.editorial{padding-block:clamp(32px,5vw,72px)}.editorial h1{font-size:clamp(31px,4vw,48px);color:var(--wa-primary);line-height:1.2}
+.editorial{padding-block:clamp(32px,5vw,72px)}.editorial .lab-page-title{font-size:clamp(31px,4vw,48px);color:var(--wa-primary);line-height:1.2;font-weight:700;margin-block:.67em}
 .editorial a{color:var(--wa-cta);overflow-wrap:anywhere}.ed-card{background:#fff;border:1px solid var(--wa-soft-border);border-radius:18px;padding:24px;margin-block:16px}
 .ed-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:16px}
 .ed-grid .ed-card{margin:0}.ed-card h2{color:var(--wa-primary)}
@@ -27,7 +27,7 @@
 @endpush
 @section('content')
 @include('public.t012-reference-stage', ['screen' => 'lab'])
-<section class="site-wrap editorial t012-functional" id="t012-functional"><h1>{{ $locale === 'ar' ? 'المختبر التقني' : 'Technology lab' }}</h1>
+<section class="site-wrap editorial t012-functional" id="t012-functional"><h2 class="lab-page-title">{{ $locale === 'ar' ? 'المختبر التقني' : 'Technology lab' }}</h2>
 <p>{{ $locale === 'ar' ? 'الأدوات التفاعلية غير مفعّلة حتى التحقق منها. المتاح أدلة منشورة ذات مصادر فقط.' : 'Interactive tools are not active until verified. Only published, evidence-reviewed guides can be opened.' }}</p>
 <div class="lab-actions" aria-label="{{ $locale === 'ar' ? 'إجراءات المختبر' : 'Lab actions' }}">
     <section class="lab-action-card" aria-labelledby="lab-tool-action-title">
