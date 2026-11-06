@@ -55,6 +55,7 @@ jobs:
           python -m pip install --disable-pip-version-check --quiet Pillow==11.3.0
           python qa/validate_visual_fidelity.py
           python -m unittest discover -s qa/tests -p 'test_visual_*.py'
+          bash -n qa/ci_android_emulator_smoke.sh
       - name: Verify cPanel ZIP safety rules
         run: |
           python3 -m unittest discover -s qa/tests -p test_cpanel_package.py
