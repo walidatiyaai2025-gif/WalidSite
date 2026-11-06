@@ -306,4 +306,93 @@ final class CpanelArchiveCodeOnlyPreflightTest extends TestCase
         $entries['application/database/migrations/'.$this->migration] = str_repeat('x', 2097153);
         $this->reject($this->makeZip($entries), 'Oversize migration must fail before reading.');
     }
+
+    /**
+     * Simulate a successful first cPanel pointer switch without changing the
+     * original private runtime application or the physical public_html.
+     * The second update must compare against the active immutable code.
+     */
+    private function activateVersionedRelease(): string
+    {
+        $release = $this->root.'/.walidsite-releases/v0.1.3-'.str_repeat('a', 40);
+        self::assertTrue(mkdir($release.'/application/database/migrations', 0700, true));
+        foreach (['composer.json', 'composer.lock'] as $file) {
+            self::assertTrue(copy($this->root.'/application/'.$file, $release.'/application/'.$file));
+        }
+        self::assertTrue(copy(
+            $this->root.'/application/database/migrations/'.$this->migration,
+            $release.'/application/database/migrations/'.$this->migration,
+        ));
+        file_put_contents($release.'/application/VERSION', "0.1.3\\n");
+        $pointer = $this->root.'/.walidsite-active-release.json';
+        file_put_contents($pointer, json_encode([
+            'schema' => 1, 'version' => '0.1.3',
+            'root' => '.walidsite-releases/'.basename($release),
+        ], JSON_THROW_ON_ERROR));
+        self::assertTrue(chmod($pointer, 0600));
+
+        return $release;
+    }
+
+    public function test_second_upgrade_reads_active_versioned_code_not_retired_original(): void
+    {
+        $active = $this->activateVersionedRelease();
+        $entries = $this->entries();
+        $entries['application/VERSION'] = "0.1.4\\n";
+        $sha = $this->makeZip($entries);
+        $verify = static fn () => (new CpanelArchiveCodeOnlyPreflight())->assertCompatible(
+            $this->root, $this->root.'/public_html', $this->archive,
+            $sha, '0.1.3', '0.1.4',
+        );
+
+        self::assertSame(
+            ['state' => 'code_only_compatible', 'migrations' => 1],
+            $verify(),
+        );
+        // Retired legacy code remains at v0.1.2, and is never overwritten.
+        self::assertSame('0.1.2', trim(file_get_contents($this->root.'/application/VERSION')));
+        self::assertSame('0.1.3', trim(file_get_contents($active.'/application/VERSION')));
+
+        file_put_contents($active.'/application/composer.lock', '{"packages":[{"name":"drifted/active"}]}');
+        try {
+            $verify();
+            self::fail('A second update cannot ignore dependency changes to active code.');
+        } catch (DomainException) {
+            self::assertSame('0.1.2', trim(file_get_contents($this->root.'/application/VERSION')));
+        }
+    }
+
+    public function test_invalid_or_linked_active_release_pointer_never_falls_back_to_legacy(): void
+    {
+        $this->activateVersionedRelease();
+        $entries = $this->entries();
+        $entries['application/VERSION'] = "0.1.4\\n";
+        $sha = $this->makeZip($entries);
+        $verify = fn () => (new CpanelArchiveCodeOnlyPreflight())->assertCompatible(
+            $this->root, $this->root.'/public_html', $this->archive,
+            $sha, '0.1.3', '0.1.4',
+        );
+        $pointer = $this->root.'/.walidsite-active-release.json';
+
+        file_put_contents($pointer, '{"schema":1,"version":"0.1.3","root":"../../external"}');
+        try {
+            $verify();
+            self::fail('Pointer traversal cannot select untrusted executable code.');
+        } catch (DomainException) {
+            self::assertSame('0.1.2', trim(file_get_contents($this->root.'/application/VERSION')));
+        }
+
+        if (function_exists('symlink')) {
+            $outside = $this->root.'/pointer-untrusted.json';
+            file_put_contents($outside, '{}');
+            self::assertTrue(unlink($pointer));
+            self::assertTrue(symlink($outside, $pointer));
+            try {
+                $verify();
+                self::fail('Linked pointer cannot authorize a code-only release.');
+            } catch (DomainException) {
+                self::assertSame('{}', file_get_contents($outside));
+            }
+        }
+    }
 }
