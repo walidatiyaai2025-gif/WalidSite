@@ -86,8 +86,8 @@ final class MariaDbRecoverySnapshot
                             $hashes[] = hash('sha256', $this->canonical($encoded));
                         }
                         $stmt->closeCursor();
-                        if (! fflush($out) || ! chmod($file, 0600)) {
-                            throw new RuntimeException('Cannot finalize private database recovery bytes.');
+                        if (! fflush($out) || ! @fsync($out) || ! chmod($file, 0600)) {
+                            throw new RuntimeException('Cannot durably finalize private database recovery bytes.');
                         }
                         // Do not re-open an attacker-swappable pathname to
                         // hash a different inode than the one just written.
@@ -118,9 +118,8 @@ final class MariaDbRecoverySnapshot
                 'format' => 'walidsite-mariadb-1', 'source' => $db, 'tables' => $manifest,
             ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
             $this->assertManifestCapacity($json);
-            if (file_put_contents($partial.'/manifest.json', $json, LOCK_EX) !== strlen($json)
-                || ! chmod($partial.'/manifest.json', 0600)
-                || ! rename($partial, $finished)) {
+            (new DurableRecoveryManifest())->write($partial.'/manifest.json', $json);
+            if (! rename($partial, $finished)) {
                 throw new RuntimeException('Cannot finalize MariaDB recovery snapshot.');
             }
             return [
