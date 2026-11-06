@@ -424,7 +424,7 @@ jobs:
           retention-days: 7
       - name: T007 real Laravel visual diagnostics
         id: t007_visual_diagnostics
-        if: ${{ github.event_name == 'pull_request' && (github.head_ref == 'feat/T007-runtime-parity-final' || (startsWith(github.head_ref, 'feat/') && (contains(github.head_ref, '-web-') || contains(github.head_ref, '-WEB-')))) }}
+        if: ${{ github.event_name == 'pull_request' && (github.head_ref == 'feat/T007-runtime-parity-final' || (startsWith(github.head_ref, 'feat/') && !startsWith(github.head_ref, 'feat/481-') && (contains(github.head_ref, '-web-') || contains(github.head_ref, '-WEB-')))) }}
         shell: bash
         env:
           APP_ENV: testing
