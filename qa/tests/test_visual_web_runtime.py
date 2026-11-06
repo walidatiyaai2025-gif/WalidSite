@@ -107,6 +107,16 @@ class WebRuntimeAuditTest(unittest.TestCase):
         self.assertIn("--commit", result.stdout)
         self.assertIn("--output", result.stdout)
 
+    def test_unrelated_t007_pixel_gate_excludes_lead_481_qa_branches(self):
+        workflow = (ROOT / ".github/workflows/ci.yml").read_text(
+            encoding="utf-8")
+        self.assertIn("name: T007 real Laravel visual diagnostics", workflow)
+        self.assertIn("!startsWith(github.head_ref, 'feat/481-')", workflow)
+        self.assertIn("github.head_ref == 'feat/T007-runtime-parity-final'",
+                      workflow)
+        self.assertIn("name: Issue 481 real authenticated Admin runtime diagnostics",
+                      workflow)
+
     def test_public_metrics_use_public_main_and_skip_link_not_admin(self):
         self.assertIn("main#main-content", WEB_DOM_METRICS)
         self.assertIn("#main-content", WEB_DOM_METRICS)
