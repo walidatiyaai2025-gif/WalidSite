@@ -32,7 +32,6 @@ final class AdminGithubProposalReviewTest extends TestCase
         // Sanctum/Illuminate guard may cache an earlier request user in a
         // multi-identity test; always re-resolve the bearer on each request.
         Auth::forgetGuards();
-        Auth::forgetGuards();
         $this->withToken($token);
         return $this;
     }
@@ -87,17 +86,16 @@ final class AdminGithubProposalReviewTest extends TestCase
         )->where('action', 'submitted')->count());
         $this->assertStringNotContainsString($admin->email, $created->getContent());
 
-        $this->getJson($url)->assertOk()
+        $this->asBearer($token)->getJson($url)->assertOk()
             ->assertJsonPath('meta.total', 1)
             ->assertJsonPath('data.0.repository_slug', 'trusted/repo');
-        $this->postJson($url, ['repository_slug' => 'TRUSTED/REPO'])
+        $this->asBearer($token)->postJson($url, ['repository_slug' => 'TRUSTED/REPO'])
             ->assertStatus(409);
         Http::assertNothingSent();
     }
 
     public function test_proposals_reject_malformed_urls_traversal_and_extra_fields(): void
     {
-        $this->withoutMiddleware(\Illuminate\Routing\Middleware\ThrottleRequests::class);
         Http::fake();
         [, $token] = $this->identity('admin');
         foreach ([
@@ -149,7 +147,7 @@ final class AdminGithubProposalReviewTest extends TestCase
         Http::assertSent(fn ($request) => $request->method() === 'GET'
             && $request->url() === 'https://api.github.com/repos/trusted/repo'
             && ! $request->hasHeader('Authorization'));
-        $this->postJson($path, ['decision' => 'reject'])->assertStatus(409);
+        $this->asBearer($ownerToken)->postJson($path, ['decision' => 'reject'])->assertStatus(409);
         Http::assertSentCount(1);
     }
 
@@ -163,7 +161,7 @@ final class AdminGithubProposalReviewTest extends TestCase
                 ['repository_slug' => 'example/public'])->assertCreated()
             ->json('data.id');
         $path = '/api/v1/admin/github/proposals/'.$id.'/decision';
-        $this->postJson($path, ['decision' => 'approve'])->assertForbidden();
+        $this->asBearer($ownerToken)->postJson($path, ['decision' => 'approve'])->assertForbidden();
         $this->asBearer($otherOwnerToken)->postJson($path,
             ['decision' => 'reject'])->assertOk()
             ->assertJsonPath('data.status', 'rejected')
@@ -173,7 +171,7 @@ final class AdminGithubProposalReviewTest extends TestCase
             GithubAllowlistProposalEvent::query()->where(
                 'proposal_id', $id
             )->orderBy('id')->pluck('action')->all());
-        $this->postJson($path, ['decision' => 'approve'])->assertStatus(409);
+        $this->asBearer($otherOwnerToken)->postJson($path, ['decision' => 'approve'])->assertStatus(409);
         Http::assertNothingSent();
         $this->assertSame($owner->id,
             GithubAllowlistProposal::findOrFail($id)->submitted_by_user_id);
@@ -223,7 +221,7 @@ final class AdminGithubProposalReviewTest extends TestCase
         $this->asBearer($ownerToken)->postJson($path, [
             'decision' => 'reject', 'reason' => 'api_key=SECRET',
         ])->assertUnprocessable();
-        $this->postJson($path, [
+        $this->asBearer($ownerToken)->postJson($path, [
             'decision' => 'reject', 'reason' => 'out_of_scope',
         ])->assertOk()->assertJsonPath('data.decision_reason', 'out_of_scope');
         $events = GithubAllowlistProposalEvent::query()
