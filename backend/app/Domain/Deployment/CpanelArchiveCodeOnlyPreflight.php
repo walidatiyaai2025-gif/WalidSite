@@ -41,6 +41,41 @@ final class CpanelArchiveCodeOnlyPreflight
             throw new DomainException('A verified immutable cPanel candidate and installed release are required.');
         }
 
+        // After an Admin-managed upgrade, the original application is retained
+        // solely as private runtime state; actual executable code lives at the
+        // stable dispatcher's approved version pointer. Never compare against
+        // the legacy application's Composer/migrations for a second update.
+        $pointer = $root.'/.walidsite-active-release.json';
+        if (file_exists($pointer) || is_link($pointer)) {
+            try {
+                $active = json_decode(
+                    $this->readPinned($pointer, 512), true, 8, JSON_THROW_ON_ERROR,
+                );
+            } catch (\JsonException) {
+                throw new DomainException('Installed release pointer is malformed.');
+            }
+            if (! is_array($active)
+                || array_keys($active) !== ['schema', 'version', 'root']
+                || $active['schema'] !== 1 || $active['version'] !== $installedVersion
+                || ! is_string($active['root'])
+                || ! preg_match('#\\A\\.walidsite-releases/v[0-9]+\\.[0-9]+\\.[0-9]+-[a-f0-9]{40}\\z#D', $active['root'])
+                || ! str_starts_with($active['root'], '.walidsite-releases/v'.$installedVersion.'-')) {
+                throw new DomainException('Installed release pointer is not approved for this version.');
+            }
+            $versionedRoot = $root.'/'.$active['root'];
+            clearstatcache(true, $versionedRoot);
+            $releaseStat = @lstat($versionedRoot);
+            if (! is_array($releaseStat) || is_link($versionedRoot)
+                || realpath($versionedRoot) !== $versionedRoot
+                || ($releaseStat['mode'] & 0170000) !== 0040000
+                || ($releaseStat['mode'] & 0022) !== 0
+                || is_link($versionedRoot.'/application')
+                || realpath($versionedRoot.'/application') !== $versionedRoot.'/application') {
+                throw new DomainException('Installed immutable release root is unsafe.');
+            }
+            $root = $versionedRoot;
+        }
+
         $installedVersionPath = $root.'/application/VERSION';
         if (trim($this->readPinned($installedVersionPath, 32)) !== $installedVersion) {
             throw new DomainException('Installed code identity is incompatible with this update.');
