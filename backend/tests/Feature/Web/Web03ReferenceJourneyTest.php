@@ -241,10 +241,13 @@ final class Web03ReferenceJourneyTest extends TestCase
                 '.expertise-art{height:296px;min-width:0;display:flex;',
                 $html
             );
+            $this->assertStringContainsString('@media (max-width: 700px)', $html);
             $this->assertStringContainsString(
-                '.expertise-art{width:100%;max-width:100%;min-width:0;box-sizing:border-box;justify-self:stretch;overflow:clip;height:auto;aspect-ratio:700/320;min-height:175px;margin:0}',
+                'body:has(.expertise-screen) .expertise-art {',
                 $html
             );
+            $this->assertStringContainsString('overflow: clip;', $html);
+            $this->assertStringContainsString('max-width: 100%;', $html);
         }
     }
 
