@@ -268,6 +268,23 @@ def _reject_nonfinite_json(value: str) -> object:
     raise ValueError("Invalid non-finite staging JSON constant")
 
 
+def _is_expected_media_type(headers: object, expected: str) -> bool:
+    """Accept only the exact MIME essence, with optional RFC-style parameters.
+
+    Substring checks would accept application/json-malicious or
+    text/html-extra and turn invalid responses into false staging PASS.
+    """
+    raw = headers.get("Content-Type", "")
+    if not isinstance(raw, str):
+        return False
+    parts = raw.split(";")
+    if parts[0].strip().lower() != expected:
+        return False
+    # Content-Type parameters must not hide a second (conflicting) MIME value.
+    return all("=" in part and bool(part.split("=", 1)[0].strip())
+               for part in parts[1:])
+
+
 def _check_one_transaction(origin: str, spec: Check, opener: Opener, timeout: int) -> dict:
     """One read-only probe; outer deadline protects even blocking HTTPS open."""
     deadline = time.monotonic() + timeout
@@ -302,10 +319,10 @@ def _check_one_transaction(origin: str, spec: Check, opener: Opener, timeout: in
             location = response.headers.get("Location", "")
             if location not in (spec.redirect_to, origin + spec.redirect_to):
                 reason = "unsafe_or_unexpected_redirect"
-        elif spec.kind == "html" and "text/html" not in response.headers.get("Content-Type", "").lower():
+        elif spec.kind == "html" and not _is_expected_media_type(response.headers, "text/html"):
             reason = "non_html_response"
         elif spec.kind == "json":
-            if "application/json" not in response.headers.get("Content-Type", "").lower():
+            if not _is_expected_media_type(response.headers, "application/json"):
                 reason = "non_json_response"
             else:
                 try:
