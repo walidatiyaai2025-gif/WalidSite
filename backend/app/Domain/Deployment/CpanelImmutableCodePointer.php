@@ -103,6 +103,10 @@ final class CpanelImmutableCodePointer
             (new CpanelReleaseMaintenance())->assertActive($home, $maintenanceToken, $previousRoot);
             $oldVersionFile = $oldRoot.'/application/VERSION';
             $oldVersionSnapshot = $this->readPinnedPhysicalFile($oldVersionFile, 32);
+            // Pin the complete previously running immutable release before
+            // any callback, backup, or provisional pointer switch. A version
+            // file alone cannot prove the old PHP tree remained intact.
+            $oldReleaseFingerprint = $this->releaseSeal($oldRoot);
             $oldVersion = trim($oldVersionSnapshot['bytes']);
             if (! preg_match('/\A(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\z/D', $oldVersion)
                 || version_compare($version, $oldVersion, '<=')) {
@@ -222,6 +226,7 @@ final class CpanelImmutableCodePointer
                         $previous['root'],
                         $oldVersion,
                         $oldVersionSnapshot['fingerprint'],
+                        $oldReleaseFingerprint,
                     );
                     // Issue the recovery capability only after independently
                     // re-reading the restored pointer and previous release
@@ -296,8 +301,9 @@ final class CpanelImmutableCodePointer
 
         $version = $this->readPinnedPhysicalFile($application.'/VERSION', 32);
         if (trim($version['bytes']) !== $proof->previousVersion
-            || ! hash_equals($proof->previousVersionFingerprint, $version['fingerprint'])) {
-            throw new DomainException('Previous release version inode changed during rollback.');
+            || ! hash_equals($proof->previousVersionFingerprint, $version['fingerprint'])
+            || ! hash_equals($proof->previousReleaseFingerprint, $this->releaseSeal($release))) {
+            throw new DomainException('Previous release code tree changed during rollback.');
         }
 
         $trustedFront = $this->readPinnedPhysicalFile($trustedFrontController, 1048576);
@@ -323,6 +329,113 @@ final class CpanelImmutableCodePointer
         (new CpanelReleaseMaintenance())->assertActive(
             $home, $maintenanceToken, $proof->previousRoot,
         );
+    }
+
+    /**
+     * Deterministic, no-symlink/no-hardlink fingerprint of a complete
+     * immutable release tree. Each regular file is hashed through one pinned
+     * inode and rechecked after reading; directory and file modes are included.
+     */
+    private function releaseSeal(string $releaseRoot): string
+    {
+        $root = realpath($releaseRoot);
+        $rootStat = $root === false ? false : @lstat($root);
+        if ($root === false || $root !== $releaseRoot || is_link($releaseRoot)
+            || ! is_array($rootStat) || ($rootStat['mode'] & 0170000) !== 0040000) {
+            throw new DomainException('Previous immutable release root cannot be sealed.');
+        }
+
+        $entries = [];
+        $totalBytes = 0;
+        $iterator = new \\RecursiveIteratorIterator(
+            new \\RecursiveDirectoryIterator($root, \\FilesystemIterator::SKIP_DOTS),
+            \\RecursiveIteratorIterator::SELF_FIRST,
+        );
+        foreach ($iterator as $entry) {
+            $path = $entry->getPathname();
+            $relative = substr($path, strlen($root) + 1);
+            if ($relative === '' || str_contains($relative, "\\0")
+                || str_starts_with($relative, '..'.DIRECTORY_SEPARATOR)
+                || is_link($path) || realpath($path) !== $path) {
+                throw new DomainException('Previous immutable release contains an unsafe path.');
+            }
+            clearstatcache(true, $path);
+            $before = @lstat($path);
+            if (! is_array($before)) {
+                throw new DomainException('Previous immutable release inventory changed.');
+            }
+            $type = $before['mode'] & 0170000;
+            if ($type === 0040000) {
+                if (! $entry->isDir()) {
+                    throw new DomainException('Previous immutable release directory changed.');
+                }
+                $entries[] = 'D'.chr(0).$relative.chr(0).(string) ($before['mode'] & 0777);
+                continue;
+            }
+            if ($type !== 0100000 || ! $entry->isFile()
+                || ($before['nlink'] ?? 0) !== 1
+                || ! is_int($before['size']) || $before['size'] < 0
+                || ($totalBytes += $before['size']) > 1073741824
+                || count($entries) >= 100000) {
+                throw new DomainException('Previous immutable release contains a special or unbounded file.');
+            }
+            $stream = @fopen($path, 'rb');
+            if ($stream === false) {
+                throw new DomainException('Previous immutable release file cannot be opened.');
+            }
+            try {
+                $opened = @fstat($stream);
+                if (! is_array($opened)
+                    || $opened['dev'] !== $before['dev']
+                    || $opened['ino'] !== $before['ino']
+                    || $opened['size'] !== $before['size']
+                    || $opened['mode'] !== $before['mode']
+                    || $opened['nlink'] !== 1) {
+                    throw new DomainException('Previous immutable release file identity changed.');
+                }
+                $hash = hash_init('sha256');
+                $read = 0;
+                while (! feof($stream)) {
+                    $chunk = fread($stream, 1048576);
+                    if ($chunk === false) {
+                        throw new DomainException('Previous immutable release file read failed.');
+                    }
+                    if ($chunk === '') {
+                        break;
+                    }
+                    $read += strlen($chunk);
+                    if ($read > $before['size']) {
+                        throw new DomainException('Previous immutable release file grew while sealing.');
+                    }
+                    hash_update($hash, $chunk);
+                }
+                clearstatcache(true, $path);
+                $after = @fstat($stream);
+                $named = @lstat($path);
+                if (! is_array($after) || ! is_array($named)
+                    || $read !== $before['size']
+                    || $after['dev'] !== $before['dev']
+                    || $after['ino'] !== $before['ino']
+                    || $after['size'] !== $before['size']
+                    || $after['mode'] !== $before['mode']
+                    || $after['mtime'] !== $before['mtime']
+                    || $after['ctime'] !== $before['ctime']
+                    || $named['dev'] !== $before['dev']
+                    || $named['ino'] !== $before['ino']
+                    || $named['size'] !== $before['size']
+                    || $named['mode'] !== $before['mode']
+                    || $named['nlink'] !== 1) {
+                    throw new DomainException('Previous immutable release file changed while sealing.');
+                }
+                $entries[] = 'F'.chr(0).$relative.chr(0)
+                    .(string) ($before['mode'] & 0777).chr(0)
+                    .(string) $before['size'].chr(0).hash_final($hash);
+            } finally {
+                fclose($stream);
+            }
+        }
+        sort($entries, SORT_STRING);
+        return hash('sha256', implode("\\n", $entries));
     }
 
     /**
