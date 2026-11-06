@@ -169,7 +169,9 @@ final class CpanelOwnerRecoveryHistoryTest extends TestCase
     public function test_code_cutover_requires_exact_recent_receipt_counts_bytes_and_both_manifest_digests(): void
     {
         $history = new CpanelOwnerRecoveryHistory();
-        $receipt = $this->receipt();
+        $receipt = array_replace($this->receipt(), [
+            'created_at' => gmdate('c'),
+        ]);
         $this->save($receipt);
         $proof = [
             'id' => $receipt['id'],
@@ -203,6 +205,19 @@ final class CpanelOwnerRecoveryHistoryTest extends TestCase
         ]));
         self::assertSame('history', $history->inspect($this->home)['state']);
         self::assertFalse($history->matchesFreshProof($this->home, $proof));
+        $this->save($receipt);
+        self::assertTrue($history->matchesFreshProof($this->home, $proof));
+
+        // Old receipts are retained in the owner's historical inventory,
+        // but must NEVER authorize a new code install using their digests.
+        foreach ([
+            gmdate('c', time() - 301),
+            gmdate('c', time() + 60),
+        ] as $invalidTime) {
+            $this->save(array_replace($receipt, ['created_at' => $invalidTime]));
+            self::assertSame('history', $history->inspect($this->home)['state']);
+            self::assertFalse($history->matchesFreshProof($this->home, $proof));
+        }
         $this->save($receipt);
         self::assertTrue($history->matchesFreshProof($this->home, $proof));
 

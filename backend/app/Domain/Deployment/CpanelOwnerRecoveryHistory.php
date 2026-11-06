@@ -94,6 +94,14 @@ final class CpanelOwnerRecoveryHistory
             $vault = $home.'/.walidsite-backups';
             $vaultIdentity = $this->assertPrivateVault($vault, $home, $homeIdentity['uid']);
             $receipt = $this->readReceipt($vault.'/receipt-'.$id.'.json', $id, true);
+            // An immutable historical receipt is NOT an authorization to
+            // switch code hours or days later. The live maintenance lease
+            // is capped at five minutes, so its restore proof must be too.
+            $created = strtotime($receipt['created_at']);
+            $now = time();
+            if (! is_int($created) || $created > $now || $now - $created > 300) {
+                return false;
+            }
             $ok = $receipt['id'] === $id
                 && is_string($proof['version'] ?? null)
                 && hash_equals($receipt['version'], $proof['version']);
