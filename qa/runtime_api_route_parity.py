@@ -39,7 +39,9 @@ def check_routes(artisan_output: object, openapi_text: str) -> tuple[dict, list[
         "uncontracted_registrations": [],
     }
     try:
-        _, declared = openapi_operations(openapi_text)
+        paths, declared = openapi_operations(openapi_text)
+        if len(paths) != 42 or len(declared) != 46:
+            raise ValueError('Canonical 42-path/46-operation contract changed')
         expected = {}
         for item in declared:
             path, verb = item.rsplit("#", 1)
@@ -65,8 +67,8 @@ def check_routes(artisan_output: object, openapi_text: str) -> tuple[dict, list[
                 raise ValueError("Unexpected Laravel route verbs")
             # Laravel automatically registers HEAD along with GET; this
             # implicit alias is not a second contracted GET operation.
-            if "GET" in verbs:
-                verbs.remove("HEAD") if "HEAD" in verbs else None
+            if "GET" in verbs and "HEAD" in verbs:
+                verbs.remove("HEAD")
             for verb in verbs:
                 key = operation_key(path, verb.lower())
                 label = verb + " " + path
