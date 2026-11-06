@@ -256,6 +256,37 @@ final class OwnerUpdateRecoveryBackupSafetyTest extends TestCase
         self::assertSame('private user data', file_get_contents($args[3].'/file.txt'));
     }
 
+    public function test_recovery_receipt_is_complete_private_and_existing_receipt_cannot_be_replaced(): void
+    {
+        $path = $this->home.'/recovery-receipt.json';
+        $receipt = [
+            'schema' => 'walidsite.backup-restore-receipt.v1',
+            'id' => str_repeat('a', 32),
+            'code_update_performed' => false,
+        ];
+
+        $method = new \\ReflectionMethod(OwnerUpdateRecoveryBackup::class, 'saveReceipt');
+        $method->invoke(new OwnerUpdateRecoveryBackup(), $path, $receipt);
+
+        self::assertSame(0600, fileperms($path) & 0777);
+        self::assertSame(
+            json_encode($receipt, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES),
+            file_get_contents($path),
+        );
+        self::assertSame(1, stat($path)['nlink']);
+
+        try {
+            $method->invoke(new OwnerUpdateRecoveryBackup(), $path, ['id' => 'REPLACEMENT']);
+            self::fail('An existing verified receipt must never be overwritten.');
+        } catch (\\RuntimeException $error) {
+            self::assertStringContainsString('Cannot create private recovery receipt', $error->getMessage());
+        }
+        self::assertSame(
+            json_encode($receipt, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES),
+            file_get_contents($path),
+        );
+    }
+
     public function test_private_sources_must_be_outside_document_root(): void
     {
         $args = $this->args();
