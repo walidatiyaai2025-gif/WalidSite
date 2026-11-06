@@ -163,8 +163,12 @@ final class AdminProjectEvidenceRevocationTest extends TestCase
             $this->actingAs($this->account($role), 'web');
             $this->get($listing)->assertForbidden();
             $this->post($path, ['revocation_confirmed' => '1'])->assertForbidden();
-            $this->get('/admin/projects')->assertOk()
-                ->assertDontSee('Review or revoke approved evidence');
+            if ($role === 'admin') {
+                $this->get('/admin/projects')->assertOk()
+                    ->assertDontSee('Review or revoke approved evidence');
+            } else {
+                $this->get('/admin/projects')->assertForbidden();
+            }
         }
 
         $this->actingAs($this->account('owner'), 'web');
