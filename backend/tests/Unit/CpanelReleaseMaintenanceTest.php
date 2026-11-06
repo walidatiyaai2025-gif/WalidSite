@@ -98,6 +98,37 @@ final class CpanelReleaseMaintenanceTest extends TestCase
         $maintenance->clear($this->home, $session['token']);
     }
 
+    public function test_clear_refuses_corrupted_release_identity_even_with_valid_owner_token(): void
+    {
+        $maintenance = new CpanelReleaseMaintenance();
+        $session = $maintenance->begin($this->home, 'legacy', '0.1.1');
+        $path = $this->home.'/.walidsite-update-maintenance.json';
+        $original = json_decode((string) file_get_contents($path), true, 8, JSON_THROW_ON_ERROR);
+
+        // A valid token alone cannot remove a corrupted maintenance barrier:
+        // after an interrupted cutover this could expose unverified new code.
+        foreach ([
+            ['previous_version' => 'broken'],
+            ['previous_version' => '0.1.2', 'previous_root' => '.walidsite-releases/v0.1.1-'.str_repeat('a', 40)],
+            ['previous_root' => ['legacy']],
+            ['probe_sha256' => strtoupper($original['probe_sha256'])],
+        ] as $changes) {
+            file_put_contents($path, json_encode(array_replace($original, $changes), JSON_THROW_ON_ERROR));
+            try {
+                $maintenance->clear($this->home, $session['token']);
+                $this->fail('Corrupted maintenance identity was cleared.');
+            } catch (DomainException $error) {
+                $this->assertStringContainsString('recovery required', $error->getMessage());
+                $this->assertFileExists($path);
+            }
+        }
+
+        file_put_contents($path, json_encode($original, JSON_THROW_ON_ERROR));
+        $maintenance->assertActive($this->home, $session['token'], 'legacy');
+        $maintenance->clear($this->home, $session['token']);
+        $this->assertFileDoesNotExist($path);
+    }
+
     public function test_expired_lease_cannot_be_cleared_to_expose_unverified_new_code(): void
     {
         $maintenance = new CpanelReleaseMaintenance();
