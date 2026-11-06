@@ -59,6 +59,7 @@ jobs:
         run: |
           python3 -m unittest discover -s qa/tests -p test_cpanel_package.py
           python3 -m unittest qa.tests.test_staging_smoke -v
+          python3 -m unittest qa.tests.test_cpanel_apache_https_ci -v
       - name: Validate active CI workflow policy
         run: python3 qa/validate_ci_policy.py
       - name: Enforce exclusive Issue, branch and PR ownership
@@ -469,6 +470,7 @@ jobs:
        (github.head_ref == 'fix/732-cpanel-first-boot-missing-key' ||
         github.head_ref == 'fix/26-cpanel-full-install-ci-acceptance' ||
         github.head_ref == 'fix/26-revalidate-recovery-database-under-lease' ||
+        github.head_ref == 'fix/26-apache-https-setup-ci-gate' ||
         github.head_ref == 'fix/26-foodex15-zip-mariadb-acceptance' ||
         github.head_ref == 'feat/732-cpanel-immutable-code-pointer') &&
        github.event.pull_request.head.repo.full_name == github.repository)
@@ -644,6 +646,35 @@ jobs:
           assert proof["publisher_signature_verified_for_production"] is False
           assert proof["production_ready"] is False
           PY
+      - name: Verify exact Setup ZIP on real Apache localhost HTTPS
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Disposable GitHub runner and ephemeral CA only: NEVER a publisher identity.
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            apache2 libapache2-mod-php8.3
+          sudo a2dismod -f mpm_event mpm_worker || true
+          sudo a2enmod mpm_prefork php8.3 ssl rewrite
+          source_sha="$(git rev-parse HEAD)"
+          version="$(cat backend/VERSION)"
+          python3 -B -m qa.cpanel_apache_https_ci \
+            --cpanel-zip "dist/WalidSite-Setup-v${version}.zip" \
+            --sha "$source_sha" > dist/local-apache-https-acceptance.json
+          SOURCE_SHA="$source_sha" python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          receipt = json.loads(Path('dist/local-apache-https-acceptance.json').read_text())
+          assert receipt['schema'] == 'walidsite.ci-apache-https-setup.v1'
+          assert receipt['source_sha'] == os.environ['SOURCE_SHA']
+          assert receipt['actual_apache_https_verified'] is True
+          assert receipt['source_setup_zip_verified'] is True
+          assert receipt['security_checks'] >= 24
+          assert receipt['fresh_database_install_verified'] is False
+          assert receipt['publisher_signature_verified'] is False
+          assert receipt['production_staging_verified'] is False
+          assert receipt['production_ready'] is False
+          PY
       - uses: actions/upload-artifact@v4
         with:
           name: WalidSite-Setup-installer
@@ -666,6 +697,7 @@ jobs:
           path: |
             dist/release-train/*
             dist/release-train-receipt.json
+            dist/local-apache-https-acceptance.json
           if-no-files-found: error
           retention-days: 14
 
