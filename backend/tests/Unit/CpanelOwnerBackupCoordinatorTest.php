@@ -4,6 +4,7 @@ namespace Tests\Unit;
 
 use App\Domain\Deployment\CpanelConsoleWriterLease;
 use App\Domain\Deployment\CpanelOwnerBackupCoordinator;
+use App\Domain\Deployment\TrustedInstalledReleasePin;
 use DomainException;
 use PDO;
 use PHPUnit\Framework\TestCase;
@@ -315,7 +316,7 @@ final class CpanelOwnerBackupCoordinatorTest extends TestCase
     public function test_chained_backup_attests_running_release_before_disposable_mariadb_guard(): void
     {
         [$running, $previousRoot] = $this->switchedRunningRelease();
-        self::assertSame('0.1.3', (new \\App\\Domain\\Deployment\\TrustedInstalledReleasePin())
+        self::assertSame('0.1.3', (new TrustedInstalledReleasePin())
             ->read($running, $this->home.'/public_html', '0.1.2'));
         $hostChecks = 0;
         try {
