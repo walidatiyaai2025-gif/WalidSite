@@ -98,6 +98,8 @@ final class CpanelOwnerCodeInstallCoordinator
         $maintenance = new CpanelReleaseMaintenance();
         $token = null;
         $releaseSwitched = false;
+        $rollbackProof = null;
+        $pointerSwitcher = new CpanelImmutableCodePointer();
         // The request is itself one HTTP shared reader. Its exact descriptor
         // must be promoted; opening a second exclusive descriptor deadlocks.
         $requestLease->promoteSharedForUpdate($home);
@@ -175,10 +177,30 @@ final class CpanelOwnerCodeInstallCoordinator
                 ) === true;
             };
 
-            $switched = (new CpanelImmutableCodePointer())->activate(
-                $home, $candidate, $signed['version'], $signed['source_sha'],
-                $front, $token, $quiesced, $receiptValid, $signedValid, $health,
-            );
+            try {
+                $switched = $pointerSwitcher->activate(
+                    $home, $candidate, $signed['version'], $signed['source_sha'],
+                    $front, $token, $quiesced, $receiptValid, $signedValid, $health,
+                );
+            } catch (CpanelVerifiedCodeRollback $rollback) {
+                // A chained health failure may resume the previous release
+                // only while this request still owns the original exclusive
+                // writer lease and the independent host writer boundary.
+                $requestLease->assertExclusiveHeld();
+                if ($host->externalWritersStopped() !== true) {
+                    throw new DomainException(
+                        'Previous code pointer was restored, but foreign writers are not isolated.',
+                        0,
+                        $rollback,
+                    );
+                }
+                $maintenance->assertActive($home, $token, $previousRoot);
+                $pointerSwitcher->assertVerifiedRollback(
+                    $home, $running, $home.'/public_html', $front, $token, $rollback,
+                );
+                $rollbackProof = $rollback;
+                throw $rollback;
+            }
             $releaseSwitched = true;
             if ($quiesced() !== true || $signedValid() !== true
                 || $receiptValid() !== true) {
@@ -201,19 +223,35 @@ final class CpanelOwnerCodeInstallCoordinator
             ];
         } finally {
             try {
-                if ($token !== null && ! $releaseSwitched
+                if ($token !== null && ! $releaseSwitched && $rollbackProof !== null) {
+                    // Recheck the same typed pointer-rollback proof AFTER the
+                    // pointer lock has been released but BEFORE maintenance
+                    // is cleared. The original exclusive HTTP writer lease
+                    // remains held throughout this second attestation.
+                    try {
+                        $requestLease->assertExclusiveHeld();
+                        if ($host->externalWritersStopped() !== true) {
+                            throw new DomainException('Foreign writers resumed before rollback recovery completed.');
+                        }
+                        $maintenance->assertActive($home, $token, $previousRoot);
+                        $pointerSwitcher->assertVerifiedRollback(
+                            $home, $running, $home.'/public_html', $front, $token, $rollbackProof,
+                        );
+                        $maintenance->clear($home, $token);
+                    } catch (Throwable) {
+                        // Any changed pointer, expired lease, foreign writer,
+                        // or failed identity check deliberately leaves the
+                        // private maintenance barrier for supervised recovery.
+                    }
+                } elseif ($token !== null && ! $releaseSwitched
                     && @lstat($home.'/.walidsite-active-release.json') === false) {
-                    // Original-install rollback: the initial private pointer
-                    // remains absent, so no code was switched. For chained
-                    // releases a restored previous pointer is NOT sufficient
-                    // to auto-clear maintenance without separately proving
-                    // its exact immutable identity; keep the recovery barrier.
+                    // Original first-install rollback: no prior immutable
+                    // pointer existed and no code was switched.
                     try {
                         $requestLease->assertExclusiveHeld();
                         $maintenance->clear($home, $token);
                     } catch (Throwable) {
-                        // An expired or mutated lease is an intentional
-                        // recovery barrier, not permission to unlink it.
+                        // Preserve the barrier if lease ownership is uncertain.
                     }
                 }
             } finally {
