@@ -157,8 +157,8 @@ class ReleaseArtifactGateTest(unittest.TestCase):
                 if path == "manifest.json" and dir_fd is not None and not swapped:
                     parent.rename(retired)
                     parent.mkdir(mode=0o700)
-                    (parent / "manifest.json").write_bytes(candidate.with_name("manifest.json").read_bytes()
-                        if candidate.exists() else (retired / "manifest.json").read_bytes())
+                    (parent / "manifest.json").write_bytes(
+                        (retired / "manifest.json").read_bytes())
                     swapped = True
 
         with patch.object(gate, "_stable_reader", swap_manifest_parent):
@@ -264,8 +264,8 @@ class ReleaseArtifactGateTest(unittest.TestCase):
             nonlocal swapped
             with original_reader(path, dir_fd=dir_fd) as result:
                 yield result
-                if dir_fd is not None and not swapped:
-                    # Relative file reads remain securely pinned to the old
+                if path == self.pkg.name and dir_fd is not None and not swapped:
+                    # Relative artifact reads remain pinned to the old
                     # directory FD. The pathname now resolves to new bytes.
                     release_dir.rename(retired)
                     release_dir.mkdir()
