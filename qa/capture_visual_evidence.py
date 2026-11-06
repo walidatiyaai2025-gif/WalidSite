@@ -142,11 +142,16 @@ def capture(root: Path, screen_id: str, *, commit: str, locale: str,
             with Image.open(incoming) as image:
                 if image.format != "PNG":
                     raise CaptureError("Runtime capture must be PNG")
+                # The PNG header exposes dimensions before the expensive
+                # raster allocation. Reject wrong-size renderer output now,
+                # rather than decoding a potentially huge compressed image.
+                if image.size != (width, height):
+                    raise CaptureError(
+                        f"Wrong screenshot dimensions: {image.size} != {(width, height)}"
+                    )
                 actual = image.convert("RGBA")
-        except (OSError, UnidentifiedImageError) as exc:
+        except (OSError, UnidentifiedImageError, Image.DecompressionBombError) as exc:
             raise CaptureError("Runtime capture could not be decoded") from exc
-        if actual.size != (width, height):
-            raise CaptureError(f"Wrong screenshot dimensions: {actual.size} != {(width, height)}")
         differences = sum(a != b for a, b in zip(expected.getdata(), actual.getdata()))
         if differences:
             raise CaptureError(f"{screen_id}: {differences} RGBA pixels differ; remains pending")
