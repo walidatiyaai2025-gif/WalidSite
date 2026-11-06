@@ -32,11 +32,17 @@ final class CpanelOwnerRecoveryHistory
         $vault = $home.'/.walidsite-backups';
         clearstatcache(true, $vault);
         if (@lstat($vault) === false) {
+            // Even an absent vault cannot attest an unsafe/swapped home.
+            try {
+                $this->assertPrivateHomeUnchanged($home, $homeIdentity);
+            } catch (DomainException) {
+                return ['state' => 'blocked', 'receipts' => []];
+            }
             return $empty;
         }
         try {
             $this->assertPrivateHomeUnchanged($home, $homeIdentity);
-            $this->assertPrivateVault($vault, $home, $homeIdentity['uid']);
+            $vaultIdentity = $this->assertPrivateVault($vault, $home, $homeIdentity['uid']);
             $names = @scandir($vault);
             if ($names === false || count($names) > 1000) {
                 throw new DomainException('Private backup inventory unavailable.');
@@ -54,7 +60,7 @@ final class CpanelOwnerRecoveryHistory
                 }
                 $receipts[] = $this->readReceipt($vault.'/'.$name, $match[1]);
             }
-            $this->assertPrivateVault($vault, $home, $homeIdentity['uid']);
+            $this->assertPrivateVault($vault, $home, $homeIdentity['uid'], $vaultIdentity);
             $this->assertPrivateHomeUnchanged($home, $homeIdentity);
             usort($receipts, static fn (array $a, array $b): int =>
                 strcmp($b['created_at'], $a['created_at']) ?: strcmp($b['id'], $a['id']));
@@ -89,8 +95,13 @@ final class CpanelOwnerRecoveryHistory
         }
     }
 
-    private function assertPrivateVault(string $vault, string $home, int $homeUid): void
-    {
+    /**
+     * @param ?array{dev:int,ino:int,mode:int,uid:int} $expected
+     * @return array{dev:int,ino:int,mode:int,uid:int}
+     */
+    private function assertPrivateVault(
+        string $vault, string $home, int $homeUid, ?array $expected = null,
+    ): array {
         clearstatcache(true, $vault);
         $stat = @lstat($vault);
         if (! is_array($stat) || ($stat['mode'] & 0170000) !== 0040000
@@ -99,6 +110,14 @@ final class CpanelOwnerRecoveryHistory
             || dirname($vault) !== $home || ! is_readable($vault)) {
             throw new DomainException('Private recovery vault identity invalid.');
         }
+        $identity = [
+            'dev' => $stat['dev'], 'ino' => $stat['ino'],
+            'mode' => $stat['mode'], 'uid' => $stat['uid'],
+        ];
+        if ($expected !== null && $identity !== $expected) {
+            throw new DomainException('Private recovery vault changed while reading receipts.');
+        }
+        return $identity;
     }
 
     /** @return array{id:string,created_at:string,version:string,files:int,tables:int,rows:int} */
