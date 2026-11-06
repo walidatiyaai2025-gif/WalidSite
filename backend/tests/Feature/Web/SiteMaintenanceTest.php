@@ -345,6 +345,37 @@ class SiteMaintenanceTest extends TestCase
         }
     }
 
+    public function test_owner_migration_failure_never_reports_driver_secret_or_exception_message(): void
+    {
+        $owner = User::create([
+            'email' => 'migration-redaction-owner@example.test',
+            'password_hash' => 'unused',
+            'status' => 'active',
+        ]);
+        $owner->roles()->attach(Role::firstOrCreate(['name' => 'owner'])->id);
+        $this->actingAs($owner);
+        config(['site.updates_enabled' => true]);
+
+        // Simulate an exception whose driver message embeds an environment
+        // secret. Only its type may reach private logs or browser flash.
+        $secret = 'PRIVATE-DB-PASSWORD-MUST-NOT-LOG';
+        \Illuminate\Support\Facades\Cache::partialMock()
+            ->shouldReceive('lock')
+            ->with('walidsite:trusted-migrations', 600)
+            ->once()
+            ->andThrow(new \RuntimeException($secret));
+        \Illuminate\Support\Facades\Log::spy();
+
+        $this->post('/admin/updates/apply')
+            ->assertRedirect()
+            ->assertSessionHasErrors('updates');
+        $message = session('errors')->first('updates');
+        $this->assertStringNotContainsString($secret, $message);
+        \Illuminate\Support\Facades\Log::shouldHaveReceived('warning')
+            ->with('admin.updates.migration_blocked', ['type' => \RuntimeException::class])
+            ->once();
+    }
+
     public function test_manual_updates_can_be_disabled_without_hiding_status(): void
     {
         config(['site.updates_enabled' => false]);

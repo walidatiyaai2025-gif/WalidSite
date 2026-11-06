@@ -14,6 +14,7 @@ use Illuminate\Http\UploadedFile;
 use App\Support\Deployment\SiteUpdater;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\View\View;
 use Throwable;
 
@@ -519,9 +520,15 @@ final class AdminUpdateController extends Controller
         try {
             $result = $updater->apply();
         } catch (Throwable $exception) {
-            report($exception);
+            // DB/SQL/driver exceptions can embed connection strings, file paths
+            // or user-provided values. Do not let Laravel's default exception
+            // reporter persist their message, stack or previous exception.
+            // A class-only marker is sufficient for private diagnostics.
+            Log::warning('admin.updates.migration_blocked', [
+                'type' => $exception::class,
+            ]);
 
-            return back()->withErrors(['updates' => 'Migration failed. Review private logs and the database backup.']);
+            return back()->withErrors(['updates' => 'Migration could not be completed. No successful update is claimed; check the private recovery state.']);
         }
 
         if ($result['state'] === 'schema_mismatch') {
