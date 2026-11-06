@@ -88,7 +88,7 @@ void main() {
   });
 
   test('MOBILE-03 runbook Save requires the exact typed server receipt', () {
-    const id = '22222222-2222-4222-8222-222222222222';
+    const id = 'abcd2222-2222-4222-8222-2222222222ab';
     String payload({
       Object? type = 'runbook',
       Object? saved = true,
