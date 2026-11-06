@@ -93,6 +93,10 @@ final class Web13PaginatedSearchTest extends TestCase
                 ->assertOk()
                 ->assertSee('<html lang="'.$lang.'" dir="'.$direction.'">', false)
                 ->assertSee('data-testid="verified-search-pagination"', false)
+                ->assertHeader('Cache-Control', 'no-store, private')
+                ->assertSee($lang === 'ar'
+                    ? 'نتائج موثقة: 13 مقالات، 12 مشاريع.'
+                    : 'Verified results: 13 articles, 12 projects.')
                 ->assertSee('rel="next"', false)
                 ->assertSee('href="'.e(route('public.search', $base + ['page' => 2])).'"', false)
                 ->assertDontSee('pagination-draft')
@@ -101,6 +105,10 @@ final class Web13PaginatedSearchTest extends TestCase
             $second = $this->get(route('public.search', $base + ['page' => 2]))
                 ->assertOk()
                 ->assertSee('rel="prev"', false)
+                ->assertHeader('Cache-Control', 'no-store, private')
+                ->assertSee($lang === 'ar'
+                    ? 'نتائج موثقة: 13 مقالات، 12 مشاريع.'
+                    : 'Verified results: 13 articles, 12 projects.')
                 ->assertSee('aria-current="page"', false)
                 ->assertSee($lang === 'ar' ? 'صفحة 2 من 2' : 'Page 2 of 2')
                 ->assertSee('href="'.e(route('public.search', $base + ['page' => 1])).'"', false)
@@ -126,12 +134,14 @@ final class Web13PaginatedSearchTest extends TestCase
             $projectsOnly = $this->get(route('public.search', [
                 'lang' => $lang, 'q' => 'PagerEvidence2026', 'type' => 'projects', 'page' => 2,
             ]))->assertOk()
+                ->assertSee($lang === 'ar' ? 'نتائج موثقة: 12 مشاريع.' : 'Verified results: 12 projects.')
                 ->assertSee('pagination-project-')
                 ->assertDontSee('pagination-article-');
             $this->assertSame(2, substr_count($projectsOnly->getContent(), '/projects/pagination-project-'));
             $articlesOnly = $this->get(route('public.search', [
                 'lang' => $lang, 'q' => 'PagerEvidence2026', 'type' => 'articles', 'page' => 2,
             ]))->assertOk()
+                ->assertSee($lang === 'ar' ? 'نتائج موثقة: 13 مقالات.' : 'Verified results: 13 articles.')
                 ->assertSee('pagination-article-')
                 ->assertDontSee('pagination-project-');
             $this->assertSame(3, substr_count($articlesOnly->getContent(), '/blog/pagination-article-'));
@@ -140,6 +150,39 @@ final class Web13PaginatedSearchTest extends TestCase
         }
     }
 
+
+
+    public function test_revoked_publication_immediately_disappears_from_global_totals_and_page_two(): void
+    {
+        $articles = [];
+        for ($i = 1; $i <= 11; $i++) {
+            $articles[] = $this->article('dynamic-revoke-'.$i);
+        }
+
+        foreach (['en', 'ar'] as $lang) {
+            $base = ['lang' => $lang, 'q' => 'PagerEvidence2026', 'type' => 'articles'];
+            $this->get(route('public.search', $base))->assertOk()
+                ->assertHeader('Cache-Control', 'no-store, private')
+                ->assertSee($lang === 'ar' ? 'نتائج موثقة: 11 مقالات.' : 'Verified results: 11 articles.');
+            $this->get(route('public.search', $base + ['page' => 2]))->assertOk()
+                ->assertHeader('Cache-Control', 'no-store, private')
+                ->assertSee($lang === 'ar' ? 'نتائج موثقة: 11 مقالات.' : 'Verified results: 11 articles.');
+        }
+
+        // Revocation takes effect on the next GET. Do not show cached totals
+        // or a phantom page that contains an article with withdrawn evidence.
+        $articles[0]->revisions()->firstOrFail()->update([
+            'validation_json' => ['citations_passed' => false, 'technical_passed' => true],
+        ]);
+        foreach (['en', 'ar'] as $lang) {
+            $base = ['lang' => $lang, 'q' => 'PagerEvidence2026', 'type' => 'articles'];
+            $this->get(route('public.search', $base))->assertOk()
+                ->assertHeader('Cache-Control', 'no-store, private')
+                ->assertSee($lang === 'ar' ? 'نتائج موثقة: 10 مقالات.' : 'Verified results: 10 articles.')
+                ->assertDontSee('/blog/dynamic-revoke-1?', false);
+            $this->get(route('public.search', $base + ['page' => 2]))->assertNotFound();
+        }
+    }
 
     public function test_search_page_two_article_open_back_and_locale_keep_exact_verified_page(): void
     {
