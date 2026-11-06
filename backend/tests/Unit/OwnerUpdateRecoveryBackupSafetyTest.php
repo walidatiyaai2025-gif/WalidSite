@@ -163,6 +163,99 @@ final class OwnerUpdateRecoveryBackupSafetyTest extends TestCase
         (new OwnerUpdateRecoveryBackup())->createAndProve(...[...$args, fn () => true]);
     }
 
+    public function test_preexisting_world_writable_vault_is_rejected_without_silent_chmod(): void
+    {
+        $args = $this->args();
+        self::assertTrue(mkdir($args[7], 0700));
+        self::assertTrue(chmod($args[7], 0777));
+        try {
+            (new OwnerUpdateRecoveryBackup())->createAndProve(...[...$args, fn (): bool => true]);
+            self::fail('An exposed backup vault must never be silently chmodded into a trusted location.');
+        } catch (DomainException $error) {
+            self::assertStringContainsString('directory identity', $error->getMessage());
+        }
+        self::assertSame(0777, fileperms($args[7]) & 0777);
+        self::assertSame([], glob($args[7].'/receipt-*.json') ?: []);
+        self::assertSame('private user data', file_get_contents($args[3].'/file.txt'));
+    }
+
+    public function test_preexisting_group_writable_backup_lock_is_rejected_unchanged(): void
+    {
+        $args = $this->args();
+        self::assertTrue(mkdir($args[7], 0700));
+        $lock = $args[7].'/.owner-update-backup.lock';
+        file_put_contents($lock, 'PRESERVE_UNTRUSTED_LOCK');
+        self::assertTrue(chmod($lock, 0660));
+        try {
+            (new OwnerUpdateRecoveryBackup())->createAndProve(...[...$args, fn (): bool => true]);
+            self::fail('A writable preexisting lock must not authorize owner recovery.');
+        } catch (DomainException $error) {
+            self::assertStringContainsString('lock identity', $error->getMessage());
+        }
+        self::assertSame('PRESERVE_UNTRUSTED_LOCK', file_get_contents($lock));
+        self::assertSame(0660, fileperms($lock) & 0777);
+        self::assertSame([], glob($args[7].'/receipt-*.json') ?: []);
+        self::assertSame([], glob($args[7].'/recovery-*') ?: []);
+    }
+
+    public function test_backup_vault_chmod_after_acquiring_lock_aborts_before_copy(): void
+    {
+        $args = $this->args();
+        $calls = 0;
+        try {
+            (new OwnerUpdateRecoveryBackup())->createAndProve(...[
+                ...$args,
+                static function () use (&$calls, $args): bool {
+                    if (++$calls === 2) {
+                        chmod($args[7], 0777);
+                    }
+                    return true;
+                },
+            ]);
+            self::fail('A vault made world writable during quiescence cannot issue a backup receipt.');
+        } catch (DomainException $error) {
+            self::assertStringContainsString('directory identity', $error->getMessage());
+        } finally {
+            if (is_dir($args[7])) {
+                chmod($args[7], 0700);
+            }
+        }
+        self::assertSame(2, $calls);
+        self::assertSame([], glob($args[7].'/receipt-*.json') ?: []);
+        self::assertSame([], glob($args[7].'/recovery-*') ?: []);
+        self::assertSame('private user data', file_get_contents($args[3].'/file.txt'));
+    }
+
+    public function test_restore_drill_root_swap_during_quiescence_aborts_before_copy(): void
+    {
+        if (PHP_OS_FAMILY === 'Windows') {
+            self::markTestSkipped('cPanel POSIX directory rename is required.');
+        }
+        $args = $this->args();
+        $orphan = $this->home.'/.walidsite-renamed-restore-root';
+        $calls = 0;
+        try {
+            (new OwnerUpdateRecoveryBackup())->createAndProve(...[
+                ...$args,
+                static function () use (&$calls, $args, $orphan): bool {
+                    if (++$calls === 2) {
+                        if (! rename($args[8], $orphan) || ! mkdir($args[8], 0700)) {
+                            throw new \RuntimeException('Could not simulate owner recovery root swap.');
+                        }
+                    }
+                    return true;
+                },
+            ]);
+            self::fail('A replaced restore root cannot authorize a recovery proof.');
+        } catch (DomainException $error) {
+            self::assertStringContainsString('directory', $error->getMessage());
+        }
+        self::assertSame(2, $calls);
+        self::assertSame([], glob($args[7].'/receipt-*.json') ?: []);
+        self::assertSame([], glob($args[7].'/recovery-*') ?: []);
+        self::assertSame('private user data', file_get_contents($args[3].'/file.txt'));
+    }
+
     public function test_private_sources_must_be_outside_document_root(): void
     {
         $args = $this->args();

@@ -83,49 +83,92 @@ final class OwnerUpdateRecoveryBackup
             throw new DomainException('Backup roots must be isolated from code, uploads and each other.');
         }
 
+        // Pin BOTH directory inodes before entering the backup lock. Unlike
+        // file mtimes these identities remain stable as private snapshots are
+        // added, but changing ownership/mode/path must invalidate the proof.
+        $vaultIdentity = $this->assertPrivateDirectoryIdentity($vault);
+        $drillsIdentity = $this->assertPrivateDirectoryIdentity($drills);
         $lockFile = $vault.'/.owner-update-backup.lock';
         if (is_link($lockFile) || (file_exists($lockFile) && ! is_file($lockFile))) {
             throw new DomainException('Private recovery lock is unsafe.');
         }
-        $lock = @fopen($lockFile, 'c+');
+        // An already-present inode is NEVER chmod'd into acceptability.
+        // Exclusive creation avoids following a newly planted pathname; a
+        // preexisting path is opened without writing and then attested.
+        $existing = file_exists($lockFile);
+        $lock = $existing ? @fopen($lockFile, 'c+b') : @fopen($lockFile, 'x+b');
         if ($lock === false) {
             throw new RuntimeException('Unable to create private recovery lock.');
         }
+        if (! $existing && ! @chmod($lockFile, 0600)) {
+            fclose($lock);
+            throw new DomainException('New private recovery lock permissions are unsafe.');
+        }
 
         try {
-            $this->assertSecureLockIdentity($lock, $lockFile);
+            $this->assertRecoveryBoundary(
+                $lock, $lockFile, $vault, $vaultIdentity, $drills, $drillsIdentity,
+            );
             if (! flock($lock, LOCK_EX | LOCK_NB)) {
                 throw new DomainException('Another recovery operation is running.');
             }
             // Do not trust the pathname after acquiring a lock on an inode:
             // another local actor can replace it or create a hard-link alias.
-            $this->assertSecureLockIdentity($lock, $lockFile);
+            $this->assertRecoveryBoundary(
+                $lock, $lockFile, $vault, $vaultIdentity, $drills, $drillsIdentity,
+            );
             if ($writesQuiesced() !== true) {
                 throw new DomainException('Maintenance changed after recovery lock.');
             }
-            // The maintenance callback itself may have switched the named
-            // lock. Fail before creating ANY private/file/SQL snapshot.
-            $this->assertSecureLockIdentity($lock, $lockFile);
+            // The maintenance callback itself may have changed both root
+            // paths, even if the lock still points to our opened inode.
+            $this->assertRecoveryBoundary(
+                $lock, $lockFile, $vault, $vaultIdentity, $drills, $drillsIdentity,
+            );
 
             $files = (new PrivateRecoverySnapshot())->create(
                 $environment, $data, $uploads, $vault,
             );
+            $this->assertRecoveryBoundary(
+                $lock, $lockFile, $vault, $vaultIdentity, $drills, $drillsIdentity,
+            );
             $fileProof = (new PrivateRecoverySnapshot())->drill(
                 $files['directory'], $files['manifest_sha256'], $drills,
+            );
+            $this->assertRecoveryBoundary(
+                $lock, $lockFile, $vault, $vaultIdentity, $drills, $drillsIdentity,
             );
             if ($fileProof['files'] !== $files['files'] || $fileProof['bytes'] !== $files['bytes']) {
                 throw new DomainException('Private file restore proof is inconsistent.');
             }
 
+            $this->assertRecoveryBoundary(
+                $lock, $lockFile, $vault, $vaultIdentity, $drills, $drillsIdentity,
+            );
             $database = (new MariaDbRecoverySnapshot())->create(
                 $source, $vault, $public,
+            );
+            $this->assertRecoveryBoundary(
+                $lock, $lockFile, $vault, $vaultIdentity, $drills, $drillsIdentity,
             );
             $dbProof = (new MariaDbRecoverySnapshot())->restoreAndVerify(
                 $disposable, $database['directory'], $database['manifest_sha256'],
             );
+            $this->assertRecoveryBoundary(
+                $lock, $lockFile, $vault, $vaultIdentity, $drills, $drillsIdentity,
+            );
             if ($dbProof['tables'] !== $database['tables'] || $dbProof['rows'] !== $database['rows']) {
                 throw new DomainException('MariaDB restore proof is inconsistent.');
             }
+
+            // Verify isolation again BEFORE issuing a receipt. A backup
+            // completed after writers resumed is not a recovery certificate.
+            if ($writesQuiesced() !== true) {
+                throw new DomainException('Maintenance ended before recovery proof could be issued.');
+            }
+            $this->assertRecoveryBoundary(
+                $lock, $lockFile, $vault, $vaultIdentity, $drills, $drillsIdentity,
+            );
 
             // Ledger contains NO database credentials, APP_KEY, account email,
             // absolute file paths, or user data. The actual snapshots remain
@@ -145,6 +188,9 @@ final class OwnerUpdateRecoveryBackup
                 'code_update_performed' => false,
             ];
             $this->saveReceipt($vault.'/receipt-'.$id.'.json', $receipt);
+            $this->assertRecoveryBoundary(
+                $lock, $lockFile, $vault, $vaultIdentity, $drills, $drillsIdentity,
+            );
 
             return [
                 'id' => $id,
@@ -180,6 +226,8 @@ final class OwnerUpdateRecoveryBackup
             || $opened['nlink'] !== 1 || $named['nlink'] !== 1
             || $opened['dev'] !== $named['dev']
             || $opened['ino'] !== $named['ino']
+            || ($opened['mode'] & 0777) !== 0600
+            || ($named['mode'] & 0777) !== 0600
             || is_link($path)) {
             throw new DomainException('Unsafe owner backup lock identity; no backup was performed.');
         }
@@ -194,12 +242,56 @@ final class OwnerUpdateRecoveryBackup
             throw new RuntimeException('Unable to initialize private recovery directory.');
         }
         $real = realpath($path);
-        if ($real === false || $real !== $path || ! is_writable($real)
-            || ! @chmod($real, 0700)) {
+        if ($real === false || $real !== $path || ! is_writable($real)) {
             throw new DomainException('Recovery directory cannot be made private.');
         }
+        // Never silently chmod an unsafe existing vault. Another local
+        // principal may already have seen or modified its backup contents.
+        $this->assertPrivateDirectoryIdentity($real);
 
         return $real;
+    }
+
+    /**
+     * @param array{dev:int,ino:int,mode:int}|null $baseline
+     * @return array{dev:int,ino:int,mode:int}
+     */
+    private function assertPrivateDirectoryIdentity(string $path, ?array $baseline = null): array
+    {
+        clearstatcache(true, $path);
+        $details = @lstat($path);
+        if (! is_array($details) || is_link($path)
+            || realpath($path) !== $path
+            || ($details['mode'] & 0170000) !== 0040000
+            || ($details['mode'] & 0777) !== 0700) {
+            throw new DomainException('Private recovery directory identity or permissions are unsafe.');
+        }
+        $identity = [
+            'dev' => (int) $details['dev'],
+            'ino' => (int) $details['ino'],
+            'mode' => (int) $details['mode'],
+        ];
+        if ($baseline !== null && $identity !== $baseline) {
+            throw new DomainException('Recovery directory changed during protected backup.');
+        }
+        return $identity;
+    }
+
+    /** @param resource $lock
+     *  @param array{dev:int,ino:int,mode:int} $vaultIdentity
+     *  @param array{dev:int,ino:int,mode:int} $drillsIdentity
+     */
+    private function assertRecoveryBoundary(
+        $lock,
+        string $lockFile,
+        string $vault,
+        array $vaultIdentity,
+        string $drills,
+        array $drillsIdentity,
+    ): void {
+        $this->assertSecureLockIdentity($lock, $lockFile);
+        $this->assertPrivateDirectoryIdentity($vault, $vaultIdentity);
+        $this->assertPrivateDirectoryIdentity($drills, $drillsIdentity);
     }
 
     /** @param array<string,mixed> $receipt */
