@@ -143,7 +143,7 @@ final class AdminGithubProposalController extends Controller
                         || strtolower($parts['scheme'] ?? '') !== 'https'
                         || strtolower($parts['host'] ?? '') !== 'github.com'
                         || strtolower(trim($parts['path'] ?? '', '/')) !== $proposal->repository_slug
-                        || isset($parts['user'], $parts['pass'])
+                        || isset($parts['user']) || isset($parts['pass'])
                         || isset($parts['port']) || isset($parts['query'])
                         || isset($parts['fragment'])) {
                         abort(409, 'Public repository verification failed.');
