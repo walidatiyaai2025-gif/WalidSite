@@ -5,6 +5,8 @@ Fake DOMs test rejection rules, not screenshots or real visual acceptance.
 import io
 import json
 import os
+import subprocess
+import sys
 import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
@@ -95,6 +97,16 @@ def fake_playwright():
 
 
 class WebRuntimeAuditTest(unittest.TestCase):
+    def test_production_ci_cli_starts_without_package_pythonpath(self):
+        result = subprocess.run(
+            [sys.executable, "-B", "qa/audit_web_runtime.py", "--help"],
+            cwd=ROOT, env={**os.environ, "PYTHONPATH": ""},
+            text=True, capture_output=True, timeout=15, check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("--commit", result.stdout)
+        self.assertIn("--output", result.stdout)
+
     def test_public_metrics_use_public_main_and_skip_link_not_admin(self):
         self.assertIn("main#main-content", WEB_DOM_METRICS)
         self.assertIn("#main-content", WEB_DOM_METRICS)
