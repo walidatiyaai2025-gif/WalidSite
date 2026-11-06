@@ -109,14 +109,23 @@ def _frozen_apk(path: Path):
     Native tools only see the private snapshot, never a mutable input name.
     Reject source replacement or mutation before returning verified metadata.
     """
-    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+    # Windows descriptors otherwise translate CRLF and stop at DOS Ctrl-Z,
+    # truncating an APK before its byte count and CRC can be verified.
+    flags = (os.O_RDONLY | getattr(os, "O_BINARY", 0)
+             | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0))
     try:
         descriptor = os.open(path, flags)
     except OSError as exc:
         raise ApkAcceptanceError("Cannot pin a regular APK source") from exc
     try:
         before = os.fstat(descriptor)
+        try:
+            pathname_before = os.stat(path, follow_symlinks=False)
+        except OSError as exc:
+            raise ApkAcceptanceError("Cannot pin a regular APK source") from exc
         if (path.is_symlink() or not stat.S_ISREG(before.st_mode)
+                or not stat.S_ISREG(pathname_before.st_mode)
+                or _fingerprint(pathname_before)[:4] != _fingerprint(before)[:4]
                 or not 0 < before.st_size <= MAX_APK_BYTES):
             raise ApkAcceptanceError("Unsafe or unbounded APK source")
         with tempfile.TemporaryDirectory(prefix="walidsite-native-qa-") as directory:
@@ -138,7 +147,10 @@ def _frozen_apk(path: Path):
                 after = os.stat(path, follow_symlinks=False)
             except OSError as exc:
                 raise ApkAcceptanceError("APK source vanished during verification") from exc
-            if _fingerprint(after) != _fingerprint(before):
+            # Windows can report different ctime semantics through fstat and
+            # pathname stat. Compare each API to its own initial snapshot,
+            # retaining ctime mutation checks and descriptor/path inode parity.
+            if _fingerprint(after) != _fingerprint(pathname_before):
                 raise ApkAcceptanceError("APK source changed during native verification")
             if _inspect_zip(path) != _inspect_zip(frozen):
                 raise ApkAcceptanceError("APK source bytes differ from verified snapshot")
