@@ -44,6 +44,7 @@ class ChainedCodeRecoveryReceiptTest(unittest.TestCase):
             "chained_health_failure_previous_pointer_restored": True,
             "chained_health_recovery_cleared_maintenance": True,
             "chained_health_recovery_retry_succeeded": True,
+            "chained_tampered_previous_code_keeps_maintenance_and_blocks_retry": True,
             "chained_fixture_source_sha_not_git_attested": True,
             "real_https_host_verified": False,
             "independent_foreign_writer_isolation": False,
@@ -83,6 +84,12 @@ class ChainedCodeRecoveryReceiptTest(unittest.TestCase):
                 self.proof[key] = invalid
                 self.assertNotEqual(self.run_gate().returncode, 0)
                 self.proof[key] = previous
+
+    def test_tampered_chained_release_must_be_quarantined(self):
+        self.proof["chained_tampered_previous_code_keeps_maintenance_and_blocks_retry"] = False
+        self.assertNotEqual(self.run_gate().returncode, 0)
+        del self.proof["chained_tampered_previous_code_keeps_maintenance_and_blocks_retry"]
+        self.assertNotEqual(self.run_gate().returncode, 0)
 
     def test_fixture_cannot_be_promoted_to_host_or_publisher_acceptance(self):
         for key in (

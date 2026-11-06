@@ -142,7 +142,7 @@ try {
             $payload, sodium_crypto_sign_secretkey($keys))),
     ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
 
-    foreach (['ok', 'chained-health', 'rejected-health', 'late-populated-restore'] as $mode) {
+    foreach (['ok', 'chained-health', 'chained-tampered', 'rejected-health', 'late-populated-restore'] as $mode) {
         $home = $base.'/'.$mode;
         mkdir($home, 0700);
         unpackCodeFixture($setup, $home);
@@ -178,7 +178,7 @@ try {
         $live->exec('CREATE TABLE owner_records (id INT PRIMARY KEY, note VARCHAR(50)) ENGINE=InnoDB');
         $live->exec("INSERT INTO owner_records VALUES (1,'PRESERVE_ROW'),(2,'RECOVERY_CHECK')");
 
-        $host = new class($home, in_array($mode, ['ok', 'chained-health'], true), $version, $sha, $restore,
+        $host = new class($home, in_array($mode, ['ok', 'chained-health', 'chained-tampered'], true), $version, $sha, $restore,
             $mode === 'late-populated-restore')
             implements CpanelOwnerCodeUpdateHost {
             public int $probes = 0;
@@ -221,7 +221,7 @@ try {
             $result = (new CpanelOwnerCodeInstallCoordinator())->install(
                 $host, $lease, $live, $restore, $envelope, $key,
                 'https://updates.walidatiya.com', $old, $home, $inbox, $artifact);
-            if (!in_array($mode, ['ok', 'chained-health'], true) || $result['state'] !== 'installed_verified'
+            if (!in_array($mode, ['ok', 'chained-health', 'chained-tampered'], true) || $result['state'] !== 'installed_verified'
                 || $result['version'] !== $version || $result['from'] !== $old
                 || $result['source_sha'] !== $sha || !isset($result['backup_id'])) {
                 throw new RuntimeException('Unverified source or update was accepted.');
@@ -260,14 +260,14 @@ try {
             || file_get_contents($public.'/uploads/avatar.png') !== 'KEEP_UPLOAD'
             || $live->query('SELECT note FROM owner_records WHERE id=1')->fetchColumn() !== 'PRESERVE_ROW'
             || (int) $restore->query('SELECT COUNT(*) FROM owner_records')->fetchColumn() !== 2
-            || in_array($mode, ['ok', 'chained-health'], true) !== is_file($home.'/.walidsite-active-release.json')) {
+            || in_array($mode, ['ok', 'chained-health', 'chained-tampered'], true) !== is_file($home.'/.walidsite-active-release.json')) {
             throw new RuntimeException('Owner data/recovery or release pointer was not preserved.');
         }
         // A second, CI-only signed CODE-ONLY candidate is derived from the
         // exact source-attested Update ZIP by changing solely VERSION. The
         // ephemeral signing key and synthetic SHA are not publisher authority
         // or proof of a real second release generated from a Git commit.
-        if (in_array($mode, ['ok', 'chained-health'], true)) {
+        if (in_array($mode, ['ok', 'chained-health', 'chained-tampered'], true)) {
             $nextParts = array_map('intval', explode('.', $version));
             ++$nextParts[2];
             $nextVersion = implode('.', $nextParts);
@@ -305,12 +305,14 @@ try {
             $root->exec('CREATE DATABASE '.chr(96).$nextSchema.chr(96).' CHARACTER SET utf8mb4');
             $schemas[] = $nextSchema;
             $secondRestore = codeDb($nextSchema, $pass);
-            $nextHost = new class($home, $mode === 'ok', $nextVersion, $nextSha)
+            $nextHost = new class($home, $mode === 'ok', $nextVersion, $nextSha,
+                $mode === 'chained-tampered' ? $candidate.'/application/bootstrap/app.php' : null)
                 implements CpanelOwnerCodeUpdateHost {
                 public int $probes = 0;
                 public function __construct(
                     private string $home, private bool $healthy,
                     private string $version, private string $sha,
+                    private ?string $tamperPreviousFile,
                 ) {}
                 public function externalWritersStopped(): bool { return true; }
                 public function acceptHealthyRetry(): void { $this->healthy = true; }
@@ -324,6 +326,11 @@ try {
                     (new CpanelReleaseMaintenance())->assertLiveHealthProbe($this->home, $token);
                     $pointer = json_decode((string) file_get_contents(
                         $this->home.'/.walidsite-active-release.json'), true, 8, JSON_THROW_ON_ERROR);
+                    if ($this->tamperPreviousFile !== null
+                        && file_put_contents($this->tamperPreviousFile,
+                            '<?php // MUTATED_BY_DISPOSABLE_CI_HEALTH') === false) {
+                        throw new RuntimeException('Disposable adversarial code mutation failed.');
+                    }
                     return $this->healthy && $version === $this->version
                         && $sha === $this->sha
                         && ($pointer['root'] ?? null) === '.walidsite-releases/v'.$version.'-'.$sha;
@@ -349,8 +356,13 @@ try {
                     throw new RuntimeException('Chained signed code cutover was not verified.');
                 }
             } catch (Throwable $failure) {
-                if ($mode !== 'chained-health'
-                    || !str_contains($failure->getMessage(), 'old code pointer restored')) {
+                $expectedFailure = match ($mode) {
+                    'chained-health' => 'old code pointer restored',
+                    'chained-tampered' => 'Previous release code tree changed during rollback.',
+                    default => null,
+                };
+                if ($expectedFailure === null
+                    || !str_contains($failure->getMessage(), $expectedFailure)) {
                     throw $failure;
                 }
                 $secondFailed = true;
@@ -364,14 +376,64 @@ try {
             if ($afterPointer['root'] !== $expectedRoot
                 || $afterPointer['version'] !== ($mode === 'ok' ? $nextVersion : $version)
                 || $nextHost->probes !== 1
-                || ($mode === 'chained-health') !== $secondFailed
-                || is_file($home.'/.walidsite-update-maintenance.json')
+                || ($mode !== 'ok') !== $secondFailed
+                || ($mode === 'chained-tampered') !== is_file(
+                    $home.'/.walidsite-update-maintenance.json')
                 || file_get_contents($app.'/.env') !== "APP_KEY=base64:DISPOSABLE_CI_ONLY\n"
                 || file_get_contents($app.'/storage/app/owner.txt') !== 'KEEP_OWNER'
                 || file_get_contents($public.'/uploads/avatar.png') !== 'KEEP_UPLOAD'
                 || $live->query('SELECT note FROM owner_records WHERE id=1')->fetchColumn() !== 'PRESERVE_ROW'
                 || (int) $secondRestore->query('SELECT COUNT(*) FROM owner_records')->fetchColumn() !== 2) {
                 throw new RuntimeException('Second signed update corrupted previous release or private owner data.');
+            }
+
+            if ($mode === 'chained-tampered') {
+                // The disposable health probe modified the previously
+                // healthy immutable PHP tree. Never auto-resume that code.
+                if (! $secondFailed
+                    || ! is_file($home.'/.walidsite-update-maintenance.json')
+                    || file_get_contents($running.'/bootstrap/app.php')
+                        !== '<?php // MUTATED_BY_DISPOSABLE_CI_HEALTH') {
+                    throw new RuntimeException('Tampered chained rollback bypassed maintenance.');
+                }
+
+                // A fresh signed retry must be refused while quarantine
+                // remains, even with a different empty recovery database.
+                $deniedSchema = 'ci_release_denied_'.$id;
+                $root->exec('CREATE DATABASE '.chr(96).$deniedSchema.chr(96).' CHARACTER SET utf8mb4');
+                $schemas[] = $deniedSchema;
+                $deniedRestore = codeDb($deniedSchema, $pass);
+                $nextHost->acceptHealthyRetry();
+                // The first mandatory writer-lease gate must reject a new
+                // request before any updater code or second HTTP health probe
+                // runs. A different exception is NOT sufficient evidence.
+                $deniedLease = new CpanelConsoleWriterLease();
+                $writerDeniedByMaintenance = false;
+                try {
+                    $deniedLease->beginForConsole($running);
+                } catch (DomainException $blocked) {
+                    $writerDeniedByMaintenance = $blocked->getMessage()
+                        === 'cPanel release maintenance blocks background writers.';
+                }
+                if (! $writerDeniedByMaintenance) {
+                    $deniedLease->end();
+                    throw new RuntimeException(
+                        'Tampered chained rollback allowed a new writer lease.'
+                    );
+                }
+                if ($nextHost->probes !== 1
+                    || (int) $deniedRestore->query(
+                        "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE()"
+                    )->fetchColumn() !== 0
+                    || ! is_file($home.'/.walidsite-update-maintenance.json')
+                    || $live->query('SELECT note FROM owner_records WHERE id=1')->fetchColumn()
+                        !== 'PRESERVE_ROW'
+                    || file_get_contents($app.'/.env')
+                        !== "APP_KEY=base64:DISPOSABLE_CI_ONLY\n"
+                    || file_get_contents($app.'/storage/app/owner.txt') !== 'KEEP_OWNER'
+                    || file_get_contents($public.'/uploads/avatar.png') !== 'KEEP_UPLOAD') {
+                    throw new RuntimeException('Mutated chained release resumed or changed owner data.');
+                }
             }
 
             if ($mode === 'chained-health') {
@@ -442,6 +504,7 @@ try {
         'chained_health_failure_previous_pointer_restored' => true,
         'chained_health_recovery_cleared_maintenance' => true,
         'chained_health_recovery_retry_succeeded' => true,
+        'chained_tampered_previous_code_keeps_maintenance_and_blocks_retry' => true,
         'chained_fixture_source_sha_not_git_attested' => true,
         'real_https_host_verified' => false,
         'independent_foreign_writer_isolation' => false,
