@@ -346,6 +346,9 @@ final class CpanelImmutableCodePointer
         }
 
         $entries = [];
+        $directories = [$root => [
+            'dev' => $rootStat['dev'], 'ino' => $rootStat['ino'], 'mode' => $rootStat['mode'],
+        ]];
         $totalBytes = 0;
         $iterator = new \RecursiveIteratorIterator(
             new \RecursiveDirectoryIterator($root, \FilesystemIterator::SKIP_DOTS),
@@ -369,7 +372,12 @@ final class CpanelImmutableCodePointer
                 if (! $entry->isDir()) {
                     throw new DomainException('Previous immutable release directory changed.');
                 }
-                $entries[] = 'D'.chr(0).base64_encode($relative).chr(0).(string) ($before['mode'] & 0777);
+                $directories[$path] = [
+                    'dev' => $before['dev'], 'ino' => $before['ino'], 'mode' => $before['mode'],
+                ];
+                $entries[] = 'D'.chr(0).base64_encode($relative).chr(0)
+                    .(string) ($before['mode'] & 0777).chr(0)
+                    .(string) $before['dev'].chr(0).(string) $before['ino'];
                 continue;
             }
             if ($type !== 0100000 || ! $entry->isFile()
@@ -432,6 +440,17 @@ final class CpanelImmutableCodePointer
                     .(string) $before['size'].chr(0).hash_final($hash);
             } finally {
                 fclose($stream);
+            }
+        }
+        foreach ($directories as $directory => $identity) {
+            clearstatcache(true, $directory);
+            $after = @lstat($directory);
+            if (! is_array($after) || is_link($directory)
+                || realpath($directory) !== $directory
+                || $after['dev'] !== $identity['dev']
+                || $after['ino'] !== $identity['ino']
+                || $after['mode'] !== $identity['mode']) {
+                throw new DomainException('Previous immutable release directory identity changed while sealing.');
             }
         }
         sort($entries, SORT_STRING);
