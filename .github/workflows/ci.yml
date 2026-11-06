@@ -96,6 +96,7 @@ jobs:
           php -r 'exit(extension_loaded("zip") && extension_loaded("sodium") ? 0 : 1);'
           php -l qa/sign_trusted_update_release.php
           php -l qa/cpanel_signed_update_artifact_probe.php
+          php -l qa/cpanel_signed_code_install_acceptance.php
           python3 -m unittest -v \
             qa.tests.test_visual_trusted_update_publication \
             qa.tests.test_visual_publisher_consumer_acceptance \
@@ -613,6 +614,32 @@ jobs:
           assert proof["test_only_ephemeral_key"] is True
           assert proof["publisher_signature_verified"] is False
           assert proof["code_update_performed"] is False
+          assert proof["production_ready"] is False
+          PY
+          # Exercise the exact-source Setup and Update ZIPs with a test-only
+          # Ed25519 key, separate MariaDB schemas, and the owner code installer.
+          # This is not real HTTPS or independent foreign-writer certification.
+          CI_RECOVERY_HOST=127.0.0.1 \
+            CI_RECOVERY_ROOT_PASSWORD=walidsite-ci-root \
+            GITHUB_ACTIONS=true php qa/cpanel_signed_code_install_acceptance.php \
+              "$package" "dist/release-train/WalidSite-Update-v${version}.zip" \
+              "$version" "$source_sha" \
+              > dist/release-train/code-install-fixture-acceptance.json
+          SOURCE_SHA="$source_sha" VERSION="$version" python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          proof = json.loads(Path("dist/release-train/code-install-fixture-acceptance.json").read_text())
+          assert proof["schema"] == "walidsite.disposable-code-install-acceptance.v1"
+          assert proof["source_sha"] == os.environ["SOURCE_SHA"]
+          assert proof["version"] == os.environ["VERSION"]
+          assert proof["same_build_setup_and_update"] is True
+          assert proof["signed_code_cutover_fixture"] is True
+          assert proof["disposable_mariadb_restore"] is True
+          assert proof["failed_health_pointer_reverted"] is True
+          assert proof["real_https_host_verified"] is False
+          assert proof["independent_foreign_writer_isolation"] is False
+          assert proof["publisher_signature_verified_for_production"] is False
           assert proof["production_ready"] is False
           PY
       - uses: actions/upload-artifact@v4
