@@ -287,6 +287,26 @@ final class OwnerUpdateRecoveryBackupSafetyTest extends TestCase
         );
     }
 
+    public function test_existing_symlink_receipt_does_not_change_target(): void
+    {
+        $target = $this->home.'/original-recovery-receipt.json';
+        $path = $this->home.'/linked-recovery-receipt.json';
+        file_put_contents($target, 'existing trusted receipt');
+        self::assertTrue(symlink($target, $path));
+
+        $method = new \ReflectionMethod(OwnerUpdateRecoveryBackup::class, 'saveReceipt');
+
+        try {
+            $method->invoke(new OwnerUpdateRecoveryBackup(), $path, ['id' => 'FORGED']);
+            self::fail('An existing symlink receipt must be rejected.');
+        } catch (\RuntimeException $error) {
+            self::assertStringContainsString('Cannot create private recovery receipt', $error->getMessage());
+        }
+
+        self::assertTrue(is_link($path));
+        self::assertSame('existing trusted receipt', file_get_contents($target));
+    }
+
     public function test_private_sources_must_be_outside_document_root(): void
     {
         $args = $this->args();

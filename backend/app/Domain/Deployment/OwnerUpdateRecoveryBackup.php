@@ -307,7 +307,11 @@ final class OwnerUpdateRecoveryBackup
         try {
             if (! @chmod($path, 0600)
                 || fwrite($stream, $json) !== strlen($json)
-                || ! fflush($stream)) {
+                || ! fflush($stream)
+                // Flushing user-space buffers is not a durable restore proof.
+                // Supported PHP runtimes must sync the receipt inode before
+                // the owner is shown a successful recovery rehearsal.
+                || ! @fsync($stream)) {
                 throw new RuntimeException('Cannot persist verified recovery receipt.');
             }
 
