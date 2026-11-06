@@ -140,6 +140,32 @@ final class CpanelOwnerRecoveryHistoryTest extends TestCase
         self::assertSame('none', $history->inspect($this->home)['state']);
     }
 
+    public function test_vault_replacement_cannot_pass_post_enumeration_identity_check(): void
+    {
+        $history = new CpanelOwnerRecoveryHistory();
+        $this->save($this->receipt());
+
+        // Exercise the same pinned vault boundary used before and after
+        // scandir()/readReceipt(). Matching mode and owner are insufficient:
+        // an entirely different inode must not certify the earlier reads.
+        $method = new \ReflectionMethod(CpanelOwnerRecoveryHistory::class, 'assertPrivateVault');
+        $owner = lstat($this->home)['uid'];
+        $pinned = $method->invoke($history, $this->vault, $this->home, $owner);
+        self::assertSame('history', $history->inspect($this->home)['state']);
+
+        $retired = $this->home.'/.walidsite-backups-retired';
+        self::assertTrue(rename($this->vault, $retired));
+        self::assertTrue(mkdir($this->vault, 0700));
+        try {
+            self::assertNotSame($pinned['ino'], lstat($this->vault)['ino']);
+            $this->expectException(\DomainException::class);
+            $method->invoke($history, $this->vault, $this->home, $owner, $pinned);
+        } finally {
+            self::assertTrue(rmdir($this->vault));
+            self::assertTrue(rename($retired, $this->vault));
+        }
+    }
+
     public function test_receipt_symlink_and_hardlink_are_not_followed(): void
     {
         $path = $this->vault.'/receipt-'.$this->id.'.json';
