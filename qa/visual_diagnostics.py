@@ -147,14 +147,16 @@ def diagnose(root: Path, plan: object, commit: str, *, runner=subprocess.run,
                         if im.format != "PNG":
                             info["status"] = "invalid_png"
                             continue
+                        # PNG headers expose dimensions before raster decode.
+                        # Reject unexpected dimensions before allocating an
+                        # untrusted, potentially enormous RGBA pixel buffer.
+                        info["runtime_size"] = list(im.size)
+                        if im.size != reference.size:
+                            info["status"] = "wrong_dimensions"
+                            continue
                         actual = im.convert("RGBA")
                 except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError):
                     info["status"] = "invalid_png"
-                    continue
-
-                info["runtime_size"] = list(actual.size)
-                if actual.size != reference.size:
-                    info["status"] = "wrong_dimensions"
                     continue
                 if output.read_bytes() == ref_path.read_bytes():
                     info["status"] = "source_copy_rejected"
