@@ -642,9 +642,22 @@ final class AdminUpdateController extends Controller
         abort_unless(config('site.updates_enabled') === true, 403);
         $input = $request->validate(['lang' => ['sometimes', 'in:en,ar']]);
         if (array_diff(array_keys($request->query()), ['lang']) !== []
-            || array_diff(array_keys($request->request->all()), ['_token']) !== []) {
+            || array_diff(array_keys($request->request->all()), ['_token', 'current_password']) !== []) {
             return back()->withErrors(['install' => 'Unexpected installation request parameter.']);
         }
+
+        // A stolen or unattended owner session alone must never authorize
+        // executable PHP deployment. Re-check the current persisted password
+        // on EVERY installation attempt; never store it in the session,
+        // release inbox, audit record or redirect response.
+        $owner = $request->user()?->fresh();
+        $password = $request->input('current_password');
+        if (! is_string($password) || $password === '' || strlen($password) > 4096
+            || ! is_string($owner?->password_hash)
+            || ! \Illuminate\Support\Facades\Hash::check($password, $owner->password_hash)) {
+            return back()->withErrors(['install' => 'Owner password confirmation failed.']);
+        }
+
         $installed = $this->pinnedInstalledVersion();
         $id = $request->session()->get('verified_owner_update_inbox');
         $staged = $request->session()->get('owner_update_staged_code');
