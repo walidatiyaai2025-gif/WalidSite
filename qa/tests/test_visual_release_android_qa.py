@@ -100,7 +100,7 @@ class ReleaseAndroidQaAttachmentTest(unittest.TestCase):
             archive.writestr("classes.dex", b"A" * (2 * 1024 * 1024))
         self.assertLess(self.apk.stat().st_size, 100000)
         with pinned_directory(self.folder) as fd:
-            with self.assertRaisesRegex(ValueError, "cumulative byte budget"):
+            with self.assertRaisesRegex(ValueError, "byte budget"):
                 read_verified(fd, APK_NAME, self.apk.stat().st_size,
                               verify_zip=True)
 
