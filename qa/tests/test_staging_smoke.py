@@ -266,6 +266,53 @@ class StagingSmokeTest(unittest.TestCase):
                     )
                     self.assertTrue(all(x.closed for x in fake.responses))
 
+    def test_ambiguous_update_login_redirect_location_headers_fail_closed(self):
+        from email.message import Message
+
+        class RedirectHeadersOpener(FakeOpener):
+            def __init__(self, locations):
+                super().__init__()
+                self.locations = locations
+
+            def open(self, request, timeout):
+                response = super().open(request, timeout)
+                if request.full_url.endswith("/admin/updates"):
+                    headers = Message()
+                    for location in self.locations:
+                        headers["Location"] = location
+                    response.headers = headers
+                return response
+
+        valid = [
+            ["/admin/login"],
+            ["https://staging.example.com/admin/login"],
+        ]
+        invalid = [
+            [],
+            ["/admin/login", "/admin/login"],
+            ["/admin/login", "https://evil.example.org/login"],
+            ["https://evil.example.org/login", "/admin/login"],
+            ["/admin/login, https://evil.example.org/login"],
+            ["https://staging.example.com/admin/login?next=evil"],
+        ]
+        for locations in valid:
+            with self.subTest(valid=locations):
+                fake = RedirectHeadersOpener(locations)
+                receipt = permitted_run("https://staging.example.com", fake)
+                self.assertTrue(receipt["http_smoke_passed"])
+                self.assertTrue(all(resp.closed for resp in fake.responses))
+        for locations in invalid:
+            with self.subTest(invalid=locations):
+                fake = RedirectHeadersOpener(locations)
+                receipt = permitted_run("https://staging.example.com", fake)
+                self.assertFalse(receipt["http_smoke_passed"])
+                self.assertEqual(
+                    [(row["path"], row["reason"]) for row in receipt["checks"]
+                     if not row["passed"]],
+                    [("/admin/updates", "unsafe_or_unexpected_redirect")],
+                )
+                self.assertTrue(all(resp.closed for resp in fake.responses))
+
     def test_repeated_or_ambiguous_mime_headers_fail_without_reading_body(self):
         from email.message import Message
 
