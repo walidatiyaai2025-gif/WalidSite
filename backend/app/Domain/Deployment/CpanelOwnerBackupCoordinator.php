@@ -1,0 +1,116 @@
+<?php
+
+namespace App\Domain\Deployment;
+
+use DomainException;
+use PDO;
+use Throwable;
+
+/**
+ * Backend-only first-install cPanel recovery transaction.
+ *
+ * Coordinates the SAME private file lease shared by HTTP/CLI/queues with a
+ * private release maintenance barrier and a disposable DB+file restore drill.
+ * It NEVER deploys executable code, runs migrations, or authorizes a browser
+ * update by itself. An authorized integration must independently verify
+ * non-Laravel/direct-SQL/foreign-cron writers are stopped; the callback is
+ * trusted host evidence, NOT a request or session boolean.
+ *
+ * The invoking HTTP handler MUST finish its own shared request lease before
+ * calling this service. An active writer makes LOCK_EX fail closed.
+ */
+final class CpanelOwnerBackupCoordinator
+{
+    /**
+     * @param callable():bool $externalWritersStopped Independently verified
+     *     host-level no-writer predicate; never user-controlled.
+     * @return array{id:string,version:string,files:int,bytes:int,tables:int,rows:int,file_sha256:string,database_sha256:string,code_update_performed:bool}
+     */
+    public function prove(
+        PDO $live,
+        PDO $disposable,
+        string $environmentFile,
+        string $privateData,
+        string $publicUploads,
+        string $applicationBase,
+        string $publicRoot,
+        string $vault,
+        string $restore,
+        string $installedVersion,
+        string $previousRoot,
+        callable $externalWritersStopped,
+    ): array {
+        // Fail before creating even a lock file if the caller has not supplied
+        // independent evidence of foreign writer isolation.
+        if ($externalWritersStopped() !== true) {
+            throw new DomainException('Independent host writer isolation is required before backup.');
+        }
+
+        $home = realpath(dirname($applicationBase));
+        if ($home === false || $home !== dirname($applicationBase)
+            || $applicationBase !== $home.'/application'
+            || $publicRoot !== $home.'/public_html'
+            || is_link($applicationBase) || is_link($publicRoot)
+            || ! is_dir($applicationBase) || ! is_dir($publicRoot)) {
+            throw new DomainException('An original physical cPanel install is required for owner backup.');
+        }
+
+        $writers = new CpanelConsoleWriterLease();
+        $maintenance = new CpanelReleaseMaintenance();
+        $token = null;
+        // No in-flight HTTP, queue or CLI work may remain when exclusive
+        // acquisition succeeds. The nonblocking lease must NEVER wait on an
+        // active customer request while a privileged owner action holds state.
+        $writers->beginExclusiveForUpdate($home);
+        try {
+            $writers->assertExclusiveHeld();
+            if ($externalWritersStopped() !== true) {
+                throw new DomainException('Host writer isolation changed before maintenance.');
+            }
+
+            $barrier = $maintenance->begin($home, $previousRoot, $installedVersion, 300);
+            $token = $barrier['token'];
+            $assertQuiesced = static function () use (
+                $writers, $maintenance, $home, $token, $previousRoot,
+                $externalWritersStopped,
+            ): bool {
+                $writers->assertExclusiveHeld();
+                $maintenance->assertActive($home, $token, $previousRoot);
+                return $externalWritersStopped() === true;
+            };
+
+            // OwnerUpdateRecoveryBackup tests .env, uploads and private data
+            // against an independent file drill and empty disposable MariaDB.
+            // It rechecks the actual held lock and maintenance before writing
+            // a 0600, fsynced receipt; this service changes NO live code.
+            $proof = (new OwnerUpdateRecoveryBackup())->createAndProve(
+                $live, $disposable, $environmentFile, $privateData,
+                $publicUploads, $applicationBase, $publicRoot, $vault,
+                $restore, $installedVersion, $assertQuiesced,
+            );
+            if ($assertQuiesced() !== true) {
+                throw new DomainException('Writer isolation changed after recovery drill.');
+            }
+
+            // Backup-only transaction: no code pointer was switched, so the
+            // live, unchanged original release can safely resume once this
+            // exact barrier is cleared under the held exclusive writer lease.
+            $maintenance->clear($home, $token);
+            $token = null;
+            return [...$proof, 'code_update_performed' => false];
+        } finally {
+            try {
+                // Errors during the backup NEVER silently expose new code.
+                // There is no cutover in this service. If the marker became
+                // tampered/expired, clear() fails and deliberately leaves the
+                // recovery barrier in place for manual intervention.
+                if ($token !== null) {
+                    $writers->assertExclusiveHeld();
+                    $maintenance->clear($home, $token);
+                }
+            } finally {
+                $writers->end();
+            }
+        }
+    }
+}
