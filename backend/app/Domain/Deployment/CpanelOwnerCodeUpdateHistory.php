@@ -214,6 +214,17 @@ final class CpanelOwnerCodeUpdateHistory
     /** @return array{id:string,created_at:string,version:string,source_sha:string,backup_id:string,from:string} */
     private function read(string $path, string $id, string $key): array
     {
+        // Reject FIFO/device/symlink before fopen could block on a planted
+        // nonregular file. The held inode is independently checked below.
+        clearstatcache(true, $path);
+        $named = @lstat($path);
+        if (! is_array($named) || is_link($path)
+            || ($named['mode'] & 0170000) !== 0100000
+            || ($named['mode'] & 0777) !== 0600
+            || ($named['nlink'] ?? 0) !== 1
+            || $named['size'] < 1 || $named['size'] > self::MAX_RECEIPT_BYTES) {
+            throw new DomainException('Private code update receipt type is unsafe.');
+        }
         $stream = @fopen($path, 'rb');
         if ($stream === false) {
             throw new DomainException('Private code update history cannot be read.');
