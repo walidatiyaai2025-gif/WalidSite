@@ -4,8 +4,10 @@
  * rewrite this file in HOME/application; it selects the same verified
  * immutable code as the stable public_html dispatcher under writer isolation.
  *
- * Cron checks SIGNED PUBLISHER CATALOG ONLY. It cannot download/install code,
- * migrate the database, grant Admin privileges or claim production deployment.
+ * Signed catalog polling is read-only by default. When separately opted in,
+ * only a host-installed independent writer/restore/HTTPS capability may let
+ * the verified code-only release installer activate a newer signed version.
+ * Cron never runs arbitrary PHP, database migrations or owner web actions.
  */
 declare(strict_types=1);
 
@@ -87,13 +89,49 @@ try {
         );
         $writerLease->assertSharedHeld();
         $status = $record['state'];
+        if ($record['state'] === 'BLOCKED'
+            && $record['reason'] === 'VERIFIED_HOST_UPDATE_GATE_REQUIRED'
+            && config('site.release_cron_apply_enabled') === true) {
+            // Environment flags are NEVER a hosting capability. The trusted
+            // adapter must be registered by a host operator and independently
+            // attest foreign writers, isolated MariaDB restore and live TLS.
+            if (! $app->bound(\\App\\Domain\\Deployment\\CpanelOwnerCodeUpdateHost::class)
+                || ! is_string($record['available_version'])
+                || ! is_string($record['source_sha'])) {
+                throw new RuntimeException('Independent scheduled host release capability unavailable.');
+            }
+            /** @var \\App\\Domain\\Deployment\\CpanelOwnerCodeUpdateHost $host */
+            $host = $app->make(\\App\\Domain\\Deployment\\CpanelOwnerCodeUpdateHost::class);
+            $installed = (new \\App\\Domain\\Deployment\\CpanelCronTrustedCodeInstaller())->install(
+                $home, $running, $public, $version,
+                $record['available_version'], $record['source_sha'],
+                $origin, $key, $host, $writerLease,
+                \\Illuminate\\Support\\Facades\\DB::connection()->getPdo(),
+            );
+            // install() has already released the promoted writer lease.
+            // Failure to record journal or status is NEVER a fake rollback:
+            // the independently health-verified code remains installed.
+            (new \\App\\Domain\\Deployment\\CpanelOwnerCodeUpdateHistory())->record(
+                $home, $installed, (string) config('app.key'),
+            );
+            $first = (new \\App\\Domain\\Deployment\\TrustedInstalledVersion())->read(
+                $original.'/VERSION',
+            );
+            if ($first === null) {
+                throw new RuntimeException('Installed release pin missing after cutover.');
+            }
+            (new \\App\\Domain\\Deployment\\CpanelReleaseCronPoller())->recordDeployed(
+                $parent.'/release-automation', $public, $first, $installed,
+            );
+            $status = 'DEPLOYED';
+        }
     } finally {
         $writerLease->end();
     }
 
     // Only a generic, redacted state is sent to scheduled CLI output.
     fwrite(STDOUT, 'WalidSite release poll: '.$status.PHP_EOL);
-    exit($status === 'UP_TO_DATE' ? 0 : 1);
+    exit(in_array($status, ['UP_TO_DATE', 'DEPLOYED'], true) ? 0 : 1);
 } catch (\Throwable) {
     fwrite(STDERR, 'WalidSite release poll: BLOCKED'.PHP_EOL);
     exit(2);
