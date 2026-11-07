@@ -87,6 +87,27 @@ attestation (privately), DPR and zero-tolerance decoded RGBA comparisons.
 Do not mark any visual ledger entry as `matched` from a successful app
 launch alone.
 
+### Native MOBILE-01 emulator Welcome image (diagnostic, not acceptance)
+
+The source-pinned Android 35 emulator gate now additionally resizes its **fresh
+disposable** display to the immutable `mobile_welcome.png` physical dimensions
+at 160 dpi, force-restarts the same installed QA APK, verifies the public
+`/welcome` Flutter native accessibility identity before and after `adb
+exec-out screencap -p`, and records the exact decoded-RGBA mismatch count.
+Missing or non-comparable pixels fail CI; an actual mismatch is an honest
+diagnostic, not an excuse to alter the supplied reference or fabricate user
+content. The PNG, optional difference mask and SHA-bound JSON are included
+under `WalidSite-Android-emulator-launch-<sha>`, and the unified main artifact
+gate independently checks the PNG hash and truth flags.
+
+This is **one real English-only emulator screenshot**, not acceptance of any
+of the 13 native screens. The QA origin may be unconfigured; this run does not
+prove production API connectivity, Arabic layouts, a physical handset, screen
+reader usability, owner approval, or zero-tolerance design certification.
+Even if the raw pixels happen to match, the JSON explicitly retains
+`evidence_admitted=false` and `visual_fidelity_verified=false` until
+independent attestation and the remaining #481 requirements are satisfied.
+
 ### Repeat on a trusted local Laravel runtime
 
 After provisioning the actual test database/server and a locally authenticated

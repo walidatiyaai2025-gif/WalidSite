@@ -829,6 +829,7 @@ jobs:
       (github.event_name == 'pull_request' && github.event.action != 'closed' &&
        (github.head_ref == 'fix/751-native-android-qa-build-ci' ||
         github.head_ref == 'feat/481-android-emulator-install-launch' ||
+        github.head_ref == 'feat/481-emulator-welcome-runtime-pixels' ||
         github.head_ref == 'feat/1120-signed-android-site-origin-release-gate') &&
        github.event.pull_request.head.repo.full_name == github.repository)
     needs: required-ci-gate
@@ -939,6 +940,7 @@ jobs:
       (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
       (github.event_name == 'pull_request' && github.event.action != 'closed' &&
        (github.head_ref == 'feat/481-android-emulator-install-launch' ||
+        github.head_ref == 'feat/481-emulator-welcome-runtime-pixels' ||
         github.head_ref == 'feat/1120-signed-android-site-origin-release-gate') &&
        github.event.pull_request.head.repo.full_name == github.repository)
     needs: [required-ci-gate, build-android-qa-apk]
@@ -985,6 +987,9 @@ jobs:
           test -c /dev/kvm
           sudo chmod 666 /dev/kvm
           test -r /dev/kvm && test -w /dev/kvm
+      - name: Install pinned Pillow for real native Welcome pixel comparison
+        shell: bash
+        run: python3 -m pip install --disable-pip-version-check --quiet Pillow==11.3.0
       - name: Install and launch exact compiled APK on Android emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -1000,7 +1005,11 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: WalidSite-Android-emulator-launch-${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
-          path: dist/android-emulator/emulator-launch.json
+          path: |
+            dist/android-emulator/emulator-launch.json
+            dist/android-emulator/welcome-diagnostics.json
+            dist/android-emulator/welcome-runtime.png
+            dist/android-emulator/welcome-difference.png
           if-no-files-found: error
           retention-days: 30
 
@@ -1073,6 +1082,25 @@ jobs:
           assert emulator['visual_fidelity_verified'] is False
           assert emulator['distribution_signing_identity_verified'] is False
           assert emulator['production_ready'] is False
+          # Real source-bound native Welcome pixels are diagnostics, not
+          # accepted original-design parity or physical-device evidence.
+          import hashlib
+          visual = json.loads(Path('dist/source-proof/emulator/welcome-diagnostics.json').read_text())
+          png = Path('dist/source-proof/emulator/welcome-runtime.png')
+          assert visual['schema'] == 'walidsite.mobile-01-emulator-visual-diagnostic.v1'
+          assert visual['source_sha'] == os.environ['SOURCE_SHA']
+          assert visual['screen_id'] == 'MOBILE-01' and visual['route'] == '/welcome'
+          assert visual['locale'] == 'en'
+          assert visual['device_kind'] == 'disposable_android_emulator'
+          assert visual['runtime_capture'] == 'welcome-runtime.png'
+          assert visual['runtime_png_sha256'] == hashlib.sha256(png.read_bytes()).hexdigest()
+          assert visual['total_pixels'] > 0
+          assert 0 <= visual['mismatching_rgba_pixels'] <= visual['total_pixels']
+          assert visual['status'] in ('mismatch', 'exact_pixels_unattested')
+          assert visual['evidence_admitted'] is False
+          assert visual['visual_fidelity_verified'] is False
+          assert visual['physical_device_type_verified'] is False
+          assert visual['production_ready'] is False
           assert proof['code_update_performed'] is False
           assert proof['production_ready'] is False
           PY
