@@ -242,7 +242,7 @@ class ReleaseAndroidQaAttachmentTest(unittest.TestCase):
         def update_checksum(document):
             digest = hashlib.sha256(document.read_bytes()).hexdigest()
             sidecar = self.release_dir / (document.name + ".sha256")
-            sidecar.write_text(f"{digest}  {document.name}\\n", encoding="ascii")
+            sidecar.write_text(f"{digest}  {document.name}\n", encoding="ascii")
             return digest
 
         for document in documents:
