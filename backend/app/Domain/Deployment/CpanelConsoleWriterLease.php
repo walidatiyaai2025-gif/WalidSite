@@ -116,6 +116,22 @@ final class CpanelConsoleWriterLease
      * treat a boolean callback, environment variable or session claim as
      * evidence that writers have stopped.
      */
+    /**
+     * The permanent cPanel Cron launcher must hold the SAME shared writer
+     * lease as all other cooperating Laravel console writers while selecting
+     * and booting the currently active immutable code. No separate lock name
+     * or environmental "writer safe" boolean is sufficient.
+     */
+    public function assertSharedHeld(): void
+    {
+        if ($this->depth !== 1 || $this->mode !== LOCK_SH
+            || ! is_resource($this->stream) || $this->home === null) {
+            throw new DomainException('Cron requires a held shared writer isolation lease.');
+        }
+        $this->assertPrivateLock($this->stream, $this->home);
+        $this->markerAbsent($this->home['path']);
+    }
+
     public function assertExclusiveHeld(): void
     {
         if ($this->depth === 0 || $this->mode !== LOCK_EX
