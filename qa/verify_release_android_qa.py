@@ -11,6 +11,7 @@ import argparse
 from contextlib import contextmanager
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -31,6 +32,40 @@ MAX_JSON_BYTES = 65536
 MAX_RELEASE_ZIP_BYTES = 1073741824
 MAX_BUILD_INFO_BYTES = 1048576
 SEMVER = re.compile(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\Z")
+
+
+def strict_receipt_json(raw: bytes) -> object:
+    """Parse bounded release evidence with one unambiguous JSON meaning.
+
+    Python's default parser silently accepts duplicate object keys, NaN,
+    Infinity, and overflowing exponents. Independent PHP/publisher readers
+    may interpret such bytes differently; no release receipt may do so.
+    """
+    def no_duplicates(pairs: list[tuple[str, object]]) -> dict:
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("Duplicate release evidence JSON member")
+            result[key] = value
+        return result
+
+    def no_constants(_value: str) -> object:
+        raise ValueError("Non-standard release evidence JSON constant")
+
+    def finite_float(value: str) -> float:
+        number = float(value)
+        if not math.isfinite(number):
+            raise ValueError("Non-finite release evidence JSON number")
+        return number
+
+    try:
+        return json.loads(raw.decode("utf-8"),
+                          object_pairs_hook=no_duplicates,
+                          parse_constant=no_constants,
+                          parse_float=finite_float)
+    except (UnicodeError, ValueError, RecursionError) as exc:
+        raise ValueError("Invalid or ambiguous release evidence JSON") from exc
+
 
 
 def site_release_version(checkout: Path) -> str:
@@ -167,11 +202,8 @@ def verify(directory: Path, checkout: Path, source_sha: str) -> dict:
         proof_bytes, _, _ = read_verified(fd, PROOF_NAME, MAX_JSON_BYTES)
         sidecar_bytes, _, _ = read_verified(fd, CHECKSUM_NAME, 256)
         _, digest, size = read_verified(fd, APK_NAME, MAX_APK_BYTES, verify_zip=True)
-        try:
-            identity = json.loads(identity_bytes.decode("utf-8"))
-            proof = json.loads(proof_bytes.decode("utf-8"))
-        except (UnicodeError, ValueError) as exc:
-            raise ValueError("Invalid Android QA verification JSON") from exc
+        identity = strict_receipt_json(identity_bytes)
+        proof = strict_receipt_json(proof_bytes)
         if not isinstance(identity, dict) or not isinstance(proof, dict):
             raise ValueError("Android QA verification requires object receipts")
         if sidecar_bytes != (digest + "  " + APK_NAME + "\n").encode("ascii"):
@@ -242,11 +274,8 @@ def verify_bundle(directory: Path, checkout: Path, source_sha: str,
             if checksum_bytes != f"{digest}  {name}\n".encode("ascii"):
                 raise ValueError("Release document SHA256 sidecar mismatch")
         php_bytes, _, _ = read_verified(fd, "signed-zip-acceptance.json", MAX_JSON_BYTES)
-        try:
-            manifest = json.loads(manifest_bytes.decode("utf-8"))
-            php = json.loads(php_bytes.decode("utf-8"))
-        except (ValueError, UnicodeError) as exc:
-            raise ValueError("Candidate release evidence must be valid JSON") from exc
+        manifest = strict_receipt_json(manifest_bytes)
+        php = strict_receipt_json(php_bytes)
         if (not isinstance(manifest, dict) or not isinstance(php, dict)
                 or manifest.get("schema") != "walidsite.release-candidate.v1"
                 or manifest.get("product") != "walidsite"
@@ -281,10 +310,7 @@ def verify_bundle(directory: Path, checkout: Path, source_sha: str,
         build_sidecar, _, _ = read_verified(fd, build_name + ".sha256", 256)
         if build_sidecar != f"{build_digest}  {build_name}\n".encode("ascii"):
             raise ValueError("Build Info SHA256 sidecar mismatch")
-        try:
-            build_info = json.loads(build_bytes.decode("utf-8"))
-        except (UnicodeError, ValueError) as exc:
-            raise ValueError("Build Info must be valid JSON") from exc
+        build_info = strict_receipt_json(build_bytes)
         described = manifest.get("build_info")
         dependencies = build_info.get("production_dependencies") if isinstance(build_info, dict) else None
         migrations = build_info.get("migration_sha256") if isinstance(build_info, dict) else None
