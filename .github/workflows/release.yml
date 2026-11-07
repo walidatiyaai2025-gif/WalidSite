@@ -210,6 +210,6 @@ jobs:
       - name: Block release until authorized staging and publisher acceptance
         shell: bash
         run: |
-          echo 'BLOCKED EXTERNAL: no verified signed publisher release, first-install cPanel staging, Admin code-update/restore acceptance, or mobile production signing.'
-          echo 'Candidate artifacts are UNSIGNED and UNPUBLISHED; do not treat them as a release.'
+          echo 'BLOCKED EXTERNAL: no publisher-signed Web publication, real cPanel HTTPS install/update/recovery, verified live Web-APK pairing, or owner device acceptance.'
+          echo 'Web candidates remain test-signed/unpublished; a signed Android inspection is also UNPUBLISHED and not production-attested.'
           exit 1
