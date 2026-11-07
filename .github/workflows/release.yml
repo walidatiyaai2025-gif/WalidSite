@@ -207,6 +207,98 @@ jobs:
             dist/exact-main-ci-receipt.json
           if-no-files-found: error
           retention-days: 14
+  signed-web-inspection:
+    # Production signing secrets are deliberately NEVER available to automatic
+    # workflow_run candidate builds. This job cannot publish or deploy.
+    if: github.event_name == 'workflow_dispatch'
+    needs: release-candidates
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release-candidates.outputs.source_sha }}
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: zip, sodium
+      - name: Retrieve the same-run unpublished Web and Android evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: WalidSite-UNPUBLISHED-candidates-${{ needs.release-candidates.outputs.version }}-${{ needs.release-candidates.outputs.source_sha }}
+          path: dist/from-candidates
+      - name: Verify actual candidate ZIPs and same-SHA Android QA bytes again
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ needs.release-candidates.outputs.source_sha }}
+        run: |
+          set -euo pipefail
+          PYTHONPATH="$PWD" python3 qa/verify_release_android_qa.py \
+            --dir dist/from-candidates/candidates/android-qa \
+            --checkout . --sha "$SOURCE_SHA" \
+            --candidates dist/from-candidates/candidates \
+            > dist/signed-web-preflight.json
+      - name: Prepare private immutable Update bytes and unsigned payload
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ needs.release-candidates.outputs.source_sha }}
+          CANDIDATE_VERSION: ${{ needs.release-candidates.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -m 700 dist/signed-web
+          PYTHONPATH="$PWD" python3 qa/prepare_signed_web_inspection.py \
+            --candidates dist/from-candidates/candidates \
+            --output-dir dist/signed-web \
+            --version "$CANDIDATE_VERSION" --sha "$SOURCE_SHA" \
+            > dist/signed-web-preparation.json
+      - name: Sign private Web candidate using real publisher key (MANUAL ONLY)
+        shell: bash
+        env:
+          WALIDSITE_PUBLISHER_SECRET_KEY_B64: ${{ secrets.WALIDSITE_PUBLISHER_SECRET_KEY_B64 }}
+        run: |
+          set -euo pipefail
+          test -n "$WALIDSITE_PUBLISHER_SECRET_KEY_B64"
+          php qa/sign_trusted_update_release.php "$PWD/dist/signed-web" \
+            < dist/signed-web/unsigned-payload.json
+      - name: Independently verify pinned publisher and PHP archive (NO DEPLOY)
+        shell: bash
+        env:
+          WALIDSITE_PUBLISHER_PUBLIC_KEY_B64: ${{ vars.WALIDSITE_PUBLISHER_PUBLIC_KEY_B64 }}
+          WALIDSITE_TRUSTED_RELEASE_ORIGIN: ${{ vars.WALIDSITE_TRUSTED_RELEASE_ORIGIN }}
+          SOURCE_SHA: ${{ needs.release-candidates.outputs.source_sha }}
+          CANDIDATE_VERSION: ${{ needs.release-candidates.outputs.version }}
+        run: |
+          set -euo pipefail
+          test -n "$WALIDSITE_PUBLISHER_PUBLIC_KEY_B64"
+          test -n "$WALIDSITE_TRUSTED_RELEASE_ORIGIN"
+          php qa/verify_signed_web_inspection.php "$PWD/dist/signed-web" \
+            "$CANDIDATE_VERSION" "$SOURCE_SHA" \
+            > dist/signed-web/inspection-receipt.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          result = json.loads(Path('dist/signed-web/inspection-receipt.json').read_text())
+          assert result['schema'] == 'walidsite.signed-web-inspection.v1'
+          assert result['publisher_signature_verified'] is True
+          assert result['archive_integrity_verified'] is True
+          assert result['published'] is False
+          assert result['deployed'] is False
+          assert result['production_ready'] is False
+          PY
+      - name: Retain signed BUT UNPUBLISHED Web inspection assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: WalidSite-SIGNED-UNPUBLISHED-Web-${{ needs.release-candidates.outputs.version }}-${{ needs.release-candidates.outputs.source_sha }}
+          path: |
+            dist/signed-web/*
+            dist/signed-web-preflight.json
+            dist/signed-web-preparation.json
+          if-no-files-found: error
+          retention-days: 14
+
   signed-android-inspection:
     # Never expose production signing secrets to automatic CI-follow-up runs.
     if: github.event_name == 'workflow_dispatch'
@@ -259,7 +351,7 @@ jobs:
   release-gate:
     # Automation produces inspection artifacts only; no public promotion.
     if: github.event_name == 'workflow_dispatch'
-    needs: [release-candidates, signed-android-inspection]
+    needs: [release-candidates, signed-web-inspection, signed-android-inspection]
     runs-on: ubuntu-latest
     steps:
       - name: Block release until authorized staging and publisher acceptance
