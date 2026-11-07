@@ -24,6 +24,14 @@ return [
     'trusted_installed_version' => (string) env('SITE_TRUSTED_INSTALLED_VERSION', ''),
     'trusted_release_origin' => (string) env('SITE_TRUSTED_RELEASE_ORIGIN', ''),
     'trusted_release_public_key' => (string) env('SITE_TRUSTED_RELEASE_PUBLIC_KEY', ''),
+    // Public APK delivery is OFF by default. Only a signed, post-live HTTPS
+    // pairing with the exact active Web SHA and pinned production signer may
+    // enable the stable /downloads/android/latest route. QA APKs never qualify.
+    'android_download_enabled' => filter_var(
+        env('SITE_ANDROID_DOWNLOAD_ENABLED', false), FILTER_VALIDATE_BOOLEAN
+    ),
+    'android_trusted_signer_sha256' => (string) env('SITE_ANDROID_TRUSTED_SIGNER_SHA256', ''),
+
 
     // First-install ZIP includes private CLI Cron entrypoint but never
     // enables network polling or update execution without explicit opt-in.
