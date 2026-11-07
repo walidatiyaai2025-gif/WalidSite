@@ -25,6 +25,8 @@ final class CpanelCronTrustedCodeInstaller
         string $runningApplication,
         string $publicDocumentRoot,
         string $installedVersion,
+        string $expectedVersion,
+        string $expectedSourceSha,
         string $publisherOrigin,
         string $publisherKey,
         ?CpanelOwnerCodeUpdateHost $host,
@@ -67,7 +69,9 @@ final class CpanelCronTrustedCodeInstaller
         $signed = (new TrustedReleaseMetadata())->verify(
             $available['envelope'], $publisherKey, $publisherOrigin, $installedVersion,
         );
-        if ($signed !== $available['release']) {
+        if ($signed !== $available['release']
+            || $signed['version'] !== $expectedVersion
+            || $signed['source_sha'] !== $expectedSourceSha) {
             throw new DomainException('Signed catalog identity changed.');
         }
         $lease->assertSharedHeld();
