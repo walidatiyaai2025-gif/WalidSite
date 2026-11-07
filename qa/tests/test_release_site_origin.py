@@ -11,7 +11,7 @@ from qa.release_site_origin import (
 )
 
 SHA = "a" * 40
-DOMAIN = "https://walid.example.org"
+DOMAIN = "https://walid.portfolio-site.net"
 
 
 class ReleaseSiteOriginTest(unittest.TestCase):
@@ -22,24 +22,26 @@ class ReleaseSiteOriginTest(unittest.TestCase):
 
     def test_no_local_reserved_ip_redirect_or_ambiguous_origin(self):
         invalid = (
-            "", "http://walid.example.org", "HTTPS://walid.example.org",
-            "https://localhost", "https://localhost.example.org",
+            "", "http://walid.portfolio-site.net", "HTTPS://walid.portfolio-site.net",
+            "https://localhost", "https://localhost.portfolio-site.net",
             "https://127.0.0.1", "https://[::1]",
             "https://10.0.0.1", "https://169.254.169.254",
             "https://walid.local", "https://test.invalid",
             "https://walid.example", "https://walid.test",
+            "https://example.com", "https://example.net",
+            "https://example.org", "https://walid.example.org",
             "https://walid.internal", "https://walid.home.arpa",
             "https://walid.lan", "https://walid.onion",
-            "https://walid.example.org/", "https://walid.example.org/api",
-            "https://walid.example.org:443", "https://walid.example.org?x=1",
-            "https://walid.example.org#fragment",
-            "https://user:pass@walid.example.org",
-            "https://walid.example.org@evil.com",
-            "https://walid.example.org\n", " https://walid.example.org",
-            "https://Walid.example.org", "https://walid.example.org.",
+            "https://walid.portfolio-site.net/", "https://walid.portfolio-site.net/api",
+            "https://walid.portfolio-site.net:443", "https://walid.portfolio-site.net?x=1",
+            "https://walid.portfolio-site.net#fragment",
+            "https://user:pass@walid.portfolio-site.net",
+            "https://walid.portfolio-site.net@evil.com",
+            "https://walid.portfolio-site.net\n", " https://walid.portfolio-site.net",
+            "https://Walid.example.org", "https://walid.portfolio-site.net.",
             "https://example..org", "https://-abc.example.org",
-            "https://example.org:bad", "https://%77alid.example.org",
-            "https://walid.example.123", "https://\.example.org",
+            "https://portfolio-site.net:bad", "https://%77alid.portfolio-site.net",
+            "https://walid.example.123", "https://.portfolio-site.net",
             "https://wä lid.example.org",
             "https://" + ("a" * 64) + ".example.org",
         )
@@ -61,7 +63,7 @@ class ReleaseSiteOriginTest(unittest.TestCase):
             self.assertIs(receipt[claim], False)
 
         wrong = (
-            ("approved_origin", "https://attacker.example.org"),
+            ("approved_origin", "https://attacker.portfolio-site.net"),
             ("source_sha", SHA[:-1]),
             ("source_sha", "f" * 40 + "\n"),
             ("version", "0.1.3"),
