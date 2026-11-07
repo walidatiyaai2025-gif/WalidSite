@@ -21,7 +21,7 @@ function rejectSignedInspection(): never
 }
 
 try {
-    if ($argc !== 4 || ! preg_match('/^(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)$/D', $argv[2])
+    if ($argc !== 4 || ! preg_match('/^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$/D', $argv[2])
         || ! preg_match('/^[a-f0-9]{40}$/D', $argv[3])) {
         rejectSignedInspection();
     }
