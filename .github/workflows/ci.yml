@@ -106,6 +106,11 @@ jobs:
           php -l qa/sign_trusted_update_release.php
           php -l qa/cpanel_signed_update_artifact_probe.php
           php -l qa/cpanel_signed_code_install_acceptance.php
+          php -l backend/cron/release-poll.php
+          php -l backend/app/Domain/Deployment/CpanelReleaseCronPoller.php
+          php -l backend/app/Domain/Deployment/CpanelReleaseCronStatus.php
+          php -l backend/app/Domain/Deployment/TrustedReleaseMetadata.php
+          php -l backend/app/Domain/Deployment/TrustedReleaseCatalog.php
           python3 -m unittest -v \
             qa.tests.test_visual_trusted_update_publication \
             qa.tests.test_visual_publisher_consumer_acceptance \

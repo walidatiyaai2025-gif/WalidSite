@@ -27,6 +27,7 @@ final class TrustedReleaseCatalog
         string $approvedOrigin,
         string $publisherPublicKeyBase64,
         string $installedVersion,
+        bool $allowSameVersionForReadOnlyStatus = false,
     ): array {
         // Reject invalid destinations BEFORE making a network request.
         TrustedReleaseMetadata::assertPinnedHttpsOrigin($approvedOrigin);
@@ -54,6 +55,7 @@ final class TrustedReleaseCatalog
 
         $release = (new TrustedReleaseMetadata())->verify(
             $content, $publisherPublicKeyBase64, $approvedOrigin, $installedVersion,
+            'walidsite', $allowSameVersionForReadOnlyStatus,
         );
 
         return ['envelope' => $content, 'release' => $release];

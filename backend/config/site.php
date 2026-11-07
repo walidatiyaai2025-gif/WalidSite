@@ -24,4 +24,11 @@ return [
     'trusted_installed_version' => (string) env('SITE_TRUSTED_INSTALLED_VERSION', ''),
     'trusted_release_origin' => (string) env('SITE_TRUSTED_RELEASE_ORIGIN', ''),
     'trusted_release_public_key' => (string) env('SITE_TRUSTED_RELEASE_PUBLIC_KEY', ''),
+
+    // First-install ZIP includes private CLI Cron entrypoint but never
+    // enables network polling or update execution without explicit opt-in.
+    // Even when enabled, the poller is read-only and cannot switch PHP code.
+    'release_cron_check_enabled' => filter_var(
+        env('SITE_RELEASE_CRON_CHECK_ENABLED', false), FILTER_VALIDATE_BOOLEAN
+    ),
 ];

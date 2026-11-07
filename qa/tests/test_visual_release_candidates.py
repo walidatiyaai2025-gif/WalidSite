@@ -27,6 +27,7 @@ class ReleaseCandidateTest(unittest.TestCase):
             'application/composer.lock': b'{"packages":[{"name":"laravel/framework","version":"v12.1.0"}]}',
             'application/database/migrations/2026_11_01_000001_create_tables.php': b'<?php // immutable test migration',
             'application/VERSION': b'1.2.3\n',
+            'application/cron/release-poll.php': b'<?php // private CLI fixture; never public',
             'application/.env.example': b'APP_KEY=NEVER_COMMIT',
             'public_html/index.php': b'<?php echo "ok";',
             'public_html/.htaccess': b'RewriteEngine On',

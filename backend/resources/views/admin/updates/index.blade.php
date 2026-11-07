@@ -6,6 +6,7 @@
 @php($releaseNotes = $verifiedUpload ? ($verifiedUpload['release_notes'] ?? null) : ($signedCandidateVerified ? ($trustedCheck['release_notes'] ?? null) : null))
 @php($releaseNotesVersion = $verifiedUpload ? $verifiedUpload['version'] : ($signedCandidateVerified ? $trustedCheck['version'] : null))
 @php($codeUpdateHistory = $codeUpdateHistory ?? ['state' => 'none', 'receipts' => []])
+@php($cronStatus = $cronStatus ?? ['state' => 'UNVERIFIED', 'checked_at' => null, 'installed_version' => null, 'available_version' => null, 'reason' => 'NO_VERIFIED_RECENT_POLL'])
 @php($identifiedRelease = $releaseRef !== '' && $releaseRef !== 'unidentified')
 <!doctype html>
 <html lang="{{ $locale }}" dir="{{ $locale === 'ar' ? 'rtl' : 'ltr' }}">
@@ -44,6 +45,29 @@ button:disabled{background:#718096;cursor:not-allowed}
 <a href="{{ route('admin.updates.index', ['lang' => $locale === 'ar' ? 'en' : 'ar']) }}" hreflang="{{ $locale === 'ar' ? 'en' : 'ar' }}" lang="{{ $locale === 'ar' ? 'en' : 'ar' }}">{{ $locale === 'ar' ? 'English' : 'العربية' }}</a>
 </nav>
 <h1>{{ $locale === 'ar' ? 'النظام — التحديثات' : 'System — Updates' }}</h1>
+<section class="panel" aria-labelledby="cron-release-status-title" data-testid="trusted-release-cron-panel">
+<h2 id="cron-release-status-title">{{ $locale === 'ar' ? 'مراقبة الإصدارات التلقائية' : 'Automatic release monitoring' }}</h2>
+<p class="small">{{ $locale === 'ar'
+    ? 'هذه حالة فحص Cron الخاص، وليست إثبات نشر أو صلاحية تثبيت تلقائي. لن يُثبّت Cron أي كود دون بوابات أمان المضيف والاستعادة.'
+    : 'This is a private Cron discovery receipt, not deployment evidence or automatic install permission. Cron cannot replace code without verified host and recovery gates.' }}</p>
+<dl class="summary">
+<div><dt>{{ $locale === 'ar' ? 'حالة الفحص' : 'Poll status' }}</dt>
+<dd data-testid="release-cron-state">{{ $cronStatus['state'] }}</dd></div>
+<div><dt>{{ $locale === 'ar' ? 'آخر فحص موثوق محليًا' : 'Last locally recorded check' }}</dt>
+<dd data-testid="release-cron-last-check">{{ $cronStatus['checked_at'] !== null ? gmdate('Y-m-d H:i:s', $cronStatus['checked_at']).' UTC' : ($locale === 'ar' ? 'غير متاح' : 'Unavailable') }}</dd></div>
+<div><dt>{{ $locale === 'ar' ? 'الإصدار المتاح بالكتالوج' : 'Catalog version' }}</dt>
+<dd>{{ $cronStatus['available_version'] ?? ($locale === 'ar' ? 'غير مُثبت' : 'Not verified') }}</dd></div>
+</dl>
+@if($cronStatus['state'] !== 'UP_TO_DATE')
+<p class="blocked" data-testid="release-cron-update-not-deployed">{{ $locale === 'ar'
+    ? 'التحديث البرمجي لم يُطبّق. مطلوب مصدر إصدار موثوق وتفعيل الاستضافة وإثبات النسخ الاحتياطي والاستعادة والفحص الصحي.'
+    : 'No application update was applied. Trusted publication, hosting activation, restorable backup and live health evidence remain required.' }}</p>
+@else
+<p class="small" data-testid="release-cron-same-version-not-deployment">{{ $locale === 'ar'
+    ? 'لم يعرض الكتالوج الموقّع إصدارًا أحدث وقت الفحص؛ هذا لا يثبت صحة النسخة المنشورة أو رابط APK.'
+    : 'No newer signed catalog version was observed at the last check; this does not prove deployed health or APK compatibility.' }}</p>
+@endif
+</section>
 @if(session('status'))<p class="success" role="status" data-testid="owner-update-action-result">{{ session('status') }}</p>@endif
 @if(session('code_update_history_warning'))
 <p class="error" role="alert" data-testid="owner-code-update-history-write-warning">{{ $locale === 'ar'

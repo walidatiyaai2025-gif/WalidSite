@@ -22,6 +22,10 @@ class TestCpanelPackage(unittest.TestCase):
         self.output = Path(self.t.name) / "dist/site.zip"
         files = {
             "backend/app/Test.php": "<?php",
+            "backend/cron/release-poll.php": (
+                Path(__file__).resolve().parents[2]
+                / "backend/cron/release-poll.php"
+            ).read_text(encoding="utf-8"),
             "backend/bootstrap/app.php": "<?php",
             "backend/config/site.php": "<?php",
             "backend/database/migrations/first.php": "<?php",
@@ -61,7 +65,8 @@ class TestCpanelPackage(unittest.TestCase):
             names = set(zip.namelist())
             for name in (
                 "application/vendor/autoload.php", "application/composer.lock",
-                "application/.env.example", "application/VERSION", "contracts/owner-cv-baseline.json",
+                "application/.env.example", "application/VERSION",
+                "application/cron/release-poll.php", "contracts/owner-cv-baseline.json",
                 "public_html/index.php", "public_html/.htaccess",
                 "public_html/assets/portraits/portrait-light-derived.jpg",
                 "public_html/assets/icons/briefcase.svg",
@@ -78,6 +83,11 @@ class TestCpanelPackage(unittest.TestCase):
                 "application/tests/OwnerTest.php", "application/vendor/acme/tests/private.txt",
             ):
                 self.assertNotIn(name, names)
+            self.assertNotIn("public_html/cron/release-poll.php", names)
+            private_cron = zip.read("application/cron/release-poll.php").decode()
+            self.assertIn("PHP_SAPI !== 'cli'", private_cron)
+            self.assertIn("CpanelReleaseCronPoller", private_cron)
+            self.assertNotIn("gh release create", private_cron)
             public_index = zip.read("public_html/index.php").decode()
             self.assertIn("dirname(__DIR__)", public_index)
             self.assertIn(".walidsite-active-release.json", public_index)

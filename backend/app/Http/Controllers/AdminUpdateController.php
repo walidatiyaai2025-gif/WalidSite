@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Domain\Deployment\CpanelArchiveCodeOnlyPreflight;
 use App\Domain\Deployment\CpanelOwnerRecoveryHistory;
 use App\Domain\Deployment\CpanelOwnerCodeUpdateHistory;
+use App\Domain\Deployment\CpanelReleaseCronStatus;
 use App\Domain\Deployment\CpanelOwnerBackupHost;
 use App\Domain\Deployment\CpanelOwnerBackupCoordinator;
 use App\Domain\Deployment\CpanelOwnerCodeUpdateHost;
@@ -180,9 +181,13 @@ final class AdminUpdateController extends Controller
         );
         $hostBackupAvailable = app()->bound(CpanelOwnerBackupHost::class);
         $hostCodeUpdateAvailable = app()->bound(CpanelOwnerCodeUpdateHost::class);
+        // Read-only private Cron receipt; this must not grant update access.
+        $cronStatus = app(CpanelReleaseCronStatus::class)->inspect(
+            storage_path('app/private/release-automation'), public_path(),
+        );
         return view('admin.updates.index', compact('status', 'installedVersion',
             'verifiedUpload', 'hostPreflight', 'stagedCode', 'recoveryHistory',
-            'codeUpdateHistory', 'hostBackupAvailable', 'hostCodeUpdateAvailable'));
+            'codeUpdateHistory', 'hostBackupAvailable', 'hostCodeUpdateAvailable', 'cronStatus'));
     }
 
     /**
