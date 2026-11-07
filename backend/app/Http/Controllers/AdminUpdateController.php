@@ -6,6 +6,7 @@ use App\Domain\Deployment\CpanelArchiveCodeOnlyPreflight;
 use App\Domain\Deployment\CpanelOwnerRecoveryHistory;
 use App\Domain\Deployment\CpanelOwnerCodeUpdateHistory;
 use App\Domain\Deployment\CpanelReleaseCronStatus;
+use App\Domain\Deployment\VerifiedAndroidLatestDownload;
 use App\Domain\Deployment\CpanelOwnerBackupHost;
 use App\Domain\Deployment\CpanelOwnerBackupCoordinator;
 use App\Domain\Deployment\CpanelOwnerCodeUpdateHost;
@@ -185,9 +186,32 @@ final class AdminUpdateController extends Controller
         $cronStatus = app(CpanelReleaseCronStatus::class)->inspect(
             storage_path('app/private/release-automation'), public_path(),
         );
+        // Only render a download CTA for the ACTUAL, currently compatible
+        // production-signed private APK whose publisher receipt, live Web
+        // version/SHA, approved HTTPS origin and APK bytes all pass again.
+        $androidLatest = null;
+        if (config('site.android_download_enabled') === true) {
+            try {
+                $verifiedAndroid = app(VerifiedAndroidLatestDownload::class)->resolve(
+                    base_path(), public_path(),
+                    storage_path('app/private/android-release'),
+                    (string) config('site.trusted_installed_version'),
+                    (string) config('app.url'),
+                    (string) config('site.trusted_release_public_key'),
+                    (string) config('site.android_trusted_signer_sha256'),
+                );
+                $androidLatest = $verifiedAndroid['meta'];
+                fclose($verifiedAndroid['stream']);
+            } catch (Throwable) {
+                // Never surface a signer/path/publisher detail as a public
+                // actionable Android download link.
+                $androidLatest = null;
+            }
+        }
         return view('admin.updates.index', compact('status', 'installedVersion',
             'verifiedUpload', 'hostPreflight', 'stagedCode', 'recoveryHistory',
-            'codeUpdateHistory', 'hostBackupAvailable', 'hostCodeUpdateAvailable', 'cronStatus'));
+            'codeUpdateHistory', 'hostBackupAvailable', 'hostCodeUpdateAvailable', 'cronStatus',
+            'androidLatest'));
     }
 
     /**
