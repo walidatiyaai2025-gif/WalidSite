@@ -254,6 +254,15 @@ jobs:
             --output-dir dist/signed-web \
             --version "$CANDIDATE_VERSION" --sha "$SOURCE_SHA" \
             > dist/signed-web-preparation.json
+      - name: Block publisher signing until GitHub main is actually protected
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = 'refs/heads/main'
+          protected="$(gh api "repos/${GITHUB_REPOSITORY}/branches/main" --jq '.protected')"
+          test "$protected" = 'true'
       - name: Sign private Web candidate using real publisher key (MANUAL ONLY)
         shell: bash
         env:
