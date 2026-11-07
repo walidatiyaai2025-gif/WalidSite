@@ -41,6 +41,7 @@ class ChainedCodeRecoveryReceiptTest(unittest.TestCase):
             "failed_health_pointer_reverted": True,
             "late_populated_restore_blocked": True,
             "chained_code_only_fixture_tested": True,
+            "signed_cron_code_apply_fixture_tested": True,
             "chained_health_failure_previous_pointer_restored": True,
             "chained_health_recovery_cleared_maintenance": True,
             "chained_health_recovery_retry_succeeded": True,
