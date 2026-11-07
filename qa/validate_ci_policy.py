@@ -46,7 +46,24 @@ for command in (
 release_path = WORKFLOWS / "release.yml"
 release = release_path.read_text(encoding="utf-8") if release_path.is_file() else ""
 if "workflow_dispatch:" not in release:
-    errors.append("release.yml must remain manually dispatched")
+    errors.append("release.yml must retain manual signed inspection")
+for requirement in (
+    "workflow_run:",
+    'workflows: ["PR CI"]',
+    "github.event.workflow_run.event == 'push'",
+    "github.event.workflow_run.head_branch == 'main'",
+    "github.event.workflow_run.head_repository.full_name == github.repository",
+    "github.event.workflow_run.conclusion == 'success'",
+    "github.event.workflow_run.head_sha || github.sha",
+    "qa/verify_exact_main_release_ci.py",
+    "backend/VERSION",
+    "if: github.event_name == 'workflow_dispatch'",
+    "UNPUBLISHED-candidates-",
+):
+    if requirement not in release:
+        errors.append(f"release.yml lacks fail-closed automatic candidate policy: {requirement}")
+if "gh release create" in release:
+    errors.append("unaccepted source cannot publish a GitHub Release")
 
 if errors:
     print("FAILED", errors)

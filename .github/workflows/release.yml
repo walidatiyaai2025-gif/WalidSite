@@ -1,5 +1,10 @@
 name: Release
 on:
+  # Generate inspection-only release candidates after an accepted main push CI.
+  workflow_run:
+    workflows: ["PR CI"]
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
     inputs:
       version:
@@ -15,21 +20,36 @@ concurrency:
   cancel-in-progress: false
 jobs:
   release-candidates:
+    # workflow_run.github.sha is NOT the triggering commit: use its head SHA.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'main' &&
+       github.event.workflow_run.head_repository.full_name == github.repository &&
+       github.event.workflow_run.conclusion == 'success')
+    outputs:
+      source_sha: ${{ steps.verified-ci.outputs.source_sha }}
+      version: ${{ steps.verified-version.outputs.version }}
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
       - name: Require one successful exact-main push CI run with all same-run native jobs
         id: verified-ci
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          TESTED_SHA: ${{ github.sha }}
+          TESTED_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
         run: |
           set -euo pipefail
-          test "$GITHUB_REF" = 'refs/heads/main'
+          if [ "$GITHUB_EVENT_NAME" = 'workflow_dispatch' ]; then
+            test "$GITHUB_REF" = 'refs/heads/main'
+          else
+            test "$GITHUB_EVENT_NAME" = 'workflow_run'
+          fi
           test "$(git rev-parse HEAD)" = "$TESTED_SHA"
           test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$TESTED_SHA"
           runs_json="$(mktemp)"
@@ -47,6 +67,21 @@ jobs:
             --sha "$TESTED_SHA" --repo "$GITHUB_REPOSITORY" \
             > dist/exact-main-ci-receipt.json
           printf 'ci_run_id=%s\n' "$ci_run_id" >> "$GITHUB_OUTPUT"
+          printf 'source_sha=%s\n' "$TESTED_SHA" >> "$GITHUB_OUTPUT"
+      - name: Resolve immutable version from the exact tested checkout
+        id: verified-version
+        shell: bash
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          version="$(tr -d '\r\n' < backend/VERSION)"
+          [[ "$version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+          if [ "$GITHUB_EVENT_NAME" = 'workflow_dispatch' ]; then
+            test -n "$REQUESTED_VERSION"
+            test "$REQUESTED_VERSION" = "$version"
+          fi
+          printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.3'
@@ -61,8 +96,8 @@ jobs:
       - name: Produce versioned Setup and Update inspection candidates
         shell: bash
         env:
-          CANDIDATE_VERSION: ${{ inputs.version }}
-          SOURCE_SHA: ${{ github.sha }}
+          CANDIDATE_VERSION: ${{ steps.verified-version.outputs.version }}
+          SOURCE_SHA: ${{ steps.verified-ci.outputs.source_sha }}
         run: |
           set -euo pipefail
           mkdir -p dist/candidates
@@ -90,8 +125,8 @@ jobs:
       - name: Verify real Update ZIP with PHP Ed25519 and archive safety boundary
         shell: bash
         env:
-          CANDIDATE_VERSION: ${{ inputs.version }}
-          SOURCE_SHA: ${{ github.sha }}
+          CANDIDATE_VERSION: ${{ steps.verified-version.outputs.version }}
+          SOURCE_SHA: ${{ steps.verified-ci.outputs.source_sha }}
         run: |
           set -euo pipefail
           test "${GITHUB_ACTIONS}" = "true"
@@ -123,8 +158,8 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          SOURCE_SHA: ${{ github.sha }}
-          CANDIDATE_VERSION: ${{ inputs.version }}
+          SOURCE_SHA: ${{ steps.verified-ci.outputs.source_sha }}
+          CANDIDATE_VERSION: ${{ steps.verified-version.outputs.version }}
           CI_RUN_ID: ${{ steps.verified-ci.outputs.ci_run_id }}
         run: |
           set -euo pipefail
@@ -164,7 +199,7 @@ jobs:
       - name: Retain unpublished inspection candidates only
         uses: actions/upload-artifact@v4
         with:
-          name: WalidSite-UNPUBLISHED-candidates-${{ inputs.version }}-${{ github.sha }}
+          name: WalidSite-UNPUBLISHED-candidates-${{ steps.verified-version.outputs.version }}-${{ steps.verified-ci.outputs.source_sha }}
           path: |
             dist/candidates/*
             dist/candidate-build-receipt.json
@@ -172,6 +207,8 @@ jobs:
           if-no-files-found: error
           retention-days: 14
   signed-android-inspection:
+    # Never expose production signing secrets to automatic CI-follow-up runs.
+    if: github.event_name == 'workflow_dispatch'
     # Signed native candidate ONLY. No trusted Web release or live-host
     # pairing is implied; no GitHub Release/upload publication occurs here.
     needs: release-candidates
@@ -182,7 +219,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ needs.release-candidates.outputs.source_sha }}
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -207,18 +244,20 @@ jobs:
           WALIDSITE_ANDROID_KEY_ALIAS: ${{ secrets.WALIDSITE_ANDROID_KEY_ALIAS }}
           WALIDSITE_ANDROID_STORE_PASSWORD: ${{ secrets.WALIDSITE_ANDROID_STORE_PASSWORD }}
           WALIDSITE_ANDROID_KEY_PASSWORD: ${{ secrets.WALIDSITE_ANDROID_KEY_PASSWORD }}
-          WALIDSITE_SOURCE_SHA: ${{ github.sha }}
-          WALIDSITE_RELEASE_VERSION: ${{ inputs.version }}
+          WALIDSITE_SOURCE_SHA: ${{ needs.release-candidates.outputs.source_sha }}
+          WALIDSITE_RELEASE_VERSION: ${{ needs.release-candidates.outputs.version }}
         run: bash qa/build_origin_bound_android_release.sh
       - name: Retain signed Android evidence without implying a public APK
         uses: actions/upload-artifact@v4
         with:
-          name: WalidSite-SIGNED-UNPUBLISHED-Android-${{ inputs.version }}-${{ github.sha }}
+          name: WalidSite-SIGNED-UNPUBLISHED-Android-${{ needs.release-candidates.outputs.version }}-${{ needs.release-candidates.outputs.source_sha }}
           path: dist/release-android/*
           if-no-files-found: error
           retention-days: 14
 
   release-gate:
+    # Automation produces inspection artifacts only; no public promotion.
+    if: github.event_name == 'workflow_dispatch'
     needs: [release-candidates, signed-android-inspection]
     runs-on: ubuntu-latest
     steps:
