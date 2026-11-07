@@ -390,10 +390,17 @@ class ReleaseCandidateTest(unittest.TestCase):
 
     def test_workflow_guards_tested_sha_and_blocks_release_promotion(self):
         workflow = (Path(__file__).resolve().parents[2] / '.github/workflows/release.yml').read_text()
-        for item in ('workflow_dispatch:', 'required-ci-gate', 'build-cpanel-package',
+        for item in ('workflow_dispatch:', 'qa/verify_exact_main_release_ci.py',
+                     'actions/runs/${ci_run_id}/jobs?per_page=100',
                      'qa/prepare_release_candidate.py', 'actions/upload-artifact@v4',
                      'exit 1', 'github.sha'):
             self.assertIn(item, workflow)
+        verifier = (Path(__file__).resolve().parents[2] /
+                    'qa/verify_exact_main_release_ci.py').read_text()
+        for required in ('required-ci-gate', 'build-cpanel-package',
+                         'build-android-qa-apk', 'android-emulator-install-launch',
+                         'verify-source-pinned-release-bundle'):
+            self.assertIn(f'"{required}"', verifier)
         self.assertNotIn('sign_trusted_update_release.php', workflow)
         self.assertNotIn('gh release create', workflow)
 

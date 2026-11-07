@@ -408,14 +408,23 @@ class ReleaseAndroidQaAttachmentTest(unittest.TestCase):
         workflow = (Path(__file__).resolve().parents[2] /
                     ".github/workflows/release.yml").read_text()
         self.assertIn("actions: read", workflow)
-        self.assertIn('.name == "build-android-qa-apk"', workflow)
+        self.assertIn("qa/verify_exact_main_release_ci.py", workflow)
+        self.assertIn("actions/runs/${ci_run_id}/jobs?per_page=100", workflow)
+        verifier = (Path(__file__).resolve().parents[2] /
+                    "qa/verify_exact_main_release_ci.py").read_text()
+        for name in ("build-android-qa-apk", "android-emulator-install-launch",
+                     "verify-source-pinned-release-bundle"):
+            self.assertIn(f'"{name}"', verifier)
         self.assertIn("gh run download", workflow)
         self.assertIn("qa/verify_release_android_qa.py", workflow)
         self.assertIn("--candidates dist/candidates", workflow)
         self.assertIn("unified-release-evidence.json", workflow)
         self.assertIn("native_and_web_version_match", workflow)
         self.assertIn("WalidSite-Android-debug-QA-${SOURCE_SHA}", workflow)
-        self.assertIn("head_sha=${SOURCE_SHA}&event=push", workflow)
+        self.assertIn("head_sha=${TESTED_SHA}&event=push", workflow)
+        self.assertIn("CI_RUN_ID: ${{ steps.verified-ci.outputs.ci_run_id }}", workflow)
+        self.assertIn('gh run download "$CI_RUN_ID"', workflow)
+        self.assertNotIn('gh run download "$run_id"', workflow)
         self.assertLess(workflow.index("Attach same-commit Android debug QA APK"),
                         workflow.index("Retain unpublished inspection candidates only"))
         self.assertIn("exit 1", workflow.split("  release-gate:", 1)[1])

@@ -68,6 +68,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 -m unittest qa.tests.test_release_site_origin -v
+          python3 -m unittest qa.tests.test_exact_main_release_ci -v
           bash -n qa/build_origin_bound_android_release.sh
           python3 -B qa/release_site_origin.py --help >/dev/null
       - name: Enforce exclusive Issue, branch and PR ownership

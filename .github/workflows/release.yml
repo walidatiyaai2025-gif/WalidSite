@@ -21,7 +21,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
-      - name: Require exact current main SHA with successful CI, installer and Android QA builds
+      - name: Require one successful exact-main push CI run with all same-run native jobs
+        id: verified-ci
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -31,9 +32,21 @@ jobs:
           test "$GITHUB_REF" = 'refs/heads/main'
           test "$(git rev-parse HEAD)" = "$TESTED_SHA"
           test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$TESTED_SHA"
+          runs_json="$(mktemp)"
+          jobs_json="$(mktemp)"
+          trap 'rm -f "$runs_json" "$jobs_json"' EXIT
           gh api -H 'Accept: application/vnd.github+json' \
-            "repos/${GITHUB_REPOSITORY}/commits/${TESTED_SHA}/check-runs?per_page=100" \
-            | jq -e '(.check_runs | any(.name == "required-ci-gate" and .status == "completed" and .conclusion == "success")) and (.check_runs | any(.name == "build-cpanel-package" and .status == "completed" and .conclusion == "success")) and (.check_runs | any(.name == "build-android-qa-apk" and .status == "completed" and .conclusion == "success"))' >/dev/null
+            "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${TESTED_SHA}&event=push&per_page=100" > "$runs_json"
+          ci_run_id="$(python3 qa/verify_exact_main_release_ci.py \
+            --runs "$runs_json" --sha "$TESTED_SHA" --repo "$GITHUB_REPOSITORY")"
+          gh api -H 'Accept: application/vnd.github+json' \
+            "repos/${GITHUB_REPOSITORY}/actions/runs/${ci_run_id}/jobs?per_page=100" > "$jobs_json"
+          mkdir -p dist
+          python3 qa/verify_exact_main_release_ci.py \
+            --runs "$runs_json" --jobs "$jobs_json" --run-id "$ci_run_id" \
+            --sha "$TESTED_SHA" --repo "$GITHUB_REPOSITORY" \
+            > dist/exact-main-ci-receipt.json
+          printf 'ci_run_id=%s\n' "$ci_run_id" >> "$GITHUB_OUTPUT"
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.3'
@@ -112,16 +125,17 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           SOURCE_SHA: ${{ github.sha }}
           CANDIDATE_VERSION: ${{ inputs.version }}
+          CI_RUN_ID: ${{ steps.verified-ci.outputs.ci_run_id }}
         run: |
           set -euo pipefail
           # Only a completed, successful main push run on this exact SHA may
           # supply Android QA bytes. A different ref, PR head or old APK is not
           # a valid companion to this Setup/Update candidate.
-          run_id="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${SOURCE_SHA}&event=push&per_page=100" \
-            --jq ".workflow_runs | map(select(.head_sha == \"${SOURCE_SHA}\" and .name == \"PR CI\" and .event == \"push\" and .conclusion == \"success\")) | .[0].id")"
-          test -n "$run_id" && test "$run_id" != null
+          # Reuse the *same* verified CI run. A second search could select
+          # different (older) QA bytes despite passing the release gate.
+          [[ "$CI_RUN_ID" =~ ^[1-9][0-9]*$ ]]
           mkdir -p dist/candidates/android-qa
-          gh run download "$run_id" \
+          gh run download "$CI_RUN_ID" \
             --name "WalidSite-Android-debug-QA-${SOURCE_SHA}" \
             --dir dist/candidates/android-qa
           # Rehash both real release ZIPs and the native APK together.
@@ -154,6 +168,7 @@ jobs:
           path: |
             dist/candidates/*
             dist/candidate-build-receipt.json
+            dist/exact-main-ci-receipt.json
           if-no-files-found: error
           retention-days: 14
   signed-android-inspection:
