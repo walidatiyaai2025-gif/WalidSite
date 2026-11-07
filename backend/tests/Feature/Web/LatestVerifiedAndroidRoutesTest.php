@@ -43,10 +43,13 @@ final class LatestVerifiedAndroidRoutesTest extends TestCase
 
     public function test_routes_are_named_permanent_paths_not_external_redirects(): void
     {
-        config(['app.url' => 'https://walidatiya.com']);
         $this->assertSame(
-            'https://walidatiya.com/downloads/android/latest',
-            route('public.android.latest', [], true)
+            '/downloads/android/latest',
+            route('public.android.latest', [], false)
+        );
+        $this->assertSame(
+            '/downloads/android/latest/metadata',
+            route('public.android.latest.metadata', [], false)
         );
     }
 }
