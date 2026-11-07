@@ -98,7 +98,7 @@ final class CpanelCronTrustedCodeInstallerTest extends TestCase
         });
     }
 
-    private function run(?CpanelOwnerCodeUpdateHost $host, ?TrustedReleaseCatalog $catalog = null, string $expectedSha = ''): array
+    private function attemptInstall(?CpanelOwnerCodeUpdateHost $host, ?TrustedReleaseCatalog $catalog = null, string $expectedSha = ''): array
     {
         return (new CpanelCronTrustedCodeInstaller())->install(
             $this->home, $this->running, $this->public,
@@ -112,7 +112,7 @@ final class CpanelCronTrustedCodeInstallerTest extends TestCase
     {
         $calls = 0;
         try {
-            $this->run(null, $this->catalog(false, $calls));
+            $this->attemptInstall(null, $this->catalog(false, $calls));
             self::fail('No host adapter can authorize scheduled code install.');
         } catch (DomainException) {
             self::assertSame(0, $calls);
@@ -124,7 +124,7 @@ final class CpanelCronTrustedCodeInstallerTest extends TestCase
     {
         $calls = 0;
         try {
-            $this->run($this->host(), $this->catalog(false, $calls));
+            $this->attemptInstall($this->host(), $this->catalog(false, $calls));
             self::fail('Missing active writer lease accepted.');
         } catch (DomainException) {
             self::assertSame(0, $calls);
@@ -136,7 +136,7 @@ final class CpanelCronTrustedCodeInstallerTest extends TestCase
         $calls = 0;
         $this->lease->beginForConsole($this->running);
         try {
-            $this->run($this->host(false), $this->catalog(false, $calls));
+            $this->attemptInstall($this->host(false), $this->catalog(false, $calls));
             self::fail('Foreign SQL/cron writers cannot be bypassed.');
         } catch (DomainException) {
             self::assertSame(0, $calls);
@@ -149,7 +149,7 @@ final class CpanelCronTrustedCodeInstallerTest extends TestCase
         $calls = 0;
         $this->lease->beginForConsole($this->running);
         try {
-            $this->run($this->host(), $this->catalog(false, $calls), str_repeat('e', 40));
+            $this->attemptInstall($this->host(), $this->catalog(false, $calls), str_repeat('e', 40));
             self::fail('Changed release SHA after signed discovery accepted.');
         } catch (DomainException) {
             self::assertSame(1, $calls);
@@ -163,7 +163,7 @@ final class CpanelCronTrustedCodeInstallerTest extends TestCase
         $calls = 0;
         $this->lease->beginForConsole($this->running);
         try {
-            $this->run($this->host(), $this->catalog(true, $calls));
+            $this->attemptInstall($this->host(), $this->catalog(true, $calls));
             self::fail('Forged publisher approved executable download.');
         } catch (DomainException) {
             self::assertSame(1, $calls);
