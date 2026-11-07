@@ -100,7 +100,23 @@ def collect(
         }
         # The existing hardened native renderer verifies foreground activity,
         # public Welcome semantics and geometry both before and after ADB PNG.
-        produced = capture(env=env)
+        # A cold Android emulator may briefly foreground the system UI after
+        # resizing even though ActivityManager confirmed the real APK launch.
+        # Wait a bounded number of times for the SAME hardened native renderer
+        # to prove foreground package, Welcome semantics and genuine pixels.
+        # No fallback screenshot, identity bypass or repeated POST/network call.
+        for attempt in range(5):
+            try:
+                produced = capture(env=env)
+                break
+            except AndroidCaptureError as exc:
+                if (str(exc) not in (
+                        "WalidSite Flutter is not the foreground application",
+                        "Canonical Flutter native screen identity is missing or ambiguous",
+                        "Native screen locale or visible title is not verified")
+                        or attempt == 4 or runtime.exists() or runtime.is_symlink()):
+                    raise
+                sleeper(2.0)
         if produced != runtime.resolve() and produced != runtime:
             raise WelcomeDiagnosticError("Native capture wrote unexpected destination")
         if not runtime.is_file() or runtime.is_symlink():
