@@ -8,6 +8,7 @@
 @php($codeUpdateHistory = $codeUpdateHistory ?? ['state' => 'none', 'receipts' => []])
 @php($cronStatus = $cronStatus ?? ['state' => 'UNVERIFIED', 'checked_at' => null, 'installed_version' => null, 'available_version' => null, 'reason' => 'NO_VERIFIED_RECENT_POLL'])
 @php($identifiedRelease = $releaseRef !== '' && $releaseRef !== 'unidentified')
+@php($androidLatest = $androidLatest ?? null)
 <!doctype html>
 <html lang="{{ $locale }}" dir="{{ $locale === 'ar' ? 'rtl' : 'ltr' }}">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -66,6 +67,33 @@ button:disabled{background:#718096;cursor:not-allowed}
 <p class="small" data-testid="release-cron-same-version-not-deployment">{{ $locale === 'ar'
     ? 'لم يعرض الكتالوج الموقّع إصدارًا أحدث وقت الفحص؛ هذا لا يثبت صحة النسخة المنشورة أو رابط APK.'
     : 'No newer signed catalog version was observed at the last check; this does not prove deployed health or APK compatibility.' }}</p>
+@endif
+</section>
+
+<section class="panel" aria-labelledby="verified-android-download-title" data-testid="verified-android-download">
+<h2 id="verified-android-download-title">{{ $locale === 'ar' ? 'أحدث تطبيق Android معتمد للموقع' : 'Latest verified website-compatible Android APK' }}</h2>
+@if(is_array($androidLatest))
+<p class="success" role="status" data-testid="android-production-download-ready">{{ $locale === 'ar'
+    ? 'تم التحقق من التوقيع والملف وربطه بإصدار كود الموقع النشط؛ التحميل متاح.'
+    : 'Publisher pairing, archive bytes and active website release match; download is available.' }}</p>
+<dl class="summary">
+<div><dt>{{ $locale === 'ar' ? 'إصدار التطبيق والموقع' : 'App and Web version' }}</dt><dd>{{ $androidLatest['apk_version'] }}</dd></div>
+<div><dt>Git SHA</dt><dd><code>{{ $androidLatest['web_source_sha'] }}</code></dd></div>
+<div><dt>APK SHA-256</dt><dd><code>{{ $androidLatest['apk_sha256'] }}</code></dd></div>
+<div><dt>{{ $locale === 'ar' ? 'دومين API المعتمد' : 'Approved API origin' }}</dt><dd><code>{{ $androidLatest['api_origin'] }}</code></dd></div>
+<div><dt>{{ $locale === 'ar' ? 'وقت التحقق' : 'Verification time' }}</dt><dd>{{ gmdate('Y-m-d H:i:s', $androidLatest['verified_at']) }} UTC</dd></div>
+</dl>
+<p><a href="{{ route('public.android.latest') }}" data-testid="verified-android-download-link">{{ $locale === 'ar'
+    ? 'تنزيل APK المتوافق والمعتمد'
+    : 'Download last verified compatible APK' }}</a></p>
+<p><a href="{{ route('public.android.latest.metadata') }}">{{ $locale === 'ar' ? 'عرض بيانات التحقق العامة' : 'View public verification metadata' }}</a></p>
+@else
+<p class="blocked" role="status" data-testid="android-production-download-blocked">{{ $locale === 'ar'
+    ? 'لا يوجد APK إنتاجي قابل للتحقق ومربوط بإصدار الموقع الحالي. لا نعرض ملفات QA أو روابط GitHub مؤقتة كنسخ جاهزة للنشر.'
+    : 'No production APK is independently verified against the currently deployed Web release. Debug QA and expiring GitHub artifact links are not offered as production downloads.' }}</p>
+<p class="small">{{ $locale === 'ar'
+    ? 'رابط التحميل الدائم /downloads/android/latest يظل محجوبًا حتى ينشر مشغّل موثوق ملف APK وإيصال الربط الموقّع في التخزين الخاص.'
+    : 'The permanent /downloads/android/latest URL remains unavailable until an authorized publisher installs a signed Web–APK receipt and production APK in private storage.' }}</p>
 @endif
 </section>
 @if(session('status'))<p class="success" role="status" data-testid="owner-update-action-result">{{ session('status') }}</p>@endif

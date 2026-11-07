@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AdminUpdateController;
+use App\Http\Controllers\LatestVerifiedAndroidController;
 use App\Http\Controllers\SiteSetupController;
 use App\Http\Controllers\FoodexInstallController;
 use App\Http\Controllers\SiteDatabaseController;
@@ -8,6 +9,15 @@ use App\Http\Middleware\RequireSecureSetup;
 use Illuminate\Support\Facades\Route;
 
 // Web group (session + CSRF) is supplied by bootstrap/app.php.
+
+// Public permanent URL for the LAST post-deployment verified, compatible
+// production-signed APK. Returns 503 without the host's PRIVATE signed
+// Web↔APK pairing and byte-identical artifact. Never links to debug QA.
+Route::get('/downloads/android/latest', [LatestVerifiedAndroidController::class, 'download'])
+    ->middleware('throttle:3,1')->name('public.android.latest');
+Route::get('/downloads/android/latest/metadata', [LatestVerifiedAndroidController::class, 'metadata'])
+    ->middleware('throttle:20,1')->name('public.android.latest.metadata');
+
 // Reject all first-run HTTP requests in production before any secrets are read.
 Route::middleware(RequireSecureSetup::class)->group(static function (): void {
     // FOODEX-style fifteen-stage new installation. The established /setup
