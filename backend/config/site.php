@@ -33,10 +33,14 @@ return [
     'android_trusted_signer_sha256' => (string) env('SITE_ANDROID_TRUSTED_SIGNER_SHA256', ''),
 
 
-    // First-install ZIP includes private CLI Cron entrypoint but never
-    // enables network polling or update execution without explicit opt-in.
-    // Even when enabled, the poller is read-only and cannot switch PHP code.
+    // Private 15-minute Cron discovery is disabled on first install.
+    // Full CODE-ONLY auto apply is a separate explicit operator opt-in and
+    // REQUIRES a registered real CpanelOwnerCodeUpdateHost with independent
+    // foreign-writer isolation, disposable MariaDB restore and live TLS probe.
     'release_cron_check_enabled' => filter_var(
         env('SITE_RELEASE_CRON_CHECK_ENABLED', false), FILTER_VALIDATE_BOOLEAN
+    ),
+    'release_cron_apply_enabled' => filter_var(
+        env('SITE_RELEASE_CRON_APPLY_ENABLED', false), FILTER_VALIDATE_BOOLEAN
     ),
 ];
