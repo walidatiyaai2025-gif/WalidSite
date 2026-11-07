@@ -19,7 +19,7 @@ from typing import Callable
 
 from PIL import Image
 
-from qa.render_android_screenshot import PACKAGE, render
+from qa.render_android_screenshot import AndroidCaptureError, PACKAGE, render
 from qa.visual_diagnostics import _compare_rgba
 
 SHA = re.compile(r"[0-9a-f]{40}\Z")
@@ -159,9 +159,17 @@ def main() -> int:
             root, args.output_dir.resolve(), source_sha=args.source_sha,
             checked_sha=result.stdout.strip(), serial=args.serial,
         )
-    except Exception:
-        print("MOBILE-01 REAL EMULATOR VISUAL DIAGNOSTICS NOT VERIFIED",
-              file=sys.stderr)
+    except (WelcomeDiagnosticError, AndroidCaptureError) as exc:
+        # Both exception classes contain only fixed, privacy-redacted gate
+        # reasons. Never print raw adb output, XML, command arguments or paths.
+        print("MOBILE-01 REAL EMULATOR VISUAL DIAGNOSTICS NOT VERIFIED: "
+              + type(exc).__name__ + ": " + str(exc), file=sys.stderr)
+        return 1
+    except Exception as exc:
+        # For any other error, only the type is safe to print; exception
+        # messages could contain private emulator output or local file paths.
+        print("MOBILE-01 REAL EMULATOR VISUAL DIAGNOSTICS NOT VERIFIED: "
+              + type(exc).__name__, file=sys.stderr)
         return 1
     print(json.dumps(proof, ensure_ascii=False, sort_keys=True))
     return 0
