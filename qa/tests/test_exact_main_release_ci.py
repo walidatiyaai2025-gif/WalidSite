@@ -117,6 +117,32 @@ class ExactMainCIReleaseGateTest(unittest.TestCase):
         workflow = (Path(__file__).resolve().parents[2] / '.github/workflows/ci.yml').read_text()
         self.assertIn('qa.tests.test_exact_main_release_ci', workflow)
 
+    def test_automatic_candidate_chain_is_exact_main_only_and_never_publishes(self):
+        release = (Path(__file__).resolve().parents[2] / '.github/workflows/release.yml').read_text()
+        self.assertIn('workflow_run:', release)
+        self.assertIn('workflows: ["PR CI"]', release)
+        self.assertIn('types: [completed]', release)
+        self.assertIn('github.event.workflow_run.event == \'push\'', release)
+        self.assertIn('github.event.workflow_run.head_branch == \'main\'', release)
+        self.assertIn('github.event.workflow_run.head_repository.full_name == github.repository', release)
+        self.assertIn('github.event.workflow_run.conclusion == \'success\'', release)
+        self.assertIn("github.event_name == 'workflow_dispatch'", release)
+        self.assertIn('github.event.workflow_run.head_sha || github.sha', release)
+        self.assertIn('TESTED_SHA: ${{ github.event_name ==', release)
+        self.assertIn('test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$TESTED_SHA"', release)
+        self.assertIn('source_sha: ${{ steps.verified-ci.outputs.source_sha }}', release)
+        self.assertIn('version: ${{ steps.verified-version.outputs.version }}', release)
+        self.assertIn("version=\"$(tr -d '\\r\\n' < backend/VERSION)\"", release)
+        self.assertIn('test "$REQUESTED_VERSION" = "$version"', release)
+        self.assertIn('CANDIDATE_VERSION: ${{ steps.verified-version.outputs.version }}', release)
+        self.assertIn('SOURCE_SHA: ${{ steps.verified-ci.outputs.source_sha }}', release)
+        self.assertIn('if: github.event_name == \'workflow_dispatch\'', release)
+        self.assertIn('production_ready', release)
+        self.assertIn('UNPUBLISHED-candidates-', release)
+        self.assertNotIn('gh release create', release)
+        self.assertNotIn('SITE_RELEASE_CRON_APPLY_ENABLED=true', release)
+
+
 
 if __name__ == '__main__':
     unittest.main()
