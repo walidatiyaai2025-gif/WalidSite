@@ -153,6 +153,11 @@ class WelcomeEmulatorDiagnosticTest(unittest.TestCase):
             serial="emulator-5554", command=self.command,
             capture=eventually_ready, sleeper=self.sleeps.append)
         self.assertEqual(len(attempted), 3)
+        # Real app activation is performed again only after a proved
+        # foreground-not-ready failure; no screenshot assertion is bypassed.
+        starts = [args for _, args in self.commands
+                  if args[:3] == ("shell", "am", "start")]
+        self.assertEqual(len(starts), 3)
         self.assertEqual(self.sleeps, [2.0, 2.0, 2.0])
         self.assertEqual(receipt["status"], "mismatch")
         self.assertFalse(receipt["evidence_admitted"])
@@ -168,6 +173,9 @@ class WelcomeEmulatorDiagnosticTest(unittest.TestCase):
                     serial="emulator-5554", command=self.command,
                     capture=remains_background, sleeper=self.sleeps.append)
         self.assertEqual(len(attempts), 5)
+        starts = [args for _, args in self.commands
+                  if args[:3] == ("shell", "am", "start")]
+        self.assertEqual(len(starts), 5)
         self.assertEqual(self.sleeps, [2.0] * 5)
         self.assertEqual(list(self.output.iterdir()), [])
 
