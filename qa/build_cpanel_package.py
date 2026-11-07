@@ -179,7 +179,7 @@ def verify_archive(output, expected_sha=None):
             raise ValueError("Corrupt ZIP entry")
         mandatory = {
             "application/vendor/autoload.php", "application/composer.lock",
-            "application/VERSION",
+            "application/VERSION", "application/cron/release-poll.php",
             "application/.env.example", "public_html/index.php",
             "public_html/.htaccess",
             "public_html/assets/portraits/portrait-light-derived.jpg",
@@ -200,6 +200,7 @@ def verify_archive(output, expected_sha=None):
             or n.endswith((".sql", ".sqlite", ".pem", ".key", ".p12", ".p8"))
             or "/tests/" in n or "/node_modules/" in n
             or n.startswith("public_html/application/")
+            or n.startswith("public_html/cron/")
             for n in names
         ):
             raise ValueError("Excluded private/development file in ZIP")
