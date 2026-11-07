@@ -24,6 +24,7 @@ final class TrustedReleaseMetadata
         string $approvedOrigin,
         string $installedVersion,
         string $expectedProduct = 'walidsite',
+        bool $allowSameVersionForReadOnlyStatus = false,
     ): array {
         if (strlen($envelopeJson) > self::MAX_ENVELOPE_BYTES || ! function_exists('sodium_crypto_sign_verify_detached')) {
             throw new DomainException('Release metadata cannot be verified.');
@@ -69,7 +70,10 @@ final class TrustedReleaseMetadata
         $stableVersion = '/^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$/D';
         if (! preg_match($stableVersion, $metadata['version'])
             || ! preg_match($stableVersion, $installedVersion)
-            || version_compare($metadata['version'], $installedVersion, '<=')) {
+            || version_compare(
+                $metadata['version'], $installedVersion,
+                $allowSameVersionForReadOnlyStatus ? '<' : '<='
+            )) {
             throw new DomainException('Release version is invalid or not newer.');
         }
 
