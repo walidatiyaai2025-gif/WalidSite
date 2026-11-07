@@ -21,7 +21,7 @@ if (requestedReleaseTask) {
     require(hasReleaseSigning) {
         "WalidSite release builds require a configured private signing identity"
     }
-    require(java.io.File(signingEnvironment.getValue("WALIDSITE_ANDROID_KEYSTORE_PATH")!!).isFile) {
+    require(file(signingEnvironment.getValue("WALIDSITE_ANDROID_KEYSTORE_PATH")!!).isFile) {
         "WalidSite release keystore file is not available"
     }
 }
