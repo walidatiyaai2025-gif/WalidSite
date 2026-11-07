@@ -83,6 +83,112 @@ final class CpanelReleaseCronPoller
         }
     }
 
+    /**
+     * Record deployment only AFTER the trusted host installer has independently
+     * verified backup/restore, atomic code cutover and HTTPS health. This
+     * receipt is observational, never an authorization for any future update.
+     *
+     * @param array{state:string,version:string,source_sha:string,backup_id:string,from:string,to:string} $result
+     */
+    public function recordDeployed(
+        string $privateDirectory,
+        string $publicDocumentRoot,
+        string $firstInstalledVersion,
+        array $result,
+    ): void {
+        $version = $result['version'] ?? null;
+        $sha = $result['source_sha'] ?? null;
+        $from = $result['from'] ?? null;
+        $target = $result['to'] ?? null;
+        $backup = $result['backup_id'] ?? null;
+        if (($result['state'] ?? null) !== 'installed_verified'
+            || ! is_string($version)
+            || preg_match('/\\A(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)\\z/D', $version) !== 1
+            || ! is_string($sha) || preg_match('/\\A[a-f0-9]{40}\\z/D', $sha) !== 1
+            || ! is_string($from) || ! is_string($backup) || $backup === ''
+            || ! is_string($target)
+            || $target !== '.walidsite-releases/v'.$version.'-'.$sha) {
+            throw new DomainException('Verified Cron deployment result is invalid.');
+        }
+        $directory = $this->assertPrivateDirectory($privateDirectory, $publicDocumentRoot);
+        $home = dirname($publicDocumentRoot);
+        $lock = $this->openLock($directory.'/release-poll.lock');
+        try {
+            if (! flock($lock, LOCK_EX | LOCK_NB)) {
+                throw new DomainException('Scheduled release receipt is locked.');
+            }
+            $this->assertLockIdentity($lock, $directory.'/release-poll.lock');
+            $path = $directory.'/release-poll-status.json';
+            clearstatcache(true, $path);
+            $stat = @lstat($path);
+            if (! is_array($stat) || is_link($path)
+                || ($stat['mode'] & 0170000) !== 0100000
+                || ($stat['mode'] & 0777) !== 0600
+                || ($stat['nlink'] ?? 0) !== 1
+                || $stat['size'] < 1 || $stat['size'] > 2048) {
+                throw new DomainException('Prior scheduled release status is unavailable.');
+            }
+            $stream = @fopen($path, 'rb');
+            if ($stream === false) {
+                throw new DomainException('Prior scheduled release receipt is unreadable.');
+            }
+            try {
+                $opened = @fstat($stream);
+                $raw = @stream_get_contents($stream, 2049);
+                clearstatcache(true, $path);
+                $named = @lstat($path);
+                if (! is_array($opened) || ! is_array($named)
+                    || $opened['dev'] !== $stat['dev'] || $opened['ino'] !== $stat['ino']
+                    || $named['dev'] !== $stat['dev'] || $named['ino'] !== $stat['ino']
+                    || $opened['size'] !== $stat['size'] || $named['size'] !== $stat['size']
+                    || ! is_string($raw) || strlen($raw) !== $stat['size']) {
+                    throw new DomainException('Scheduled release status changed during verification.');
+                }
+            } finally {
+                fclose($stream);
+            }
+            try {
+                $previous = json_decode($raw, true, 8, JSON_THROW_ON_ERROR);
+            } catch (\\JsonException) {
+                throw new DomainException('Prior scheduled release status is invalid.');
+            }
+            if (! is_array($previous)
+                || ($previous['schema'] ?? null) !== 1
+                || ($previous['state'] ?? null) !== 'BLOCKED'
+                || ($previous['reason'] ?? null) !== 'VERIFIED_HOST_UPDATE_GATE_REQUIRED'
+                || ($previous['code_applied'] ?? null) !== false
+                || ($previous['installed_version'] ?? null) !== $from
+                || ($previous['available_version'] ?? null) !== $version
+                || ($previous['source_sha'] ?? null) !== $sha
+                || ! is_int($previous['checked_at'] ?? null)
+                || $previous['checked_at'] > time()
+                || time() - $previous['checked_at'] > 300) {
+                throw new DomainException('Scheduled deployment does not match fresh signed discovery.');
+            }
+            // Attest CURRENT physical active pointer, not caller's claim.
+            $active = $home.'/'.$target.'/application';
+            if ((new TrustedInstalledReleasePin())->read(
+                $active, $publicDocumentRoot, $firstInstalledVersion,
+            ) !== $version) {
+                throw new DomainException('Scheduled deployment is not currently active.');
+            }
+            $record = [
+                'schema' => 1,
+                'state' => 'DEPLOYED',
+                'checked_at' => time(),
+                'installed_version' => $version,
+                'available_version' => $version,
+                'source_sha' => $sha,
+                'reason' => 'VERIFIED_HOST_CODE_APPLIED',
+                'code_applied' => true,
+            ];
+            $this->writeReceipt($directory, $record, $lock);
+        } finally {
+            flock($lock, LOCK_UN);
+            fclose($lock);
+        }
+    }
+
     private function assertPrivateDirectory(string $directory, string $publicDocumentRoot): string
     {
         $parent = realpath(dirname($directory));
