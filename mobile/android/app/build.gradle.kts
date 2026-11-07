@@ -1,3 +1,10 @@
+plugins {
+    id("com.android.application")
+    // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
+    id("dev.flutter.flutter-gradle-plugin")
+}
+
+
 // Signing is configured only from CI-provided ephemeral environment values.
 // Debug QA is unaffected; an unsigned release must never silently build.
 val signingEnvironment = listOf(
@@ -17,12 +24,6 @@ if (requestedReleaseTask) {
     require(java.io.File(signingEnvironment.getValue("WALIDSITE_ANDROID_KEYSTORE_PATH")!!).isFile) {
         "WalidSite release keystore file is not available"
     }
-}
-
-plugins {
-    id("com.android.application")
-    // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
-    id("dev.flutter.flutter-gradle-plugin")
 }
 
 android {
