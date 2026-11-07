@@ -23,6 +23,7 @@ PRIVATE_GUARD_PATHS = ("application/.htaccess", "contracts/.htaccess")
 DIRECTORIES = ("app", "bootstrap", "config", "database", "resources", "routes", "vendor")
 REQUIRED = (
     "backend/vendor/autoload.php", "backend/composer.lock", "backend/VERSION",
+    "backend/cron/release-poll.php",
     "backend/public/.htaccess", "contracts/owner-cv-baseline.json",
     "assets/portraits/portrait-light-derived.jpg",
     "assets/icons/briefcase.svg",
@@ -251,6 +252,11 @@ def build(source, output, sha):
         if not safe(file, source):
             raise ValueError("Missing/unsafe application file: " + name)
         entries["application/" + name] = read_required(source, file.relative_to(source).as_posix())
+    # Private, CLI-only cPanel Cron entrypoint. This must never be placed
+    # in public_html or depend on a second manual upload.
+    entries["application/cron/release-poll.php"] = read_required(
+        source, "backend/cron/release-poll.php"
+    )
     add_folder(entries, backend / "public", "public_html", source)
     # Exact checked-out immutable bootstrap; never substitute a runner-local
     # template for a different source ZIP/commit.
