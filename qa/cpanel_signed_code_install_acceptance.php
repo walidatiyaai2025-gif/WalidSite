@@ -10,6 +10,9 @@ declare(strict_types=1);
 require dirname(__DIR__).'/backend/vendor/autoload.php';
 
 use App\Domain\Deployment\CpanelConsoleWriterLease;
+use App\Domain\Deployment\CpanelCronTrustedCodeInstaller;
+use App\Domain\Deployment\TrustedReleaseCatalog;
+use App\Domain\Deployment\TrustedReleaseDownloader;
 use App\Domain\Deployment\CpanelOwnerCodeInstallCoordinator;
 use App\Domain\Deployment\CpanelOwnerCodeUpdateHost;
 use App\Domain\Deployment\CpanelReleaseMaintenance;
@@ -142,7 +145,7 @@ try {
             $payload, sodium_crypto_sign_secretkey($keys))),
     ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
 
-    foreach (['ok', 'chained-health', 'chained-tampered', 'rejected-health', 'late-populated-restore'] as $mode) {
+    foreach (['ok', 'cron-auto', 'chained-health', 'chained-tampered', 'rejected-health', 'late-populated-restore'] as $mode) {
         $home = $base.'/'.$mode;
         mkdir($home, 0700);
         unpackCodeFixture($setup, $home);
@@ -157,12 +160,17 @@ try {
         file_put_contents($app.'/storage/app/owner.txt', 'KEEP_OWNER');
         file_put_contents($public.'/uploads/avatar.png', 'KEEP_UPLOAD');
         $candidate = $home.'/.walidsite-releases/v'.$version.'-'.$sha;
-        mkdir($candidate, 0700, true);
-        chmod($home.'/.walidsite-releases', 0700);
-        unpackCodeFixture($update, $candidate);
+        // Cron must construct this candidate from the actual signed Update
+        // ZIP itself: do NOT pre-stage code in this scenario.
+        if ($mode !== 'cron-auto') {
+            mkdir($candidate, 0700, true);
+            chmod($home.'/.walidsite-releases', 0700);
+            unpackCodeFixture($update, $candidate);
+        }
         $inbox = $app.'/storage/app/private/verified-updates/ci';
         $artifact = $inbox.'/WalidSite-update-v'.$version.'.zip';
-        if (!copy($update, $artifact) || !chmod($artifact, 0600))
+        if ($mode !== 'cron-auto'
+            && (!copy($update, $artifact) || !chmod($artifact, 0600)))
             throw new RuntimeException('Private signed ZIP could not be retained.');
 
         $source = 'ci_release_src_'.$mode.'_'.$id;
@@ -178,7 +186,7 @@ try {
         $live->exec('CREATE TABLE owner_records (id INT PRIMARY KEY, note VARCHAR(50)) ENGINE=InnoDB');
         $live->exec("INSERT INTO owner_records VALUES (1,'PRESERVE_ROW'),(2,'RECOVERY_CHECK')");
 
-        $host = new class($home, in_array($mode, ['ok', 'chained-health', 'chained-tampered'], true), $version, $sha, $restore,
+        $host = new class($home, in_array($mode, ['ok', 'cron-auto', 'chained-health', 'chained-tampered'], true), $version, $sha, $restore,
             $mode === 'late-populated-restore')
             implements CpanelOwnerCodeUpdateHost {
             public int $probes = 0;
@@ -218,10 +226,48 @@ try {
         $lease->beginForConsole($app);
         $rejected = false;
         try {
-            $result = (new CpanelOwnerCodeInstallCoordinator())->install(
-                $host, $lease, $live, $restore, $envelope, $key,
-                'https://updates.walidatiya.com', $old, $home, $inbox, $artifact);
-            if (!in_array($mode, ['ok', 'chained-health', 'chained-tampered'], true) || $result['state'] !== 'installed_verified'
+            if ($mode === 'cron-auto') {
+                // Real source-built Update ZIP, disposable Ed25519 publisher,
+                // mocked transport and real MariaDB source/recovery schemas.
+                // Not a production publisher, host adapter or HTTPS probe.
+                $calls = 0;
+                $catalog = new TrustedReleaseCatalog(
+                    static function (string $url, Closure $write) use ($envelope, &$calls): int {
+                        if ($url !== 'https://updates.walidatiya.com/releases/latest.json')
+                            throw new RuntimeException('Unexpected catalog URL in Cron acceptance.');
+                        ++$calls;
+                        if ($write($envelope) !== strlen($envelope))
+                            throw new RuntimeException('Incomplete signed catalog transfer.');
+                        return 200;
+                    },
+                );
+                $bytes = (string) file_get_contents($update);
+                $downloader = new TrustedReleaseDownloader(
+                    static function (string $url, Closure $write) use ($version, $bytes): int {
+                        if ($url !== 'https://updates.walidatiya.com/releases/WalidSite-update-v'.$version.'.zip')
+                            throw new RuntimeException('Unexpected signed artifact URL.');
+                        foreach (str_split($bytes, 65536) as $chunk) {
+                            if ($write($chunk) !== strlen($chunk))
+                                throw new RuntimeException('Signed fixture artifact transfer rejected.');
+                        }
+                        return 200;
+                    },
+                );
+                $result = (new CpanelCronTrustedCodeInstaller())->install(
+                    $home, $app, $public, $old, $version, $sha,
+                    'https://updates.walidatiya.com', $key,
+                    $host, $lease, $live, $catalog, $downloader,
+                );
+                if ($calls !== 1 || !is_file($artifact) || !is_dir($candidate)
+                    || hash_file('sha256', $artifact) !== hash_file('sha256', $update)) {
+                    throw new RuntimeException('Cron did not download and stage exact signed bytes.');
+                }
+            } else {
+                $result = (new CpanelOwnerCodeInstallCoordinator())->install(
+                    $host, $lease, $live, $restore, $envelope, $key,
+                    'https://updates.walidatiya.com', $old, $home, $inbox, $artifact);
+            }
+            if (!in_array($mode, ['ok', 'cron-auto', 'chained-health', 'chained-tampered'], true) || $result['state'] !== 'installed_verified'
                 || $result['version'] !== $version || $result['from'] !== $old
                 || $result['source_sha'] !== $sha || !isset($result['backup_id'])) {
                 throw new RuntimeException('Unverified source or update was accepted.');
@@ -260,7 +306,7 @@ try {
             || file_get_contents($public.'/uploads/avatar.png') !== 'KEEP_UPLOAD'
             || $live->query('SELECT note FROM owner_records WHERE id=1')->fetchColumn() !== 'PRESERVE_ROW'
             || (int) $restore->query('SELECT COUNT(*) FROM owner_records')->fetchColumn() !== 2
-            || in_array($mode, ['ok', 'chained-health', 'chained-tampered'], true) !== is_file($home.'/.walidsite-active-release.json')) {
+            || in_array($mode, ['ok', 'cron-auto', 'chained-health', 'chained-tampered'], true) !== is_file($home.'/.walidsite-active-release.json')) {
             throw new RuntimeException('Owner data/recovery or release pointer was not preserved.');
         }
         // A second, CI-only signed CODE-ONLY candidate is derived from the
@@ -501,6 +547,7 @@ try {
         'failed_health_pointer_reverted' => true,
         'late_populated_restore_blocked' => true,
         'chained_code_only_fixture_tested' => true,
+        'signed_cron_code_apply_fixture_tested' => true,
         'chained_health_failure_previous_pointer_restored' => true,
         'chained_health_recovery_cleared_maintenance' => true,
         'chained_health_recovery_retry_succeeded' => true,
