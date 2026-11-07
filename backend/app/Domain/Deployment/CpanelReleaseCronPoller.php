@@ -149,7 +149,7 @@ final class CpanelReleaseCronPoller
             }
             try {
                 $previous = json_decode($raw, true, 8, JSON_THROW_ON_ERROR);
-            } catch (\\JsonException) {
+            } catch (\JsonException) {
                 throw new DomainException('Prior scheduled release status is invalid.');
             }
             if (! is_array($previous)
