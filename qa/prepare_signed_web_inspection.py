@@ -21,9 +21,6 @@ from qa.verify_release_android_qa import (
 
 SHA = re.compile(r"[a-f0-9]{40}\Z")
 SEMVER = re.compile(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\Z")
-FIELDS = ("product", "version", "source_sha", "artifact_sha256",
-          "artifact_size", "min_php", "artifact_file")
-
 
 def prepare(candidates: Path, destination: Path, version: str, source_sha: str) -> dict:
     if not SEMVER.fullmatch(version) or not SHA.fullmatch(source_sha):
@@ -38,6 +35,8 @@ def prepare(candidates: Path, destination: Path, version: str, source_sha: str) 
     notes_name = f"WalidSite-Release-Notes-v{version}.md"
 
     with pinned_directory(candidates) as fd:
+        if "latest.json" in os.listdir(fd):
+            raise ValueError("Unsigned candidate unexpectedly contains publisher catalog")
         manifest_raw, manifest_hash, _ = read_verified(fd, manifest_name, MAX_JSON_BYTES)
         manifest_checksum, _, _ = read_verified(fd, manifest_name + ".sha256", 256)
         notes_raw, notes_hash, _ = read_verified(fd, notes_name, MAX_JSON_BYTES)
@@ -79,7 +78,7 @@ def prepare(candidates: Path, destination: Path, version: str, source_sha: str) 
         except UnicodeError as exc:
             raise ValueError("Candidate release notes are invalid UTF-8") from exc
         if (not 1 <= len(notes_raw) <= 2048
-                or any(ord(ch) < 32 and ch not in ("\n",) for ch in notes)
+                or any((ord(ch) < 32 and ch != "\n") or ord(ch) == 127 for ch in notes)
                 or any(ord(ch) in range(0x202a, 0x202f) or ord(ch) in range(0x2066, 0x206a)
                        for ch in notes)):
             raise ValueError("Candidate notes cannot be signed safely")
