@@ -173,6 +173,84 @@ final class CpanelReleaseCronPollerTest extends TestCase
         }
     }
 
+    private function installPrivatePointerFixture(): array
+    {
+        $sha = str_repeat('a', 40);
+        file_put_contents($this->root.'/application/VERSION', "1.2.3\n");
+        $target = '.walidsite-releases/v1.2.4-'.$sha;
+        $running = $this->root.'/'.$target.'/application';
+        mkdir($running, 0700, true);
+        file_put_contents($running.'/VERSION', "1.2.4\n");
+        file_put_contents(
+            $this->root.'/.walidsite-active-release.json',
+            json_encode(['schema'=>1, 'version'=>'1.2.4', 'root'=>$target], JSON_THROW_ON_ERROR),
+        );
+        chmod($this->root.'/.walidsite-active-release.json', 0600);
+        return [
+            'state' => 'installed_verified',
+            'version' => '1.2.4',
+            'source_sha' => $sha,
+            'backup_id' => bin2hex(random_bytes(12)),
+            'from' => '1.2.3',
+            'to' => $target,
+        ];
+    }
+
+    public function test_verified_code_install_requires_prior_signed_poll_and_active_pointer(): void
+    {
+        $poller = new CpanelReleaseCronPoller();
+        $result = $this->installPrivatePointerFixture();
+        try {
+            $poller->recordDeployed(
+                $this->private.'/release-automation', $this->public, '1.2.3', $result,
+            );
+            self::fail('Deployment without fresh signed observation accepted.');
+        } catch (DomainException) {
+            self::assertTrue(true);
+        }
+        $this->poll($this->catalog('1.2.4'));
+        $poller->recordDeployed(
+            $this->private.'/release-automation', $this->public, '1.2.3', $result,
+        );
+        $visible = (new \App\Domain\Deployment\CpanelReleaseCronStatus())->inspect(
+            $this->private.'/release-automation', $this->public,
+        );
+        self::assertSame('DEPLOYED', $visible['state']);
+        self::assertSame('1.2.4', $visible['installed_version']);
+        self::assertSame('VERIFIED_HOST_CODE_APPLIED', $visible['reason']);
+        $raw = json_decode(
+            file_get_contents($this->private.'/release-automation/release-poll-status.json'),
+            true, 8, JSON_THROW_ON_ERROR,
+        );
+        self::assertTrue($raw['code_applied']);
+        self::assertSame($result['source_sha'], $raw['source_sha']);
+        // A stale receipt cannot be replayed as another deployment.
+        $this->expectException(DomainException::class);
+        $poller->recordDeployed(
+            $this->private.'/release-automation', $this->public, '1.2.3', $result,
+        );
+    }
+
+    public function test_forged_success_never_promotes_blocked_poll_to_deployed(): void
+    {
+        $this->poll($this->catalog('1.2.4'));
+        $result = $this->installPrivatePointerFixture();
+        $result['source_sha'] = str_repeat('f', 40);
+        try {
+            (new CpanelReleaseCronPoller())->recordDeployed(
+                $this->private.'/release-automation', $this->public, '1.2.3', $result,
+            );
+            self::fail('Forged live SHA accepted as scheduled deployment.');
+        } catch (DomainException) {
+            $raw = json_decode(
+                file_get_contents($this->private.'/release-automation/release-poll-status.json'),
+                true, 8, JSON_THROW_ON_ERROR,
+            );
+            self::assertSame('BLOCKED', $raw['state']);
+            self::assertFalse($raw['code_applied']);
+        }
+    }
+
     public function test_invalid_origin_or_key_rejected_before_network(): void
     {
         $calls = 0;

@@ -73,7 +73,7 @@ final class CpanelReleaseCronStatus
                 'available_version', 'source_sha', 'reason', 'code_applied',
             ]
             || $row['schema'] !== 1
-            || ! in_array($row['state'], ['UP_TO_DATE', 'BLOCKED'], true)
+            || ! in_array($row['state'], ['UP_TO_DATE', 'BLOCKED', 'DEPLOYED'], true)
             || ! is_int($row['checked_at'])
             || $row['checked_at'] > time() || $row['checked_at'] < time() - 3600
             || ! is_string($row['installed_version'])
@@ -86,8 +86,16 @@ final class CpanelReleaseCronStatus
                 'PUBLISHER_CHECK_UNVERIFIED',
                 'NO_NEWER_SIGNED_VERSION',
                 'VERIFIED_HOST_UPDATE_GATE_REQUIRED',
+                'VERIFIED_HOST_CODE_APPLIED',
             ], true)
-            || $row['code_applied'] !== false) {
+            || ! is_bool($row['code_applied'])
+            || ($row['state'] === 'DEPLOYED') !== ($row['code_applied'] === true)
+            || ($row['state'] === 'DEPLOYED'
+                && ($row['reason'] !== 'VERIFIED_HOST_CODE_APPLIED'
+                    || $row['available_version'] !== $row['installed_version']
+                    || $row['source_sha'] === null))
+            || ($row['state'] !== 'DEPLOYED'
+                && $row['reason'] === 'VERIFIED_HOST_CODE_APPLIED')) {
             return $absent;
         }
         // A "signed" response recorded locally is observation only, not

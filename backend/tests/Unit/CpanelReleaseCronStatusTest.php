@@ -85,6 +85,30 @@ final class CpanelReleaseCronStatusTest extends TestCase
         }
     }
 
+    public function test_deployed_requires_consistent_code_applied_version_and_reason(): void
+    {
+        $reader = new CpanelReleaseCronStatus();
+        $good = [
+            'state' => 'DEPLOYED',
+            'installed_version' => '1.2.4',
+            'available_version' => '1.2.4',
+            'reason' => 'VERIFIED_HOST_CODE_APPLIED',
+            'code_applied' => true,
+        ];
+        $this->write($good);
+        self::assertSame('DEPLOYED', $reader->inspect($this->directory, $this->public)['state']);
+        foreach ([
+            ['state' => 'BLOCKED'],
+            ['code_applied' => false],
+            ['reason' => 'NO_NEWER_SIGNED_VERSION'],
+            ['installed_version' => '1.2.3'],
+            ['source_sha' => null],
+        ] as $tamper) {
+            $this->write(array_replace($good, $tamper));
+            self::assertSame('UNVERIFIED', $reader->inspect($this->directory, $this->public)['state']);
+        }
+    }
+
     public function test_symlink_hardlink_and_relaxed_permissions_do_not_display_status(): void
     {
         $reader = new CpanelReleaseCronStatus();

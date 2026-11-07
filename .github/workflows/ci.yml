@@ -107,6 +107,7 @@ jobs:
           php -l qa/cpanel_signed_update_artifact_probe.php
           php -l qa/cpanel_signed_code_install_acceptance.php
           php -l backend/cron/release-poll.php
+          php -l backend/app/Domain/Deployment/CpanelCronTrustedCodeInstaller.php
           php -l backend/app/Domain/Deployment/CpanelReleaseCronPoller.php
           php -l backend/app/Domain/Deployment/CpanelCronReleaseSelector.php
           php -l backend/app/Domain/Deployment/CpanelConsoleWriterLease.php
@@ -752,6 +753,7 @@ jobs:
           assert proof["failed_health_pointer_reverted"] is True
           assert proof["late_populated_restore_blocked"] is True
           assert proof["chained_code_only_fixture_tested"] is True
+          assert proof["signed_cron_code_apply_fixture_tested"] is True
           assert proof["chained_health_failure_previous_pointer_restored"] is True
           assert proof["chained_health_recovery_cleared_maintenance"] is True
           assert proof["chained_health_recovery_retry_succeeded"] is True

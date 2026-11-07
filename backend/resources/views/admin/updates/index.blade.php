@@ -49,8 +49,12 @@ button:disabled{background:#718096;cursor:not-allowed}
 <section class="panel" aria-labelledby="cron-release-status-title" data-testid="trusted-release-cron-panel">
 <h2 id="cron-release-status-title">{{ $locale === 'ar' ? 'مراقبة الإصدارات التلقائية' : 'Automatic release monitoring' }}</h2>
 <p class="small">{{ $locale === 'ar'
-    ? 'هذه حالة فحص Cron الخاص، وليست إثبات نشر أو صلاحية تثبيت تلقائي. لن يُثبّت Cron أي كود دون بوابات أمان المضيف والاستعادة.'
-    : 'This is a private Cron discovery receipt, not deployment evidence or automatic install permission. Cron cannot replace code without verified host and recovery gates.' }}</p>
+    ? 'فحص الإصدارات الموقعة يعمل للقراءة فقط افتراضيًا. لا يُسمح بالتثبيت التلقائي إلا بعد تفعيل مشغّل الاستضافة الموثوق والتحقق من عزل الكتابة والاستعادة والفحص الصحي.'
+    : 'Signed publisher discovery is read-only by default. Auto-install requires an independently registered hosting adapter, writer isolation, recovery drill and live HTTPS health.' }}</p>
+<p class="small" data-testid="release-cron-install-opt-in">{{ $locale === 'ar' ? 'السماح المحلي بالتثبيت التلقائي:' : 'Local automatic-install opt-in:' }}
+<strong>{{ config('site.release_cron_apply_enabled') === true && $hostCodeUpdateAvailable
+    ? ($locale === 'ar' ? 'مهيأ بشرط فحوص التشغيل' : 'Provisioned, runtime gates still required')
+    : ($locale === 'ar' ? 'محجوب — يلزم تفعيل الاستضافة' : 'Blocked — host activation required') }}</strong></p>
 <dl class="summary">
 <div><dt>{{ $locale === 'ar' ? 'حالة الفحص' : 'Poll status' }}</dt>
 <dd data-testid="release-cron-state">{{ $cronStatus['state'] }}</dd></div>
@@ -59,7 +63,11 @@ button:disabled{background:#718096;cursor:not-allowed}
 <div><dt>{{ $locale === 'ar' ? 'الإصدار المتاح بالكتالوج' : 'Catalog version' }}</dt>
 <dd>{{ $cronStatus['available_version'] ?? ($locale === 'ar' ? 'غير مُثبت' : 'Not verified') }}</dd></div>
 </dl>
-@if($cronStatus['state'] !== 'UP_TO_DATE')
+@if($cronStatus['state'] === 'DEPLOYED')
+<p class="success" role="status" data-testid="release-cron-deployed">{{ $locale === 'ar'
+    ? 'يوجد إيصال محلي لتثبيت نسخة كود موقّعة بعد اختبار الاستعادة وتبديل الإصدار وفحص HTTPS. هذا ليس شهادة نشر عام ولا يثبت نسخة APK.'
+    : 'Private receipt: signed code was installed after recovery rehearsal, version switch and HTTPS health verification. This is not a public release or APK certification.' }}</p>
+@elseif($cronStatus['state'] !== 'UP_TO_DATE')
 <p class="blocked" data-testid="release-cron-update-not-deployed">{{ $locale === 'ar'
     ? 'التحديث البرمجي لم يُطبّق. مطلوب مصدر إصدار موثوق وتفعيل الاستضافة وإثبات النسخ الاحتياطي والاستعادة والفحص الصحي.'
     : 'No application update was applied. Trusted publication, hosting activation, restorable backup and live health evidence remain required.' }}</p>
@@ -484,5 +492,7 @@ button:disabled{background:#718096;cursor:not-allowed}
 </section>
 <p class="small">{{ $locale === 'ar' ? 'ترحيلات Cron التلقائية:' : 'Automatic migration scheduling:' }}
 <strong>{{ config('site.auto_migrate') ? ($locale === 'ar' ? 'مُفعّل بشرط تشغيل Cron' : 'Enabled, requires working cron') : ($locale === 'ar' ? 'معطّل' : 'Disabled') }}</strong>.
-{{ $locale === 'ar' ? 'يُراجع سجل Laravel الخاص عند حدوث خطأ، ولا يُعد تشغيل Cron تحديثًا لكود الموقع.' : 'Errors are held in private Laravel logs. Cron does not install new application code.' }}</p>
+{{ $locale === 'ar'
+    ? 'تُحجب عمليات التحديث غير المتوافقة والمفقودة التوقيع أو التي لا تجتاز الاستعادة أو فحص HTTPS. لا ينفّذ Cron ترحيلات تلقائية.'
+    : 'Unsigned/incompatible releases and hosts without verified restore or HTTPS health are blocked. Cron never applies unverified database migrations.' }}</p>
 </main></body></html>
