@@ -108,6 +108,8 @@ jobs:
           php -l qa/cpanel_signed_code_install_acceptance.php
           php -l backend/cron/release-poll.php
           php -l backend/app/Domain/Deployment/CpanelReleaseCronPoller.php
+          php -l backend/app/Domain/Deployment/CpanelCronReleaseSelector.php
+          php -l backend/app/Domain/Deployment/CpanelConsoleWriterLease.php
           php -l backend/app/Domain/Deployment/CpanelReleaseCronStatus.php
           php -l backend/app/Domain/Deployment/TrustedReleaseMetadata.php
           php -l backend/app/Domain/Deployment/TrustedReleaseCatalog.php
