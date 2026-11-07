@@ -152,7 +152,7 @@ class ExactMainCIReleaseGateTest(unittest.TestCase):
         # receipt accept seven attacks but the Release workflow requires four.
         self.assertIn("assert result['php_zip_negative_rejections'] == 7", release)
         self.assertNotIn("assert result['php_zip_negative_rejections'] == 4", release)
-        self.assertIn('php["negative_rejections"] != 7', native_verifier)
+        self.assertIn('php.get("negative_rejections") != 7', native_verifier)
         self.assertIn('"php_zip_negative_rejections": php["negative_rejections"]', native_verifier)
         self.assertIn("'negative_rejections' => 7", signed_probe)
 
