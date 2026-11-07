@@ -818,7 +818,8 @@ jobs:
       (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
       (github.event_name == 'pull_request' && github.event.action != 'closed' &&
        (github.head_ref == 'fix/751-native-android-qa-build-ci' ||
-        github.head_ref == 'feat/481-android-emulator-install-launch') &&
+        github.head_ref == 'feat/481-android-emulator-install-launch' ||
+        github.head_ref == 'feat/1120-signed-android-site-origin-release-gate') &&
        github.event.pull_request.head.repo.full_name == github.repository)
     needs: required-ci-gate
     runs-on: ubuntu-latest
@@ -927,7 +928,8 @@ jobs:
     if: >-
       (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
       (github.event_name == 'pull_request' && github.event.action != 'closed' &&
-       github.head_ref == 'feat/481-android-emulator-install-launch' &&
+       (github.head_ref == 'feat/481-android-emulator-install-launch' ||
+        github.head_ref == 'feat/1120-signed-android-site-origin-release-gate') &&
        github.event.pull_request.head.repo.full_name == github.repository)
     needs: [required-ci-gate, build-android-qa-apk]
     runs-on: ubuntu-latest
