@@ -258,8 +258,19 @@ try {
                     'https://updates.walidatiya.com', $key,
                     $host, $lease, $live, $catalog, $downloader,
                 );
-                if ($calls !== 1 || !is_file($artifact) || !is_dir($candidate)
-                    || hash_file('sha256', $artifact) !== hash_file('sha256', $update)) {
+                // Cron uses a private, SHA-bound, retry-safe inbox name,
+                // never the legacy owner-only /verified-updates/ci folder.
+                $cronDir = $app.'/storage/app/private/verified-updates/cron-'.$version.'-'.$sha;
+                $cronArchive = $cronDir.'/WalidSite-update-v'.$version.'.zip';
+                if ($calls !== 1 || !is_dir($cronDir) || is_link($cronDir)
+                    || realpath($cronDir) !== $cronDir
+                    || (fileperms($cronDir) & 0777) !== 0700
+                    || !is_file($cronArchive) || is_link($cronArchive)
+                    || (fileperms($cronArchive) & 0777) !== 0600
+                    || !is_dir($candidate)
+                    || hash_file('sha256', $cronArchive) !== hash_file('sha256', $update)
+                    || file_get_contents($cronArchive) !== file_get_contents($update)
+                    || is_file($artifact)) {
                     throw new RuntimeException('Cron did not download and stage exact signed bytes.');
                 }
             } else {
