@@ -224,9 +224,9 @@ class ReleaseAndroidQaAttachmentTest(unittest.TestCase):
                         original.rstrip()[:-1] + extra + "}", encoding="utf-8"
                     )
                     with self.assertRaises(ValueError):
-                        self.attempt()
+                        verify(self.folder, self.checkout, SHA)
                     document.write_text(original, encoding="utf-8")
-        self.attempt()
+        verify(self.folder, self.checkout, SHA)
 
     def test_unified_release_artifacts_reject_duplicate_identity_json(self):
         self.make_candidate()
