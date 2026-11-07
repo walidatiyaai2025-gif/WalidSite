@@ -37,7 +37,7 @@ class ManualSignedWebInspectionTest(unittest.TestCase):
             "application/vendor/autoload.php": b"<?php return 2;",
             "application/composer.json": b'{"require":{"php":"^8.3"}}',
             "application/composer.lock": b'{"packages":[]}',
-            "application/VERSION": b"1.2.3\\n",
+            "application/VERSION": b"1.2.3\n",
             "public_html/index.php": b"<?php echo 1;",
             "public_html/.htaccess": b"Options -Indexes",
         }
@@ -65,14 +65,14 @@ class ManualSignedWebInspectionTest(unittest.TestCase):
     def checksum(self, file: Path):
         (file.parent / (file.name + ".sha256")).write_text(
             hashlib.sha256(file.read_bytes()).hexdigest() +
-            "  " + file.name + "\\n", encoding="ascii"
+            "  " + file.name + "\n", encoding="ascii"
         )
 
     def publish_fixture(self):
         (self.candidates / self.manifest_name).write_text(
             json.dumps(self.manifest), encoding="utf-8")
         (self.candidates / self.notes_name).write_text(
-            "# WalidSite signed inspection fixture (NOT a release)\\n", encoding="utf-8")
+            "# WalidSite signed inspection fixture (NOT a release)\n", encoding="utf-8")
         for path in (self.candidates / self.manifest_name,
                      self.candidates / self.notes_name, self.update):
             self.checksum(path)
@@ -111,7 +111,7 @@ class ManualSignedWebInspectionTest(unittest.TestCase):
                     self.manifest["update"].pop("publisher_upload_name")
                 else:
                     (self.candidates / self.notes_name).write_text(
-                        "unsafe\\x00notes", encoding="utf-8")
+                        "unsafe\x00notes", encoding="utf-8")
                 self.publish_fixture() if change != "bad_notes" else self.checksum(
                     self.candidates / self.notes_name)
                 with self.assertRaises(ValueError):
