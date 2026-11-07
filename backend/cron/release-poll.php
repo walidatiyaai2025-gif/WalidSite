@@ -95,32 +95,32 @@ try {
             // Environment flags are NEVER a hosting capability. The trusted
             // adapter must be registered by a host operator and independently
             // attest foreign writers, isolated MariaDB restore and live TLS.
-            if (! $app->bound(\\App\\Domain\\Deployment\\CpanelOwnerCodeUpdateHost::class)
+            if (! $app->bound(\App\Domain\Deployment\CpanelOwnerCodeUpdateHost::class)
                 || ! is_string($record['available_version'])
                 || ! is_string($record['source_sha'])) {
                 throw new RuntimeException('Independent scheduled host release capability unavailable.');
             }
-            /** @var \\App\\Domain\\Deployment\\CpanelOwnerCodeUpdateHost $host */
-            $host = $app->make(\\App\\Domain\\Deployment\\CpanelOwnerCodeUpdateHost::class);
-            $installed = (new \\App\\Domain\\Deployment\\CpanelCronTrustedCodeInstaller())->install(
+            /** @var \App\Domain\Deployment\CpanelOwnerCodeUpdateHost $host */
+            $host = $app->make(\App\Domain\Deployment\CpanelOwnerCodeUpdateHost::class);
+            $installed = (new \App\Domain\Deployment\CpanelCronTrustedCodeInstaller())->install(
                 $home, $running, $public, $version,
                 $record['available_version'], $record['source_sha'],
                 $origin, $key, $host, $writerLease,
-                \\Illuminate\\Support\\Facades\\DB::connection()->getPdo(),
+                \Illuminate\Support\Facades\DB::connection()->getPdo(),
             );
             // install() has already released the promoted writer lease.
             // Failure to record journal or status is NEVER a fake rollback:
             // the independently health-verified code remains installed.
-            (new \\App\\Domain\\Deployment\\CpanelOwnerCodeUpdateHistory())->record(
+            (new \App\Domain\Deployment\CpanelOwnerCodeUpdateHistory())->record(
                 $home, $installed, (string) config('app.key'),
             );
-            $first = (new \\App\\Domain\\Deployment\\TrustedInstalledVersion())->read(
+            $first = (new \App\Domain\Deployment\TrustedInstalledVersion())->read(
                 $original.'/VERSION',
             );
             if ($first === null) {
                 throw new RuntimeException('Installed release pin missing after cutover.');
             }
-            (new \\App\\Domain\\Deployment\\CpanelReleaseCronPoller())->recordDeployed(
+            (new \App\Domain\Deployment\CpanelReleaseCronPoller())->recordDeployed(
                 $parent.'/release-automation', $public, $first, $installed,
             );
             $status = 'DEPLOYED';
