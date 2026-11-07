@@ -80,8 +80,8 @@ class ReleaseJobPhpAcceptanceTest(unittest.TestCase):
         # manual inspection. Automatic workflow_run candidate generation must
         # never read this secret, sign a catalog or publish a GitHub Release.
         self.assertEqual(self.workflow.count("sign_trusted_update_release.php"), 1)
-        before_manual, manual = self.workflow.split("  signed-web-inspection:\\n", 1)
-        manual, remaining = manual.split("  signed-android-inspection:\\n", 1)
+        before_manual, manual = self.workflow.split("  signed-web-inspection:", 1)
+        manual, remaining = manual.split("  signed-android-inspection:", 1)
         self.assertNotIn("WALIDSITE_PUBLISHER_SECRET_KEY_B64", before_manual)
         self.assertNotIn("sign_trusted_update_release.php", before_manual)
         self.assertIn("if: github.event_name == 'workflow_dispatch'", manual)
