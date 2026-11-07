@@ -76,6 +76,27 @@ class ReleaseSiteOriginTest(unittest.TestCase):
                 with self.assertRaises(ReleaseOriginError):
                     build_receipt(**(good | {key: value}))
 
+    def test_release_wiring_keeps_signed_inspection_unpublished(self):
+        root = Path(__file__).resolve().parents[2]
+        release = (root / ".github/workflows/release.yml").read_text()
+        ci = (root / ".github/workflows/ci.yml").read_text()
+        script = (root / "qa/build_origin_bound_android_release.sh").read_text()
+        gradle = (root / "mobile/android/app/build.gradle.kts").read_text()
+        self.assertIn("needs: [release-candidates, signed-android-inspection]", release)
+        self.assertIn("WALIDSITE_PRODUCTION_SITE_ORIGIN", release)
+        self.assertIn("WALIDSITE_ANDROID_SIGNER_SHA256", release)
+        self.assertIn("Block release until authorized staging", release)
+        self.assertIn("exit 1", release)
+        self.assertNotIn("gh release create", release)
+        self.assertIn("qa.tests.test_release_site_origin", ci)
+        for required in ("flutter build apk --release", "WALIDSITE_API_ORIGIN=",
+                         "qa/native_android_acceptance.py", "apksigner",
+                         "WALIDSITE_SIGNER_INSPECTED_APK_SHA256",
+                         "hash_copy.hexdigest()"):
+            self.assertIn(required, script)
+        self.assertIn("require(hasReleaseSigning)", gradle)
+        self.assertIn('getByName("walidsiteProduction")', gradle)
+
     def test_cli_success_and_redacted_failures(self):
         with tempfile.TemporaryDirectory() as temp:
             version = Path(temp) / "VERSION"
