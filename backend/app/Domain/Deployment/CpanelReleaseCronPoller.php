@@ -61,7 +61,7 @@ final class CpanelReleaseCronPoller
                 )['release'];
                 $record['available_version'] = $release['version'];
                 $record['source_sha'] = $release['source_sha'];
-                if (version_compare($release['version'], $installedVersion, '===')) {
+                if (version_compare($release['version'], $installedVersion, '==')) {
                     // This attests a signed catalog version, not that the
                     // running PHP tree or actual live HTTPS site was audited.
                     $record['state'] = 'UP_TO_DATE';
