@@ -10,6 +10,7 @@ from PIL import Image
 from qa.android_emulator_welcome_diagnostics import (
     WelcomeDiagnosticError, collect,
 )
+from qa.render_android_screenshot import AndroidCaptureError
 
 SHA = "a" * 40
 
@@ -138,6 +139,50 @@ class WelcomeEmulatorDiagnosticTest(unittest.TestCase):
                             checked_sha=SHA, serial="emulator-5554",
                             command=self.command, capture=fn, sleeper=lambda _: None)
                 self.assertEqual(list(self.output.iterdir()), [])
+
+    def test_cold_emulator_foreground_retries_until_real_native_capture(self):
+        attempted = []
+        def eventually_ready(*, env):
+            attempted.append(True)
+            if len(attempted) < 3:
+                raise AndroidCaptureError(
+                    "WalidSite Flutter is not the foreground application")
+            return self.capture(env=env)
+        receipt = collect(
+            self.root, self.output, source_sha=SHA, checked_sha=SHA,
+            serial="emulator-5554", command=self.command,
+            capture=eventually_ready, sleeper=self.sleeps.append)
+        self.assertEqual(len(attempted), 3)
+        self.assertEqual(self.sleeps, [2.0, 2.0, 2.0])
+        self.assertEqual(receipt["status"], "mismatch")
+        self.assertFalse(receipt["evidence_admitted"])
+
+    def test_persistent_background_screen_fails_closed_without_false_png(self):
+        attempts = []
+        def remains_background(*, env):
+            attempts.append(True)
+            raise AndroidCaptureError(
+                "WalidSite Flutter is not the foreground application")
+        with self.assertRaises(AndroidCaptureError):
+            collect(self.root, self.output, source_sha=SHA, checked_sha=SHA,
+                    serial="emulator-5554", command=self.command,
+                    capture=remains_background, sleeper=self.sleeps.append)
+        self.assertEqual(len(attempts), 5)
+        self.assertEqual(self.sleeps, [2.0] * 5)
+        self.assertEqual(list(self.output.iterdir()), [])
+
+    def test_unrelated_capture_failure_is_never_retried(self):
+        attempts = []
+        def wrong_app_identity(*, env):
+            attempts.append(True)
+            raise AndroidCaptureError("Unexpected device screenshot dimensions")
+        with self.assertRaises(AndroidCaptureError):
+            collect(self.root, self.output, source_sha=SHA, checked_sha=SHA,
+                    serial="emulator-5554", command=self.command,
+                    capture=wrong_app_identity, sleeper=self.sleeps.append)
+        self.assertEqual(len(attempts), 1)
+        self.assertEqual(self.sleeps, [2.0])
+        self.assertEqual(list(self.output.iterdir()), [])
 
     def test_restart_failure_is_not_reported_as_welcome_capture(self):
         def bad_start(serial, *parts):
