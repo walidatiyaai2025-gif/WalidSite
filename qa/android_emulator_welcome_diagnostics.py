@@ -116,6 +116,19 @@ def collect(
                         "Native screen locale or visible title is not verified")
                         or attempt == 4 or runtime.exists() or runtime.is_symlink()):
                     raise
+                if str(exc) == "WalidSite Flutter is not the foreground application":
+                    # Explicitly bring back ONLY the installed canonical app.
+                    # ActivityManager must confirm it; renderer still checks
+                    # actual window focus and native semantics before writing.
+                    restarted = command(serial, "shell", "am", "start", "-W",
+                                        "-n", PACKAGE + "/.MainActivity")
+                    if ("Status: ok" not in restarted.splitlines()
+                            or not any(PACKAGE + "/.MainActivity" in row
+                                       or PACKAGE + "/" + PACKAGE + ".MainActivity" in row
+                                       for row in restarted.splitlines()
+                                       if row.startswith("Activity: "))):
+                        raise WelcomeDiagnosticError(
+                            "Emulator did not re-foreground canonical Flutter") from exc
                 sleeper(2.0)
         if produced != runtime.resolve() and produced != runtime:
             raise WelcomeDiagnosticError("Native capture wrote unexpected destination")
