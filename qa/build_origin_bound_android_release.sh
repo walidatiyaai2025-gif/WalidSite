@@ -98,6 +98,8 @@ if (len(found) != 1 or found[0].lower()
     raise SystemExit('Release APK signer differs from pinned identity')
 PY
 
+# Bind the signer-inspected source bytes to later native and copied bytes.
+export WALIDSITE_SIGNER_INSPECTED_APK_SHA256="$(sha256sum "$apk" | cut -d' ' -f1)"
 python3 -B qa/android_qa_build_metadata.py > dist/release-android/native-source.json
 python3 -B - <<'PY'
 import json
@@ -122,12 +124,21 @@ cp -- "$apk" dist/release-android/WalidSite-Android-signed-UNPUBLISHED.apk
 (cd dist/release-android && sha256sum WalidSite-Android-signed-UNPUBLISHED.apk \
   > WalidSite-Android-signed-UNPUBLISHED.apk.sha256)
 python3 -B - <<'PY'
+import hashlib
 import json
 import os
 from pathlib import Path
 dir = Path('dist/release-android')
 preflight = json.loads((dir / 'site-origin-preflight.json').read_text())
 native = json.loads((dir / 'native-archive-proof.json').read_text())
+downloaded_apk = dir / 'WalidSite-Android-signed-UNPUBLISHED.apk'
+hash_copy = hashlib.sha256()
+with downloaded_apk.open('rb') as apk_stream:
+    while chunk := apk_stream.read(1024 * 1024):
+        hash_copy.update(chunk)
+if (hash_copy.hexdigest() != native['apk_sha256']
+        or hash_copy.hexdigest() != os.environ['WALIDSITE_SIGNER_INSPECTED_APK_SHA256']):
+    raise SystemExit('Native and signer verification bytes differ from artifact')
 if (not native['apk_integrity_verified']
     or not native['apk_signature_cryptographically_valid']
     or native['build_kind'] != 'release-qa'
