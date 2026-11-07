@@ -76,7 +76,22 @@ class ReleaseJobPhpAcceptanceTest(unittest.TestCase):
         self.assertLess(self.workflow.index("Verify real Update ZIP with PHP Ed25519"),
                         self.workflow.index("Retain unpublished inspection candidates only"))
         self.assertIn("exit 1", self.workflow.split("  release-gate:", 1)[1])
-        self.assertNotIn("sign_trusted_update_release.php", self.workflow)
+        # The production publisher secret may only be used by an explicit
+        # manual inspection. Automatic workflow_run candidate generation must
+        # never read this secret, sign a catalog or publish a GitHub Release.
+        self.assertEqual(self.workflow.count("sign_trusted_update_release.php"), 1)
+        before_manual, manual = self.workflow.split("  signed-web-inspection:", 1)
+        manual, remaining = manual.split("  signed-android-inspection:", 1)
+        self.assertNotIn("WALIDSITE_PUBLISHER_SECRET_KEY_B64", before_manual)
+        self.assertNotIn("sign_trusted_update_release.php", before_manual)
+        self.assertIn("if: github.event_name == 'workflow_dispatch'", manual)
+        self.assertIn("WALIDSITE_PUBLISHER_SECRET_KEY_B64:", manual)
+        self.assertIn("qa/prepare_signed_web_inspection.py", manual)
+        self.assertIn("qa/verify_signed_web_inspection.php", manual)
+        self.assertIn("SIGNED-UNPUBLISHED-Web-", manual)
+        self.assertNotIn("gh release create", manual)
+        self.assertIn("needs: [release-candidates, signed-web-inspection, signed-android-inspection]", remaining)
+        self.assertIn("exit 1", remaining)
 
     def test_probe_and_both_workflows_require_the_same_seven_rejections(self):
         # The real PHP probe returns seven negative checks. A former manual
