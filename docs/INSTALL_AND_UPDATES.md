@@ -15,6 +15,18 @@ Package name `WalidSite-Setup-vX.Y.Z.zip` matches the private `application/VERSI
 
 **Security boundary:** automatic cryptographic state exists at runtime first; persistent `.env` configuration is created only after a token-authorized, successful empty-DB probe. A browser cannot create cPanel databases, read secrets from the web root, or confirm external email/AI services.
 
+## A.1 Private signed release discovery Cron (Issue #1120; **read-only**)
+
+The same first-install Setup ZIP includes `application/cron/release-poll.php` **outside** `public_html`. It has a CLI-only preflight and cannot run through an HTTP URL. It will refuse uninstalled sites, missing owner lock/private storage, mismatched running VERSION, unknown publisher identity, disabled settings, or a pending maintenance barrier. A private nonblocking lock prevents competing checks; a bounded, owner-only 0600 receipt records `UP_TO_DATE` **only** for a valid Ed25519-signed catalog with the same stable version, or `BLOCKED` for newer/unverified releases. A corrupted/stale receipt is rendered as `UNVERIFIED` in owner Admin → Updates.
+
+This is opt-in via server-private `SITE_RELEASE_CRON_CHECK_ENABLED=true`; the shipped default is false. It also requires a verified `SITE_TRUSTED_INSTALLED_VERSION` and the real approved `SITE_TRUSTED_RELEASE_ORIGIN` and `SITE_TRUSTED_RELEASE_PUBLIC_KEY`. Neither the ZIP nor the ChatGPT session supplies keys or invents a domain. The cPanel administrator may add the **single initial** job in cPanel → Cron Jobs (no SSH):
+
+```text
+*/15 * * * * /usr/local/bin/php /home/USERNAME/application/cron/release-poll.php >/dev/null 2>&1
+```
+
+The exact CLI PHP path and account home must be confirmed by hosting. A scoped authorized cPanel API may configure the job if actually available; otherwise this one-time GUI action is a hosting prerequisite. Cron observation **never** downloads, extracts, installs PHP code, runs migrations or marks a deployment successful. The rest of the unattended verified code update, signed GitHub Release promotion, host adapter/isolated backup/rollback, production APK binding and final live trial remain **OPEN in #1120/#732/#26–#28**. The receipt is local display information, not update authorization.
+
 ## B. Manually managed Laravel source checkout (operator/CLI install)
 
 1. Deploy reviewed source with the sibling `contracts/` directory, install Composer dependencies and build frontend assets on your trusted build/hosting environment. Point the server document root to `backend/public`; keep `backend/.env`, storage, contracts and project root private. Supply PHP 8.3+, required extensions and a real HTTPS origin.
