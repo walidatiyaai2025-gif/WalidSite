@@ -156,13 +156,60 @@ jobs:
             dist/candidate-build-receipt.json
           if-no-files-found: error
           retention-days: 14
-  release-gate:
+  signed-android-inspection:
+    # Signed native candidate ONLY. No trusted Web release or live-host
+    # pairing is implied; no GitHub Release/upload publication occurs here.
     needs: release-candidates
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - name: Require current Android SDK for independently verified APK bytes
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          test -n "$sdk_root"
+          test -d "$sdk_root/build-tools"
+          test -d "$sdk_root/platforms"
+      - name: Build signed, site-bound but UNPUBLISHED Android release inspection
+        shell: bash
+        env:
+          WALIDSITE_PRODUCTION_SITE_ORIGIN: ${{ vars.WALIDSITE_PRODUCTION_SITE_ORIGIN }}
+          WALIDSITE_ANDROID_SIGNER_SHA256: ${{ vars.WALIDSITE_ANDROID_SIGNER_SHA256 }}
+          WALIDSITE_ANDROID_KEYSTORE_BASE64: ${{ secrets.WALIDSITE_ANDROID_KEYSTORE_BASE64 }}
+          WALIDSITE_ANDROID_KEY_ALIAS: ${{ secrets.WALIDSITE_ANDROID_KEY_ALIAS }}
+          WALIDSITE_ANDROID_STORE_PASSWORD: ${{ secrets.WALIDSITE_ANDROID_STORE_PASSWORD }}
+          WALIDSITE_ANDROID_KEY_PASSWORD: ${{ secrets.WALIDSITE_ANDROID_KEY_PASSWORD }}
+          WALIDSITE_SOURCE_SHA: ${{ github.sha }}
+          WALIDSITE_RELEASE_VERSION: ${{ inputs.version }}
+        run: bash qa/build_origin_bound_android_release.sh
+      - name: Retain signed Android evidence without implying a public APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: WalidSite-SIGNED-UNPUBLISHED-Android-${{ inputs.version }}-${{ github.sha }}
+          path: dist/release-android/*
+          if-no-files-found: error
+          retention-days: 14
+
+  release-gate:
+    needs: [release-candidates, signed-android-inspection]
     runs-on: ubuntu-latest
     steps:
       - name: Block release until authorized staging and publisher acceptance
         shell: bash
         run: |
-          echo 'BLOCKED EXTERNAL: no verified signed publisher release, first-install cPanel staging, Admin code-update/restore acceptance, or mobile production signing.'
-          echo 'Candidate artifacts are UNSIGNED and UNPUBLISHED; do not treat them as a release.'
+          echo 'BLOCKED EXTERNAL: no publisher-signed Web publication, real cPanel HTTPS install/update/recovery, verified live Web-APK pairing, or owner device acceptance.'
+          echo 'Web candidates remain test-signed/unpublished; a signed Android inspection is also UNPUBLISHED and not production-attested.'
           exit 1
