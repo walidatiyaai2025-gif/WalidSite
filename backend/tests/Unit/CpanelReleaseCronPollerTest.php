@@ -176,11 +176,11 @@ final class CpanelReleaseCronPollerTest extends TestCase
     private function installPrivatePointerFixture(): array
     {
         $sha = str_repeat('a', 40);
-        file_put_contents($this->root.'/application/VERSION', "1.2.3\\n");
+        file_put_contents($this->root.'/application/VERSION', "1.2.3\n");
         $target = '.walidsite-releases/v1.2.4-'.$sha;
         $running = $this->root.'/'.$target.'/application';
         mkdir($running, 0700, true);
-        file_put_contents($running.'/VERSION', "1.2.4\\n");
+        file_put_contents($running.'/VERSION', "1.2.4\n");
         file_put_contents(
             $this->root.'/.walidsite-active-release.json',
             json_encode(['schema'=>1, 'version'=>'1.2.4', 'root'=>$target], JSON_THROW_ON_ERROR),
@@ -212,7 +212,7 @@ final class CpanelReleaseCronPollerTest extends TestCase
         $poller->recordDeployed(
             $this->private.'/release-automation', $this->public, '1.2.3', $result,
         );
-        $visible = (new \\App\\Domain\\Deployment\\CpanelReleaseCronStatus())->inspect(
+        $visible = (new \App\Domain\Deployment\CpanelReleaseCronStatus())->inspect(
             $this->private.'/release-automation', $this->public,
         );
         self::assertSame('DEPLOYED', $visible['state']);
