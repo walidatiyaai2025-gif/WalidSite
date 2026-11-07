@@ -15,7 +15,7 @@ from qa.android_qa_build_metadata import metadata
 from qa.verify_release_android_qa import (
     APK_NAME, CHECKSUM_NAME, IDENTITY_NAME, PROOF_NAME, hash_bounded_stream,
     pinned_directory, read_verified, verify_bounded_zip_members, verify, verify_bundle,
-    site_release_version,
+    site_release_version, strict_receipt_json,
 )
 
 SHA = "a" * 40
@@ -190,6 +190,88 @@ class ReleaseAndroidQaAttachmentTest(unittest.TestCase):
         alias.hardlink_to(self.apk)
         with self.assertRaises(ValueError):
             self.attempt()
+
+    def test_strict_release_json_parser_rejects_ambiguous_receipts(self):
+        for raw in (
+            b'{"source_sha":"a","source_sha":"a"}',
+            b'{"nested":{"ok":true,"ok":true}}',
+            b'{"otherwise_valid":true,"extra":NaN}',
+            b'{"otherwise_valid":true,"extra":Infinity}',
+            b'{"otherwise_valid":true,"extra":-Infinity}',
+            b'{"otherwise_valid":true,"extra":1e999}',
+        ):
+            with self.subTest(raw=raw), self.assertRaises(ValueError):
+                strict_receipt_json(raw)
+        self.assertEqual(strict_receipt_json(
+            b'{"nested":{"ok":true},"duration":0.5}'
+        ), {"nested": {"ok": True}, "duration": 0.5})
+
+    def test_android_qa_artifacts_reject_duplicate_and_nonfinite_json(self):
+        self.attempt()
+        for name in (IDENTITY_NAME, PROOF_NAME):
+            document = self.folder / name
+            original = document.read_text(encoding="utf-8")
+            self.assertTrue(original.rstrip().endswith("}"))
+            for extra in (
+                f',"package_id":"{PACKAGE}"',
+                ',"unused_value":NaN',
+                ',"unused_value":Infinity',
+                ',"unused_value":-Infinity',
+                ',"unused_value":1e999',
+            ):
+                with self.subTest(receipt=name, extra=extra):
+                    document.write_text(
+                        original.rstrip()[:-1] + extra + "}", encoding="utf-8"
+                    )
+                    with self.assertRaises(ValueError):
+                        verify(self.folder, self.checkout, SHA)
+                    document.write_text(original, encoding="utf-8")
+        verify(self.folder, self.checkout, SHA)
+
+    def test_unified_release_artifacts_reject_duplicate_identity_json(self):
+        self.make_candidate()
+        self.verify_candidate()
+        manifest = self.release_dir / "WalidSite-Release-Manifest-v1.2.3.json"
+        php_proof = self.release_dir / "signed-zip-acceptance.json"
+        build_info = self.release_dir / "WalidSite-Build-Info-v1.2.3.json"
+        documents = (manifest, php_proof, build_info)
+        sidecars = tuple(self.release_dir / (p.name + ".sha256")
+                         for p in (manifest, build_info))
+        originals = {path: path.read_bytes() for path in (*documents, *sidecars)}
+
+        def update_checksum(document):
+            digest = hashlib.sha256(document.read_bytes()).hexdigest()
+            sidecar = self.release_dir / (document.name + ".sha256")
+            sidecar.write_text(f"{digest}  {document.name}\n", encoding="ascii")
+            return digest
+
+        for document in documents:
+            with self.subTest(document=document.name):
+                try:
+                    original = document.read_text(encoding="utf-8")
+                    document.write_text(
+                        original.rstrip()[:-1] +
+                        f',"source_sha":"{SHA}"' + "}", encoding="utf-8"
+                    )
+                    if document == manifest:
+                        update_checksum(manifest)
+                    if document == build_info:
+                        new_digest = update_checksum(build_info)
+                        current_manifest = json.loads(manifest.read_text())
+                        current_manifest["build_info"]["sha256"] = new_digest
+                        manifest.write_text(json.dumps(current_manifest),
+                                            encoding="utf-8")
+                        update_checksum(manifest)
+                    # All hashes are updated to match the tampered bytes:
+                    # this must fail because the parsed identity is ambiguous,
+                    # not simply because a SHA-256 sidecar is outdated.
+                    with self.assertRaises(ValueError):
+                        verify_bundle(self.folder, self.checkout, SHA,
+                                      self.release_dir)
+                finally:
+                    for path, original in originals.items():
+                        path.write_bytes(original)
+        self.verify_candidate()
 
     def make_candidate(self):
         directory = self.root / "candidate-releases"
