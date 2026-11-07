@@ -421,7 +421,10 @@ class ReleaseAndroidQaAttachmentTest(unittest.TestCase):
         self.assertIn("unified-release-evidence.json", workflow)
         self.assertIn("native_and_web_version_match", workflow)
         self.assertIn("WalidSite-Android-debug-QA-${SOURCE_SHA}", workflow)
-        self.assertIn("head_sha=${SOURCE_SHA}&event=push", workflow)
+        self.assertIn("head_sha=${TESTED_SHA}&event=push", workflow)
+        self.assertIn("CI_RUN_ID: ${{ steps.verified-ci.outputs.ci_run_id }}", workflow)
+        self.assertIn('gh run download "$CI_RUN_ID"', workflow)
+        self.assertNotIn('gh run download "$run_id"', workflow)
         self.assertLess(workflow.index("Attach same-commit Android debug QA APK"),
                         workflow.index("Retain unpublished inspection candidates only"))
         self.assertIn("exit 1", workflow.split("  release-gate:", 1)[1])
