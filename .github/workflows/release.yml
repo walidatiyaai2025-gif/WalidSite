@@ -188,7 +188,8 @@ jobs:
           assert result['version'] == os.environ['CANDIDATE_VERSION']
           assert result['native_and_web_version_match'] is True
           assert result['same_sha_assets_verified'] is True
-          assert result['php_zip_negative_rejections'] == 4
+          # The actual PHP signed Update ZIP gate reports all seven negative cases.
+          assert result['php_zip_negative_rejections'] == 7
           assert result['test_only_ephemeral_key'] is True
           assert result['publisher_signature_verified'] is False
           assert result['android_distribution_signing_verified'] is False
