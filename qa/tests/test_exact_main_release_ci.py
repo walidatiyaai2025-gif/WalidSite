@@ -143,6 +143,20 @@ class ExactMainCIReleaseGateTest(unittest.TestCase):
         self.assertNotIn('SITE_RELEASE_CRON_APPLY_ENABLED=true', release)
 
 
+    def test_unified_release_negative_archive_proof_matches_php_gate(self):
+        root = Path(__file__).resolve().parents[2]
+        release = (root / '.github/workflows/release.yml').read_text()
+        native_verifier = (root / 'qa/verify_release_android_qa.py').read_text()
+        signed_probe = (root / 'qa/cpanel_signed_update_artifact_probe.php').read_text()
+        # Avoid a regression where the real ZIP validator and unified native
+        # receipt accept seven attacks but the Release workflow requires four.
+        self.assertIn("assert result['php_zip_negative_rejections'] == 7", release)
+        self.assertNotIn("assert result['php_zip_negative_rejections'] == 4", release)
+        self.assertIn('php["negative_rejections"] != 7', native_verifier)
+        self.assertIn('"php_zip_negative_rejections": php["negative_rejections"]', native_verifier)
+        self.assertIn("'negative_rejections' => 7", signed_probe)
+
+
 
 if __name__ == '__main__':
     unittest.main()
