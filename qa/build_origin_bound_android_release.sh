@@ -94,7 +94,9 @@ found = re.findall(
     result.stdout)
 if (len(found) != 1 or found[0].lower()
         != os.environ['WALIDSITE_ANDROID_SIGNER_SHA256'].lower()
-        or 'Signer #2 certificate' in result.stdout):
+        or 'Signer #2 certificate' in result.stdout
+        or re.search(r'(?im)^Signer #1 certificate DN:.*CN=Android Debug(?:,|$)',
+                     result.stdout)):
     raise SystemExit('Release APK signer differs from pinned identity')
 PY
 
