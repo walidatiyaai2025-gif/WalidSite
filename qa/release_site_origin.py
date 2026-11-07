@@ -51,6 +51,8 @@ def canonical_public_origin(value: str) -> str:
     else:
         raise ReleaseOriginError("Production origin must be a public DNS name")
     if (host == "localhost" or "." not in host or host.endswith(RESERVED_SUFFIXES)
+            or host in {"example.com", "example.net", "example.org"}
+            or host.endswith((".example.com", ".example.net", ".example.org"))
             or host.startswith("localhost.") or host.endswith(".")
             or not all(LABEL.fullmatch(part) for part in host.split("."))):
         raise ReleaseOriginError("Production origin is reserved or invalid")
