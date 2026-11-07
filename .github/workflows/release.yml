@@ -263,6 +263,25 @@ jobs:
           test "$GITHUB_REF" = 'refs/heads/main'
           protected="$(gh api "repos/${GITHUB_REPOSITORY}/branches/main" --jq '.protected')"
           test "$protected" = 'true'
+      - name: Require independently pinned Ed25519 verifier and release HTTPS origin
+        shell: bash
+        env:
+          WALIDSITE_PUBLISHER_PUBLIC_KEY_B64: ${{ vars.WALIDSITE_PUBLISHER_PUBLIC_KEY_B64 }}
+          WALIDSITE_TRUSTED_RELEASE_ORIGIN: ${{ vars.WALIDSITE_TRUSTED_RELEASE_ORIGIN }}
+        run: |
+          set -euo pipefail
+          php -r '
+            require "backend/app/Domain/Deployment/TrustedReleaseMetadata.php";
+            $encoded = getenv("WALIDSITE_PUBLISHER_PUBLIC_KEY_B64");
+            $origin = getenv("WALIDSITE_TRUSTED_RELEASE_ORIGIN");
+            if (!is_string($encoded) || !is_string($origin)) exit(3);
+            $key = base64_decode($encoded, true);
+            if ($key === false || strlen($key) !== SODIUM_CRYPTO_SIGN_PUBLICKEYBYTES
+                || base64_encode($key) !== $encoded) exit(3);
+            try {
+              \App\Domain\Deployment\TrustedReleaseMetadata::assertPinnedHttpsOrigin($origin);
+            } catch (Throwable $e) { exit(3); }
+          '
       - name: Sign private Web candidate using real publisher key (MANUAL ONLY)
         shell: bash
         env:
