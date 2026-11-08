@@ -72,8 +72,8 @@ with destination.open('xb') as out:
 destination.chmod(0o600)
 PY
 (cd mobile && flutter pub get)
-bash qa/gradle_distribution_preflight.sh
-(cd mobile && flutter build apk --release --no-pub \
+source qa/gradle_distribution_preflight.sh
+(cd mobile && with_gradle_distribution_retry flutter build apk --release --no-pub \
     --dart-define="WALIDSITE_API_ORIGIN=$WALIDSITE_PRODUCTION_SITE_ORIGIN")
 apk="mobile/build/app/outputs/flutter-apk/app-release.apk"
 test -s "$apk"
