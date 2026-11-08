@@ -175,15 +175,27 @@ class WebRuntimeAuditTest(unittest.TestCase):
         self.assertIn("--commit", result.stdout)
         self.assertIn("--output", result.stdout)
 
-    def test_unrelated_t007_pixel_gate_excludes_lead_481_qa_branches(self):
+    def test_unrelated_release_pr_does_not_trigger_t007_but_ui_changes_do(self):
         workflow = (ROOT / ".github/workflows/ci.yml").read_text(
             encoding="utf-8")
-        self.assertIn("name: T007 real Laravel visual diagnostics", workflow)
-        self.assertIn("!startsWith(github.head_ref, 'feat/481-')", workflow)
-        self.assertIn("github.head_ref == 'feat/T007-runtime-parity-final'",
+        self.assertIn("name: Detect actual PR changes requiring T007 browser acceptance",
                       workflow)
+        self.assertIn('git diff --no-renames --name-only "$BASE_SHA" "$HEAD_SHA"',
+                      workflow)
+        self.assertIn("python3 qa/t007_changed_path_scope.py", workflow)
+        self.assertIn("name: T007 real Laravel visual diagnostics", workflow)
+        self.assertIn("steps.t007_scope.outputs.web_ui_changed == 'true'",
+                      workflow)
+        self.assertNotIn("contains(github.head_ref, '-web-')", workflow)
         self.assertIn("name: Issue 481 real authenticated Admin runtime diagnostics",
                       workflow)
+        from qa.t007_changed_path_scope import requires_t007
+        self.assertFalse(requires_t007([
+            ".github/workflows/release.yml", "qa/verify_signed_web_inspection.php"
+        ]))
+        self.assertTrue(requires_t007([
+            "backend/resources/views/public/owner-landing-2026.blade.php"
+        ]))
 
     def test_public_metrics_use_public_main_and_skip_link_not_admin(self):
         self.assertIn("main#main-content", WEB_DOM_METRICS)
