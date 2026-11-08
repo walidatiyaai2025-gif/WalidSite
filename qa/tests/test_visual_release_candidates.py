@@ -401,7 +401,15 @@ class ReleaseCandidateTest(unittest.TestCase):
                          'build-android-qa-apk', 'android-emulator-install-launch',
                          'verify-source-pinned-release-bundle'):
             self.assertIn(f'"{required}"', verifier)
-        self.assertNotIn('sign_trusted_update_release.php', workflow)
+        # Automatic Release candidates cannot sign, while the dedicated
+        # manual-only job may inspect genuine publisher-signed Web bytes.
+        before_manual, manual = workflow.split('  signed-web-inspection:', 1)
+        manual, after_manual = manual.split('  signed-android-inspection:', 1)
+        self.assertNotIn('sign_trusted_update_release.php', before_manual)
+        self.assertIn("if: github.event_name == 'workflow_dispatch'", manual)
+        self.assertIn('sign_trusted_update_release.php', manual)
+        self.assertIn('qa/verify_signed_web_inspection.php', manual)
+        self.assertIn('exit 1', after_manual.split('  release-gate:', 1)[1])
         self.assertNotIn('gh release create', workflow)
 
 

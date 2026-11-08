@@ -58,3 +58,22 @@ The PHP script rechecks artifact SHA256, size, identity, version and optional re
 - The versioned private code-pointer implementation provides a guarded code-only path on compatible first-installed physical cPanel layouts and supports chained signed releases. There is intentionally **no default host adapter**: deployments must independently attest all external writers stopped, disposable MariaDB restore isolation, verified backup and real HTTPS health. Changed migrations, Composer runtime dependencies and unsafe web entrypoints are blocked rather than silently applied.
 - Still missing for production acceptance: an owner-authorized physical cPanel HTTPS first-install and signed Admin update, real publisher origin/public-key approval, independent host writer shutdown, externally attested backup/restore, and final staged health/device/visual proof. Synthetic CI signing keys and this document are NOT production acceptance.
 - Issue #27 / #732 remain open until real end-to-end release acceptance. Do not create a third workflow; promotion requires existing authorized release gates.
+
+## GitHub Actions: manual signed Web inspection (Issue #1120)
+
+The existing `Release` workflow now has two separate trust levels:
+
+- On a green exact-main push, `release-candidates` automatically creates **UNSIGNED, UNPUBLISHED** Setup/Update and Android QA candidate evidence. These artifacts have no publisher authority.
+- Only a deliberately invoked `workflow_dispatch` on the **latest protected** `main` may run `signed-web-inspection`. This retrieves the *same run's actual ZIP and QA APK bytes*, re-verifies SHA/version/checksums, freezes the update ZIP into a 0700 private directory, invokes `qa/sign_trusted_update_release.php`, and verifies the Ed25519 envelope and held archive with the same PHP metadata/archive consumer used by Admin/Cron. On success it retains a **SIGNED-UNPUBLISHED-Web** GitHub Actions artifact; it does not call GitHub Release, upload to the host, enable Cron or apply any update. The production `release-gate` still deliberately blocks.
+
+Before requesting **manual inspection** configure the following in **GitHub → Settings → Secrets and variables → Actions**. Confirm presence without copying any secret value into logs or issues:
+
+| Type | Name | Required validation |
+| --- | --- | --- |
+| Secret | `WALIDSITE_PUBLISHER_SECRET_KEY_B64` | Real private Ed25519 sodium signing secret, 64 bytes before base64; never the fixture key |
+| Variable | `WALIDSITE_PUBLISHER_PUBLIC_KEY_B64` | Independently approved matching 32-byte Ed25519 public key; pinned to the private installed host trust config |
+| Variable | `WALIDSITE_TRUSTED_RELEASE_ORIGIN` | Independently approved public HTTPS publisher hostname, no path/port/query, matching the host's trusted catalog origin |
+
+Additionally enable and **verify** GitHub branch protection/ruleset for `main` requiring the full exact-head CI and forbidding bypass/direct pushes. The signing job queries GitHub's actual `branches/main.protected` field and refuses to mount/use the publisher secret if it is false or inaccessible. It also validates the public key and HTTPS origin before invoking the signer; a wrong signing key is rejected by the independent PHP consumer. GitHub Actions' scoped `GITHUB_TOKEN` is sufficient for this public repository's read-only candidate download; do not add a personal token without a proven need.
+
+Even a successful signed inspection is **not** a production release. No trusted immutable GitHub Release is automatically promoted until real cPanel host capabilities, backup/restore, writer quiescence, safe code switch, HTTPS deployment and Web↔production-APK paired live proof have passed. The `latest.json` stored as an inspection artifact is private candidate evidence only, not an authorized `/releases/latest.json` for a live Cron consumer. Production release activation remains gated by #732, #26, #27, #28 and #1120.

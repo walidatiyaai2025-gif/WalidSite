@@ -15,11 +15,11 @@ In **GitHub → Settings → Secrets and variables → Actions**, configure:
 | Secret | `WALIDSITE_ANDROID_STORE_PASSWORD` | Keystore password. |
 | Secret | `WALIDSITE_ANDROID_KEY_PASSWORD` | Signing key password. |
 
-The workflow uses GitHub's scoped `GITHUB_TOKEN` for its own read-only checkout. **Do not add a PAT** for the public repository. Production publisher Ed25519 keys, private cPanel Cron activation, a host-specific verified code-switch adapter, an independent real backup/restore and device/owner acceptance remain **separate missing capabilities**; this job does not invent or substitute them.
+The workflow uses GitHub's scoped `GITHUB_TOKEN` for its own read-only checkout. **Do not add a PAT** for the public repository. The separate manual Web inspection requires real publisher Ed25519 secret/public verifier and trusted release HTTPS origin (see [trusted update publication](TRUSTED_UPDATE_PUBLICATION.md)). Real host promotion remains separate. Private cPanel Cron activation, a host-specific verified code-switch adapter, an independent real backup/restore and device/owner acceptance remain **separate missing capabilities**; this job does not invent or substitute them.
 
 ## Execution and strict trust boundary
 
-The **existing** Release workflow (`.github/workflows/release.yml`) remains manual and only runs from exact current `main`, after green exact-SHA CI. Its `signed-android-inspection` job:
+The **existing** Release workflow (`.github/workflows/release.yml`) automatically builds only unsigned inspection candidates after a green exact-main push CI. The `signed-android-inspection` and separate publisher-signed Web inspection run **only** through manual `workflow_dispatch` on the current main, after green exact-SHA CI. The `signed-android-inspection` job:
 
 1. Rejects absent secrets, an unapproved/noncanonical/non-HTTPS/local origin, a wrong SemVer or differing checked-in `backend/VERSION`, an unexpected Git head, and an unapproved Android package.
 2. Decodes signing material to a disposable private file; never writes signing keys into Git, build artifacts, public assets or release ZIPs.
