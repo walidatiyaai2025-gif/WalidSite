@@ -897,9 +897,9 @@ jobs:
           cd mobile
           flutter pub get
           cd ..
-          bash qa/gradle_distribution_preflight.sh
+          source qa/gradle_distribution_preflight.sh
           cd mobile
-          flutter build apk --debug --no-pub
+          with_gradle_distribution_retry flutter build apk --debug --no-pub
           test -s build/app/outputs/flutter-apk/app-debug.apk
       - name: Inspect APK manifest, signature and real payload bytes
         shell: bash
