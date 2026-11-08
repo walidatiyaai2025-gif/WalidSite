@@ -495,9 +495,26 @@ jobs:
           path: qa/visual-diagnostics/
           if-no-files-found: error
           retention-days: 7
+      - name: Detect actual PR changes requiring T007 browser acceptance
+        if: ${{ github.event_name == 'pull_request' }}
+        id: t007_scope
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$HEAD_SHA"
+          [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
+          git fetch --no-tags --no-recurse-submodules --depth=1 origin "$BASE_SHA"
+          paths="$(mktemp)"
+          trap 'rm -f "$paths"' EXIT
+          git diff --no-renames --name-only "$BASE_SHA" "$HEAD_SHA" > "$paths"
+          python3 qa/t007_changed_path_scope.py "$paths" >> "$GITHUB_OUTPUT"
       - name: T007 real Laravel visual diagnostics
         id: t007_visual_diagnostics
-        if: ${{ github.event_name == 'pull_request' && (github.head_ref == 'feat/T007-runtime-parity-final' || (startsWith(github.head_ref, 'feat/') && !startsWith(github.head_ref, 'feat/481-') && (contains(github.head_ref, '-web-') || contains(github.head_ref, '-WEB-')))) }}
+        if: ${{ github.event_name == 'pull_request' && steps.t007_scope.outputs.web_ui_changed == 'true' }}
         shell: bash
         env:
           APP_ENV: testing
@@ -539,7 +556,7 @@ jobs:
           python qa/capture_t007_diagnostics.py --commit "$(git rev-parse HEAD)" --locale en --dpr 1
 
       - name: Upload T007 runtime visual diagnostics
-        if: ${{ always() && steps.t007_visual_diagnostics.outcome != 'skipped' && github.event_name == 'pull_request' && (github.head_ref == 'feat/T007-runtime-parity-final' || (startsWith(github.head_ref, 'feat/') && (contains(github.head_ref, '-web-') || contains(github.head_ref, '-WEB-')))) }}
+        if: ${{ always() && github.event_name == 'pull_request' && steps.t007_visual_diagnostics.outcome != 'skipped' && steps.t007_scope.outputs.web_ui_changed == 'true' }}
         uses: actions/upload-artifact@v4
         with:
           name: T007-runtime-visual-diagnostics
