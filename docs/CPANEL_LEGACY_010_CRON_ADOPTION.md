@@ -6,7 +6,7 @@ Issue #1120. **No automatic update or Cron activation is authorized by this docu
 
 - Domain: `https://walidatiya.com`. cPanel main domain Document Root: `/home/walidatiya/public_html`.
 - Private Laravel installation: `/home/walidatiya/application`, with `.env`, `vendor`, `bootstrap`, `storage`, `VERSION` and an installed lock at `storage/app/site-installed.lock`.
-- Owner reported `0.1.0` and `2026-11-04T09:02:48+00:00` for the installed VERSION identity. **The exact raw bytes need independent read-only confirmation**; these may represent two lines, or the timestamp may be UI metadata. The new immutable version reader trusts **only one SemVer** in the file and will reject a two-line legacy format.
+- Owner reported `0.1.0` and `2026-11-04T09:02:48+00:00` for the installed VERSION identity. **Source-history audit:** Git commit `4e72fad5cd9e69b2759c7187ec0a66e5b0f39592` (2026-11-04, 04:58 UTC) contains `backend/VERSION` with exactly one line, `0.1.0` (LF-terminated), **not** a timestamp line. The timestamp may be separate UI metadata or a local deployment change; the raw live VERSION still needs read-only confirmation. The new immutable version reader accepts canonical one-line `0.1.0` and rejects two-line variants.
 - The live first-install application root does not visibly contain `cron/release-poll.php`. Do not assume old Laravel vendor autoload contains the new deployment selector/lease classes.
 
 ## Safe implementation boundary
@@ -19,3 +19,7 @@ Issue #1120. **No automatic update or Cron activation is authorized by this docu
 6. Enable apply only after real host writer shutdown/DB restore/independent HTTPS probe are attested. No unverified claim of automatic production deployment.
 
 Keep the existing two workflows, #1120 umbrella, and #1131 integration lane. The owner is not required to run Composer, npm or artisan for routine updates.
+
+## Historical 0.1.0 release-adoption blocker (repository evidence)
+
+The original source at Git SHA `4e72fad5cd9e69b2759c7187ec0a66e5b0f39592` has no `backend/cron/release-poll.php` or `TrustedInstalledVersion` class. Its `AdminUpdateController::apply()` only invokes `SiteUpdater::apply()` for pre-existing **database migrations**. This Admin path cannot install a signed Laravel **code** ZIP. Therefore a production update must not assume the old site's Admin supports the new code-only updater, regardless of configured keys. Matching `composer.json` dependency *ranges* between source snapshots do not prove the deployed `vendor` bytes, code-dispatcher, or migration inventory match. The initial signed legacy adoption must be implemented and tested separately on an isolated copy of the actual deployed 0.1.0 package.
