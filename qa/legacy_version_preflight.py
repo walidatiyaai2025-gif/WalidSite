@@ -12,21 +12,21 @@ from pathlib import Path
 import json
 import sys
 
-SEMVER = re.compile(r"(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)", re.ASCII)
-STAMP = re.compile(r"20[0-9]{2}-[01][0-9]-[0-3][0-9]T[0-2][0-9]:[0-5][0-9]:[0-5][0-9]\\+00:00", re.ASCII)
+SEMVER = re.compile(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)", re.ASCII)
+STAMP = re.compile(r"20[0-9]{2}-[01][0-9]-[0-3][0-9]T[0-2][0-9]:[0-5][0-9]:[0-5][0-9]\+00:00", re.ASCII)
 
 
 def classify_version_bytes(contents: bytes) -> dict:
     """Inspect only tightly bounded VERSION data; do not update any files."""
-    if not contents or len(contents) > 128 or b"\\r" in contents or b"\\x00" in contents:
+    if not contents or len(contents) > 128 or b"\r" in contents or b"\x00" in contents:
         raise ValueError("VERSION identity is malformed or oversized")
     try:
         raw = contents.decode("ascii")
     except UnicodeDecodeError as exc:
         raise ValueError("VERSION must be ASCII") from exc
-    if not raw.endswith("\\n"):
+    if not raw.endswith("\n"):
         raise ValueError("VERSION requires a final LF")
-    lines = raw[:-1].split("\\n")
+    lines = raw[:-1].split("\n")
     if len(lines) == 1 and SEMVER.fullmatch(lines[0]):
         return {"format": "canonical_semver", "version": lines[0],
                 "current_reader_compatible": True, "automatic_adoption_authorized": False}
