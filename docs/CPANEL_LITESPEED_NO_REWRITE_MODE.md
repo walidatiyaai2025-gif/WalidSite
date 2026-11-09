@@ -23,3 +23,19 @@ For a properly configured rewrite server keep the flag absent/false and use stan
 This is a **code-level compatibility patch**, not a published GitHub Release or evidence of an activated Cron publisher. The current legacy host and existing issue #1120 still require a publisher-signed and upgrade-tested release, cPanel host adapter, restore rehearsal, real HTTPS cutover and GitHub branch protection before automatic deployment can be declared working.
 
 Acceptance tests: `php artisan test --filter=CpanelNoRewriteUrlsTest` on a CI/dev runner (not an owner production command), plus mandatory exact-head PR CI.
+
+## CI regression evidence (owner-approved pages)
+
+The owner-frozen home (WEB-01) and expertise (WEB-03) templates and the current
+about (WEB-02) page intentionally do not share the old T007 hero structure.
+The release-blocking browser matrix must check their *actual* visible
+headings, local-language links, AR/EN journeys and keyboard navigation without
+replacing approved markup. The 390px expertise rail is horizontally scrollable:
+a focused link must become visible under native browser focus scrolling, with a
+bounded settling interval and a failure receipt containing the index/rail
+geometry if it remains clipped. No test may set scrollLeft, programmatically
+scroll a failed link into view, discard a failing viewport, or reinterpret a
+pixel mismatch as a visual match.
+
+This remediation is code-level only. A green exact-head CI and a signed,
+approved, physically installed cPanel release are independently required.
