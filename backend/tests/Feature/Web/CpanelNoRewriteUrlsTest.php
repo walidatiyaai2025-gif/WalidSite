@@ -46,6 +46,7 @@ class CpanelNoRewriteUrlsTest extends TestCase
         } finally {
             $urls->useOrigin(null);
             $urls->useAssetOrigin(null);
+            $urls->forceScheme(null);
         }
     }
 
@@ -69,6 +70,7 @@ class CpanelNoRewriteUrlsTest extends TestCase
         } finally {
             $urls->useOrigin(null);
             $urls->useAssetOrigin(null);
+            $urls->forceScheme(null);
         }
     }
 
