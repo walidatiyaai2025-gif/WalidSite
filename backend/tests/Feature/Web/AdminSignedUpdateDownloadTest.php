@@ -54,7 +54,7 @@ final class AdminSignedUpdateDownloadTest extends TestCase
         return $user;
     }
 
-    /** @return array{owner:User,version:string,bytes:string,public:string} */
+    /** @return array{owner:User,installed:string,version:string,bytes:string,public:string} */
     private function publisherFixture(bool $changedDownload = false): array
     {
         if (! class_exists(ZipArchive::class) || ! function_exists('sodium_crypto_sign_detached')) {
@@ -124,7 +124,7 @@ final class AdminSignedUpdateDownloadTest extends TestCase
             'site.trusted_release_public_key' => $public,
         ]);
 
-        return ['owner' => $this->user(true), 'version' => $version, 'bytes' => $bytes, 'public' => $public];
+        return ['owner' => $this->user(true), 'installed' => $installed, 'version' => $version, 'bytes' => $bytes, 'public' => $public];
     }
 
     public function test_owner_can_check_then_download_exact_signed_zip_and_continue_to_cpanel_preflight(): void
@@ -180,7 +180,7 @@ final class AdminSignedUpdateDownloadTest extends TestCase
         $this->post('https://localhost/admin/updates/preflight')
             ->assertRedirect()->assertSessionHasErrors('hosting');
         $this->assertNull(session('owner_update_staged_code'));
-        self::assertSame('0.1.2', trim(file_get_contents(base_path('VERSION'))));
+        self::assertSame($fixture['installed'], trim(file_get_contents(base_path('VERSION'))));
     }
 
     public function test_wrong_download_bytes_fail_and_never_leave_verified_receipt_or_stale_candidate(): void
