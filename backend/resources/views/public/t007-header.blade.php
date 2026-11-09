@@ -39,4 +39,27 @@
     <a class="t007-sr-only" href="{{ route('public.search', ['lang' => $t007Locale]) }}">{{ $t007Locale === 'ar' ? 'البحث في الموقع' : 'Search' }}</a>
 </header>
 
+@if($t007Current === 'public.expertise')
+{{-- Accessible keyboard focus for the long, horizontally scrollable shared
+     navigation on 390px screens. No frozen WEB-03 Blade/CSS is altered. --}}
+<script>
+(() => {
+    'use strict';
+    const rail = document.querySelector('.t007-nav-links');
+    if (!rail) return;
+    rail.addEventListener('focusin', (event) => {
+        const link = event.target;
+        if (!(link instanceof HTMLAnchorElement) || link.parentElement !== rail) return;
+        const railBox = rail.getBoundingClientRect();
+        const linkBox = link.getBoundingClientRect();
+        if (linkBox.left < railBox.left + 2 || linkBox.right > railBox.right - 2) {
+            // This runs in the actual product on a user focus event, never
+            // inside the QA probe. Keep focus outlines and native Tab order.
+            link.scrollIntoView({behavior: 'instant', block: 'nearest', inline: 'nearest'});
+        }
+    });
+})();
+</script>
+@endif
+
 @endif

@@ -55,6 +55,16 @@ return [
     'url' => env('APP_URL', 'http://localhost'),
 
     /*
+    | Explicit cPanel/LiteSpeed compatibility for hosts that ignore .htaccess
+    | rewrite rules. Dynamic URLs use /index.php/; static assets do not.
+    | Disabled by default to preserve normal canonical clean URLs.
+    */
+    'front_controller_urls' => (bool) env('SITE_FRONT_CONTROLLER_URLS', false),
+
+    'asset_url' => env('ASSET_URL'),
+
+
+    /*
     |--------------------------------------------------------------------------
     | Application Timezone
     |--------------------------------------------------------------------------
