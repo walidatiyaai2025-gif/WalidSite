@@ -106,6 +106,20 @@ class T007LocaleNavigationTest extends TestCase
         }
     }
 
+    public function test_expertise_keyboard_rail_scrolls_focused_link_without_changing_frozen_design(): void
+    {
+        foreach (['en', 'ar'] as $locale) {
+            $this->get('/expertise?lang='.$locale)->assertOk()
+                ->assertSee("rail.addEventListener('focusin'", false)
+                ->assertSee("link.scrollIntoView({behavior: 'instant', block: 'nearest', inline: 'nearest'})", false)
+                ->assertSee('class="t007-nav-links"', false);
+        }
+
+        // Other pages continue to use their existing navigation behaviour.
+        $this->get('/about?lang=en')->assertOk()
+            ->assertDontSee("rail.addEventListener('focusin'", false);
+    }
+
     public function test_new_owner_expertise_four_state_hero_supersedes_legacy_reference_stage(): void
     {
         $this->get('/expertise?lang=en')->assertOk()
