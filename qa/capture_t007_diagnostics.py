@@ -672,19 +672,27 @@ def responsive_browser_audit(base_url: str, screens: dict) -> dict:
                                     for (let index = 0; index < links.length; index++) {
                                         const link = links[index];
                                         link.focus();
-                                        // A real browser frame is required before judging
-                                        // native keyboard-focus scroll on a horizontal
-                                        // navigation rail. Do NOT scroll the rail for it.
-                                        await new Promise(resolve => requestAnimationFrame(resolve));
-                                        await new Promise(resolve => requestAnimationFrame(resolve));
-                                        const box = link.getBoundingClientRect();
-                                        const parent = nav.getBoundingClientRect();
-                                        const visible = document.activeElement === link &&
-                                            box.width > 0 && box.height > 0 &&
-                                            box.left >= parent.left - 2 &&
-                                            box.right <= parent.right + 2 &&
-                                            box.left >= -2 &&
-                                            box.right <= innerWidth + 2;
+                                        // Native focus can scroll an overflow:auto
+                                        // rail asynchronously (HTML smooth scroll).
+                                        // Observe up to 750ms of *browser-driven*
+                                        // movement without forcing scrollLeft or
+                                        // scrollIntoView; a still-clipped link
+                                        // MUST remain a CI failure.
+                                        let visible = false;
+                                        let box = link.getBoundingClientRect();
+                                        let parent = nav.getBoundingClientRect();
+                                        for (let frame = 0; frame < 45; frame++) {
+                                            await new Promise(resolve => requestAnimationFrame(resolve));
+                                            box = link.getBoundingClientRect();
+                                            parent = nav.getBoundingClientRect();
+                                            visible = document.activeElement === link &&
+                                                box.width > 0 && box.height > 0 &&
+                                                box.left >= parent.left - 2 &&
+                                                box.right <= parent.right + 2 &&
+                                                box.left >= -2 &&
+                                                box.right <= innerWidth + 2;
+                                            if (visible) break;
+                                        }
                                         if (!visible) {
                                             return {
                                                 passed: false, reason: 'focused-link-clipped',
