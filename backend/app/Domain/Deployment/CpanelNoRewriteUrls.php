@@ -33,6 +33,7 @@ final class CpanelNoRewriteUrls
         }
 
         $siteOrigin = rtrim($siteOrigin, '/');
+        $urls->forceScheme('https');
         $urls->useOrigin($siteOrigin.'/index.php');
         // URL::asset must NOT inherit the /index.php prefix. Respect an
         // explicitly configured asset origin (e.g. a pre-approved CDN).
