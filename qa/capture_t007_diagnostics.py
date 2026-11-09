@@ -596,11 +596,27 @@ def responsive_browser_audit(base_url: str, screens: dict) -> dict:
                                 if response is None or response.status != 200:
                                     raise RuntimeError("Non-200 responsive route")
                                 page.evaluate("() => document.fonts.ready")
-                                checks = page.evaluate("""() => {
+                                # Bind actual frozen/approved route identities to
+                                # the real viewport, not an obsolete universal
+                                # T007 hero selector. Hidden alternate headings
+                                # do not count as a rendered screenshot identity.
+                                checks = page.evaluate("""(heroSelector) => {
                                     const main = document.querySelector('#main-content');
-                                    const hero = document.querySelector('.t007-reference-stage h1');
-                                    const target = document.querySelector('#t007-primary-content');
-                                    const nav = document.querySelector('.t007-nav-links');
+                                    const heroes = [...document.querySelectorAll(heroSelector)]
+                                        .filter(node => {
+                                            const box = node.getBoundingClientRect();
+                                            return box.height > 0 && box.width > 0 &&
+                                                getComputedStyle(node).visibility !== 'hidden';
+                                        });
+                                    const landing = Boolean(document.querySelector('.w26-landing'));
+                                    const target = document.querySelector(
+                                        landing ? '#main-content' : '#t007-primary-content'
+                                    );
+                                    const nav = document.querySelector(
+                                        landing
+                                            ? (innerWidth <= 900 ? '.w26-mobile-nav' : '.w26-ribbon')
+                                            : '.t007-nav-links'
+                                    );
                                     return {
                                         locale_ok: document.documentElement.lang ===
                                             (location.search.includes('lang=ar') ? 'ar' : 'en'),
@@ -609,15 +625,14 @@ def responsive_browser_audit(base_url: str, screens: dict) -> dict:
                                         no_horizontal_page_overflow:
                                             document.documentElement.scrollWidth <=
                                             window.innerWidth + 1,
-                                        main_and_hero: Boolean(main && hero &&
-                                            hero.getBoundingClientRect().height > 0),
+                                        main_and_hero: Boolean(main && heroes.length === 1 &&
+                                            main.contains(heroes[0])),
                                         jump_target_focusable: Boolean(target &&
                                             target.tabIndex === -1),
-                                        nav_present: Boolean(nav && nav.querySelectorAll('a').length >= 8),
-                                        // Detect text protruding outside its real
-                                        // evidence/CV/timeline card. A long,
-                                        // source-verified job title must wrap,
-                                        // never overlap an adjacent column.
+                                        nav_present: Boolean(nav &&
+                                            nav.querySelectorAll('a').length >= (landing ? 6 : 8)),
+                                        // Genuine published evidence cards must wrap
+                                        // instead of overflowing their owning card.
                                         card_text_contained: [...document.querySelectorAll(
                                             '.t007-about-row strong, .t007-hire-card h2, ' +
                                             '.t007-hire-card p, .t007-hire-card a'
@@ -634,16 +649,19 @@ def responsive_browser_audit(base_url: str, screens: dict) -> dict:
                                                 box.width > 0;
                                         }),
                                     };
-                                }""")
-                                # Focus is a user action: every header link must
-                                # scroll into view in RTL and LTR, including the
-                                # compact-desktop rail at 1024/1280px. A clipped
-                                # rail with overflow:hidden/visible fails closed.
+                                }""", HERO_SELECTORS[screen_id])
+                                # Check focus in the actual visible navigation,
+                                # including the mobile home grid and compact rail.
                                 checks["all_navigation_links_focus_reachable"] = page.evaluate("""() => {
-                                    const nav = document.querySelector('.t007-nav-links');
+                                    const landing = Boolean(document.querySelector('.w26-landing'));
+                                    const nav = document.querySelector(
+                                        landing
+                                            ? (innerWidth <= 900 ? '.w26-mobile-nav' : '.w26-ribbon')
+                                            : '.t007-nav-links'
+                                    );
                                     if (!nav) return false;
                                     const links = [...nav.querySelectorAll('a')];
-                                    if (links.length < 8) return false;
+                                    if (links.length < (landing ? 6 : 8)) return false;
                                     const styles = getComputedStyle(nav);
                                     if (nav.scrollWidth > nav.clientWidth + 1 &&
                                         !['auto', 'scroll'].includes(styles.overflowX)) {
@@ -661,22 +679,27 @@ def responsive_browser_audit(base_url: str, screens: dict) -> dict:
                                             box.right <= innerWidth + 2;
                                     });
                                 }""")
-                                # Enter keyboard modality and focus the hidden
-                                # secondary navigation; its visible focus state
-                                # must not remain clipped from sight.
+                                # The approved home uses the global skip link.
+                                # Other T007 routes use the original supplemental
+                                # focus-revealed navigation links.
                                 page.keyboard.press("Tab")
-                                page.locator(".t007-sr-only").first.focus()
+                                focus_selector = (".skip-link" if screen_id == "WEB-01"
+                                                  else ".t007-sr-only")
+                                page.locator(focus_selector).first.focus()
                                 checks["supplemental_keyboard_link_visible"] = page.evaluate(
-                                    """() => {
+                                    """(selector) => {
                                         const link = document.activeElement;
+                                        if (!link || !link.matches(selector)) return false;
                                         const css = getComputedStyle(link);
                                         const box = link.getBoundingClientRect();
-                                        return link.classList.contains('t007-sr-only') &&
-                                            css.position === 'fixed' && box.width >= 44 &&
+                                        const acceptablePosition = selector === '.skip-link'
+                                            ? css.position === 'absolute'
+                                            : css.position === 'fixed';
+                                        return acceptablePosition && box.width >= 44 &&
                                             box.height >= 40 && box.top >= 0 &&
                                             box.left >= 0 && box.right <= innerWidth &&
                                             box.bottom <= innerHeight;
-                                    }"""
+                                    }""", focus_selector
                                 )
                                 results[key] = {
                                     "passed": all(checks.values()), "checks": checks
