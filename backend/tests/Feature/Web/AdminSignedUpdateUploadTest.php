@@ -21,6 +21,12 @@ final class AdminSignedUpdateUploadTest extends TestCase
         if (! function_exists('sodium_crypto_sign_detached') || ! class_exists(ZipArchive::class)) {
             $this->markTestSkipped('Sodium/Zip required.');
         }
+        // Keep the signed ZIP fixture newer than the checked-out release.
+        $installedVersion = trim((string) file_get_contents(base_path('VERSION')));
+        $parts = explode('.', $installedVersion);
+        $updateVersion = $parts[0].'.'.$parts[1].'.'.((int) $parts[2] + 1);
+        $wrongVersion = $parts[0].'.'.$parts[1].'.'.((int) $parts[2] + 2);
+
         $owner = User::create([
             'email' => 'update-package-owner@example.test',
             'password_hash' => Hash::make('test-password'),
@@ -54,12 +60,12 @@ final class AdminSignedUpdateUploadTest extends TestCase
         $pub = base64_encode(sodium_crypto_sign_publickey($pair));
         $payload = json_encode([
             'product' => 'walidsite',
-            'version' => '0.1.3',
+            'version' => $updateVersion,
             'source_sha' => str_repeat('a', 40),
             'artifact_sha256' => hash_file('sha256', $zipFile),
             'artifact_size' => filesize($zipFile),
             'min_php' => '8.3.0',
-            'artifact_file' => 'WalidSite-update-v0.1.3.zip',
+            'artifact_file' => 'WalidSite-update-v'.$updateVersion.'.zip',
         ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
         $envelope = json_encode([
             'payload' => base64_encode($payload),
@@ -108,7 +114,7 @@ final class AdminSignedUpdateUploadTest extends TestCase
             $verifiedIds[] = $id;
             $this->get('https://localhost/admin/updates')->assertOk()
                 ->assertSee('data-testid="owner-signed-upload-verified"', false)
-                ->assertSee('0.1.3')
+                ->assertSee($updateVersion)
                 ->assertSee(str_repeat('a', 40))
                 ->assertSee('data-testid="owner-host-preflight-form"', false)
                 ->assertDontSee($pub)
@@ -117,18 +123,18 @@ final class AdminSignedUpdateUploadTest extends TestCase
             // A forged or stale browser stage receipt cannot advertise that
             // a different VERSION file was staged, even if the ZIP itself
             // remains valid and a preflight session claim has been planted.
-            $candidate = dirname(public_path()).'/.walidsite-releases/v0.1.3-'.str_repeat('a', 40);
+            $candidate = dirname(public_path()).'/.walidsite-releases/v'.$updateVersion.'-'.str_repeat('a', 40);
             $this->assertTrue(mkdir($candidate.'/application', 0700, true));
-            file_put_contents($candidate.'/application/VERSION', '0.1.4');
+            file_put_contents($candidate.'/application/VERSION', $wrongVersion);
             session()->put('owner_update_host_preflight', [
-                'id' => $id, 'installed_version' => '0.1.2',
-                'version' => '0.1.3',
+                'id' => $id, 'installed_version' => $installedVersion,
+                'version' => $updateVersion,
                 'artifact_sha256' => hash('sha256', $validArchiveBytes),
                 'checked_at' => time(),
             ]);
             session()->put('owner_update_staged_code', [
-                'id' => $id, 'installed_version' => '0.1.2',
-                'version' => '0.1.3', 'source_sha' => str_repeat('a', 40),
+                'id' => $id, 'installed_version' => $installedVersion,
+                'version' => $updateVersion, 'source_sha' => str_repeat('a', 40),
                 'artifact_sha256' => hash('sha256', $validArchiveBytes),
                 'created_at' => time(),
             ]);
@@ -153,14 +159,14 @@ final class AdminSignedUpdateUploadTest extends TestCase
             $this->get('https://localhost/admin/updates')->assertOk()
                 ->assertDontSee('data-testid="owner-host-preflight-verified"', false)
                 ->assertSee('Install Update — Hosting/Recovery Blocked');
-            $this->assertSame('0.1.2', trim(file_get_contents(base_path('VERSION'))));
+            $this->assertSame($installedVersion, trim(file_get_contents(base_path('VERSION'))));
 
             // A forged session-only "passed" preflight is never enough to
             // stage executable code on an incompatible non-cPanel checkout.
             // The stage service MUST independently rerun physical + ZIP gates.
             session()->put('owner_update_host_preflight', [
-                'id' => $id, 'installed_version' => '0.1.2',
-                'version' => '0.1.3',
+                'id' => $id, 'installed_version' => $installedVersion,
+                'version' => $updateVersion,
                 'artifact_sha256' => hash('sha256', $validArchiveBytes),
                 'checked_at' => time(),
             ]);
@@ -206,12 +212,12 @@ final class AdminSignedUpdateUploadTest extends TestCase
             config(['site.updates_enabled' => true]);
             $this->get('https://localhost/admin/updates')->assertOk()
                 ->assertDontSee('data-testid="owner-signed-upload-verified"', false);
-            $this->assertSame('0.1.2', trim(file_get_contents(base_path('VERSION'))));
+            $this->assertSame($installedVersion, trim(file_get_contents(base_path('VERSION'))));
         } finally {
             foreach ($verifiedIds as $id) {
                 $root = storage_path('app/private/verified-updates/'.$id);
                 @unlink($root.'/receipt.json');
-                @unlink($root.'/WalidSite-update-v0.1.3.zip');
+                @unlink($root.'/WalidSite-update-v'.$updateVersion.'.zip');
                 @rmdir($root);
             }
             @rmdir(storage_path('app/private/verified-updates'));
