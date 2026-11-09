@@ -239,6 +239,12 @@ class T007DiagnosticExitTest(unittest.TestCase):
         self.assertIn('landing ? "#main-content"', code.replace("'", '"'))
         self.assertIn("nav.querySelectorAll('a').length >= (landing ? 6 : 8)", code)
         self.assertIn('focus_selector = (".skip-link" if screen_id == "WEB-01"', code)
+        self.assertIn('for (let frame = 0; frame < 45; frame++)', code)
+        self.assertIn('if (visible) break;', code)
+        # Inspect native focused-link scrolling without artificially moving
+        # an inaccessible overflow rail for the accessibility gate.
+        self.assertNotIn("nav.scrollLeft =", code)
+        self.assertNotIn("link.scrollIntoView(", code)
         self.assertIn('report["summary"]["pixel_parity_complete"]', code)
         self.assertIn('not report["summary"]["responsive_ok"]', code)
 
