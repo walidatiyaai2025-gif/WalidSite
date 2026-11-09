@@ -652,33 +652,56 @@ def responsive_browser_audit(base_url: str, screens: dict) -> dict:
                                 }""", HERO_SELECTORS[screen_id])
                                 # Check focus in the actual visible navigation,
                                 # including the mobile home grid and compact rail.
-                                checks["all_navigation_links_focus_reachable"] = page.evaluate("""() => {
+                                focus_details = page.evaluate("""async () => {
                                     const landing = Boolean(document.querySelector('.w26-landing'));
                                     const nav = document.querySelector(
                                         landing
                                             ? (innerWidth <= 900 ? '.w26-mobile-nav' : '.w26-ribbon')
                                             : '.t007-nav-links'
                                     );
-                                    if (!nav) return false;
+                                    if (!nav) return { passed: false, reason: 'missing-nav' };
                                     const links = [...nav.querySelectorAll('a')];
-                                    if (links.length < (landing ? 6 : 8)) return false;
+                                    if (links.length < (landing ? 6 : 8)) {
+                                        return { passed: false, reason: 'missing-links' };
+                                    }
                                     const styles = getComputedStyle(nav);
                                     if (nav.scrollWidth > nav.clientWidth + 1 &&
                                         !['auto', 'scroll'].includes(styles.overflowX)) {
-                                        return false;
+                                        return { passed: false, reason: 'clipped-rail' };
                                     }
-                                    return links.every((link) => {
+                                    for (let index = 0; index < links.length; index++) {
+                                        const link = links[index];
                                         link.focus();
+                                        // A real browser frame is required before judging
+                                        // native keyboard-focus scroll on a horizontal
+                                        // navigation rail. Do NOT scroll the rail for it.
+                                        await new Promise(resolve => requestAnimationFrame(resolve));
+                                        await new Promise(resolve => requestAnimationFrame(resolve));
                                         const box = link.getBoundingClientRect();
                                         const parent = nav.getBoundingClientRect();
-                                        return document.activeElement === link &&
+                                        const visible = document.activeElement === link &&
                                             box.width > 0 && box.height > 0 &&
                                             box.left >= parent.left - 2 &&
                                             box.right <= parent.right + 2 &&
                                             box.left >= -2 &&
                                             box.right <= innerWidth + 2;
-                                    });
+                                        if (!visible) {
+                                            return {
+                                                passed: false, reason: 'focused-link-clipped',
+                                                link_index: index,
+                                                rail_overflow: styles.overflowX,
+                                                rail_width: Math.round(parent.width),
+                                                rail_scroll_width: nav.scrollWidth,
+                                                link_left: Math.round(box.left),
+                                                link_right: Math.round(box.right),
+                                                rail_left: Math.round(parent.left),
+                                                rail_right: Math.round(parent.right)
+                                            };
+                                        }
+                                    }
+                                    return { passed: true };
                                 }""")
+                                checks["all_navigation_links_focus_reachable"] = focus_details["passed"]
                                 # The approved home uses the global skip link.
                                 # Other T007 routes use the original supplemental
                                 # focus-revealed navigation links.
@@ -702,7 +725,8 @@ def responsive_browser_audit(base_url: str, screens: dict) -> dict:
                                     }""", focus_selector
                                 )
                                 results[key] = {
-                                    "passed": all(checks.values()), "checks": checks
+                                    "passed": all(checks.values()), "checks": checks,
+                                    "focus_details": focus_details,
                                 }
                             except Exception as exc:
                                 results[key] = {
