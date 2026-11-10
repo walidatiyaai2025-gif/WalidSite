@@ -140,10 +140,8 @@ class CompanionWelcome extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Semantics(
-      identifier: 'walidsite.mobile.01',
-      child: Scaffold(
-        key: const Key('mobile-welcome-screen'),
+    return Scaffold(
+      key: const Key('mobile-welcome-screen'),
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -166,6 +164,9 @@ class CompanionWelcome extends StatelessWidget {
                   ),
                   const SizedBox(height: 28),
                   Semantics(
+                    // The route marker belongs to the *visible* heading,
+                    // not a page-wide Scaffold node Android may report hidden.
+                    identifier: 'walidsite.mobile.01',
                     header: true,
                     child: Text(
                       arabic ? 'مرحبًا بك في رفيق وليد التقني' : 'Welcome to Waleed Tech Companion',
@@ -214,7 +215,6 @@ class CompanionWelcome extends StatelessWidget {
             ),
           ),
         ),
-      ),
       ),
     );
   }

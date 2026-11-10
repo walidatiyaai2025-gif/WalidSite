@@ -23,6 +23,34 @@ void main() {
     handle.dispose();
   });
 
+  testWidgets('MOBILE-01 resource ID is on the visible localized heading, not a hidden page wrapper',
+      (tester) async {
+    final handle = tester.ensureSemantics();
+    await tester.pumpWidget(const WaleedTechApp());
+    final marker = find.byWidgetPredicate((widget) =>
+        widget is Semantics &&
+        widget.properties.identifier == 'walidsite.mobile.01');
+    expect(marker, findsOneWidget);
+    var node = tester.widget<Semantics>(marker);
+    expect(node.properties.header, isTrue);
+    expect(node.child, isA<Text>(),
+        reason: 'Android UIAutomator must see the on-screen title as the resource ID');
+    expect((node.child! as Text).data, 'Welcome to Waleed Tech Companion');
+    expect(tester.getSize(marker).width, greaterThan(0));
+    expect(tester.getSize(marker).height, greaterThan(0));
+
+    await tester.tap(find.byKey(const Key('welcome-language')));
+    await tester.pumpAndSettle();
+    expect(marker, findsOneWidget);
+    node = tester.widget<Semantics>(marker);
+    expect(node.properties.header, isTrue);
+    expect((node.child! as Text).data, 'مرحبًا بك في رفيق وليد التقني');
+    await tester.tap(find.byKey(const Key('welcome-start')));
+    await tester.pumpAndSettle();
+    expect(marker, findsNothing);
+    handle.dispose();
+  });
+
   testWidgets('MOBILE-06 native ID is attached to genuine offline detail',
       (tester) async {
     final handle = tester.ensureSemantics();
