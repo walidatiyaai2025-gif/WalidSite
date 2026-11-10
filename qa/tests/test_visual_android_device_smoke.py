@@ -194,6 +194,49 @@ class AndroidDeviceSmokeTest(unittest.TestCase):
                     with self.assertRaises(DeviceSmokeError):
                         smoke(self.apk, **self.kwargs)
 
+    def test_android35_missing_am_activity_field_needs_live_resumed_activity(self):
+        expected = PACKAGE + "/.MainActivity"
+
+        def adb35(argv, *, timeout=15):
+            if argv[3:9] == ["shell", "am", "start", "-W", "-n", expected]:
+                return CompletedProcess(argv, 0, "Status: ok\\n", "")
+            if argv[3:] == ["shell", "dumpsys", "activity", "activities"]:
+                return CompletedProcess(
+                    argv, 0, "ActivityTaskManager:\\n"
+                    "  topResumedActivity=ActivityRecord{123 u0 "
+                    + expected + " t1}\\n", "")
+            return self.adb(argv, timeout=timeout)
+
+        with patch("qa.android_device_smoke.inspect", side_effect=self.inspect), \\
+                patch("qa.android_device_smoke._command", side_effect=adb35):
+            result = smoke(self.apk, **self.kwargs)
+        self.assertTrue(result["device_install_launch_verified"])
+        self.assertFalse(result["production_ready"])
+
+    def test_android35_resumed_activity_fallback_rejects_missing_foreign_or_ambiguous(self):
+        expected = PACKAGE + "/.MainActivity"
+        for record in (
+            "ActivityTaskManager: no top resumed activity",
+            "topResumedActivity=ActivityRecord{123 u0 com.android.systemui/.Overlay t1}",
+            "topResumedActivity=ActivityRecord{123 u0 evil." + expected + " t1}",
+            "topResumedActivity=ActivityRecord{123 u0 " + expected
+            + " t1}\\ntopResumedActivity=ActivityRecord{456 u0 " + expected + " t2}",
+        ):
+            self.installed = False
+
+            def adb35(argv, *, timeout=15):
+                if argv[3:9] == ["shell", "am", "start", "-W", "-n", expected]:
+                    return CompletedProcess(argv, 0, "Status: ok\\n", "")
+                if argv[3:] == ["shell", "dumpsys", "activity", "activities"]:
+                    return CompletedProcess(argv, 0, record, "")
+                return self.adb(argv, timeout=timeout)
+
+            with self.subTest(record=record[:55]), \\
+                    patch("qa.android_device_smoke.inspect", side_effect=self.inspect), \\
+                    patch("qa.android_device_smoke._command", side_effect=adb35):
+                with self.assertRaisesRegex(DeviceSmokeError, "resumed activity"):
+                    smoke(self.apk, **self.kwargs)
+
     def test_rejected_adb_stage_is_static_and_never_leaks_transport_output(self):
         for operation, stage in (("get-state", "get-state"),
                                  ("install", "install"),
