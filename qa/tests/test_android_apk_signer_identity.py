@@ -15,6 +15,7 @@ PIN = "a1" * 32
 OTHER = "b2" * 32
 SUCCESS = (
     "Verifies\n"
+    "Number of signers: 1\n"
     "Verified using v1 scheme (JAR signing): true\n"
     "Verified using v2 scheme (APK Signature Scheme v2): true\n"
     "Signer #1 certificate DN: CN=WalidSite Release, O=Example\n"
@@ -69,6 +70,74 @@ class ApkSignerIdentityTest(unittest.TestCase):
         self.assertNotIn("SENSITIVE", str(caught.exception))
         self.assertNotIn(str(self.apk), str(caught.exception))
 
+    def test_verbose_apksigner_signer_count_and_line_endings(self):
+        # Both Unix and Windows SDK apksigner output must be handled, but the
+        # actual compiled certificate must still be the one pinned in CI.
+        for stdout in (SUCCESS, SUCCESS.replace("\n", "\r\n")):
+            with self.subTest(line_endings=repr(stdout[-3:])):
+                proof = attest(self.apk, "apksigner", PIN, self.preflight,
+                               runner=self.runner(stdout=stdout))
+                self.assertEqual(PIN, proof["apk_certificate_sha256"])
+
+    def test_multiple_reported_signers_rejected_even_with_only_one_cert_line(self):
+        for reported in ("0", "2", "9"):
+            with self.subTest(reported=reported):
+                stdout = SUCCESS.replace("Number of signers: 1",
+                                         "Number of signers: " + reported)
+                with self.assertRaisesRegex(ApkSignerIdentityError,
+                        "APK_SIGNER_COUNT_INVALID observed_public_signer_count=" + reported):
+                    attest(self.apk, "apksigner", PIN, self.preflight,
+                           runner=self.runner(stdout))
+
+    def test_missing_duplicated_or_untrusted_signer_count_is_rejected(self):
+        for stdout in (
+            SUCCESS.replace("Number of signers: 1\n", ""),
+            SUCCESS + "Number of signers: 1\n",
+            SUCCESS.replace("Number of signers: 1", "Number of signers: secret"),
+            SUCCESS.replace("Number of signers: 1", "Number of signers: 9999"),
+        ):
+            with self.subTest(tail=repr(stdout[-35:])):
+                with self.assertRaisesRegex(ApkSignerIdentityError, "APK_SIGNER_COUNT_UNAVAILABLE"):
+                    attest(self.apk, "apksigner", PIN, self.preflight,
+                           runner=self.runner(stdout))
+
+    def test_sdk_versioned_rotated_certificate_format_requires_independent_review(self):
+        rotated = SUCCESS.replace(
+            "Signer #1 certificate ", "Signer (minSdkVersion=33, maxSdkVersion=35) certificate "
+        )
+        with self.assertRaisesRegex(ApkSignerIdentityError, "APK_SIGNER_ROTATION_UNSUPPORTED"):
+            attest(self.apk, "apksigner", PIN, self.preflight,
+                   runner=self.runner(rotated))
+
+    def test_source_stamp_does_not_count_as_distribution_signer(self):
+        stamped = SUCCESS + (
+            "Source Stamp Signer certificate SHA-256 digest: " + OTHER + "\n"
+        )
+        proof = attest(self.apk, "apksigner", PIN, self.preflight,
+                       runner=self.runner(stamped))
+        self.assertEqual(PIN, proof["apk_certificate_sha256"])
+
+    def test_indented_or_malformed_certificate_headings_are_not_normalized(self):
+        # Preserve the original anchored apksigner output contract: a
+        # leading space does not transform malformed output into evidence.
+        for stdout in (
+            SUCCESS.replace("Signer #1", "  Signer #1"),
+            SUCCESS.replace("Signer #1 certificate", "\tSigner #1 certificate"),
+        ):
+            with self.subTest(indented=repr(stdout[-90:])):
+                with self.assertRaisesRegex(ApkSignerIdentityError,
+                        "APK_SIGNER_COUNT_INVALID"):
+                    attest(self.apk, "apksigner", PIN, self.preflight,
+                           runner=self.runner(stdout))
+
+    def test_crlf_duplicate_signer_digest_fails_closed(self):
+        stdout = SUCCESS.replace("\n", "\r\n")
+        stdout += f"Signer #1 certificate SHA-256 digest: {PIN}\r\n"
+        with self.assertRaisesRegex(ApkSignerIdentityError,
+                "APK_SIGNER_DIGEST_AMBIGUOUS"):
+            attest(self.apk, "apksigner", PIN, self.preflight,
+                   runner=self.runner(stdout))
+
     def test_any_invalid_crypto_result_fails_even_when_stdout_contains_pin(self):
         with self.assertRaisesRegex(ApkSignerIdentityError, "APK_SIGNATURE_CRYPTOGRAPHICALLY_INVALID"):
             attest(self.apk, "apksigner", PIN, self.preflight, runner=self.runner(status=1))
@@ -77,7 +146,7 @@ class ApkSignerIdentityTest(unittest.TestCase):
         for stdout in (
             SUCCESS + f"Signer #2 certificate SHA-256 digest: {PIN}\n",
             SUCCESS + "Signer #2 certificate DN: CN=second\n",
-            "Verified using v2 scheme: true\n",
+            "Number of signers: 1\nVerified using v2 scheme: true\n",
         ):
             with self.subTest(stdout=stdout[-100:]):
                 with self.assertRaisesRegex(ApkSignerIdentityError, "APK_SIGNER_COUNT_INVALID"):
