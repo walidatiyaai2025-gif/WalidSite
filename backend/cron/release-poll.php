@@ -71,11 +71,36 @@ try {
         );
         $origin = config('site.trusted_release_origin');
         $key = config('site.trusted_release_public_key');
-        if ($version === null || base_path() !== $running
-            || ! is_string($origin) || $origin === ''
-            || ! is_string($key) || $key === ''
-            || file_exists($home.'/.walidsite-update-maintenance.json')
+        // Owner-facing diagnostics must not disappear when signed publisher
+        // preflight stops BEFORE catalog polling. Never infer a trusted
+        // installed release from the local observed VERSION; use it only for
+        // a strictly blocked, non-authorizing private receipt.
+        $preflightReason = null;
+        $firstPin = config('site.trusted_installed_version');
+        if (! is_string($firstPin) || $firstPin === '') {
+            $preflightReason = 'TRUSTED_INSTALLED_VERSION_MISSING';
+        } elseif ($version === null || base_path() !== $running) {
+            $preflightReason = 'INSTALLED_RUNTIME_IDENTITY_UNVERIFIED';
+        } elseif (! is_string($origin) || $origin === '') {
+            $preflightReason = 'TRUSTED_RELEASE_ORIGIN_MISSING';
+        } elseif (! is_string($key) || $key === '') {
+            $preflightReason = 'TRUSTED_RELEASE_PUBLIC_KEY_MISSING';
+        } elseif (file_exists($home.'/.walidsite-update-maintenance.json')
             || is_link($home.'/.walidsite-update-maintenance.json')) {
+            $preflightReason = 'RELEASE_MAINTENANCE_ACTIVE';
+        }
+        if ($preflightReason !== null) {
+            $observed = (new \App\Domain\Deployment\TrustedInstalledVersion())->read(
+                $running.'/VERSION',
+            );
+            if ($observed !== null) {
+                $private = $original.'/storage/app/private';
+                if (is_dir($private) && ! is_link($private)) {
+                    (new \App\Domain\Deployment\CpanelReleaseCronPoller())->recordBlockedPreflight(
+                        $private.'/release-automation', $public, $observed, $preflightReason,
+                    );
+                }
+            }
             throw new RuntimeException('Verified signed release discovery is blocked.');
         }
         $writerLease->assertSharedHeld();

@@ -58,7 +58,37 @@ button:disabled{background:#718096;cursor:not-allowed}
 <dl class="summary">
 <div><dt>{{ $locale === 'ar' ? 'حالة الفحص' : 'Poll status' }}</dt>
 <dd data-testid="release-cron-state">{{ $cronStatus['state'] }}</dd></div>
-<div><dt>{{ $locale === 'ar' ? 'آخر فحص موثوق محليًا' : 'Last locally recorded check' }}</dt>
+@if($cronStatus['state'] === 'BLOCKED')
+<div><dt>{{ $locale === 'ar' ? 'سبب تعطّل الفحص أو النشر' : 'Blocked reason' }}</dt>
+<dd data-testid="release-cron-block-reason">
+@switch($cronStatus['reason'])
+@case('TRUSTED_INSTALLED_VERSION_MISSING')
+{{ $locale === 'ar' ? 'هوية الإصدار المثبّت غير موثقة. مطلوب التحقق من التثبيت الأصلي قبل تثبيت رقم الإصدار الموثوق.' : 'Installed release trust pin is missing. Attest the original installation before pinning its version.' }}
+@break
+@case('INSTALLED_RUNTIME_IDENTITY_UNVERIFIED')
+{{ $locale === 'ar' ? 'تعذّر إثبات هوية ملفات Laravel النشطة. التحديث ممنوع حتى التحقق من نسخة التشغيل.' : 'The active Laravel runtime identity is unverified. Updates remain disabled until independently attested.' }}
+@break
+@case('TRUSTED_RELEASE_ORIGIN_MISSING')
+{{ $locale === 'ar' ? 'مصدر إصدارات HTTPS الموثوق غير مهيأ.' : 'The approved HTTPS release publisher origin is not configured.' }}
+@break
+@case('TRUSTED_RELEASE_PUBLIC_KEY_MISSING')
+{{ $locale === 'ar' ? 'مفتاح التحقق العام من توقيع الإصدارات غير مهيأ.' : 'The pinned release publisher public verification key is missing.' }}
+@break
+@case('RELEASE_MAINTENANCE_ACTIVE')
+{{ $locale === 'ar' ? 'توجد عملية صيانة أو تحديث معلّقة. يلزم فحص الاسترجاع قبل أي تحديث جديد.' : 'An update maintenance barrier is present. Recovery must be verified before any new update.' }}
+@break
+@case('VERIFIED_HOST_UPDATE_GATE_REQUIRED')
+{{ $locale === 'ar' ? 'يوجد إصدار موقّع أحدث لكن يلزم إثبات الاستضافة والنسخ الاحتياطي والاستعادة قبل تطبيقه.' : 'A newer signed release is visible, but host isolation, backup and restore gates are not verified.' }}
+@break
+@case('PUBLISHER_CHECK_UNVERIFIED')
+{{ $locale === 'ar' ? 'فشل التحقق من كتالوج الناشر الموقّع أو اتصاله؛ لم تُثبت أي نسخة جديدة.' : 'Signed publisher discovery is unverified; no new release has been authenticated.' }}
+@break
+@default
+{{ $locale === 'ar' ? 'لم تكتمل متطلبات التحقق من الإصدارات.' : 'Release verification prerequisites remain unmet.' }}
+@endswitch
+</dd></div>
+@endif
+<div><dt>{{ $locale === 'ar' ? 'آخر فحص مسجّل محليًا' : 'Last recorded local check' }}</dt>
 <dd data-testid="release-cron-last-check">{{ $cronStatus['checked_at'] !== null ? gmdate('Y-m-d H:i:s', $cronStatus['checked_at']).' UTC' : ($locale === 'ar' ? 'غير متاح' : 'Unavailable') }}</dd></div>
 <div><dt>{{ $locale === 'ar' ? 'الإصدار المتاح بالكتالوج' : 'Catalog version' }}</dt>
 <dd>{{ $cronStatus['available_version'] ?? ($locale === 'ar' ? 'غير مُثبت' : 'Not verified') }}</dd></div>
