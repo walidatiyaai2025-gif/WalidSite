@@ -90,13 +90,13 @@ try {
             $preflightReason = 'RELEASE_MAINTENANCE_ACTIVE';
         }
         if ($preflightReason !== null) {
-            $observed = (new \\App\\Domain\\Deployment\\TrustedInstalledVersion())->read(
+            $observed = (new \App\Domain\Deployment\TrustedInstalledVersion())->read(
                 $running.'/VERSION',
             );
             if ($observed !== null) {
                 $private = $original.'/storage/app/private';
                 if (is_dir($private) && ! is_link($private)) {
-                    (new \\App\\Domain\\Deployment\\CpanelReleaseCronPoller())->recordBlockedPreflight(
+                    (new \App\Domain\Deployment\CpanelReleaseCronPoller())->recordBlockedPreflight(
                         $private.'/release-automation', $public, $observed, $preflightReason,
                     );
                 }
