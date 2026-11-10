@@ -148,5 +148,69 @@ class ApkSignerIdentityTest(unittest.TestCase):
                    runner=self.runner(SUCCESS + "SECRET" * 10000))
 
 
+    def test_valid_crlf_apksigner_output_is_still_one_signer(self):
+        """The Java verifier may use Windows-style CRLF on a Linux runner."""
+        output = SUCCESS.replace("\n", "\r\n")
+        receipt = attest(
+            self.apk, "apksigner", PIN, self.preflight, runner=self.runner(output),
+        )
+        self.assertTrue(receipt["apk_signature_verified"])
+        self.assertEqual(PIN, receipt["apk_certificate_sha256"])
+
+    def test_multi_signer_diagnostic_exposes_only_public_indices_not_dn(self):
+        extra = (
+            "Signer #2 certificate DN: CN=SECRET-SUBJECT\n"
+            f"Signer #2 certificate SHA-256 digest: {OTHER}\n"
+        )
+        with self.assertRaises(ApkSignerIdentityError) as caught:
+            attest(
+                self.apk, "apksigner", PIN, self.preflight,
+                runner=self.runner(SUCCESS.replace("\n", "\r\n") + extra),
+            )
+        message = str(caught.exception)
+        self.assertIn("APK_SIGNER_COUNT_INVALID", message)
+        self.assertIn("observed_public_signer_ids=1,2", message)
+        self.assertIn("certificate_fields=6", message)
+        self.assertNotIn("SECRET-SUBJECT", message)
+        self.assertNotIn("SENSITIVE_PATH_AND_SECRET", message)
+        self.assertNotIn(str(self.apk), message)
+
+    def test_no_signer_fields_stays_blocked_with_fixed_public_counts(self):
+        with self.assertRaises(ApkSignerIdentityError) as caught:
+            attest(
+                self.apk, "apksigner", PIN, self.preflight,
+                runner=self.runner("Verifies\nVerified using v2 scheme: true\n"),
+            )
+        self.assertEqual(
+            "APK_SIGNER_COUNT_INVALID observed_public_signer_ids=none "
+            "certificate_fields=0 candidate_field_lines=0",
+            str(caught.exception),
+        )
+
+    def test_suspicious_indented_fields_cannot_be_accepted_as_one_signer(self):
+        malformed = SUCCESS.replace("Signer #1", "  Signer #1")
+        with self.assertRaises(ApkSignerIdentityError) as caught:
+            attest(
+                self.apk, "apksigner", PIN, self.preflight,
+                runner=self.runner(malformed),
+            )
+        message = str(caught.exception)
+        self.assertIn("observed_public_signer_ids=none", message)
+        self.assertIn("candidate_field_lines=3", message)
+        self.assertNotIn("WalidSite Release", message)
+
+    def test_crlf_duplicate_actual_signer_sha_remains_rejected(self):
+        malformed = SUCCESS.replace("\n", "\r\n") + (
+            f"Signer #1 certificate SHA-256 digest: {PIN}\r\n"
+        )
+        with self.assertRaisesRegex(
+            ApkSignerIdentityError, "APK_SIGNER_DIGEST_AMBIGUOUS",
+        ):
+            attest(
+                self.apk, "apksigner", PIN, self.preflight,
+                runner=self.runner(malformed),
+            )
+
+
 if __name__ == "__main__":
     unittest.main()
