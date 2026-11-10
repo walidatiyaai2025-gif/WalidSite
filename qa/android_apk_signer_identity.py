@@ -89,8 +89,9 @@ def attest(
             f"APK_SIGNER_COUNT_INVALID observed_public_signer_count={reported_count}"
         )
     # Android SDK versions use two public renderings for a verified certificate:
-    # older "Signer #1 certificate ..." and modern
-    # "V3.0 Signer: certificate ...". The latter is NOT evidence of rotation:
+    # older "Signer #1 certificate ...", current v2 "V2 Signer:
+    # certificate ...", and modern v3 "V3.0 Signer: certificate ...".
+    # The scheme label alone is NOT evidence of rotation:
     # require the native verified signer count to be one, and allow exactly one
     # unambiguous rendering with a single certificate SHA-256 that matches the
     # independently approved private-keystore preflight. Refuse SDK-targeted
@@ -99,7 +100,9 @@ def attest(
            or line.startswith(("V3.1 Signer:", "V3.2 Signer:"))
            for line in lines):
         raise ApkSignerIdentityError("APK_SIGNER_ROTATION_UNSUPPORTED")
-    legacy, modern = "Signer #1 certificate ", "V3.0 Signer: certificate "
+    legacy = "Signer #1 certificate "
+    modern_v2 = "V2 Signer: certificate "
+    modern = "V3.0 Signer: certificate "
     candidate_lines = [
         line for line in lines
         if (re.match(r"^Signer #[0-9]+ certificate ", line)
@@ -108,7 +111,7 @@ def attest(
     # A legitimate single signer cannot have certificates from two different
     # apksigner presentation families. Also reject any other signer index or
     # unfamiliar scheme instead of silently ignoring a second public cert.
-    families = {prefix for prefix in (legacy, modern)
+    families = {prefix for prefix in (legacy, modern_v2, modern)
                 if any(line.startswith(prefix) for line in candidate_lines)}
     if (len(families) != 1 or not candidate_lines
             or any(not line.startswith(next(iter(families)))
@@ -120,6 +123,7 @@ def attest(
         # Such a combination remains BLOCKED until its actual public shape is
         # known and independently tested against the pinned certificate.
         exact_legacy = sum(line.startswith(legacy) for line in candidate_lines)
+        exact_v2 = sum(line.startswith(modern_v2) for line in candidate_lines)
         exact_modern = sum(line.startswith(modern) for line in candidate_lines)
         other_indexed = sum(
             bool(re.match(r"^Signer #[0-9]+ certificate ", line))
@@ -129,6 +133,7 @@ def attest(
         other_versioned = sum(
             bool(re.match(r"^V[0-9]+(?:\.[0-9]+)? Signer: certificate ", line))
             and not line.startswith(modern)
+            and not line.startswith(modern_v2)
             for line in candidate_lines
         )
         possible_certificate_headings = sum(
@@ -140,6 +145,7 @@ def attest(
         raise ApkSignerIdentityError(
             f"APK_SIGNER_COUNT_INVALID observed_public_signer_count={reported_count}"
             f" public_legacy_headers={bounded(exact_legacy)}"
+            f" public_v2_headers={bounded(exact_v2)}"
             f" public_v30_headers={bounded(exact_modern)}"
             f" public_other_indexed={bounded(other_indexed)}"
             f" public_other_versioned={bounded(other_versioned)}"

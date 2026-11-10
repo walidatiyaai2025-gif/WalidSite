@@ -138,6 +138,41 @@ class ApkSignerIdentityTest(unittest.TestCase):
             attest(self.apk, "apksigner", PIN, self.preflight,
                    runner=self.runner(stdout))
 
+    def test_modern_v2_single_verified_signer_matches_exact_pinned_leaf(self):
+        # Build Tools 37 prints V2 Signer for V2-signed APKs, while the
+        # native signer count remains exactly 1. Source certificate identity
+        # and cryptographic APK validity stay mandatory.
+        signed_v2 = SUCCESS.replace("Signer #1 certificate ", "V2 Signer: certificate ")
+        for output in (signed_v2, signed_v2.replace("\\n", "\\r\\n")):
+            with self.subTest(crlf="\\r" in output):
+                proof = attest(self.apk, "apksigner", PIN, self.preflight,
+                               runner=self.runner(output))
+                self.assertEqual(PIN, proof["apk_certificate_sha256"])
+                self.assertTrue(proof["keystore_preflight_matches_apk"])
+                self.assertTrue(proof["apk_signature_verified"])
+                self.assertFalse(proof["production_published"])
+
+    def test_modern_v2_strict_wrong_debug_mixed_and_malformed_fail_closed(self):
+        signed_v2 = SUCCESS.replace("Signer #1 certificate ", "V2 Signer: certificate ")
+        probes = (
+            (signed_v2.replace(PIN, OTHER), "APK_SIGNER_PIN_MISMATCH"),
+            (signed_v2.replace("CN=WalidSite Release", "CN=Android Debug"),
+             "APK_SIGNED_WITH_DEBUG_CERTIFICATE"),
+            (signed_v2 + f"V3.0 Signer: certificate SHA-256 digest: {PIN}\\n",
+             "APK_SIGNER_COUNT_INVALID"),
+            (signed_v2 + f"V2 Signer: certificate SHA-256 digest: {PIN}\\n",
+             "APK_SIGNER_DIGEST_AMBIGUOUS"),
+            (signed_v2.replace("V2 Signer:", "V2.1 Signer:"),
+             "APK_SIGNER_COUNT_INVALID"),
+            (signed_v2.replace("Number of signers: 1", "Number of signers: 2"),
+             "APK_SIGNER_COUNT_INVALID"),
+        )
+        for output, error in probes:
+            with self.subTest(category=error):
+                with self.assertRaisesRegex(ApkSignerIdentityError, error):
+                    attest(self.apk, "apksigner", PIN, self.preflight,
+                           runner=self.runner(output, stderr="SECRET_PASSWORD"))
+
     def test_modern_v30_single_verified_signer_matches_preflight(self):
         # Newer apksigner can print V3.0 Signer instead of Signer #1 while
         # still reporting exactly one cryptographically verified signer.
