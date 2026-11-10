@@ -71,12 +71,29 @@ def attest(
         raise ApkSignerIdentityError("APK_SIGNER_OUTPUT_INVALID")
     # Reject multiple signers or malformed/duplicate signer certificate fields.
     # Do not treat "Source Stamp Signer" as an APK distribution signer.
+    # apksigner is Java-backed; line endings may be LF or CRLF regardless
+    # of the OS. Treat CRLF as syntax, never as a second signer. A source
+    # stamp is NOT a distribution signer and is intentionally ignored here.
     certificates = re.findall(
-        r"(?m)^Signer #([1-9][0-9]*) certificate [^\r\n]*$",
+        r"(?m)^Signer #([1-9][0-9]*) certificate [^\r\n]*\r?$",
         result.stdout,
     )
     if not certificates or set(certificates) != {"1"}:
-        raise ApkSignerIdentityError("APK_SIGNER_COUNT_INVALID")
+        # Diagnostic information is constrained to NON-SECRET numbers derived
+        # from public certificate field headings. No raw stdout/stderr, DN,
+        # paths, PIN, keystore data or passwords can enter the message.
+        observed_ids = sorted(set(certificates), key=int)
+        ids = ",".join(observed_ids[:4]) if observed_ids else "none"
+        if len(observed_ids) > 4:
+            ids += ",more"
+        candidate_lines = len(re.findall(
+            r"(?m)^\\s*Signer\\s+#[0-9]+\\s+certificate\\b", result.stdout,
+        ))
+        raise ApkSignerIdentityError(
+            "APK_SIGNER_COUNT_INVALID observed_public_signer_ids=" + ids
+            + " certificate_fields=" + str(min(len(certificates), 999))
+            + " candidate_field_lines=" + str(min(candidate_lines, 999))
+        )
     digests = re.findall(
         r"(?im)^Signer #1 certificate SHA-256 digest:\s*([0-9a-f]{64})\s*$",
         result.stdout,
