@@ -145,7 +145,7 @@ class AndroidScreenCaptureTest(unittest.TestCase):
                                        stderr=b"private", returncode=0)
             if len(tail) == 4 and tail[:3] == ["shell", "uiautomator", "dump"]:
                 self.assertRegex(tail[3],
-                    r"^/data/local/tmp/walidsite-visual-[0-9a-f]{24}\\.xml$")
+                    r"^/data/local/tmp/walidsite-visual-[0-9a-f]{24}\.xml$")
                 paths.append(tail[3])
                 return SimpleNamespace(stdout=b"dumped", stderr=b"private", returncode=0)
             if len(tail) == 3 and tail[:2] == ["exec-out", "cat"]:
