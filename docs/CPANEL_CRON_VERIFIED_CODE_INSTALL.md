@@ -63,3 +63,31 @@ fail closed without a receipt.
 Unit tests prove no host capability or writer lease can initiate network/download, external-writer refusal, signed second-catalog version/source binding, forged signatures, replayed status and physical pointer mismatch. Existing disposable real MariaDB/actual Setup+Update ZIP harness proves the underlying code-only restore/cutover/rollback coordinator. Those are **CI simulations**, not a statement that the actual hosting adapter, publisher production Ed25519 signing, scheduled job, backup location, restored live MariaDB, TLS route or production Android signer have been verified.
 
 The remaining release gate requires a production signed GitHub Release and manifest from one green exact main SHA, approved real host adapter and private Cron activation, failover/recovery rehearsal on that host, a production-distribution-signed site-bound Android APK, real binary download and owner physical-device Web↔APK acceptance. Keep #1120, #732 and #26–#28 open until genuine evidence exists.
+
+
+## Signed Android APK: compiled-certificate provenance and release blocker
+
+After GitHub Actions verifies the private CI keystore's **public alias X.509
+certificate** against the independently pinned Android SHA-256, the signed
+inspection now performs a second, independent \`apksigner verify --verbose
+--print-certs\` against the actual compiled release APK. It rejects invalid
+cryptography, duplicate/absent/multiple certificate fields, debug signing,
+incorrect package identity and signer mismatch. A successful receipt explicitly
+binds the compiled public certificate SHA-256 to the already-verified private
+keystore alias and does **not** imply publication or installed-device tests.
+
+If the compiled APK and keystore differ, the failure emits only
+\`APK_SIGNER_PIN_MISMATCH observed_public_apk_certificate_sha256=<public-cert-sha256>\`.
+Compare this public fingerprint to the independently approved publisher
+identity and the prior private keystore **public** certificate receipt.
+Do not expose keystore contents, alias password or raw keytool/apksigner output;
+do not rewrite \`WALIDSITE_ANDROID_SIGNER_SHA256\` based on an observed
+untrusted APK. Investigate Gradle's selected release signing configuration and
+verify a fresh signed build against the same trusted pin. No failed APK is
+published or uploaded as a release artifact.
+
+As verified on 2026-11-10, manual Release #42772172452 built a 55.3 MB APK
+but blocked on signer identity. That run is **not** proof of a production-signed
+APK or a live Web↔APK deployment. External approved signing configuration,
+release promotion, cPanel physical host adapter/recovery and owner device
+acceptance still gate #1120.
