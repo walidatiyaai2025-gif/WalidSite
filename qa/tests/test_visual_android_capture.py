@@ -87,6 +87,53 @@ class AndroidScreenCaptureTest(unittest.TestCase):
             ["shell", "uiautomator", "dump", "/dev/tty"],
         ])
 
+    def test_android35_missing_subsection_focus_uses_full_window_dump(self):
+        original, _ = self.runner()
+        calls = []
+
+        def android35(args, **kwargs):
+            tail = args[3:]
+            calls.append(tail)
+            if tail == ["shell", "dumpsys", "window", "windows"]:
+                return SimpleNamespace(stdout=b"WindowManager windows: no focus field",
+                                       stderr=b"private", returncode=0)
+            if tail == ["shell", "dumpsys", "window"]:
+                return SimpleNamespace(
+                    stdout=(b"WindowManager full state\\n"
+                            b"  mCurrentFocus=Window{abc u0 "
+                            + PACKAGE.encode() + b"/.MainActivity}"),
+                    stderr=b"private", returncode=0)
+            return original(args, **kwargs)
+
+        self.assertEqual(render(self.env, android35), self.output)
+        self.assertEqual(self.output.read_bytes(), self.png)
+        self.assertEqual(calls.count(["shell", "dumpsys", "window"]), 2)
+
+    def test_full_window_dump_missing_ambiguous_or_foreign_focus_fails_closed(self):
+        for focus in (
+            b"WindowManager full state: focus unspecified",
+            b"mCurrentFocus=Window{abc u0 com.android.systemui/.Overlay}",
+            (b"mCurrentFocus=Window{abc u0 " + PACKAGE.encode()
+             + b"/.MainActivity}\\nmCurrentFocus=Window{other u0 "
+             + PACKAGE.encode() + b"/.MainActivity}"),
+        ):
+            with self.subTest(focus=focus[:50]):
+                original, _ = self.runner()
+
+                def android35(args, **kwargs):
+                    tail = args[3:]
+                    if tail == ["shell", "dumpsys", "window", "windows"]:
+                        return SimpleNamespace(stdout=b"No mCurrentFocus here",
+                                               stderr=b"private", returncode=0)
+                    if tail == ["shell", "dumpsys", "window"]:
+                        return SimpleNamespace(stdout=focus, stderr=b"private",
+                                               returncode=0)
+                    return original(args, **kwargs)
+
+                with self.assertRaisesRegex(AndroidCaptureError, "foreground"):
+                    render(self.env, android35)
+                self.assertFalse(self.output.exists())
+
     def test_supported_routes_are_real_flutter_headings_not_contract_labels(self):
         self.assertEqual(len(HEADINGS), 8)
         for route, labels in HEADINGS.items():
