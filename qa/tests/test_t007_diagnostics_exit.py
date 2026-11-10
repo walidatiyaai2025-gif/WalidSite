@@ -210,5 +210,44 @@ class T007DiagnosticExitTest(unittest.TestCase):
         self.assertFalse(scope["functional_audit_complete"](swapped))
 
 
+    def test_owner_frozen_web_profiles_remain_real_browser_identity_checks(self):
+        source = Path(__file__).resolve().parents[1] / "capture_t007_diagnostics.py"
+        code = source.read_text(encoding="utf-8")
+        tree = ast.parse(code)
+        profiles = {}
+        for assignment in tree.body:
+            if not isinstance(assignment, ast.Assign):
+                continue
+            if len(assignment.targets) != 1 or not isinstance(assignment.targets[0], ast.Name):
+                continue
+            if assignment.targets[0].id in ("HERO_SELECTORS", "NAVIGATION_LINK_SELECTORS"):
+                profiles[assignment.targets[0].id] = ast.literal_eval(assignment.value)
+        expected = {"WEB-01", "WEB-02", "WEB-03", "WEB-06", "WEB-12"}
+        self.assertEqual(set(profiles), {"HERO_SELECTORS", "NAVIGATION_LINK_SELECTORS"})
+        for name in profiles:
+            self.assertEqual(set(profiles[name]), expected)
+        self.assertEqual(profiles["HERO_SELECTORS"]["WEB-01"], ".w26-landing h1")
+        self.assertEqual(profiles["HERO_SELECTORS"]["WEB-02"], ".wa-about .about-hero h1")
+        self.assertEqual(profiles["HERO_SELECTORS"]["WEB-03"], ".expertise-screen .expertise-hero h1")
+        self.assertIn(".w26-desktop .w26-laptop", profiles["NAVIGATION_LINK_SELECTORS"]["WEB-01"])
+        self.assertIn(".expertise-tab-nav a", profiles["NAVIGATION_LINK_SELECTORS"]["WEB-03"])
+        self.assertIn(".about-actions a", profiles["NAVIGATION_LINK_SELECTORS"]["WEB-02"])
+        # The protected owner designs are never replaced by old T007 markup.
+        self.assertIn('page.locator(HERO_SELECTORS[screen_id] + ":visible")', code)
+        self.assertIn('".w26-desktop .w26-laptop").click()', code)
+        self.assertIn('".expertise-hero-actions a").nth(1).click()', code)
+        self.assertIn('landing ? "#main-content"', code.replace("'", '"'))
+        self.assertIn("nav.querySelectorAll('a').length >= (landing ? 6 : 8)", code)
+        self.assertIn('focus_selector = (".skip-link" if screen_id == "WEB-01"', code)
+        self.assertIn('for (let frame = 0; frame < 45; frame++)', code)
+        self.assertIn('if (visible) break;', code)
+        # Inspect native focused-link scrolling without artificially moving
+        # an inaccessible overflow rail for the accessibility gate.
+        self.assertNotIn("nav.scrollLeft =", code)
+        self.assertNotIn("link.scrollIntoView(", code)
+        self.assertIn('report["summary"]["pixel_parity_complete"]', code)
+        self.assertIn('not report["summary"]["responsive_ok"]', code)
+
+
 if __name__ == "__main__":
     unittest.main()

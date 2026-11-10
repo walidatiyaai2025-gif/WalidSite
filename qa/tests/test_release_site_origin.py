@@ -82,7 +82,18 @@ class ReleaseSiteOriginTest(unittest.TestCase):
         ci = (root / ".github/workflows/ci.yml").read_text()
         script = (root / "qa/build_origin_bound_android_release.sh").read_text()
         gradle = (root / "mobile/android/app/build.gradle.kts").read_text()
-        self.assertIn("needs: [release-candidates, signed-android-inspection]", release)
+        self.assertIn(
+            "needs: [release-candidates, signed-web-inspection, signed-android-inspection]",
+            release,
+        )
+        signed_web = release.split("  signed-web-inspection:", 1)[1].split(
+            "  signed-android-inspection:", 1
+        )[0]
+        self.assertIn("if: github.event_name == 'workflow_dispatch'", signed_web)
+        self.assertIn("Block publisher signing until GitHub main is actually protected",
+                      signed_web)
+        self.assertIn("WALIDSITE_PUBLISHER_SECRET_KEY_B64", signed_web)
+        self.assertIn("qa/verify_signed_web_inspection.php", signed_web)
         self.assertIn("WALIDSITE_PRODUCTION_SITE_ORIGIN", release)
         self.assertIn("WALIDSITE_ANDROID_SIGNER_SHA256", release)
         self.assertIn("Block release until authorized staging", release)

@@ -16,6 +16,10 @@ test "$(git rev-parse HEAD)" = "$WALIDSITE_SOURCE_SHA"
 test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$WALIDSITE_SOURCE_SHA"
 test "$GITHUB_REF" = "refs/heads/main"
 test -n "${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+# Accept both keytool's colon-delimited SHA256 and apksigner's 64-hex digest.
+# Canonicalize once, fail closed on malformed delimiters or unexpected bytes.
+WALIDSITE_ANDROID_SIGNER_SHA256="$(python3 -B -m qa.android_signer_fingerprint "$WALIDSITE_ANDROID_SIGNER_SHA256")"
+export WALIDSITE_ANDROID_SIGNER_SHA256
 
 mkdir -p dist/release-android
 # This merely checks approved configuration. It is not a deployment/API proof.
@@ -67,8 +71,9 @@ with destination.open('xb') as out:
     out.write(value)
 destination.chmod(0o600)
 PY
-(cd mobile && flutter pub get && \
-  flutter build apk --release --no-pub \
+(cd mobile && flutter pub get)
+source qa/gradle_distribution_preflight.sh
+(cd mobile && with_gradle_distribution_retry flutter build apk --release --no-pub \
     --dart-define="WALIDSITE_API_ORIGIN=$WALIDSITE_PRODUCTION_SITE_ORIGIN")
 apk="mobile/build/app/outputs/flutter-apk/app-release.apk"
 test -s "$apk"

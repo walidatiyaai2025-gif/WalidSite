@@ -38,6 +38,14 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        if (config('app.front_controller_urls') === true) {
+            \App\Domain\Deployment\CpanelNoRewriteUrls::apply(
+                $this->app['url'],
+                (string) config('app.url'),
+                config('app.asset_url'),
+            );
+        }
+
         if ($this->app->runningInConsole()) {
             // On a physical cPanel install, all Laravel CLI writers (including
             // schedule:run, queue:work and nested commands) hold a shared

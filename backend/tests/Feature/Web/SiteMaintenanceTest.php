@@ -611,7 +611,7 @@ class SiteMaintenanceTest extends TestCase
         $this->get('/admin/updates?lang=en')
             ->assertSee('Unidentified')
             ->assertSee('data-testid="installed-package-version"', false)
-            ->assertSee('0.1.2')
+            ->assertSee(trim((string) file_get_contents(base_path('VERSION'))))
             ->assertSee('Not verified')
             ->assertSee('data-testid="owner-code-upgrade-status"', false)
             ->assertSee('Blocked: host integration unavailable');
@@ -746,7 +746,7 @@ class SiteMaintenanceTest extends TestCase
         $this->assertSame(0, $calls, 'Must not contact publisher for a fabricated installed version.');
         $this->get('/admin/updates?lang=en')->assertOk()
             ->assertSee('data-testid="trusted-release-not-configured"', false)
-            ->assertSee('0.1.2')
+            ->assertSee(trim((string) file_get_contents(base_path('VERSION'))))
             ->assertDontSee('data-testid="trusted-release-verified"', false);
     }
 

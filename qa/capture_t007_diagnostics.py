@@ -17,6 +17,27 @@ from urllib.parse import parse_qs, urljoin, urlsplit
 from PIL import Image, ImageChops, ImageEnhance
 
 SCREEN_IDS = ("WEB-01", "WEB-02", "WEB-03", "WEB-06", "WEB-12")
+# Owner-frozen WEB-01/03 and the approved WEB-02 no longer render the
+# original T007 hero. Keep selector-specific real-browser proof instead of
+# reverting the approved templates or silently skipping these pages.
+HERO_SELECTORS = {
+    "WEB-01": ".w26-landing h1",
+    "WEB-02": ".wa-about .about-hero h1",
+    "WEB-03": ".expertise-screen .expertise-hero h1",
+    "WEB-06": ".t007-reference-stage h1",
+    "WEB-12": ".t007-reference-stage h1",
+}
+NAVIGATION_LINK_SELECTORS = {
+    "WEB-01": ".w26-desktop .w26-laptop, .w26-desktop .w26-phone, "
+              ".w26-desktop .w26-tablet, .w26-ribbon a, .w26-github a",
+    "WEB-02": ".t007-nav-links a, .about-actions a, .about-jump-links a",
+    "WEB-03": ".t007-nav-links a, .expertise-hero-actions a, "
+              ".expertise-tab-nav a, .expertise-feature a",
+    "WEB-06": ".t007-nav-links a, .t007-reference-card a, "
+              ".t007-reference-action.secondary",
+    "WEB-12": ".t007-nav-links a, .t007-hire-card a, "
+              ".t007-reference-action.secondary",
+}
 RESPONSIVE_VIEWPORTS = ((390, 844), (768, 1024), (1024, 768), (1280, 800))
 RESPONSIVE_LOCALES = ("ar", "en")
 
@@ -263,7 +284,7 @@ def capture_arabic_runtime(base_url: str, screens: dict, root: Path, out: Path) 
                     if (page.locator("html").get_attribute("lang") != "ar"
                         or page.locator("html").get_attribute("dir") != "rtl"
                         or page.locator("main#main-content").count() != 1
-                        or page.locator(".t007-reference-stage h1").count() != 1):
+                        or page.locator(HERO_SELECTORS[screen_id] + ":visible").count() != 1):
                         raise RuntimeError("RTL identity or landmarks failed")
                     page.screenshot(
                         path=str(destination), full_page=False,
@@ -333,7 +354,7 @@ def functional_browser_audit(base_url: str, screens: dict) -> dict:
                             if response is None or response.status != 200:
                                 raise RuntimeError("Initial public journey route inaccessible")
                             if screen_id == "WEB-01":
-                                page.locator(".landing-actions a[href*='/projects']").first.click()
+                                page.locator(".w26-desktop .w26-laptop").click()
                                 destination = urlsplit(page.url)
                                 if destination.path != "/projects":
                                     raise RuntimeError("Home projects CTA missing")
@@ -446,9 +467,9 @@ def navigation_browser_audit(base_url: str, screens: dict) -> dict:
                                 raise RuntimeError("Source screen not accessible")
                             if page.locator("html").get_attribute("lang") != lang:
                                 raise RuntimeError("Source screen locale mismatch")
+
                             links = page.locator(
-                                ".t007-nav-links a, .t007-reference-card a, "
-                                ".t007-hire-card a, .t007-reference-action.secondary"
+                                NAVIGATION_LINK_SELECTORS[screen_id]
                             ).evaluate_all("(nodes) => nodes.map(n => n.getAttribute('href'))")
                             if len(links) < 9 or any(not href for href in links):
                                 raise RuntimeError("Visible navigation link missing destination")
@@ -456,48 +477,66 @@ def navigation_browser_audit(base_url: str, screens: dict) -> dict:
                                 destination = urlsplit(urljoin(url, href))
                                 if (destination.scheme, destination.netloc) != (origin.scheme, origin.netloc):
                                     raise RuntimeError("T007 navigation escaped its public origin")
-                                # A link between bilingual public screens must
-                                # preserve the selected language on the wire.
                                 if parse_qs(destination.query).get("lang") != [lang]:
                                     raise RuntimeError("T007 destination lost the locale")
                                 fetched = context.request.get(
                                     urljoin(url, href), timeout=20000, max_redirects=0
                                 )
-                                # Disallow redirects and non-200 responses.
-                                # APIRequestContext may normalize its URL, so
-                                # do not compare the request object's string
-                                # to a browser-relative URL. The original
-                                # destination is already checked same-origin
-                                # and locale-preserving above.
                                 if fetched.status != 200:
                                     raise RuntimeError("Destination returned non-200")
-                            # Actually operate both hero CTAs with Chromium,
-                            # not merely inspect their href strings.
-                            page.locator(".t007-reference-action.primary").click()
-                            if urlsplit(page.url).fragment != "t007-primary-content":
-                                raise RuntimeError("Explore action did not reach main content")
-                            target = page.locator("#t007-primary-content")
-                            if target.count() != 1 or target.get_attribute("tabindex") != "-1":
-                                raise RuntimeError("Explore anchor cannot receive keyboard focus")
-                            page.goto(url, wait_until="domcontentloaded")
-                            page.locator(".t007-reference-action.secondary").click()
-                            arrived = urlsplit(page.url)
-                            if screen_id == "WEB-02":
-                                # About evidence is a real, focusable on-page
-                                # source section, not the unrelated Projects URL.
-                                # Verify both the live browser destination and
-                                # its actual semantic/keyboard target.
-                                if (arrived.path != "/about"
-                                        or parse_qs(arrived.query).get("lang") != [lang]
-                                        or arrived.fragment != "about-evidence"):
-                                    raise RuntimeError("About evidence CTA missed source section")
-                                proof = page.locator("section#about-evidence")
-                                if (proof.count() != 1
-                                        or proof.get_attribute("tabindex") != "-1"
-                                        or proof.locator("h2#about-evidence-heading").count() != 1):
-                                    raise RuntimeError("About source evidence target not accessible")
-                            elif arrived.path != "/projects" or parse_qs(arrived.query).get("lang") != [lang]:
-                                raise RuntimeError("Evidence CTA did not reach localized projects")
+
+                            # Operate BOTH actual approved hero actions in a
+                            # browser. The owner-frozen landing/expertise journeys
+                            # are not the obsolete T007 reference CTA markup.
+                            if screen_id == "WEB-01":
+                                page.locator(".w26-desktop .w26-laptop").click()
+                                arrived = urlsplit(page.url)
+                                if arrived.path != "/projects":
+                                    raise RuntimeError("Landing projects action failed")
+                                page.goto(url, wait_until="domcontentloaded")
+                                page.locator(".w26-desktop .w26-phone").click()
+                                arrived = urlsplit(page.url)
+                                if arrived.path != "/lab":
+                                    raise RuntimeError("Landing knowledge action failed")
+                            elif screen_id == "WEB-03":
+                                actions = page.locator(".expertise-hero-actions a")
+                                if actions.count() != 2:
+                                    raise RuntimeError("Expertise hero actions missing")
+                                actions.first.click()
+                                arrived = urlsplit(page.url)
+                                if arrived.path != "/projects":
+                                    raise RuntimeError("Expertise evidence action failed")
+                                page.goto(url, wait_until="domcontentloaded")
+                                page.locator(".expertise-hero-actions a").nth(1).click()
+                                arrived = urlsplit(page.url)
+                                if (arrived.path != "/expertise"
+                                        or arrived.fragment != "expertise-catalog"
+                                        or page.locator("details#expertise-catalog summary").count() != 1):
+                                    raise RuntimeError("Expertise verified catalog action failed")
+                            else:
+                                page.locator(".t007-reference-action.primary").click()
+                                if urlsplit(page.url).fragment != "t007-primary-content":
+                                    raise RuntimeError("Explore action did not reach main content")
+                                target = page.locator("#t007-primary-content")
+                                if target.count() != 1 or target.get_attribute("tabindex") != "-1":
+                                    raise RuntimeError("Explore anchor cannot receive keyboard focus")
+                                page.goto(url, wait_until="domcontentloaded")
+                                page.locator(".t007-reference-action.secondary").click()
+                                arrived = urlsplit(page.url)
+                                if screen_id == "WEB-02":
+                                    if (arrived.path != "/about"
+                                            or parse_qs(arrived.query).get("lang") != [lang]
+                                            or arrived.fragment != "about-evidence"):
+                                        raise RuntimeError("About evidence CTA missed source section")
+                                    proof = page.locator("section#about-evidence")
+                                    if (proof.count() != 1
+                                            or proof.get_attribute("tabindex") != "-1"
+                                            or proof.locator("h2#about-evidence-heading").count() != 1):
+                                        raise RuntimeError("About source evidence target not accessible")
+                                elif arrived.path != "/projects":
+                                    raise RuntimeError("Evidence CTA did not reach projects")
+                            if parse_qs(arrived.query).get("lang") != [lang]:
+                                raise RuntimeError("Hero journey lost language")
                             if page.locator("main#main-content").count() != 1:
                                 raise RuntimeError("Evidence destination missing landmark")
                             results[key] = {"passed": True, "checked_links": len(links),
@@ -557,11 +596,27 @@ def responsive_browser_audit(base_url: str, screens: dict) -> dict:
                                 if response is None or response.status != 200:
                                     raise RuntimeError("Non-200 responsive route")
                                 page.evaluate("() => document.fonts.ready")
-                                checks = page.evaluate("""() => {
+                                # Bind actual frozen/approved route identities to
+                                # the real viewport, not an obsolete universal
+                                # T007 hero selector. Hidden alternate headings
+                                # do not count as a rendered screenshot identity.
+                                checks = page.evaluate("""(heroSelector) => {
                                     const main = document.querySelector('#main-content');
-                                    const hero = document.querySelector('.t007-reference-stage h1');
-                                    const target = document.querySelector('#t007-primary-content');
-                                    const nav = document.querySelector('.t007-nav-links');
+                                    const heroes = [...document.querySelectorAll(heroSelector)]
+                                        .filter(node => {
+                                            const box = node.getBoundingClientRect();
+                                            return box.height > 0 && box.width > 0 &&
+                                                getComputedStyle(node).visibility !== 'hidden';
+                                        });
+                                    const landing = Boolean(document.querySelector('.w26-landing'));
+                                    const target = document.querySelector(
+                                        landing ? '#main-content' : '#t007-primary-content'
+                                    );
+                                    const nav = document.querySelector(
+                                        landing
+                                            ? (innerWidth <= 900 ? '.w26-mobile-nav' : '.w26-ribbon')
+                                            : '.t007-nav-links'
+                                    );
                                     return {
                                         locale_ok: document.documentElement.lang ===
                                             (location.search.includes('lang=ar') ? 'ar' : 'en'),
@@ -570,15 +625,14 @@ def responsive_browser_audit(base_url: str, screens: dict) -> dict:
                                         no_horizontal_page_overflow:
                                             document.documentElement.scrollWidth <=
                                             window.innerWidth + 1,
-                                        main_and_hero: Boolean(main && hero &&
-                                            hero.getBoundingClientRect().height > 0),
+                                        main_and_hero: Boolean(main && heroes.length === 1 &&
+                                            main.contains(heroes[0])),
                                         jump_target_focusable: Boolean(target &&
                                             target.tabIndex === -1),
-                                        nav_present: Boolean(nav && nav.querySelectorAll('a').length >= 8),
-                                        // Detect text protruding outside its real
-                                        // evidence/CV/timeline card. A long,
-                                        // source-verified job title must wrap,
-                                        // never overlap an adjacent column.
+                                        nav_present: Boolean(nav &&
+                                            nav.querySelectorAll('a').length >= (landing ? 6 : 8)),
+                                        // Genuine published evidence cards must wrap
+                                        // instead of overflowing their owning card.
                                         card_text_contained: [...document.querySelectorAll(
                                             '.t007-about-row strong, .t007-hire-card h2, ' +
                                             '.t007-hire-card p, .t007-hire-card a'
@@ -595,52 +649,92 @@ def responsive_browser_audit(base_url: str, screens: dict) -> dict:
                                                 box.width > 0;
                                         }),
                                     };
-                                }""")
-                                # Focus is a user action: every header link must
-                                # scroll into view in RTL and LTR, including the
-                                # compact-desktop rail at 1024/1280px. A clipped
-                                # rail with overflow:hidden/visible fails closed.
-                                checks["all_navigation_links_focus_reachable"] = page.evaluate("""() => {
-                                    const nav = document.querySelector('.t007-nav-links');
-                                    if (!nav) return false;
+                                }""", HERO_SELECTORS[screen_id])
+                                # Check focus in the actual visible navigation,
+                                # including the mobile home grid and compact rail.
+                                focus_details = page.evaluate("""async () => {
+                                    const landing = Boolean(document.querySelector('.w26-landing'));
+                                    const nav = document.querySelector(
+                                        landing
+                                            ? (innerWidth <= 900 ? '.w26-mobile-nav' : '.w26-ribbon')
+                                            : '.t007-nav-links'
+                                    );
+                                    if (!nav) return { passed: false, reason: 'missing-nav' };
                                     const links = [...nav.querySelectorAll('a')];
-                                    if (links.length < 8) return false;
+                                    if (links.length < (landing ? 6 : 8)) {
+                                        return { passed: false, reason: 'missing-links' };
+                                    }
                                     const styles = getComputedStyle(nav);
                                     if (nav.scrollWidth > nav.clientWidth + 1 &&
                                         !['auto', 'scroll'].includes(styles.overflowX)) {
-                                        return false;
+                                        return { passed: false, reason: 'clipped-rail' };
                                     }
-                                    return links.every((link) => {
+                                    for (let index = 0; index < links.length; index++) {
+                                        const link = links[index];
                                         link.focus();
-                                        const box = link.getBoundingClientRect();
-                                        const parent = nav.getBoundingClientRect();
-                                        return document.activeElement === link &&
-                                            box.width > 0 && box.height > 0 &&
-                                            box.left >= parent.left - 2 &&
-                                            box.right <= parent.right + 2 &&
-                                            box.left >= -2 &&
-                                            box.right <= innerWidth + 2;
-                                    });
+                                        // Native focus can scroll an overflow:auto
+                                        // rail asynchronously (HTML smooth scroll).
+                                        // Observe up to 750ms of *browser-driven*
+                                        // movement without forcing scrollLeft or
+                                        // scrollIntoView; a still-clipped link
+                                        // MUST remain a CI failure.
+                                        let visible = false;
+                                        let box = link.getBoundingClientRect();
+                                        let parent = nav.getBoundingClientRect();
+                                        for (let frame = 0; frame < 45; frame++) {
+                                            await new Promise(resolve => requestAnimationFrame(resolve));
+                                            box = link.getBoundingClientRect();
+                                            parent = nav.getBoundingClientRect();
+                                            visible = document.activeElement === link &&
+                                                box.width > 0 && box.height > 0 &&
+                                                box.left >= parent.left - 2 &&
+                                                box.right <= parent.right + 2 &&
+                                                box.left >= -2 &&
+                                                box.right <= innerWidth + 2;
+                                            if (visible) break;
+                                        }
+                                        if (!visible) {
+                                            return {
+                                                passed: false, reason: 'focused-link-clipped',
+                                                link_index: index,
+                                                rail_overflow: styles.overflowX,
+                                                rail_width: Math.round(parent.width),
+                                                rail_scroll_width: nav.scrollWidth,
+                                                link_left: Math.round(box.left),
+                                                link_right: Math.round(box.right),
+                                                rail_left: Math.round(parent.left),
+                                                rail_right: Math.round(parent.right)
+                                            };
+                                        }
+                                    }
+                                    return { passed: true };
                                 }""")
-                                # Enter keyboard modality and focus the hidden
-                                # secondary navigation; its visible focus state
-                                # must not remain clipped from sight.
+                                checks["all_navigation_links_focus_reachable"] = focus_details["passed"]
+                                # The approved home uses the global skip link.
+                                # Other T007 routes use the original supplemental
+                                # focus-revealed navigation links.
                                 page.keyboard.press("Tab")
-                                page.locator(".t007-sr-only").first.focus()
+                                focus_selector = (".skip-link" if screen_id == "WEB-01"
+                                                  else ".t007-sr-only")
+                                page.locator(focus_selector).first.focus()
                                 checks["supplemental_keyboard_link_visible"] = page.evaluate(
-                                    """() => {
+                                    """(selector) => {
                                         const link = document.activeElement;
+                                        if (!link || !link.matches(selector)) return false;
                                         const css = getComputedStyle(link);
                                         const box = link.getBoundingClientRect();
-                                        return link.classList.contains('t007-sr-only') &&
-                                            css.position === 'fixed' && box.width >= 44 &&
+                                        const acceptablePosition = selector === '.skip-link'
+                                            ? css.position === 'absolute'
+                                            : css.position === 'fixed';
+                                        return acceptablePosition && box.width >= 44 &&
                                             box.height >= 40 && box.top >= 0 &&
                                             box.left >= 0 && box.right <= innerWidth &&
                                             box.bottom <= innerHeight;
-                                    }"""
+                                    }""", focus_selector
                                 )
                                 results[key] = {
-                                    "passed": all(checks.values()), "checks": checks
+                                    "passed": all(checks.values()), "checks": checks,
+                                    "focus_details": focus_details,
                                 }
                             except Exception as exc:
                                 results[key] = {
