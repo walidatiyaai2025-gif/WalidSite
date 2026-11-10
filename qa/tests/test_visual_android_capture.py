@@ -99,7 +99,7 @@ class AndroidScreenCaptureTest(unittest.TestCase):
                                        stderr=b"private", returncode=0)
             if tail == ["shell", "dumpsys", "window"]:
                 return SimpleNamespace(
-                    stdout=(b"WindowManager full state\\n"
+                    stdout=(b"WindowManager full state\n"
                             b"  mCurrentFocus=Window{abc u0 "
                             + PACKAGE.encode() + b"/.MainActivity}"),
                     stderr=b"private", returncode=0)
@@ -114,7 +114,7 @@ class AndroidScreenCaptureTest(unittest.TestCase):
             b"WindowManager full state: focus unspecified",
             b"mCurrentFocus=Window{abc u0 com.android.systemui/.Overlay}",
             (b"mCurrentFocus=Window{abc u0 " + PACKAGE.encode()
-             + b"/.MainActivity}\\nmCurrentFocus=Window{other u0 "
+             + b"/.MainActivity}\nmCurrentFocus=Window{other u0 "
              + PACKAGE.encode() + b"/.MainActivity}"),
         ):
             with self.subTest(focus=focus[:50]):
