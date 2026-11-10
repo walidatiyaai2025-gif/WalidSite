@@ -99,10 +99,11 @@ class KeystoreCertificateIdentityTest(unittest.TestCase):
                 attest(self.key, alias, FINGERPRINT, runner=never_run)
         with self.assertRaises(KeystoreIdentityError):
             attest(self.key, "good", "bad-digest", runner=never_run)
-        self.key.chmod(0o644)
-        with self.assertRaises(KeystoreIdentityError):
-            attest(self.key, "good", FINGERPRINT, runner=never_run)
-        self.key.chmod(0o600)
+        if os.name == "posix":
+            self.key.chmod(0o644)
+            with self.assertRaises(KeystoreIdentityError):
+                attest(self.key, "good", FINGERPRINT, runner=never_run)
+            self.key.chmod(0o600)
         link = Path(self.temp.name) / "alias.p12"
         link.symlink_to(self.key)
         with self.assertRaises(KeystoreIdentityError):
