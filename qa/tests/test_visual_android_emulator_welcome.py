@@ -80,8 +80,12 @@ class WelcomeEmulatorDiagnosticTest(unittest.TestCase):
             self.commands[0][1], ("shell", "wm", "size", "390x844"))
         self.assertEqual(
             self.commands[1][1], ("shell", "wm", "density", "160"))
+        self.assertEqual(self.commands[2][1],
+                         ("shell", "input", "keyevent", "KEYCODE_WAKEUP"))
+        self.assertEqual(self.commands[3][1],
+                         ("shell", "wm", "dismiss-keyguard"))
         self.assertEqual(
-            self.commands[2][1],
+            self.commands[4][1],
             ("shell", "am", "force-stop", "com.walidatiya.walidsite"))
 
     def test_equal_synthetic_pixels_still_do_not_establish_attestation(self):
@@ -158,6 +162,12 @@ class WelcomeEmulatorDiagnosticTest(unittest.TestCase):
         starts = [args for _, args in self.commands
                   if args[:3] == ("shell", "am", "start")]
         self.assertEqual(len(starts), 3)
+        wakes = [args for _, args in self.commands
+                 if args == ("shell", "input", "keyevent", "KEYCODE_WAKEUP")]
+        dismisses = [args for _, args in self.commands
+                     if args == ("shell", "wm", "dismiss-keyguard")]
+        self.assertEqual(len(wakes), 3)
+        self.assertEqual(len(dismisses), 3)
         self.assertEqual(self.sleeps, [2.0, 2.0, 2.0])
         self.assertEqual(receipt["status"], "mismatch")
         self.assertFalse(receipt["evidence_admitted"])
@@ -177,6 +187,8 @@ class WelcomeEmulatorDiagnosticTest(unittest.TestCase):
         starts = [args for _, args in self.commands
                   if args[:3] == ("shell", "am", "start")]
         self.assertEqual(len(starts), 5)
+        self.assertEqual(sum(parts == ("shell", "wm", "dismiss-keyguard")
+                             for _, parts in self.commands), 5)
         self.assertEqual(self.sleeps, [2.0] * 5)
         self.assertEqual(list(self.output.iterdir()), [])
 
