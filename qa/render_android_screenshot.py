@@ -233,7 +233,12 @@ def render(env=None, runner=subprocess.run) -> Path:
     # Guard against an app or screen switch while the ADB screenshot command
     # was running. Both the focused window and visible localized heading must
     # remain the same after the native pixels were captured.
-    focused_after = _focused_window(serial, runner)
+    try:
+        focused_after = _focused_window(serial, runner)
+    except AndroidCaptureError as exc:
+        # Losing the trusted focus after capturing pixels is a screen switch,
+        # never evidence that the original image can be admitted.
+        raise AndroidCaptureError("Foreground application changed during capture") from exc
     if focused_after != focused_before:
         raise AndroidCaptureError("Foreground application changed during capture")
     hierarchy_after = _run(serial, ["shell", "uiautomator", "dump", "/dev/tty"], runner)
