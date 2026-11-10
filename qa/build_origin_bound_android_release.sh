@@ -71,6 +71,16 @@ with destination.open('xb') as out:
     out.write(value)
 destination.chmod(0o600)
 PY
+# Verify the configured PRIVATE keystore's PUBLIC leaf certificate before
+# spending minutes compiling Flutter. keytool reads the store password from
+# the environment, not the process argument list, and its raw output/errors
+# are never logged. This fingerprint must match the owner's independently
+# pinned distribution identity; a mismatch is not automatically repinned.
+PYTHONPATH="$PWD" python3 -B -m qa.android_keystore_identity \
+  --keystore "$WALIDSITE_ANDROID_KEYSTORE_PATH" \
+  --alias "$WALIDSITE_ANDROID_KEY_ALIAS" \
+  --expected "$WALIDSITE_ANDROID_SIGNER_SHA256" \
+  > dist/release-android/keystore-certificate-preflight.json
 (cd mobile && flutter pub get)
 source qa/gradle_distribution_preflight.sh
 (cd mobile && with_gradle_distribution_retry flutter build apk --release --no-pub \

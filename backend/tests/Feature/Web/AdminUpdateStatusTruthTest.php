@@ -181,4 +181,57 @@ final class AdminUpdateStatusTruthTest extends TestCase
             'current_password' => 'test-password',
         ])->assertForbidden();
     }
+
+    public function test_preflight_missing_pin_is_actionable_in_owner_dashboard_without_deploy_claim(): void
+    {
+        $this->actingAs($this->owner(), 'web');
+        // Register the normal session-shared Laravel ViewErrorBag first, as
+        // the update layout expects the real web middleware to provide it.
+        $this->get('/admin/updates?lang=en')->assertOk();
+        $data = [
+            'status' => ['ready' => true, 'history_mismatch' => false, 'pending' => []],
+            'installedVersion' => '0.1.2',
+            'verifiedUpload' => null,
+            'hostPreflight' => null,
+            'stagedCode' => null,
+            'hostBackupAvailable' => false,
+            'hostCodeUpdateAvailable' => false,
+            'recoveryHistory' => ['state' => 'none', 'receipts' => []],
+            'cronStatus' => [
+                'state' => 'BLOCKED',
+                'checked_at' => time(),
+                'installed_version' => '0.1.2',
+                'available_version' => null,
+                'reason' => 'TRUSTED_INSTALLED_VERSION_MISSING',
+            ],
+        ];
+
+        $en = view('admin.updates.index', $data)->render();
+        self::assertStringContainsString('release-cron-block-reason', $en);
+        self::assertStringContainsString(
+            'Installed release trust pin is missing. Attest the original installation', $en,
+        );
+        self::assertStringContainsString('No application update was applied.', $en);
+        self::assertStringNotContainsString('data-testid="release-cron-deployed"', $en);
+
+        foreach ([
+            'SYSTEM_UPDATES_DISABLED' => 'System Updates are disabled in server configuration.',
+            'SCHEDULED_POLL_DISABLED' => 'Scheduled release polling is disabled in server configuration.',
+        ] as $reason => $expected) {
+            $data['cronStatus']['reason'] = $reason;
+            $html = view('admin.updates.index', $data)->render();
+            self::assertStringContainsString($expected, $html);
+            self::assertStringContainsString('No application update was applied.', $html);
+            self::assertStringNotContainsString('data-testid="release-cron-deployed"', $html);
+        }
+
+        // The existing language switch honors the admin's current AR query.
+        $ar = $this->get('/admin/updates?lang=ar');
+        $ar->assertOk()->assertSee('dir="rtl"', false);
+        $data['cronStatus']['reason'] = 'SCHEDULED_POLL_DISABLED';
+        self::assertStringContainsString(
+            'فحص الإصدارات المجدول معطّل من إعدادات الخادم.',
+            view('admin.updates.index', $data)->render(),
+        );
+    }
 }

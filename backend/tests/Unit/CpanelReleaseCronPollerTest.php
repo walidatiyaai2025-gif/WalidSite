@@ -274,4 +274,87 @@ final class CpanelReleaseCronPollerTest extends TestCase
             self::assertSame(0, $calls);
         }
     }
+
+    public function test_missing_host_trust_records_redacted_preflight_block_without_network(): void
+    {
+        $directory = $this->private.'/release-automation';
+        $poller = new CpanelReleaseCronPoller();
+        $calls = 0;
+        $this->poll($this->catalog('1.2.3', false, $calls));
+        self::assertSame(1, $calls);
+
+        $poller->recordBlockedPreflight(
+            $directory, $this->public, '1.2.3', 'TRUSTED_INSTALLED_VERSION_MISSING',
+        );
+        self::assertSame(1, $calls, 'Local preflight must never call publisher network.');
+        $record = json_decode(file_get_contents($directory.'/release-poll-status.json'), true, 8, JSON_THROW_ON_ERROR);
+        self::assertSame('BLOCKED', $record['state']);
+        self::assertSame('TRUSTED_INSTALLED_VERSION_MISSING', $record['reason']);
+        self::assertNull($record['available_version']);
+        self::assertNull($record['source_sha']);
+        self::assertFalse($record['code_applied']);
+        self::assertSame(0600, fileperms($directory.'/release-poll-status.json') & 0777);
+        self::assertSame('BLOCKED', (new \App\Domain\Deployment\CpanelReleaseCronStatus())
+            ->inspect($directory, $this->public)['state']);
+    }
+
+    public function test_disabled_server_controls_are_only_private_blocked_receipts(): void
+    {
+        $directory = $this->private.'/release-automation';
+        $poller = new CpanelReleaseCronPoller();
+        foreach (['SYSTEM_UPDATES_DISABLED', 'SCHEDULED_POLL_DISABLED'] as $reason) {
+            $poller->recordBlockedPreflight($directory, $this->public, '1.2.3', $reason);
+            $record = json_decode(
+                file_get_contents($directory.'/release-poll-status.json'),
+                true, 8, JSON_THROW_ON_ERROR,
+            );
+            self::assertSame('BLOCKED', $record['state']);
+            self::assertSame($reason, $record['reason']);
+            self::assertSame('1.2.3', $record['installed_version']);
+            self::assertNull($record['available_version']);
+            self::assertNull($record['source_sha']);
+            self::assertFalse($record['code_applied']);
+            self::assertSame(0600, fileperms($directory.'/release-poll-status.json') & 0777);
+            self::assertSame($reason, (new \App\Domain\Deployment\CpanelReleaseCronStatus())
+                ->inspect($directory, $this->public)['reason']);
+        }
+    }
+
+    public function test_preflight_cannot_forge_signed_or_deployed_status(): void
+    {
+        $poller = new CpanelReleaseCronPoller();
+        $directory = $this->private.'/release-automation';
+        foreach (['NO_NEWER_SIGNED_VERSION', 'VERIFIED_HOST_CODE_APPLIED', 'unknown', ''] as $reason) {
+            try {
+                $poller->recordBlockedPreflight($directory, $this->public, '1.2.3', $reason);
+                self::fail('Unapproved diagnostic reason was accepted.');
+            } catch (DomainException) {
+                self::assertFileDoesNotExist($directory.'/release-poll-status.json');
+            }
+        }
+        $this->expectException(DomainException::class);
+        $poller->recordBlockedPreflight($directory, $this->public, '01.2.3', 'TRUSTED_RELEASE_ORIGIN_MISSING');
+    }
+
+    public function test_preflight_rejects_symlinked_receipt_and_does_not_touch_it(): void
+    {
+        $directory = $this->private.'/release-automation';
+        (new CpanelReleaseCronPoller())->recordBlockedPreflight(
+            $directory, $this->public, '1.2.3', 'TRUSTED_RELEASE_PUBLIC_KEY_MISSING',
+        );
+        $path = $directory.'/release-poll-status.json';
+        unlink($path);
+        $target = $this->root.'/application/keep-private';
+        file_put_contents($target, 'KEEP');
+        symlink($target, $path);
+        try {
+            $this->expectException(DomainException::class);
+            (new CpanelReleaseCronPoller())->recordBlockedPreflight(
+                $directory, $this->public, '1.2.3', 'RELEASE_MAINTENANCE_ACTIVE',
+            );
+        } finally {
+            self::assertSame('KEEP', file_get_contents($target));
+            unlink($path);
+        }
+    }
 }

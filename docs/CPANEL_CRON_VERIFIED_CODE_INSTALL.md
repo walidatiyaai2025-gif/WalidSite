@@ -10,6 +10,42 @@ Issue [#1120](https://github.com/walidatiyaai2025-gif/WalidSite/issues/1120). Th
 4. The one permanent private PHP CLI Cron runs every 15 minutes (`*/15 * * * *`). One-time Cron GUI activation or authorized scoped cPanel API may be required. There are no recurring uploads, Composer, npm or artisan commands for routine verified code-only updates.
 5. Only after independently testing the complete system on that real host, set `SITE_RELEASE_CRON_CHECK_ENABLED=true`, then independently `SITE_RELEASE_CRON_APPLY_ENABLED=true`. Both default to `false`. The apply switch does **not** register a host adapter and cannot bypass missing publisher identity, authorizations, backup or health checks.
 
+## Missing initial publisher trust: actionable, non-authorizing Cron status
+
+When the already-installed private Cron launcher runs but its initial
+`SITE_TRUSTED_INSTALLED_VERSION`, publisher HTTPS origin or verifier public key
+is absent, it now records an **owner-only, 0600, locked, observational**
+`BLOCKED` receipt in the existing private release-automation directory.
+Admin → System Updates can show one fixed, non-secret reason:
+`TRUSTED_INSTALLED_VERSION_MISSING`,
+`INSTALLED_RUNTIME_IDENTITY_UNVERIFIED`,
+`TRUSTED_RELEASE_ORIGIN_MISSING`,
+`TRUSTED_RELEASE_PUBLIC_KEY_MISSING` or `RELEASE_MAINTENANCE_ACTIVE`.
+An observed local version is **not** a trusted signed-version pin.
+The receipt contains no origin, signing key, token, source SHA, downloadable
+release or secret. It cannot trigger any code update, and the same lock and
+symlink-safe atomic writer prevent a stale signed-state receipt being
+misrepresented after preflight failure. Earlier first-bootstrap physical
+inaccessibility still fails closed with generic CLI `BLOCKED`.
+
+Never “fix” this by inventing a trusted version from an unsigned cPanel
+overlay, copying an ephemeral test signer or enabling apply. Attest the
+running installation against the actual trusted source/build and original
+installer provenance first, then configure real publisher trust out of band
+and separately test the host adapter and recovery.
+
+## Explicit server-disabled states (diagnostics only)
+
+If `SITE_UPDATES_ENABLED=false` or `SITE_RELEASE_CRON_CHECK_ENABLED=false`,
+the installed private CLI Cron continues to **refuse network discovery and
+code installation**. Once a valid installed runtime can bootstrap, it may
+record a locked, 0600, owner-only `SYSTEM_UPDATES_DISABLED` or
+`SCHEDULED_POLL_DISABLED` preflight receipt with no release version/SHA and
+`code_applied=false`. This receipt is a local observation, **not** evidence
+of publisher authenticity, current live-host health or permission to enable
+`SITE_RELEASE_CRON_APPLY_ENABLED`. Missing/unsafe first-install roots still
+fail closed without a receipt.
+
 ## Exact state machine
 
 `Cron private launcher → live version/pointer lock → Ed25519 signed catalog check → no new version = UP_TO_DATE → newer signed version = BLOCKED until verified host apply gate → recheck same version + SHA + signature → private bounded HTTPS ZIP download (no redirects or private DNS) → file-descriptor SHA256 + safe ZIP inspection → strict code-only composer/migration compatibility → private staging and full candidate re-attestation → exclusive writer lease → independent MariaDB+files backup and restore drill → maintenance and immutable pointer → external TLS health → commit → private owner history + verified Cron receipt = DEPLOYED`.

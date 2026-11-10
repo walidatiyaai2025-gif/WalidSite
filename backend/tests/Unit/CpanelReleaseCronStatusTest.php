@@ -133,4 +133,38 @@ final class CpanelReleaseCronStatusTest extends TestCase
         chmod($this->directory, 0777);
         self::assertSame('UNVERIFIED', $reader->inspect($this->directory, $this->public)['state']);
     }
+
+    public function test_local_preflight_blockers_are_observational_and_never_success(): void
+    {
+        $reader = new CpanelReleaseCronStatus();
+        foreach ([
+            'SYSTEM_UPDATES_DISABLED',
+            'SCHEDULED_POLL_DISABLED',
+            'TRUSTED_INSTALLED_VERSION_MISSING',
+            'INSTALLED_RUNTIME_IDENTITY_UNVERIFIED',
+            'TRUSTED_RELEASE_ORIGIN_MISSING',
+            'TRUSTED_RELEASE_PUBLIC_KEY_MISSING',
+            'RELEASE_MAINTENANCE_ACTIVE',
+        ] as $reason) {
+            $this->write([
+                'reason' => $reason,
+                'available_version' => null,
+                'source_sha' => null,
+            ]);
+            $status = $reader->inspect($this->directory, $this->public);
+            self::assertSame('BLOCKED', $status['state']);
+            self::assertSame($reason, $status['reason']);
+            foreach ([
+                ['state' => 'UP_TO_DATE'],
+                ['state' => 'DEPLOYED', 'code_applied' => true],
+                ['available_version' => '1.2.4'],
+                ['source_sha' => str_repeat('f', 40)],
+            ] as $tamper) {
+                $this->write(array_replace([
+                    'reason' => $reason, 'available_version' => null, 'source_sha' => null,
+                ], $tamper));
+                self::assertSame('UNVERIFIED', $reader->inspect($this->directory, $this->public)['state']);
+            }
+        }
+    }
 }
