@@ -130,6 +130,27 @@ class ApkSignerIdentityTest(unittest.TestCase):
                     attest(self.apk, "apksigner", PIN, self.preflight,
                            runner=self.runner(stdout))
 
+    def test_compiled_apk_public_structure_is_redacted_and_bounded(self):
+        # Reproduce the live observation: apksigner reports one signer but
+        # omits the expected indexed cert headings. This must NEVER pass.
+        cases = (
+            (SUCCESS.replace("Signer #1 certificate ", "Certificate "),
+             "observed_public_certificate_indices=none observed_public_signer_digest_lines=0"),
+            (SUCCESS + "Signer #2 certificate SHA-256 digest: " + OTHER + "\\n",
+             "observed_public_certificate_indices=1,2 observed_public_signer_digest_lines=1"),
+        )
+        for stdout, expected in cases:
+            with self.subTest(expected=expected):
+                with self.assertRaises(ApkSignerIdentityError) as error:
+                    attest(self.apk, "apksigner", PIN, self.preflight,
+                           runner=self.runner(stdout=stdout, stderr="PASSWORD_PRIVATE"))
+                detail = str(error.exception)
+                self.assertIn("APK_SIGNER_COUNT_INVALID observed_public_signer_count=1", detail)
+                self.assertIn(expected, detail)
+                self.assertNotIn("PASSWORD_PRIVATE", detail)
+                self.assertNotIn(str(self.apk), detail)
+                self.assertNotIn(OTHER, detail)
+
     def test_crlf_duplicate_signer_digest_fails_closed(self):
         stdout = SUCCESS.replace("\n", "\r\n")
         stdout += f"Signer #1 certificate SHA-256 digest: {PIN}\r\n"
