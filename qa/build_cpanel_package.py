@@ -19,6 +19,26 @@ PRIVATE_TREE_DENY = (b"# WalidSite private deployment tree: never serve over HTT
     b"    Deny from all\n"
     b"</IfModule>\n")
 PRIVATE_GUARD_PATHS = ("application/.htaccess", "contracts/.htaccess")
+# The first ZIP extract must create this directory. It stores owner data and
+# must NOT become a public executable PHP/CGI root on Apache/LiteSpeed.
+# Code-only updates deliberately exclude this whole owner-data tree.
+PUBLIC_UPLOADS_GUARD = (
+    b"# WalidSite owner uploads: never execute scripts.\n"
+    b"Options -Indexes\n"
+    b"<IfModule mod_mime.c>\n"
+    b"    RemoveHandler .php .php3 .php4 .php5 .php7 .php8 .phtml .phar .cgi .pl .py .sh .shtml\n"
+    b"    RemoveType .php .php3 .php4 .php5 .php7 .php8 .phtml .phar .cgi .pl .py .sh .shtml\n"
+    b"</IfModule>\n"
+    b"<FilesMatch \"(?i)\\\\.(?:php[0-9]*|phtml|phar|cgi|pl|py|sh|shtml)$\">\n"
+    b"    <IfModule mod_authz_core.c>\n"
+    b"        Require all denied\n"
+    b"    </IfModule>\n"
+    b"    <IfModule !mod_authz_core.c>\n"
+    b"        Deny from all\n"
+    b"    </IfModule>\n"
+    b"</FilesMatch>\n"
+)
+
 
 DIRECTORIES = ("app", "bootstrap", "config", "database", "resources", "routes", "vendor")
 REQUIRED = (
@@ -182,6 +202,7 @@ def verify_archive(output, expected_sha=None):
             "application/VERSION", "application/cron/release-poll.php",
             "application/.env.example", "public_html/index.php",
             "public_html/.htaccess",
+            "public_html/uploads/.htaccess",
             "public_html/assets/portraits/portrait-light-derived.jpg",
             "public_html/assets/icons/briefcase.svg",
             "public_html/assets/technology-logos/laravel.svg",
@@ -195,6 +216,8 @@ def verify_archive(output, expected_sha=None):
         # the private application/contract tree on a default Apache host.
         if any(archive.read(path) != PRIVATE_TREE_DENY for path in PRIVATE_GUARD_PATHS):
             raise ValueError("Private-directory HTTP denial missing or altered")
+        if archive.read("public_html/uploads/.htaccess") != PUBLIC_UPLOADS_GUARD:
+            raise ValueError("Public upload script execution guard missing or altered")
         if any(
             "/.env" in ("/" + n).replace("/.env.example", "")
             or n.endswith((".sql", ".sqlite", ".pem", ".key", ".p12", ".p8"))
@@ -259,6 +282,12 @@ def build(source, output, sha):
         source, "backend/cron/release-poll.php"
     )
     add_folder(entries, backend / "public", "public_html", source)
+    # Create the upload root through an actual regular file: the ZIP format
+    # intentionally contains no directory entries. Keep the file out of
+    # future CODE-ONLY update ZIPs so owner uploads are never overwritten.
+    if "public_html/uploads/.htaccess" in entries:
+        raise ValueError("An unexpected source upload guard shadows the trusted guard")
+    entries["public_html/uploads/.htaccess"] = PUBLIC_UPLOADS_GUARD
     # Exact checked-out immutable bootstrap; never substitute a runner-local
     # template for a different source ZIP/commit.
     index_file = backend / "resources/deployment/cpanel-stable-index.php"

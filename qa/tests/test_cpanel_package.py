@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 import qa.build_cpanel_package as package_module
 
-from qa.build_cpanel_package import PRIVATE_GUARD_PATHS, PRIVATE_TREE_DENY, build, verify_archive
+from qa.build_cpanel_package import (PRIVATE_GUARD_PATHS, PRIVATE_TREE_DENY, PUBLIC_UPLOADS_GUARD, build, verify_archive)
 
 
 class TestCpanelPackage(unittest.TestCase):
@@ -68,6 +68,7 @@ class TestCpanelPackage(unittest.TestCase):
                 "application/.env.example", "application/VERSION",
                 "application/cron/release-poll.php", "contracts/owner-cv-baseline.json",
                 "public_html/index.php", "public_html/.htaccess",
+                "public_html/uploads/.htaccess",
                 "public_html/assets/portraits/portrait-light-derived.jpg",
                 "public_html/assets/icons/briefcase.svg",
                 "public_html/assets/icons/database.svg",
@@ -84,6 +85,9 @@ class TestCpanelPackage(unittest.TestCase):
             ):
                 self.assertNotIn(name, names)
             self.assertNotIn("public_html/cron/release-poll.php", names)
+            self.assertEqual(zip.read("public_html/uploads/.htaccess"), PUBLIC_UPLOADS_GUARD)
+            self.assertIn(b"Require all denied", PUBLIC_UPLOADS_GUARD)
+            self.assertIn(b"RemoveHandler", PUBLIC_UPLOADS_GUARD)
             private_cron = zip.read("application/cron/release-poll.php").decode()
             self.assertIn("PHP_SAPI !== 'cli'", private_cron)
             self.assertIn("CpanelReleaseCronPoller", private_cron)
@@ -100,6 +104,38 @@ class TestCpanelPackage(unittest.TestCase):
             self.assertEqual(zip.read("application/VERSION"), b"0.1.0\n")
             self.assertFalse(info["secrets_included"])
             self.assertEqual(len(info["files"]), len(names)-1)
+
+    def test_upload_guard_cannot_be_dropped_or_rehashed_into_unsafe_zip(self):
+        # A malicious/rebuilt manifest cannot remove script-execution controls
+        # from the public owner uploads root in a complete Setup ZIP.
+        name = "public_html/uploads/.htaccess"
+        for injected, expected in (
+            (None, "Required deployment payload missing"),
+            (b"Options +Indexes\\nAddHandler application/x-httpd-php .php\\n",
+             "Public upload script execution guard missing or altered"),
+        ):
+            with self.subTest(injected=injected is not None):
+                build(self.root, self.output, "b" * 40)
+                with zipfile.ZipFile(self.output) as source:
+                    payload = {
+                        key: source.read(key)
+                        for key in source.namelist() if key != "PACKAGE-MANIFEST.json"
+                    }
+                    manifest = json.loads(source.read("PACKAGE-MANIFEST.json"))
+                if injected is None:
+                    del payload[name]
+                else:
+                    payload[name] = injected
+                manifest["files"] = {
+                    key: {"bytes": len(value), "sha256": hashlib.sha256(value).hexdigest()}
+                    for key, value in payload.items()
+                }
+                with zipfile.ZipFile(self.output, "w", zipfile.ZIP_DEFLATED) as z:
+                    for key, value in payload.items():
+                        z.writestr(key, value)
+                    z.writestr("PACKAGE-MANIFEST.json", json.dumps(manifest).encode())
+                with self.assertRaisesRegex(ValueError, expected):
+                    verify_archive(self.output, "b" * 40)
 
     def test_deterministic_and_missing_vendor_lock(self):
         first = build(self.root, self.output, "b" * 40)
@@ -396,6 +432,8 @@ class TestCpanelPackage(unittest.TestCase):
             self.assertFalse((public / "backend").exists())
             for guard in PRIVATE_GUARD_PATHS:
                 self.assertEqual((home / guard).read_bytes(), PRIVATE_TREE_DENY)
+            self.assertTrue((public / "uploads").is_dir())
+            self.assertEqual((public / "uploads/.htaccess").read_bytes(), PUBLIC_UPLOADS_GUARD)
             self.assertTrue((app / "storage/framework/views").is_dir())
             self.assertTrue((app / "storage/app/private").is_dir())
             self.assertEqual(

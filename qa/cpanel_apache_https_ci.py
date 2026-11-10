@@ -144,6 +144,26 @@ def run(package: Path, source_sha: str) -> dict:
             welcome = Client(origin, cert).request("/install")
             if welcome.status != 200 or 'name="token"' not in welcome.body:
                 raise AcceptanceError("Fresh HTTPS installer did not initialize")
+            # A real fresh Setup ZIP must create an upload root that serves
+            # inert owner media, but never executes PHP or CGI when served by
+            # Apache/LiteSpeed. Test real HTTP behavior, not only .htaccess
+            # text presence. These disposable probes never enter a release ZIP.
+            uploads = home / "public_html/uploads"
+            if not (uploads / ".htaccess").is_file():
+                raise AcceptanceError("Safe owner upload root is missing from Setup ZIP")
+            (uploads / "no-execute.php").write_text(
+                "<?php echo 'UNSAFE_UPLOAD_SCRIPT_EXECUTED';", encoding="ascii",
+            )
+            (uploads / "allowed-static.txt").write_text(
+                "WALIDSITE_PUBLIC_UPLOAD_STATIC_TEST", encoding="ascii",
+            )
+            client = Client(origin, cert)
+            denied = client.request("/uploads/no-execute.php")
+            if denied.status != 403 or "UNSAFE_UPLOAD_SCRIPT_EXECUTED" in denied.body:
+                raise AcceptanceError("Owner uploads allow PHP execution or lack HTTP denial")
+            allowed = client.request("/uploads/allowed-static.txt")
+            if allowed.status != 200 or allowed.body.strip() != "WALIDSITE_PUBLIC_UPLOAD_STATIC_TEST":
+                raise AcceptanceError("Safe owner static uploads are not served")
             report = accept(origin, home, cert)
             if not report["first_run_http_possession_verified"]:
                 raise AcceptanceError("Real Apache first-run acceptance did not pass")
@@ -152,6 +172,7 @@ def run(package: Path, source_sha: str) -> dict:
                 "source_sha": source_sha,
                 "actual_apache_https_verified": True,
                 "source_setup_zip_verified": True,
+                "owner_uploads_static_allowed_and_script_denied": True,
                 "security_checks": report["http_checks_passed"],
                 "fresh_database_install_verified": False,
                 "publisher_signature_verified": False,
