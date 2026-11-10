@@ -92,29 +92,15 @@ aapt="$(find "$sdk_root/build-tools" -mindepth 2 -maxdepth 2 -type f -name aapt 
 apksigner="$(find "$sdk_root/build-tools" -mindepth 2 -maxdepth 2 -type f -name apksigner | sort -V | tail -1)"
 test -x "$aapt" && test -x "$apksigner"
 
-PYTHONPATH="$PWD" python3 -B - "$apk" "$apksigner" <<'PY'
-import os
-import re
-import subprocess
-import sys
-apk, signer = sys.argv[1:]
-result = subprocess.run(
-    [signer, 'verify', '--verbose', '--print-certs', apk],
-    capture_output=True, text=True, timeout=45, check=False)
-# Neither stdout nor stderr of a failed signer command is printed.
-if result.returncode:
-    raise SystemExit('Release APK cryptographic signing validation failed')
-found = re.findall(
-    r'(?im)^Signer #1 certificate SHA-256 digest: ([a-fA-F0-9]{64})\s*$',
-    result.stdout)
-if (len(found) != 1 or found[0].lower()
-        != os.environ['WALIDSITE_ANDROID_SIGNER_SHA256'].lower()
-        or 'Signer #2 certificate' in result.stdout
-        or re.search(r'(?im)^Signer #1 certificate DN:.*CN=Android Debug(?:,|$)',
-                     result.stdout)):
-    raise SystemExit('Release APK signer differs from pinned identity')
-PY
-
+# Independent post-build check of the ACTUAL compiled APK, not merely the
+# configured keystore. On mismatch, report only the public APK signer SHA-256
+# and a categorical error; never upload a failed APK or print tool stderr.
+PYTHONPATH="$PWD" python3 -B -m qa.android_apk_signer_identity \
+  --apk "$apk" \
+  --apksigner "$apksigner" \
+  --expected "$WALIDSITE_ANDROID_SIGNER_SHA256" \
+  --preflight dist/release-android/keystore-certificate-preflight.json \
+  > dist/release-android/apk-signer-attestation.json
 # Bind the signer-inspected source bytes to later native and copied bytes.
 export WALIDSITE_SIGNER_INSPECTED_APK_SHA256="$(sha256sum "$apk" | cut -d' ' -f1)"
 python3 -B qa/android_qa_build_metadata.py > dist/release-android/native-source.json
@@ -148,6 +134,11 @@ from pathlib import Path
 dir = Path('dist/release-android')
 preflight = json.loads((dir / 'site-origin-preflight.json').read_text())
 native = json.loads((dir / 'native-archive-proof.json').read_text())
+signer = json.loads((dir / 'apk-signer-attestation.json').read_text())
+if (signer.get('apk_signature_verified') is not True
+        or signer.get('keystore_preflight_matches_apk') is not True
+        or signer.get('apk_certificate_sha256') != os.environ['WALIDSITE_ANDROID_SIGNER_SHA256']):
+    raise SystemExit('Compiled Android signer attestation did not match private keystore pin')
 downloaded_apk = dir / 'WalidSite-Android-signed-UNPUBLISHED.apk'
 hash_copy = hashlib.sha256()
 with downloaded_apk.open('rb') as apk_stream:
@@ -175,6 +166,7 @@ receipt = {
     'apk_sha256': native['apk_sha256'],
     'apk_signer_fingerprint_sha256': os.environ['WALIDSITE_ANDROID_SIGNER_SHA256'].lower(),
     'configured_signer_fingerprint_matched': True,
+    'compiled_signer_matches_keystore_preflight': True,
     'compiled_native_manifest_verified': True,
     'native_signature_verified': True,
     'apk_runtime_origin_verified': False,
