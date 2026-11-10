@@ -34,6 +34,18 @@ running installation against the actual trusted source/build and original
 installer provenance first, then configure real publisher trust out of band
 and separately test the host adapter and recovery.
 
+## Explicit server-disabled states (diagnostics only)
+
+If `SITE_UPDATES_ENABLED=false` or `SITE_RELEASE_CRON_CHECK_ENABLED=false`,
+the installed private CLI Cron continues to **refuse network discovery and
+code installation**. Once a valid installed runtime can bootstrap, it may
+record a locked, 0600, owner-only `SYSTEM_UPDATES_DISABLED` or
+`SCHEDULED_POLL_DISABLED` preflight receipt with no release version/SHA and
+`code_applied=false`. This receipt is a local observation, **not** evidence
+of publisher authenticity, current live-host health or permission to enable
+`SITE_RELEASE_CRON_APPLY_ENABLED`. Missing/unsafe first-install roots still
+fail closed without a receipt.
+
 ## Exact state machine
 
 `Cron private launcher → live version/pointer lock → Ed25519 signed catalog check → no new version = UP_TO_DATE → newer signed version = BLOCKED until verified host apply gate → recheck same version + SHA + signature → private bounded HTTPS ZIP download (no redirects or private DNS) → file-descriptor SHA256 + safe ZIP inspection → strict code-only composer/migration compatibility → private staging and full candidate re-attestation → exclusive writer lease → independent MariaDB+files backup and restore drill → maintenance and immutable pointer → external TLS health → commit → private owner history + verified Cron receipt = DEPLOYED`.

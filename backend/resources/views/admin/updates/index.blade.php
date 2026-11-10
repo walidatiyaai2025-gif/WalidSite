@@ -62,6 +62,12 @@ button:disabled{background:#718096;cursor:not-allowed}
 <div><dt>{{ $locale === 'ar' ? 'سبب تعطّل الفحص أو النشر' : 'Blocked reason' }}</dt>
 <dd data-testid="release-cron-block-reason">
 @switch($cronStatus['reason'])
+@case('SYSTEM_UPDATES_DISABLED')
+{{ $locale === 'ar' ? 'تحديثات النظام معطّلة من إعدادات الخادم. لم يجرِ تنزيل إصدار أو تثبيت أي كود.' : 'System Updates are disabled in server configuration. No release was downloaded or code installed.' }}
+@break
+@case('SCHEDULED_POLL_DISABLED')
+{{ $locale === 'ar' ? 'فحص الإصدارات المجدول معطّل من إعدادات الخادم. لم يُفحص أي إصدار موقّع.' : 'Scheduled release polling is disabled in server configuration. No signed release was checked.' }}
+@break
 @case('TRUSTED_INSTALLED_VERSION_MISSING')
 {{ $locale === 'ar' ? 'هوية الإصدار المثبّت غير موثقة. مطلوب التحقق من التثبيت الأصلي قبل تثبيت رقم الإصدار الموثوق.' : 'Installed release trust pin is missing. Attest the original installation before pinning its version.' }}
 @break

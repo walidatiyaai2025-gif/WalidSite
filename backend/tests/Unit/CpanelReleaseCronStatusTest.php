@@ -138,6 +138,8 @@ final class CpanelReleaseCronStatusTest extends TestCase
     {
         $reader = new CpanelReleaseCronStatus();
         foreach ([
+            'SYSTEM_UPDATES_DISABLED',
+            'SCHEDULED_POLL_DISABLED',
             'TRUSTED_INSTALLED_VERSION_MISSING',
             'INSTALLED_RUNTIME_IDENTITY_UNVERIFIED',
             'TRUSTED_RELEASE_ORIGIN_MISSING',

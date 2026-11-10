@@ -62,10 +62,6 @@ try {
         $app->usePublicPath($public);
         $app->make(\Illuminate\Contracts\Console\Kernel::class)->bootstrap();
 
-        if (config('site.release_cron_check_enabled') !== true
-            || config('site.updates_enabled') !== true) {
-            throw new RuntimeException('Private release polling disabled.');
-        }
         $version = (new \App\Domain\Deployment\TrustedInstalledReleasePin())->read(
             base_path(), $public, config('site.trusted_installed_version'),
         );
@@ -77,7 +73,13 @@ try {
         // a strictly blocked, non-authorizing private receipt.
         $preflightReason = null;
         $firstPin = config('site.trusted_installed_version');
-        if (! is_string($firstPin) || $firstPin === '') {
+        // Disabled server controls are still observable to the owner, but
+        // never authorize signed discovery or code installation.
+        if (config('site.updates_enabled') !== true) {
+            $preflightReason = 'SYSTEM_UPDATES_DISABLED';
+        } elseif (config('site.release_cron_check_enabled') !== true) {
+            $preflightReason = 'SCHEDULED_POLL_DISABLED';
+        } elseif (! is_string($firstPin) || $firstPin === '') {
             $preflightReason = 'TRUSTED_INSTALLED_VERSION_MISSING';
         } elseif ($version === null || base_path() !== $running) {
             $preflightReason = 'INSTALLED_RUNTIME_IDENTITY_UNVERIFIED';

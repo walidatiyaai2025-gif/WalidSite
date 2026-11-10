@@ -214,8 +214,24 @@ final class AdminUpdateStatusTruthTest extends TestCase
         self::assertStringContainsString('No application update was applied.', $en);
         self::assertStringNotContainsString('data-testid="release-cron-deployed"', $en);
 
+        foreach ([
+            'SYSTEM_UPDATES_DISABLED' => 'System Updates are disabled in server configuration.',
+            'SCHEDULED_POLL_DISABLED' => 'Scheduled release polling is disabled in server configuration.',
+        ] as $reason => $expected) {
+            $data['cronStatus']['reason'] = $reason;
+            $html = view('admin.updates.index', $data)->render();
+            self::assertStringContainsString($expected, $html);
+            self::assertStringContainsString('No application update was applied.', $html);
+            self::assertStringNotContainsString('data-testid="release-cron-deployed"', $html);
+        }
+
         // The existing language switch honors the admin's current AR query.
         $ar = $this->get('/admin/updates?lang=ar');
         $ar->assertOk()->assertSee('dir="rtl"', false);
+        $data['cronStatus']['reason'] = 'SCHEDULED_POLL_DISABLED';
+        self::assertStringContainsString(
+            'فحص الإصدارات المجدول معطّل من إعدادات الخادم.',
+            view('admin.updates.index', $data)->render(),
+        );
     }
 }
