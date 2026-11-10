@@ -98,8 +98,23 @@ def attest(
         if re.match(r"^Signer #([1-9][0-9]*) certificate ", line)
     ]
     if not certificates or set(certificates) != {"1"}:
+        # apksigner's signer count covers APK signing identities, whereas its
+        # verbose certificate headings may use a different output shape.
+        # Expose ONLY a bounded public structural summary, never raw stdout,
+        # certificate DN, keystore data, paths, or any dynamic log text. Do
+        # not accept/massage unrecognized headings as a trusted signer.
+        indices = sorted({int(value) for value in certificates})
+        label = ",".join(str(i) for i in indices[:4]) if indices else "none"
+        if len(indices) > 4:
+            label += ",more"
+        digest_lines = sum(
+            1 for line in lines
+            if line.startswith("Signer #1 certificate SHA-256 digest:")
+        )
         raise ApkSignerIdentityError(
             f"APK_SIGNER_COUNT_INVALID observed_public_signer_count={reported_count}"
+            f" observed_public_certificate_indices={label}"
+            f" observed_public_signer_digest_lines={min(digest_lines, 9)}"
         )
     digests = re.findall(
         r"(?im)^Signer #1 certificate SHA-256 digest:\s*([0-9a-f]{64})\s*$",
