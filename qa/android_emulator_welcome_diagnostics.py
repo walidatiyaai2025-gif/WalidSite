@@ -78,6 +78,12 @@ def collect(
         # not CSS/device-independent points. DPR=1 is explicitly configured here.
         command(serial, "shell", "wm", "size", f"{width}x{height}")
         command(serial, "shell", "wm", "density", "160")
+        # Android 35 cold boots and display resizes may leave Keyguard or
+        # a sleeping display above the launched Flutter activity. Wake and
+        # dismiss the *disposable emulator* Keyguard before checking the
+        # actual foreground/semantics. This never skips renderer evidence.
+        command(serial, "shell", "input", "keyevent", "KEYCODE_WAKEUP")
+        command(serial, "shell", "wm", "dismiss-keyguard")
         command(serial, "shell", "am", "force-stop", PACKAGE)
         start = command(serial, "shell", "am", "start", "-W", "-n",
                         PACKAGE + "/.MainActivity")
@@ -141,6 +147,11 @@ def collect(
                     # Explicitly bring back ONLY the installed canonical app.
                     # ActivityManager must confirm it; renderer still checks
                     # actual window focus and native semantics before writing.
+                    # ActivityManager launch success does not prove
+                    # Android dismissed its lock screen after a resize.
+                    # Retry wake/unlock, then independently attest native UI.
+                    command(serial, "shell", "input", "keyevent", "KEYCODE_WAKEUP")
+                    command(serial, "shell", "wm", "dismiss-keyguard")
                     restarted = command(serial, "shell", "am", "start", "-W",
                                         "-n", PACKAGE + "/.MainActivity")
                     if ("Status: ok" not in restarted.splitlines()
