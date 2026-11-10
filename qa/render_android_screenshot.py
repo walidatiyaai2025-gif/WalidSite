@@ -154,6 +154,31 @@ def _native_template(route: object) -> str:
     raise AndroidCaptureError("This Flutter route has no independently verified identity")
 
 
+def _focused_window(serial: str, runner=subprocess.run) -> bytes:
+    """Require one real focused WalidSite window, not an activity launch claim.
+
+    Some Android 35 builds omit mCurrentFocus from the windows subsection
+    while the complete WindowManager dump still reports it. A missing field
+    permits only a second strict WindowManager query, never a weaker activity
+    or screenshot-based substitute. Reject ambiguous or foreign focus.
+    """
+    window = _run(serial, ["shell", "dumpsys", "window", "windows"], runner)
+    if len(window) > MAX_ACCESSIBILITY_BYTES:
+        raise AndroidCaptureError("Invalid foreground application evidence")
+    focused = [line.strip() for line in window.splitlines()
+               if b"mCurrentFocus=" in line]
+    if not focused:
+        window = _run(serial, ["shell", "dumpsys", "window"], runner)
+        if len(window) > MAX_ACCESSIBILITY_BYTES:
+            raise AndroidCaptureError("Invalid foreground application evidence")
+        focused = [line.strip() for line in window.splitlines()
+                   if b"mCurrentFocus=" in line]
+    pattern = rb"\bmCurrentFocus=Window\{[^}]*\b" + re.escape(PACKAGE.encode()) + rb"/"
+    if len(focused) != 1 or re.search(pattern, focused[0]) is None:
+        raise AndroidCaptureError("WalidSite Flutter is not the foreground application")
+    return focused[0]
+
+
 def render(env=None, runner=subprocess.run) -> Path:
     env = os.environ if env is None else env
     route = env.get("WALIDSITE_CAPTURE_ROUTE")
@@ -185,15 +210,7 @@ def render(env=None, runner=subprocess.run) -> Path:
 
     if _run(serial, ["get-state"], runner).strip() != b"device":
         raise AndroidCaptureError("Selected Android device is not connected")
-    window = _run(serial, ["shell", "dumpsys", "window", "windows"], runner)
-    if len(window) > MAX_ACCESSIBILITY_BYTES:
-        raise AndroidCaptureError("Invalid foreground application evidence")
-    focused_lines = [line.decode("utf-8", errors="replace")
-                     for line in window.splitlines() if b"mCurrentFocus=" in line]
-    if (len(focused_lines) != 1
-            or not re.search(r"\bmCurrentFocus=Window\{[^}]*\b" +
-                             re.escape(PACKAGE) + r"/", focused_lines[0])):
-        raise AndroidCaptureError("WalidSite Flutter is not the foreground application")
+    focused_before = _focused_window(serial, runner)
 
     hierarchy = _run(serial, ["shell", "uiautomator", "dump", "/dev/tty"], runner)
     if route in HEADINGS:
@@ -216,12 +233,8 @@ def render(env=None, runner=subprocess.run) -> Path:
     # Guard against an app or screen switch while the ADB screenshot command
     # was running. Both the focused window and visible localized heading must
     # remain the same after the native pixels were captured.
-    window_after = _run(serial, ["shell", "dumpsys", "window", "windows"], runner)
-    if len(window_after) > MAX_ACCESSIBILITY_BYTES:
-        raise AndroidCaptureError("Invalid post-capture foreground evidence")
-    focused_after = [line.decode("utf-8", errors="replace")
-                     for line in window_after.splitlines() if b"mCurrentFocus=" in line]
-    if focused_after != focused_lines:
+    focused_after = _focused_window(serial, runner)
+    if focused_after != focused_before:
         raise AndroidCaptureError("Foreground application changed during capture")
     hierarchy_after = _run(serial, ["shell", "uiautomator", "dump", "/dev/tty"], runner)
     if route in HEADINGS:
