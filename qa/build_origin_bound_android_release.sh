@@ -92,28 +92,11 @@ aapt="$(find "$sdk_root/build-tools" -mindepth 2 -maxdepth 2 -type f -name aapt 
 apksigner="$(find "$sdk_root/build-tools" -mindepth 2 -maxdepth 2 -type f -name apksigner | sort -V | tail -1)"
 test -x "$aapt" && test -x "$apksigner"
 
-PYTHONPATH="$PWD" python3 -B - "$apk" "$apksigner" <<'PY'
-import os
-import re
-import subprocess
-import sys
-apk, signer = sys.argv[1:]
-result = subprocess.run(
-    [signer, 'verify', '--verbose', '--print-certs', apk],
-    capture_output=True, text=True, timeout=45, check=False)
-# Neither stdout nor stderr of a failed signer command is printed.
-if result.returncode:
-    raise SystemExit('Release APK cryptographic signing validation failed')
-found = re.findall(
-    r'(?im)^Signer #1 certificate SHA-256 digest: ([a-fA-F0-9]{64})\s*$',
-    result.stdout)
-if (len(found) != 1 or found[0].lower()
-        != os.environ['WALIDSITE_ANDROID_SIGNER_SHA256'].lower()
-        or 'Signer #2 certificate' in result.stdout
-        or re.search(r'(?im)^Signer #1 certificate DN:.*CN=Android Debug(?:,|$)',
-                     result.stdout)):
-    raise SystemExit('Release APK signer differs from pinned identity')
-PY
+# The keystore may be correctly pinned while Gradle emits a different APK
+# signer. Verify the ACTUAL APK cryptographically and print only its public
+# leaf-certificate SHA-256 if it differs; never silently repin or accept debug.
+PYTHONPATH="$PWD" python3 -B -m qa.android_signed_apk_identity \
+  "$apk" "$apksigner" "$WALIDSITE_ANDROID_SIGNER_SHA256"
 
 # Bind the signer-inspected source bytes to later native and copied bytes.
 export WALIDSITE_SIGNER_INSPECTED_APK_SHA256="$(sha256sum "$apk" | cut -d' ' -f1)"
