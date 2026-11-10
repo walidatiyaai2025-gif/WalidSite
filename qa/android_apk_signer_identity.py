@@ -74,7 +74,9 @@ def attest(
     # source-stamp or SDK-versioned/rotated certificate headings are not proof
     # that this product was signed by exactly one approved certificate.
     # splitlines() handles either LF or CRLF without accepting arbitrary text.
-    lines = [line.strip() for line in result.stdout.splitlines()]
+    # Preserve leading whitespace; indented/malformed signer headings must
+    # never become trusted simply because the platform uses CRLF endings.
+    lines = result.stdout.splitlines()
     count_values = [
         line[len("Number of signers:"):].strip()
         for line in lines if line.startswith("Number of signers:")
