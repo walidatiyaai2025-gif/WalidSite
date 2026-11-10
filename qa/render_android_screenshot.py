@@ -154,6 +154,28 @@ def _native_template(route: object) -> str:
     raise AndroidCaptureError("This Flutter route has no independently verified identity")
 
 
+def _read_accessibility_hierarchy(serial: str, runner=subprocess.run) -> bytes:
+    """Read an actual Android UI hierarchy, never a synthetic route claim.
+
+    On Android 35, uiautomator dump /dev/tty may print only a status line.
+    In that case use a fixed temporary device path, remove any stale bytes
+    before the dump, and always remove the captured XML afterward.
+    """
+    document = _run(serial, ["shell", "uiautomator", "dump", "/dev/tty"], runner)
+    if b"<hierarchy" in document:
+        return document
+    path = "/sdcard/Download/walidsite-qa-hierarchy.xml"
+    _run(serial, ["shell", "rm", "-f", path], runner)
+    try:
+        _run(serial, ["shell", "uiautomator", "dump", path], runner)
+        document = _run(serial, ["exec-out", "cat", path], runner)
+    finally:
+        _run(serial, ["shell", "rm", "-f", path], runner)
+    if b"<hierarchy" not in document:
+        raise AndroidCaptureError("No Android accessibility hierarchy available")
+    return document
+
+
 def _focused_window(serial: str, runner=subprocess.run) -> bytes:
     """Require one real focused WalidSite window, not an activity launch claim.
 
@@ -212,7 +234,7 @@ def render(env=None, runner=subprocess.run) -> Path:
         raise AndroidCaptureError("Selected Android device is not connected")
     focused_before = _focused_window(serial, runner)
 
-    hierarchy = _run(serial, ["shell", "uiautomator", "dump", "/dev/tty"], runner)
+    hierarchy = _read_accessibility_hierarchy(serial, runner)
     if route in HEADINGS:
         _verify_heading(hierarchy, HEADINGS[route][0 if locale == "en" else 1], height)
     else:
@@ -241,7 +263,7 @@ def render(env=None, runner=subprocess.run) -> Path:
         raise AndroidCaptureError("Foreground application changed during capture") from exc
     if focused_after != focused_before:
         raise AndroidCaptureError("Foreground application changed during capture")
-    hierarchy_after = _run(serial, ["shell", "uiautomator", "dump", "/dev/tty"], runner)
+    hierarchy_after = _read_accessibility_hierarchy(serial, runner)
     if route in HEADINGS:
         _verify_heading(hierarchy_after, HEADINGS[route][0 if locale == "en" else 1], height)
     else:
