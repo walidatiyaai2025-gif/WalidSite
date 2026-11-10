@@ -71,6 +71,12 @@ with destination.open('xb') as out:
     out.write(value)
 destination.chmod(0o600)
 PY
+# Compare the actual private keystore alias certificate with the independent
+# approved signer pin BEFORE spending runner time on a Flutter release build.
+# This emits only a redacted boolean receipt; APK bytes are still independently
+# checked by apksigner after compilation.
+python3 -B -m qa.android_keystore_signer_preflight \
+  > dist/release-android/keystore-preflight.json
 (cd mobile && flutter pub get)
 source qa/gradle_distribution_preflight.sh
 (cd mobile && with_gradle_distribution_retry flutter build apk --release --no-pub \

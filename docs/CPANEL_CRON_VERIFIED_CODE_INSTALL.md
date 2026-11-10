@@ -46,6 +46,20 @@ of publisher authenticity, current live-host health or permission to enable
 `SITE_RELEASE_CRON_APPLY_ENABLED`. Missing/unsafe first-install roots still
 fail closed without a receipt.
 
+## Android production signer preflight
+
+The manual signed-Android inspection first compares the configured private
+keystore alias certificate with the independently approved
+`WALIDSITE_ANDROID_SIGNER_SHA256` pin using Java keytool. It never logs,
+exports or guesses a keystore password, signer fingerprint or private key;
+keytool references the protected password by environment-variable name.
+A mismatch fails **before** Flutter compilation and leaves a bounded,
+non-authorizing diagnostic. A matching keystore is only a prerequisite:
+the actual built APK is **still** independently checked with `apksigner`
+against the same approved pin. Do not automatically replace the pin with
+the certificate found in a failed build. The owner must independently
+confirm the intended signing identity before changing protected variables.
+
 ## Exact state machine
 
 `Cron private launcher → live version/pointer lock → Ed25519 signed catalog check → no new version = UP_TO_DATE → newer signed version = BLOCKED until verified host apply gate → recheck same version + SHA + signature → private bounded HTTPS ZIP download (no redirects or private DNS) → file-descriptor SHA256 + safe ZIP inspection → strict code-only composer/migration compatibility → private staging and full candidate re-attestation → exclusive writer lease → independent MariaDB+files backup and restore drill → maintenance and immutable pointer → external TLS health → commit → private owner history + verified Cron receipt = DEPLOYED`.
