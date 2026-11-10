@@ -134,6 +134,66 @@ class AndroidScreenCaptureTest(unittest.TestCase):
                     render(self.env, android35)
                 self.assertFalse(self.output.exists())
 
+    def test_android35_missing_windowmanager_focus_requires_real_input_dispatcher(self):
+        original, _ = self.runner()
+        calls = []
+
+        def android35(args, **kwargs):
+            tail = args[3:]
+            calls.append(tail)
+            if tail in (["shell", "dumpsys", "window", "windows"],
+                        ["shell", "dumpsys", "window"]):
+                return SimpleNamespace(stdout=b"WindowManager: no focused window field",
+                                       stderr=b"private", returncode=0)
+            if tail == ["shell", "dumpsys", "input"]:
+                return SimpleNamespace(
+                    stdout=(b"Input Dispatcher State:\n"
+                            b"  FocusedWindows:\n"
+                            b"    displayId=0, name='Window{abc u0 "
+                            + PACKAGE.encode() + b"/.MainActivity}'\n"
+                            b"  TouchStates: <no displays touched>\n"),
+                    stderr=b"private", returncode=0)
+            return original(args, **kwargs)
+
+        self.assertEqual(render(self.env, android35), self.output)
+        self.assertEqual(self.output.read_bytes(), self.png)
+        self.assertEqual(calls.count(["shell", "dumpsys", "input"]), 2)
+
+    def test_android35_input_dispatcher_rejects_missing_foreign_ambiguous_and_anr_focus(self):
+        body = (
+            b"Input Dispatcher State:\n  FocusedWindows:\n"
+            b"    displayId=0, name='Window{abc u0 "
+            + PACKAGE.encode() + b"/.MainActivity}'\n"
+        )
+        invalid = (
+            b"Input Dispatcher State:\n  FocusedWindows: <none>\n",
+            b"Input Dispatcher State:\n  FocusedWindows:\n"
+            b"    displayId=0, name='Window{aaa u0 com.android.systemui/.Overlay}'\n",
+            body + b"    displayId=0, name='Window{bbb u0 com.android.systemui/.Overlay}'\n",
+            b"Input Dispatcher State:\n  FocusedWindows: <none>\n"
+            + b"Input Dispatcher State at time of last ANR\n" + body,
+            b"Input Dispatcher State:\n  FocusedWindows:\n"
+            b"    displayId=0, name='Window{abc u0 evil."
+            + PACKAGE.encode() + b"/.MainActivity}'\n",
+        )
+        for data in invalid:
+            with self.subTest(case=data[:75]):
+                original, _ = self.runner()
+                def android35(args, **kwargs):
+                    tail = args[3:]
+                    if tail in (["shell", "dumpsys", "window", "windows"],
+                                ["shell", "dumpsys", "window"]):
+                        return SimpleNamespace(stdout=b"WindowManager: no focus",
+                                               stderr=b"private", returncode=0)
+                    if tail == ["shell", "dumpsys", "input"]:
+                        return SimpleNamespace(stdout=data, stderr=b"private",
+                                               returncode=0)
+                    return original(args, **kwargs)
+
+                with self.assertRaisesRegex(AndroidCaptureError, "foreground"):
+                    render(self.env, android35)
+                self.assertFalse(self.output.exists())
+
     def test_android35_tty_dump_uses_unique_private_device_files_and_cleans_them(self):
         original, _ = self.runner()
         paths, removed = [], []
