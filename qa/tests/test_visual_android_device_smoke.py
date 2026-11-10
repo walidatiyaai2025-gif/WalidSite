@@ -199,15 +199,15 @@ class AndroidDeviceSmokeTest(unittest.TestCase):
 
         def adb35(argv, *, timeout=15):
             if argv[3:9] == ["shell", "am", "start", "-W", "-n", expected]:
-                return CompletedProcess(argv, 0, "Status: ok\\n", "")
+                return CompletedProcess(argv, 0, "Status: ok\n", "")
             if argv[3:] == ["shell", "dumpsys", "activity", "activities"]:
                 return CompletedProcess(
-                    argv, 0, "ActivityTaskManager:\\n"
+                    argv, 0, "ActivityTaskManager:\n"
                     "  topResumedActivity=ActivityRecord{123 u0 "
-                    + expected + " t1}\\n", "")
+                    + expected + " t1}\n", "")
             return self.adb(argv, timeout=timeout)
 
-        with patch("qa.android_device_smoke.inspect", side_effect=self.inspect), \\
+        with patch("qa.android_device_smoke.inspect", side_effect=self.inspect), \
                 patch("qa.android_device_smoke._command", side_effect=adb35):
             result = smoke(self.apk, **self.kwargs)
         self.assertTrue(result["device_install_launch_verified"])
@@ -220,19 +220,19 @@ class AndroidDeviceSmokeTest(unittest.TestCase):
             "topResumedActivity=ActivityRecord{123 u0 com.android.systemui/.Overlay t1}",
             "topResumedActivity=ActivityRecord{123 u0 evil." + expected + " t1}",
             "topResumedActivity=ActivityRecord{123 u0 " + expected
-            + " t1}\\ntopResumedActivity=ActivityRecord{456 u0 " + expected + " t2}",
+            + " t1}\ntopResumedActivity=ActivityRecord{456 u0 " + expected + " t2}",
         ):
             self.installed = False
 
             def adb35(argv, *, timeout=15):
                 if argv[3:9] == ["shell", "am", "start", "-W", "-n", expected]:
-                    return CompletedProcess(argv, 0, "Status: ok\\n", "")
+                    return CompletedProcess(argv, 0, "Status: ok\n", "")
                 if argv[3:] == ["shell", "dumpsys", "activity", "activities"]:
                     return CompletedProcess(argv, 0, record, "")
                 return self.adb(argv, timeout=timeout)
 
-            with self.subTest(record=record[:55]), \\
-                    patch("qa.android_device_smoke.inspect", side_effect=self.inspect), \\
+            with self.subTest(record=record[:55]), \
+                    patch("qa.android_device_smoke.inspect", side_effect=self.inspect), \
                     patch("qa.android_device_smoke._command", side_effect=adb35):
                 with self.assertRaisesRegex(DeviceSmokeError, "resumed activity"):
                     smoke(self.apk, **self.kwargs)
