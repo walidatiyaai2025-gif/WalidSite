@@ -87,7 +87,22 @@ final class CpanelReleaseCronStatus
                 'NO_NEWER_SIGNED_VERSION',
                 'VERIFIED_HOST_UPDATE_GATE_REQUIRED',
                 'VERIFIED_HOST_CODE_APPLIED',
+                'TRUSTED_INSTALLED_VERSION_MISSING',
+                'INSTALLED_RUNTIME_IDENTITY_UNVERIFIED',
+                'TRUSTED_RELEASE_ORIGIN_MISSING',
+                'TRUSTED_RELEASE_PUBLIC_KEY_MISSING',
+                'RELEASE_MAINTENANCE_ACTIVE',
             ], true)
+            || (in_array($row['reason'], [
+                'TRUSTED_INSTALLED_VERSION_MISSING',
+                'INSTALLED_RUNTIME_IDENTITY_UNVERIFIED',
+                'TRUSTED_RELEASE_ORIGIN_MISSING',
+                'TRUSTED_RELEASE_PUBLIC_KEY_MISSING',
+                'RELEASE_MAINTENANCE_ACTIVE',
+            ], true) && ($row['state'] !== 'BLOCKED'
+                || $row['available_version'] !== null
+                || $row['source_sha'] !== null
+                || $row['code_applied'] !== false))
             || ! is_bool($row['code_applied'])
             || ($row['state'] === 'DEPLOYED') !== ($row['code_applied'] === true)
             || ($row['state'] === 'DEPLOYED'
