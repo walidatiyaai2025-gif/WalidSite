@@ -150,7 +150,7 @@ def smoke(apk: Path, *, package_id: str, version_name: str,
             if (len(resumed) != 1
                     or not any(re.search(
                         r"(?<![A-Za-z0-9_.])" + re.escape(identity)
-                        + r"(?=[\\s}])", resumed[0],
+                        + r"(?=[\s}])", resumed[0],
                     ) for identity in expected_activities)):
                 raise DeviceSmokeError("Android resumed activity not verified")
         pid = _checked_adb(adb, serial, "shell", "pidof", package_id,
