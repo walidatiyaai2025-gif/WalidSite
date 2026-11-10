@@ -100,7 +100,7 @@ final class CpanelReleaseCronPoller
         string $observedVersion,
         string $reason,
     ): void {
-        if (preg_match('/\\A(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)\\z/D', $observedVersion) !== 1
+        if (preg_match('/\A(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\z/D', $observedVersion) !== 1
             || ! in_array($reason, [
                 'TRUSTED_INSTALLED_VERSION_MISSING',
                 'INSTALLED_RUNTIME_IDENTITY_UNVERIFIED',
