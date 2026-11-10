@@ -235,7 +235,7 @@ def _focused_window(serial: str, runner=subprocess.run) -> bytes:
                 in_focused_windows = False
         if stripped.startswith(b"FocusedWindow:"):
             current.append(stripped.split(b"FocusedWindow:", 1)[1].strip())
-    focus_pattern = rb"(?:Window\{[^}]*\b)?" + re.escape(PACKAGE.encode()) + rb"/"
+    focus_pattern = rb"(?<![A-Za-z0-9_.])" + re.escape(PACKAGE.encode()) + rb"/"
     if len(current) != 1 or re.search(focus_pattern, current[0]) is None:
         raise AndroidCaptureError("WalidSite Flutter is not the foreground application")
     return b"input-focused:" + current[0]
