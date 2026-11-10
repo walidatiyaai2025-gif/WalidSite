@@ -69,7 +69,8 @@ def attest(
     except OSError as exc:
         raise KeystoreIdentityError("Release keystore unavailable") from exc
     if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
-            or info.st_mode & 0o077 or info.st_size < 100 or info.st_size > 1048576
+            or (os.name == "posix" and info.st_mode & 0o077)
+            or info.st_size < 100 or info.st_size > 1048576
             or path.resolve() != path):
         raise KeystoreIdentityError("Release keystore physical file is unsafe")
     # The actual store password remains exclusively in the environment. Only
