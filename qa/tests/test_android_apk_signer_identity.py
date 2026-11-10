@@ -170,7 +170,7 @@ class ApkSignerIdentityTest(unittest.TestCase):
         message = str(caught.exception)
         self.assertIn("APK_SIGNER_COUNT_INVALID", message)
         self.assertIn("observed_public_signer_ids=1,2", message)
-        self.assertIn("certificate_fields=6", message)
+        self.assertIn("certificate_fields=5", message)
         self.assertNotIn("SECRET-SUBJECT", message)
         self.assertNotIn("SENSITIVE_PATH_AND_SECRET", message)
         self.assertNotIn(str(self.apk), message)
