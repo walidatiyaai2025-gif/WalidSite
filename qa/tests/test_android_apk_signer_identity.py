@@ -117,6 +117,27 @@ class ApkSignerIdentityTest(unittest.TestCase):
                        runner=self.runner(stamped))
         self.assertEqual(PIN, proof["apk_certificate_sha256"])
 
+    def test_indented_or_malformed_certificate_headings_are_not_normalized(self):
+        # Preserve the original anchored apksigner output contract: a
+        # leading space does not transform malformed output into evidence.
+        for stdout in (
+            SUCCESS.replace("Signer #1", "  Signer #1"),
+            SUCCESS.replace("Signer #1 certificate", "\tSigner #1 certificate"),
+        ):
+            with self.subTest(indented=repr(stdout[-90:])):
+                with self.assertRaisesRegex(ApkSignerIdentityError,
+                        "APK_SIGNER_COUNT_INVALID"):
+                    attest(self.apk, "apksigner", PIN, self.preflight,
+                           runner=self.runner(stdout))
+
+    def test_crlf_duplicate_signer_digest_fails_closed(self):
+        stdout = SUCCESS.replace("\n", "\r\n")
+        stdout += f"Signer #1 certificate SHA-256 digest: {PIN}\r\n"
+        with self.assertRaisesRegex(ApkSignerIdentityError,
+                "APK_SIGNER_DIGEST_AMBIGUOUS"):
+            attest(self.apk, "apksigner", PIN, self.preflight,
+                   runner=self.runner(stdout))
+
     def test_any_invalid_crypto_result_fails_even_when_stdout_contains_pin(self):
         with self.assertRaisesRegex(ApkSignerIdentityError, "APK_SIGNATURE_CRYPTOGRAPHICALLY_INVALID"):
             attest(self.apk, "apksigner", PIN, self.preflight, runner=self.runner(status=1))
