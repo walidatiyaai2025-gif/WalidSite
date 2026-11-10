@@ -69,14 +69,36 @@ def attest(
         raise ApkSignerIdentityError("APK_SIGNATURE_CRYPTOGRAPHICALLY_INVALID")
     if not isinstance(result.stdout, str) or len(result.stdout) > 32768:
         raise ApkSignerIdentityError("APK_SIGNER_OUTPUT_INVALID")
-    # Reject multiple signers or malformed/duplicate signer certificate fields.
-    # Do not treat "Source Stamp Signer" as an APK distribution signer.
-    certificates = re.findall(
-        r"(?m)^Signer #([1-9][0-9]*) certificate [^\r\n]*$",
-        result.stdout,
-    )
+    # apksigner --verbose reports the number of *APK distribution* signers.
+    # Do not infer cardinality from certificate lines alone. In particular,
+    # source-stamp or SDK-versioned/rotated certificate headings are not proof
+    # that this product was signed by exactly one approved certificate.
+    # splitlines() handles either LF or CRLF without accepting arbitrary text.
+    lines = [line.strip() for line in result.stdout.splitlines()]
+    count_values = [
+        line[len("Number of signers:"):].strip()
+        for line in lines if line.startswith("Number of signers:")
+    ]
+    if len(count_values) != 1 or re.fullmatch(r"(?:0|[1-9][0-9]{0,2})", count_values[0]) is None:
+        raise ApkSignerIdentityError("APK_SIGNER_COUNT_UNAVAILABLE")
+    reported_count = int(count_values[0])
+    if reported_count != 1:
+        raise ApkSignerIdentityError(
+            f"APK_SIGNER_COUNT_INVALID observed_public_signer_count={reported_count}"
+        )
+    # Fail closed on key rotation rather than treating a single certificate
+    # shown for one Android SDK range as the identity for *all* devices.
+    if any(line.startswith("Signer (minSdkVersion=") for line in lines):
+        raise ApkSignerIdentityError("APK_SIGNER_ROTATION_UNSUPPORTED")
+    certificates = [
+        re.match(r"^Signer #([1-9][0-9]*) certificate ", line).group(1)
+        for line in lines
+        if re.match(r"^Signer #([1-9][0-9]*) certificate ", line)
+    ]
     if not certificates or set(certificates) != {"1"}:
-        raise ApkSignerIdentityError("APK_SIGNER_COUNT_INVALID")
+        raise ApkSignerIdentityError(
+            f"APK_SIGNER_COUNT_INVALID observed_public_signer_count={reported_count}"
+        )
     digests = re.findall(
         r"(?im)^Signer #1 certificate SHA-256 digest:\s*([0-9a-f]{64})\s*$",
         result.stdout,
