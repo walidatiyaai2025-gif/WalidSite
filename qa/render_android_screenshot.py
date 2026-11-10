@@ -122,8 +122,11 @@ def _verify_native_identity(xml: bytes, identifier: str, heading: str,
         inside = bool(box and 0 <= int(box[1]) < int(box[3]) <= width
                       and 0 <= int(box[2]) < int(box[4]) <= height)
         if node.attrib.get("resource-id") == identifier:
-            if not visible or not inside:
-                raise AndroidCaptureError("Native screen marker is not visible")
+            # Stable redacted diagnostics; never echo XML, bounds, or user UI.
+            if not visible:
+                raise AndroidCaptureError("Native screen marker is not visible: hidden")
+            if not inside:
+                raise AndroidCaptureError("Native screen marker is not visible: outside_viewport")
             marker_count += 1
         if heading in (node.attrib.get("text"), node.attrib.get("content-desc")):
             if visible and inside and (not top_heading or int(box[2]) <= height // 5):

@@ -116,11 +116,17 @@ def collect(
                 produced = capture(env=env)
                 break
             except AndroidCaptureError as exc:
-                if (str(exc) not in (
+                retryable = (
+                    str(exc) in (
                         "WalidSite Flutter is not the foreground application",
                         "Canonical Flutter native screen identity is missing or ambiguous",
                         "Native screen locale or visible title is not verified")
-                        or attempt == 4 or runtime.exists() or runtime.is_symlink()):
+                    or str(exc) in (
+                        "Native screen marker is not visible: hidden",
+                        "Native screen marker is not visible: outside_viewport")
+                )
+                if (not retryable or attempt == 4
+                        or runtime.exists() or runtime.is_symlink()):
                     if str(exc) == "WalidSite Flutter is not the foreground application":
                         # Retain the exact strict renderer gate; categorize
                         # failure without exposing raw UI or device logs.

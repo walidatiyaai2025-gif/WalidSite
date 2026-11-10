@@ -210,6 +210,38 @@ class WelcomeEmulatorDiagnosticTest(unittest.TestCase):
         self.assertEqual(len(attempts), 5)
         self.assertEqual(list(self.output.iterdir()), [])
 
+    def test_native_marker_retries_require_new_real_visible_evidence(self):
+        attempts = []
+        def eventually_visible(*, env):
+            attempts.append(True)
+            if len(attempts) < 3:
+                raise AndroidCaptureError(
+                    "Native screen marker is not visible: outside_viewport")
+            return self.capture(env=env)
+        receipt = collect(
+            self.root, self.output, source_sha=SHA, checked_sha=SHA,
+            serial="emulator-5554", command=self.command,
+            capture=eventually_visible, sleeper=self.sleeps.append)
+        self.assertEqual(len(attempts), 3)
+        self.assertEqual(self.sleeps, [2.0, 2.0, 2.0])
+        starts = [parts for _, parts in self.commands
+                  if parts[:3] == ("shell", "am", "start")]
+        self.assertEqual(len(starts), 1)
+        self.assertEqual(receipt["status"], "mismatch")
+        self.assertFalse(receipt["evidence_admitted"])
+
+    def test_persistent_hidden_marker_fails_without_any_visual_evidence(self):
+        attempts = []
+        def still_hidden(*, env):
+            attempts.append(True)
+            raise AndroidCaptureError("Native screen marker is not visible: hidden")
+        with self.assertRaisesRegex(AndroidCaptureError, "hidden"):
+            collect(self.root, self.output, source_sha=SHA, checked_sha=SHA,
+                    serial="emulator-5554", command=self.command,
+                    capture=still_hidden, sleeper=self.sleeps.append)
+        self.assertEqual(len(attempts), 5)
+        self.assertEqual(list(self.output.iterdir()), [])
+
     def test_unrelated_capture_failure_is_never_retried(self):
         attempts = []
         def wrong_app_identity(*, env):

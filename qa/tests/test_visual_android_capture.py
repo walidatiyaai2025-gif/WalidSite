@@ -285,6 +285,21 @@ class AndroidScreenCaptureTest(unittest.TestCase):
                 with self.assertRaises(AndroidCaptureError):
                     _verify_native_identity(xml, identifier, titles[0], 1440, 860, top)
 
+    def test_native_marker_diagnostics_never_expose_private_bounds_or_xml(self):
+        identifier, titles, top = NATIVE_SCREENS["/welcome"]
+        for bounds, visible, reason in (
+            ("[0,0][1440,860]", False, "hidden"),
+            ("[0,0][1441,860]", True, "outside_viewport"),
+        ):
+            with self.subTest(reason=reason):
+                xml = self.native_hierarchy(
+                    identifier, titles[0], marker_bounds=bounds,
+                    marker_visible=visible,
+                )
+                with self.assertRaisesRegex(AndroidCaptureError,
+                                             "marker is not visible: " + reason):
+                    _verify_native_identity(xml, identifier, titles[0], 1440, 860, top)
+
     def test_native_marker_switch_during_screencap_never_creates_evidence(self):
         self.env["WALIDSITE_CAPTURE_ROUTE"] = "/profile"
         identifier, titles, _ = NATIVE_SCREENS["/profile"]
