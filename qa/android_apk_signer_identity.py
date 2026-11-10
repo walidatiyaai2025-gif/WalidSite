@@ -127,7 +127,7 @@ def attest(
             for line in candidate_lines
         )
         other_versioned = sum(
-            bool(re.match(r"^V[0-9]+(?:\\.[0-9]+)? Signer: certificate ", line))
+            bool(re.match(r"^V[0-9]+(?:\.[0-9]+)? Signer: certificate ", line))
             and not line.startswith(modern)
             for line in candidate_lines
         )
