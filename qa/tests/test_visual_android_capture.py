@@ -134,51 +134,80 @@ class AndroidScreenCaptureTest(unittest.TestCase):
                     render(self.env, android35)
                 self.assertFalse(self.output.exists())
 
-    def test_android35_tty_dump_without_xml_falls_back_to_device_file(self):
+    def test_android35_tty_dump_uses_unique_private_device_files_and_cleans_them(self):
         original, _ = self.runner()
-        calls = []
-        stored = "/sdcard/Download/walidsite-qa-hierarchy.xml"
+        paths, removed = [], []
 
         def android35(args, **kwargs):
             tail = args[3:]
-            calls.append(tail)
             if tail == ["shell", "uiautomator", "dump", "/dev/tty"]:
                 return SimpleNamespace(stdout=b"UI hierarchy dumped to /dev/tty",
                                        stderr=b"private", returncode=0)
-            if tail in (["shell", "rm", "-f", stored],
-                        ["shell", "uiautomator", "dump", stored]):
-                return SimpleNamespace(stdout=b"", stderr=b"private", returncode=0)
-            if tail == ["exec-out", "cat", stored]:
+            if len(tail) == 4 and tail[:3] == ["shell", "uiautomator", "dump"]:
+                self.assertRegex(tail[3],
+                    r"^/data/local/tmp/walidsite-visual-[0-9a-f]{24}\\.xml$")
+                paths.append(tail[3])
+                return SimpleNamespace(stdout=b"dumped", stderr=b"private", returncode=0)
+            if len(tail) == 3 and tail[:2] == ["exec-out", "cat"]:
+                self.assertIn(tail[2], paths)
                 return SimpleNamespace(stdout=self.hierarchy("Waleed Tech Companion"),
                                        stderr=b"private", returncode=0)
+            if len(tail) == 4 and tail[:3] == ["shell", "rm", "-f"]:
+                removed.append(tail[3])
+                self.assertIn(tail[3], paths)
+                return SimpleNamespace(stdout=b"", stderr=b"private", returncode=0)
             return original(args, **kwargs)
 
         self.assertEqual(render(self.env, android35), self.output)
         self.assertEqual(self.output.read_bytes(), self.png)
-        self.assertEqual(calls.count(["shell", "rm", "-f", stored]), 4)
-        self.assertEqual(calls.count(["exec-out", "cat", stored]), 2)
+        self.assertEqual(len(paths), 2)
+        self.assertNotEqual(paths[0], paths[1])
+        self.assertEqual(removed, paths)
 
     def test_android35_missing_device_hierarchy_rejects_without_png(self):
         original, _ = self.runner()
-        calls = []
-        stored = "/sdcard/Download/walidsite-qa-hierarchy.xml"
+        paths, removed = [], []
 
         def android35(args, **kwargs):
             tail = args[3:]
-            calls.append(tail)
             if tail == ["shell", "uiautomator", "dump", "/dev/tty"]:
-                return SimpleNamespace(stdout=b"UI dump unavailable", stderr=b"private", returncode=0)
-            if tail in (["shell", "rm", "-f", stored],
-                        ["shell", "uiautomator", "dump", stored]):
+                return SimpleNamespace(stdout=b"UI dump unavailable",
+                                       stderr=b"private", returncode=0)
+            if len(tail) == 4 and tail[:3] == ["shell", "uiautomator", "dump"]:
+                paths.append(tail[3])
                 return SimpleNamespace(stdout=b"", stderr=b"private", returncode=0)
-            if tail == ["exec-out", "cat", stored]:
+            if len(tail) == 3 and tail[:2] == ["exec-out", "cat"]:
                 return SimpleNamespace(stdout=b"private invalid XML",
                                        stderr=b"secret", returncode=0)
+            if len(tail) == 4 and tail[:3] == ["shell", "rm", "-f"]:
+                removed.append(tail[3])
+                return SimpleNamespace(stdout=b"", stderr=b"private", returncode=0)
             return original(args, **kwargs)
 
         with self.assertRaisesRegex(AndroidCaptureError, "hierarchy"):
             render(self.env, android35)
-        self.assertEqual(calls.count(["shell", "rm", "-f", stored]), 2)
+        self.assertEqual(len(paths), 1)
+        self.assertEqual(removed, paths)
+        self.assertFalse(self.output.exists())
+
+    def test_android35_cleanup_failure_never_admits_screenshot(self):
+        original, _ = self.runner()
+
+        def cleanup_fails(args, **kwargs):
+            tail = args[3:]
+            if tail == ["shell", "uiautomator", "dump", "/dev/tty"]:
+                return SimpleNamespace(stdout=b"status only", stderr=b"private", returncode=0)
+            if len(tail) == 4 and tail[:3] == ["shell", "uiautomator", "dump"]:
+                return SimpleNamespace(stdout=b"dumped", stderr=b"private", returncode=0)
+            if len(tail) == 3 and tail[:2] == ["exec-out", "cat"]:
+                return SimpleNamespace(stdout=self.hierarchy("Waleed Tech Companion"),
+                                       stderr=b"private", returncode=0)
+            if len(tail) == 4 and tail[:3] == ["shell", "rm", "-f"]:
+                return SimpleNamespace(stdout=b"", stderr=b"private", returncode=1)
+            return original(args, **kwargs)
+
+        with self.assertRaises(AndroidCaptureError):
+            render(self.env, cleanup_fails)
         self.assertFalse(self.output.exists())
 
     def test_supported_routes_are_real_flutter_headings_not_contract_labels(self):

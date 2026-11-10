@@ -9,6 +9,7 @@ exists. The separate visual evidence validator decides zero-pixel parity.
 import io
 import os
 import re
+import secrets
 import subprocess
 import sys
 import xml.etree.ElementTree as ET
@@ -155,23 +156,28 @@ def _native_template(route: object) -> str:
 
 
 def _read_accessibility_hierarchy(serial: str, runner=subprocess.run) -> bytes:
-    """Read an actual Android UI hierarchy, never a synthetic route claim.
+    """Read genuine UIAutomator XML, leaving no persistent private UI dump.
 
-    On Android 35, uiautomator dump /dev/tty may print only a status line.
-    In that case use a fixed temporary device path, remove any stale bytes
-    before the dump, and always remove the captured XML afterward.
+    Android 35 may report only a status line for /dev/tty. In that case
+    capture into a random shell-private file instead of ever deleting or
+    overwriting a fixed path on a device that may contain user data.
+    All XML must still pass the existing native marker/heading checks.
     """
     document = _run(serial, ["shell", "uiautomator", "dump", "/dev/tty"], runner)
-    if b"<hierarchy" in document:
+    if len(document) > MAX_ACCESSIBILITY_BYTES:
+        raise AndroidCaptureError("Accessibility evidence exceeds safe bounds")
+    if b"<hierarchy" in document or b"</hierarchy>" in document:
         return document
-    path = "/sdcard/Download/walidsite-qa-hierarchy.xml"
-    _run(serial, ["shell", "rm", "-f", path], runner)
+    path = "/data/local/tmp/walidsite-visual-" + secrets.token_hex(12) + ".xml"
     try:
         _run(serial, ["shell", "uiautomator", "dump", path], runner)
         document = _run(serial, ["exec-out", "cat", path], runner)
     finally:
+        # Failure to remove private UI data is also a failed capture.
         _run(serial, ["shell", "rm", "-f", path], runner)
-    if b"<hierarchy" not in document:
+    if (len(document) > MAX_ACCESSIBILITY_BYTES
+            or b"<hierarchy" not in document
+            or b"</hierarchy>" not in document):
         raise AndroidCaptureError("No Android accessibility hierarchy available")
     return document
 
