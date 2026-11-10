@@ -7,7 +7,7 @@ import unittest
 import zipfile
 from unittest.mock import patch
 
-from qa.build_cpanel_package import PRIVATE_GUARD_PATHS, PRIVATE_TREE_DENY
+from qa.build_cpanel_package import PRIVATE_GUARD_PATHS, PRIVATE_TREE_DENY, PUBLIC_UPLOADS_GUARD
 from qa.prepare_release_candidate import prepare
 
 SHA = 'c' * 40
@@ -38,6 +38,7 @@ class ReleaseCandidateTest(unittest.TestCase):
             'INSTALL-CPANEL-AR.md': b'Guide',
         }
         self.entries.update({name: PRIVATE_TREE_DENY for name in PRIVATE_GUARD_PATHS})
+        self.entries['public_html/uploads/.htaccess'] = PUBLIC_UPLOADS_GUARD
         self.make_source()
 
     def make_source(self):
