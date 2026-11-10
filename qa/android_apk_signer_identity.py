@@ -113,8 +113,37 @@ def attest(
     if (len(families) != 1 or not candidate_lines
             or any(not line.startswith(next(iter(families)))
                    for line in candidate_lines)):
+        # This diagnostic reports only fixed vocabulary and bounded numbers:
+        # never dump apksigner stdout, certificate DN, arbitrary headers,
+        # keystore path, password, or any unknown textual value. A modern SDK
+        # can combine V3.0 and legacy signer headings for a single APK signer.
+        # Such a combination remains BLOCKED until its actual public shape is
+        # known and independently tested against the pinned certificate.
+        exact_legacy = sum(line.startswith(legacy) for line in candidate_lines)
+        exact_modern = sum(line.startswith(modern) for line in candidate_lines)
+        other_indexed = sum(
+            bool(re.match(r"^Signer #[0-9]+ certificate ", line))
+            and not line.startswith(legacy)
+            for line in candidate_lines
+        )
+        other_versioned = sum(
+            bool(re.match(r"^V[0-9]+(?:\\.[0-9]+)? Signer: certificate ", line))
+            and not line.startswith(modern)
+            for line in candidate_lines
+        )
+        possible_certificate_headings = sum(
+            "certificate " in line.lower()
+            and ("signer" in line.lower() or "signing" in line.lower())
+            for line in lines
+        )
+        bounded = lambda n: min(n, 99)
         raise ApkSignerIdentityError(
             f"APK_SIGNER_COUNT_INVALID observed_public_signer_count={reported_count}"
+            f" public_legacy_headers={bounded(exact_legacy)}"
+            f" public_v30_headers={bounded(exact_modern)}"
+            f" public_other_indexed={bounded(other_indexed)}"
+            f" public_other_versioned={bounded(other_versioned)}"
+            f" public_cert_heading_count={bounded(possible_certificate_headings)}"
         )
     prefix = next(iter(families))
     # Do not normalize whitespace or accept malformed/indented signer headings.
