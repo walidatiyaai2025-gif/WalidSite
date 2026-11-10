@@ -128,6 +128,11 @@ class AndroidScreenCaptureTest(unittest.TestCase):
                     if tail == ["shell", "dumpsys", "window"]:
                         return SimpleNamespace(stdout=focus, stderr=b"private",
                                                returncode=0)
+                    if tail == ["shell", "dumpsys", "input"]:
+                        # A missing WindowManager focus is permitted to query
+                        # InputDispatcher, but missing input focus still fails closed.
+                        return SimpleNamespace(stdout=b"Input Dispatcher State:\\n  FocusedWindows: <none>\\n",
+                                               stderr=b"private", returncode=0)
                     return original(args, **kwargs)
 
                 with self.assertRaisesRegex(AndroidCaptureError, "foreground"):
