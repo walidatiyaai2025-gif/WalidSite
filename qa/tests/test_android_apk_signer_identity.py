@@ -199,6 +199,37 @@ class ApkSignerIdentityTest(unittest.TestCase):
                          runner=self.runner(stamped))
         self.assertEqual(PIN, receipt["apk_certificate_sha256"])
 
+    def test_unknown_or_mixed_verified_signer_shapes_are_redacted_and_fail_closed(self):
+        mixed = SUCCESS + f"V3.0 Signer: certificate SHA-256 digest: {PIN}\\n"
+        alternative = SUCCESS.replace("Signer #1 certificate ",
+                                      "Signer #2 certificate ")
+        unfamiliar = SUCCESS.replace("Signer #1 certificate ",
+                                     "V4.0 Signer: certificate ")
+        cases = (
+            (mixed, ("public_legacy_headers=3", "public_v30_headers=1",
+                     "public_other_indexed=0", "public_other_versioned=0",
+                     "public_cert_heading_count=4")),
+            (alternative, ("public_legacy_headers=0", "public_v30_headers=0",
+                           "public_other_indexed=3", "public_other_versioned=0",
+                           "public_cert_heading_count=3")),
+            (unfamiliar, ("public_legacy_headers=0", "public_v30_headers=0",
+                          "public_other_indexed=0", "public_other_versioned=3",
+                          "public_cert_heading_count=3")),
+        )
+        for stdout, expected_counts in cases:
+            with self.subTest(shape=expected_counts):
+                with self.assertRaises(ApkSignerIdentityError) as caught:
+                    attest(self.apk, "apksigner", PIN, self.preflight,
+                           runner=self.runner(stdout, stderr="DO_NOT_LOG_PASSWORD"))
+                diagnostic = str(caught.exception)
+                self.assertIn("APK_SIGNER_COUNT_INVALID observed_public_signer_count=1",
+                              diagnostic)
+                for label in expected_counts:
+                    self.assertIn(label, diagnostic)
+                for private in ("DO_NOT_LOG_PASSWORD", str(self.apk), "CN=WalidSite",
+                                "Fixture Only", OTHER, PIN):
+                    self.assertNotIn(private, diagnostic)
+
     def test_any_invalid_crypto_result_fails_even_when_stdout_contains_pin(self):
         with self.assertRaisesRegex(ApkSignerIdentityError, "APK_SIGNATURE_CRYPTOGRAPHICALLY_INVALID"):
             attest(self.apk, "apksigner", PIN, self.preflight, runner=self.runner(status=1))
