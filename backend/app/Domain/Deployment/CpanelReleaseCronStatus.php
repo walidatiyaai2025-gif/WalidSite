@@ -87,6 +87,8 @@ final class CpanelReleaseCronStatus
                 'NO_NEWER_SIGNED_VERSION',
                 'VERIFIED_HOST_UPDATE_GATE_REQUIRED',
                 'VERIFIED_HOST_CODE_APPLIED',
+                'SYSTEM_UPDATES_DISABLED',
+                'SCHEDULED_POLL_DISABLED',
                 'TRUSTED_INSTALLED_VERSION_MISSING',
                 'INSTALLED_RUNTIME_IDENTITY_UNVERIFIED',
                 'TRUSTED_RELEASE_ORIGIN_MISSING',
@@ -94,6 +96,8 @@ final class CpanelReleaseCronStatus
                 'RELEASE_MAINTENANCE_ACTIVE',
             ], true)
             || (in_array($row['reason'], [
+                'SYSTEM_UPDATES_DISABLED',
+                'SCHEDULED_POLL_DISABLED',
                 'TRUSTED_INSTALLED_VERSION_MISSING',
                 'INSTALLED_RUNTIME_IDENTITY_UNVERIFIED',
                 'TRUSTED_RELEASE_ORIGIN_MISSING',
