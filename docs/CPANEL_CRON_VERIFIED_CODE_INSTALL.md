@@ -46,6 +46,24 @@ of publisher authenticity, current live-host health or permission to enable
 `SITE_RELEASE_CRON_APPLY_ENABLED`. Missing/unsafe first-install roots still
 fail closed without a receipt.
 
+## Production Android signing proof and mismatch recovery
+
+The release keystore's public X.509 certificate is verified independently
+against the approved GitHub signer pin **before** compiling Flutter. However,
+a correctly configured keystore does not prove Gradle actually signed the
+resulting APK with it. The final APK must separately pass native
+`apksigner verify --verbose --print-certs` against the **same pin**.
+
+If the actual APK certificate differs, the private CI inspection fails with
+`APK_SIGNER_MISMATCH` and prints **only** the observed public certificate
+SHA-256. Do not echo keytool/apksigner error output or signer DN. Investigate
+the Gradle release signing configuration and provenance of the intended key;
+never repin GitHub to an unapproved signer or ship a debug APK.
+
+This is diagnostic preflight, not authorization to publish the release.
+The host's physical writer, backup/restore, TLS and owner device acceptance
+gates remain mandatory.
+
 ## Exact state machine
 
 `Cron private launcher → live version/pointer lock → Ed25519 signed catalog check → no new version = UP_TO_DATE → newer signed version = BLOCKED until verified host apply gate → recheck same version + SHA + signature → private bounded HTTPS ZIP download (no redirects or private DNS) → file-descriptor SHA256 + safe ZIP inspection → strict code-only composer/migration compatibility → private staging and full candidate re-attestation → exclusive writer lease → independent MariaDB+files backup and restore drill → maintenance and immutable pointer → external TLS health → commit → private owner history + verified Cron receipt = DEPLOYED`.
