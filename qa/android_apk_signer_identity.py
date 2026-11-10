@@ -87,7 +87,7 @@ def attest(
         if len(observed_ids) > 4:
             ids += ",more"
         candidate_lines = len(re.findall(
-            r"(?m)^\\s*Signer\\s+#[0-9]+\\s+certificate\\b", result.stdout,
+            r"(?m)^\s*Signer\s+#[0-9]+\s+certificate\b", result.stdout,
         ))
         raise ApkSignerIdentityError(
             "APK_SIGNER_COUNT_INVALID observed_public_signer_ids=" + ids
