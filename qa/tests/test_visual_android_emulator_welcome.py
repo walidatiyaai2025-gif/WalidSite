@@ -168,7 +168,8 @@ class WelcomeEmulatorDiagnosticTest(unittest.TestCase):
             attempts.append(True)
             raise AndroidCaptureError(
                 "WalidSite Flutter is not the foreground application")
-        with self.assertRaises(AndroidCaptureError):
+        with self.assertRaisesRegex(WelcomeDiagnosticError,
+                                    "focus_field_absent"):
             collect(self.root, self.output, source_sha=SHA, checked_sha=SHA,
                     serial="emulator-5554", command=self.command,
                     capture=remains_background, sleeper=self.sleeps.append)
@@ -177,6 +178,24 @@ class WelcomeEmulatorDiagnosticTest(unittest.TestCase):
                   if args[:3] == ("shell", "am", "start")]
         self.assertEqual(len(starts), 5)
         self.assertEqual(self.sleeps, [2.0] * 5)
+        self.assertEqual(list(self.output.iterdir()), [])
+
+    def test_foreground_failure_reports_only_safe_category(self):
+        attempts = []
+        def still_background(*, env):
+            attempts.append(True)
+            raise AndroidCaptureError(
+                "WalidSite Flutter is not the foreground application")
+        def system_overlay(serial, *parts):
+            if parts == ("shell", "dumpsys", "window", "windows"):
+                return "mCurrentFocus=Window{123 u0 com.android.systemui/.Overlay}"
+            return self.command(serial, *parts)
+        with self.assertRaisesRegex(WelcomeDiagnosticError,
+                                    "system_ui_foreground"):
+            collect(self.root, self.output, source_sha=SHA, checked_sha=SHA,
+                    serial="emulator-5554", command=system_overlay,
+                    capture=still_background, sleeper=lambda _: None)
+        self.assertEqual(len(attempts), 5)
         self.assertEqual(list(self.output.iterdir()), [])
 
     def test_unrelated_capture_failure_is_never_retried(self):
