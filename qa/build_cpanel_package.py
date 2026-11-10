@@ -23,20 +23,20 @@ PRIVATE_GUARD_PATHS = ("application/.htaccess", "contracts/.htaccess")
 # must NOT become a public executable PHP/CGI root on Apache/LiteSpeed.
 # Code-only updates deliberately exclude this whole owner-data tree.
 PUBLIC_UPLOADS_GUARD = (
-    b"# WalidSite owner uploads: never execute scripts.\\n"
-    b"Options -Indexes\\n"
-    b"<IfModule mod_mime.c>\\n"
-    b"    RemoveHandler .php .php3 .php4 .php5 .php7 .php8 .phtml .phar .cgi .pl .py .sh .shtml\\n"
-    b"    RemoveType .php .php3 .php4 .php5 .php7 .php8 .phtml .phar .cgi .pl .py .sh .shtml\\n"
-    b"</IfModule>\\n"
-    b"<FilesMatch \"(?i)\\\\.(?:php[0-9]*|phtml|phar|cgi|pl|py|sh|shtml)$\">\\n"
-    b"    <IfModule mod_authz_core.c>\\n"
-    b"        Require all denied\\n"
-    b"    </IfModule>\\n"
-    b"    <IfModule !mod_authz_core.c>\\n"
-    b"        Deny from all\\n"
-    b"    </IfModule>\\n"
-    b"</FilesMatch>\\n"
+    b"# WalidSite owner uploads: never execute scripts.\n"
+    b"Options -Indexes\n"
+    b"<IfModule mod_mime.c>\n"
+    b"    RemoveHandler .php .php3 .php4 .php5 .php7 .php8 .phtml .phar .cgi .pl .py .sh .shtml\n"
+    b"    RemoveType .php .php3 .php4 .php5 .php7 .php8 .phtml .phar .cgi .pl .py .sh .shtml\n"
+    b"</IfModule>\n"
+    b"<FilesMatch \"(?i)\\\\.(?:php[0-9]*|phtml|phar|cgi|pl|py|sh|shtml)$\">\n"
+    b"    <IfModule mod_authz_core.c>\n"
+    b"        Require all denied\n"
+    b"    </IfModule>\n"
+    b"    <IfModule !mod_authz_core.c>\n"
+    b"        Deny from all\n"
+    b"    </IfModule>\n"
+    b"</FilesMatch>\n"
 )
 
 
