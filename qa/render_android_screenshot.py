@@ -205,9 +205,40 @@ def _focused_window(serial: str, runner=subprocess.run) -> bytes:
         focused = [line.strip() for line in window.splitlines()
                    if b"mCurrentFocus=" in line]
     pattern = rb"\bmCurrentFocus=Window\{[^}]*\b" + re.escape(PACKAGE.encode()) + rb"/"
-    if len(focused) != 1 or re.search(pattern, focused[0]) is None:
+    if focused:
+        if len(focused) != 1 or re.search(pattern, focused[0]) is None:
+            raise AndroidCaptureError("WalidSite Flutter is not the foreground application")
+        return focused[0]
+
+    # Modern Android builds can omit mCurrentFocus entirely. Consult the
+    # *current* InputDispatcher focused-window record, never a launched
+    # activity or an historical ANR trace. A missing, foreign, or ambiguous
+    # input focus remains a hard failure (no PNG or visual proof).
+    dispatcher = _run(serial, ["shell", "dumpsys", "input"], runner)
+    if len(dispatcher) > MAX_ACCESSIBILITY_BYTES:
+        raise AndroidCaptureError("Invalid foreground application evidence")
+    dispatcher = dispatcher.split(b"Input Dispatcher State at time of last ANR", 1)[0]
+    lines = dispatcher.splitlines()
+    current = []
+    in_focused_windows = False
+    for line in lines:
+        stripped = line.strip()
+        if stripped == b"FocusedWindows:":
+            in_focused_windows = True
+            continue
+        if in_focused_windows:
+            if stripped.startswith(b"displayId="):
+                if re.match(rb"displayId=0,\s*name='[^']+'\s*$", stripped):
+                    current.append(stripped.split(b"name=", 1)[1])
+                continue
+            if stripped:
+                in_focused_windows = False
+        if stripped.startswith(b"FocusedWindow:"):
+            current.append(stripped.split(b"FocusedWindow:", 1)[1].strip())
+    focus_pattern = rb"(?:Window\{[^}]*\b)?" + re.escape(PACKAGE.encode()) + rb"/"
+    if len(current) != 1 or re.search(focus_pattern, current[0]) is None:
         raise AndroidCaptureError("WalidSite Flutter is not the foreground application")
-    return focused[0]
+    return b"input-focused:" + current[0]
 
 
 def render(env=None, runner=subprocess.run) -> Path:
