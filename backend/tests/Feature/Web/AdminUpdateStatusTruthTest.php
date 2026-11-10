@@ -185,6 +185,9 @@ final class AdminUpdateStatusTruthTest extends TestCase
     public function test_preflight_missing_pin_is_actionable_in_owner_dashboard_without_deploy_claim(): void
     {
         $this->actingAs($this->owner(), 'web');
+        // Register the normal session-shared Laravel ViewErrorBag first, as
+        // the update layout expects the real web middleware to provide it.
+        $this->get('/admin/updates?lang=en')->assertOk();
         $data = [
             'status' => ['ready' => true, 'history_mismatch' => false, 'pending' => []],
             'installedVersion' => '0.1.2',
