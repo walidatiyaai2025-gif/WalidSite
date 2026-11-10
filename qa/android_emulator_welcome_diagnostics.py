@@ -115,6 +115,27 @@ def collect(
                         "Canonical Flutter native screen identity is missing or ambiguous",
                         "Native screen locale or visible title is not verified")
                         or attempt == 4 or runtime.exists() or runtime.is_symlink()):
+                    if str(exc) == "WalidSite Flutter is not the foreground application":
+                        # Retain the exact strict renderer gate; categorize
+                        # failure without exposing raw UI or device logs.
+                        window = command(serial, "shell", "dumpsys", "window", "windows")
+                        focus = [line for line in window.splitlines()
+                                 if "mCurrentFocus=" in line]
+                        if not focus:
+                            category = "focus_field_absent"
+                        elif len(focus) != 1:
+                            category = "focus_field_ambiguous"
+                        elif PACKAGE + "/" in focus[0]:
+                            category = "app_focus_reported_but_renderer_rejected"
+                        elif "mCurrentFocus=null" in focus[0]:
+                            category = "no_focused_window"
+                        elif "com.android.systemui/" in focus[0]:
+                            category = "system_ui_foreground"
+                        else:
+                            category = "non_app_foreground"
+                        raise WelcomeDiagnosticError(
+                            "Real Android foreground check failed: " + category
+                        ) from exc
                     raise
                 if str(exc) == "WalidSite Flutter is not the foreground application":
                     # Explicitly bring back ONLY the installed canonical app.
