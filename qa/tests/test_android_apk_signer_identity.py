@@ -138,6 +138,67 @@ class ApkSignerIdentityTest(unittest.TestCase):
             attest(self.apk, "apksigner", PIN, self.preflight,
                    runner=self.runner(stdout))
 
+    def test_modern_v30_single_verified_signer_matches_preflight(self):
+        # Newer apksigner can print V3.0 Signer instead of Signer #1 while
+        # still reporting exactly one cryptographically verified signer.
+        modern = SUCCESS.replace("Signer #1 certificate ", "V3.0 Signer: certificate ")
+        for stdout in (modern, modern.replace("\n", "\r\n")):
+            with self.subTest(line_endings=repr(stdout[-3:])):
+                receipt = attest(self.apk, "apksigner", PIN, self.preflight,
+                                 runner=self.runner(stdout))
+                self.assertEqual(PIN, receipt["apk_certificate_sha256"])
+                self.assertTrue(receipt["keystore_preflight_matches_apk"])
+                self.assertFalse(receipt["production_published"])
+
+    def test_modern_v30_debug_wrong_pin_and_tampering_fail_closed(self):
+        modern = SUCCESS.replace("Signer #1 certificate ", "V3.0 Signer: certificate ")
+        with self.assertRaisesRegex(ApkSignerIdentityError, "APK_SIGNED_WITH_DEBUG_CERTIFICATE"):
+            attest(self.apk, "apksigner", PIN, self.preflight,
+                   runner=self.runner(modern.replace("CN=WalidSite Release", "CN=Android Debug")))
+        with self.assertRaisesRegex(ApkSignerIdentityError,
+                "APK_SIGNER_PIN_MISMATCH observed_public_apk_certificate_sha256=" + OTHER):
+            attest(self.apk, "apksigner", PIN, self.preflight,
+                   runner=self.runner(modern.replace(PIN, OTHER)))
+        with self.assertRaisesRegex(ApkSignerIdentityError,
+                "APK_SIGNATURE_CRYPTOGRAPHICALLY_INVALID"):
+            attest(self.apk, "apksigner", PIN, self.preflight,
+                   runner=self.runner(modern, status=1))
+
+    def test_mixed_or_multiple_apksigner_certificate_formats_fail_closed(self):
+        modern = SUCCESS.replace("Signer #1 certificate ", "V3.0 Signer: certificate ")
+        for stdout in (
+            modern + f"Signer #1 certificate SHA-256 digest: {PIN}\n",
+            SUCCESS + f"V3.0 Signer: certificate SHA-256 digest: {PIN}\n",
+            modern + f"V3.1 Signer: certificate SHA-256 digest: {OTHER}\n",
+            modern + f"V3.0 Signer: certificate SHA-256 digest: {PIN}\n",
+            modern.replace("Number of signers: 1", "Number of signers: 2"),
+            modern + f"Signer #2 certificate SHA-256 digest: {OTHER}\n",
+        ):
+            with self.subTest(tail=repr(stdout[-90:])):
+                with self.assertRaises(ApkSignerIdentityError):
+                    attest(self.apk, "apksigner", PIN, self.preflight,
+                           runner=self.runner(stdout))
+
+    def test_modern_malformed_or_missing_certificate_metadata_stays_blocked(self):
+        modern = SUCCESS.replace("Signer #1 certificate ", "V3.0 Signer: certificate ")
+        for stdout in (
+            modern.replace("V3.0 Signer:", "  V3.0 Signer:"),
+            modern.replace(PIN, "bad-signature-digest"),
+            modern.replace("V3.0 Signer: certificate DN: CN=WalidSite Release, O=Example\n", ""),
+            modern.replace("V3.0 Signer: certificate ", "V4.0 Signer: certificate "),
+        ):
+            with self.subTest(tail=repr(stdout[-90:])):
+                with self.assertRaises(ApkSignerIdentityError):
+                    attest(self.apk, "apksigner", PIN, self.preflight,
+                           runner=self.runner(stdout))
+
+    def test_modern_source_stamp_is_not_distribution_signer(self):
+        modern = SUCCESS.replace("Signer #1 certificate ", "V3.0 Signer: certificate ")
+        stamped = modern + f"Source Stamp Signer certificate SHA-256 digest: {OTHER}\n"
+        receipt = attest(self.apk, "apksigner", PIN, self.preflight,
+                         runner=self.runner(stamped))
+        self.assertEqual(PIN, receipt["apk_certificate_sha256"])
+
     def test_any_invalid_crypto_result_fails_even_when_stdout_contains_pin(self):
         with self.assertRaisesRegex(ApkSignerIdentityError, "APK_SIGNATURE_CRYPTOGRAPHICALLY_INVALID"):
             attest(self.apk, "apksigner", PIN, self.preflight, runner=self.runner(status=1))

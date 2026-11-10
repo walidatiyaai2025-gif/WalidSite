@@ -88,27 +88,55 @@ def attest(
         raise ApkSignerIdentityError(
             f"APK_SIGNER_COUNT_INVALID observed_public_signer_count={reported_count}"
         )
-    # Fail closed on key rotation rather than treating a single certificate
-    # shown for one Android SDK range as the identity for *all* devices.
-    if any(line.startswith("Signer (minSdkVersion=") for line in lines):
+    # Android SDK versions use two public renderings for a verified certificate:
+    # older "Signer #1 certificate ..." and modern
+    # "V3.0 Signer: certificate ...". The latter is NOT evidence of rotation:
+    # require the native verified signer count to be one, and allow exactly one
+    # unambiguous rendering with a single certificate SHA-256 that matches the
+    # independently approved private-keystore preflight. Refuse SDK-targeted
+    # rotation / V3.1 rather than guessing which certificate an older phone uses.
+    if any(line.startswith("Signer (minSdkVersion=")
+           or line.startswith(("V3.1 Signer:", "V3.2 Signer:"))
+           for line in lines):
         raise ApkSignerIdentityError("APK_SIGNER_ROTATION_UNSUPPORTED")
-    certificates = [
-        re.match(r"^Signer #([1-9][0-9]*) certificate ", line).group(1)
-        for line in lines
-        if re.match(r"^Signer #([1-9][0-9]*) certificate ", line)
+    legacy, modern = "Signer #1 certificate ", "V3.0 Signer: certificate "
+    candidate_lines = [
+        line for line in lines
+        if (re.match(r"^Signer #[0-9]+ certificate ", line)
+            or re.match(r"^V[0-9]+(?:\.[0-9]+)? Signer: certificate ", line))
     ]
-    if not certificates or set(certificates) != {"1"}:
+    # A legitimate single signer cannot have certificates from two different
+    # apksigner presentation families. Also reject any other signer index or
+    # unfamiliar scheme instead of silently ignoring a second public cert.
+    families = {prefix for prefix in (legacy, modern)
+                if any(line.startswith(prefix) for line in candidate_lines)}
+    if (len(families) != 1 or not candidate_lines
+            or any(not line.startswith(next(iter(families)))
+                   for line in candidate_lines)):
         raise ApkSignerIdentityError(
             f"APK_SIGNER_COUNT_INVALID observed_public_signer_count={reported_count}"
         )
-    digests = re.findall(
-        r"(?im)^Signer #1 certificate SHA-256 digest:\s*([0-9a-f]{64})\s*$",
-        result.stdout,
-    )
-    if len(digests) != 1:
+    prefix = next(iter(families))
+    # Do not normalize whitespace or accept malformed/indented signer headings.
+    if any(line != line.lstrip() and (
+        line.lstrip().startswith("Signer #")
+        or re.match(r"^V[0-9]+(?:\.[0-9]+)? Signer:", line.lstrip()))
+        for line in lines):
+        raise ApkSignerIdentityError("APK_SIGNER_COUNT_INVALID")
+    digests = [
+        line[len(prefix + "SHA-256 digest: "):]
+        for line in candidate_lines if line.startswith(prefix + "SHA-256 digest: ")
+    ]
+    if len(digests) != 1 or not re.fullmatch(r"[a-fA-F0-9]{64}", digests[0]):
         raise ApkSignerIdentityError("APK_SIGNER_DIGEST_AMBIGUOUS")
     actual = digests[0].lower()
-    if re.search(r"(?im)^Signer #1 certificate DN:.*CN=Android Debug(?:,|$)", result.stdout):
+    subjects = [
+        line[len(prefix + "DN: "):]
+        for line in candidate_lines if line.startswith(prefix + "DN: ")
+    ]
+    if len(subjects) != 1:
+        raise ApkSignerIdentityError("APK_SIGNER_SUBJECT_AMBIGUOUS")
+    if re.search(r"(?i)(?:^|,\s*)CN=Android Debug(?:,|$)", subjects[0]):
         raise ApkSignerIdentityError("APK_SIGNED_WITH_DEBUG_CERTIFICATE")
     if actual != pin:
         # Public certificate fingerprint: safe to disclose, unlike raw keytool,
