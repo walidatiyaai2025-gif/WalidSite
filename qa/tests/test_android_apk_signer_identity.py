@@ -73,7 +73,7 @@ class ApkSignerIdentityTest(unittest.TestCase):
     def test_verbose_apksigner_signer_count_and_line_endings(self):
         # Both Unix and Windows SDK apksigner output must be handled, but the
         # actual compiled certificate must still be the one pinned in CI.
-        for stdout in (SUCCESS, SUCCESS.replace("\\n", "\\r\\n")):
+        for stdout in (SUCCESS, SUCCESS.replace("\n", "\r\n")):
             with self.subTest(line_endings=repr(stdout[-3:])):
                 proof = attest(self.apk, "apksigner", PIN, self.preflight,
                                runner=self.runner(stdout=stdout))
@@ -91,8 +91,8 @@ class ApkSignerIdentityTest(unittest.TestCase):
 
     def test_missing_duplicated_or_untrusted_signer_count_is_rejected(self):
         for stdout in (
-            SUCCESS.replace("Number of signers: 1\\n", ""),
-            SUCCESS + "Number of signers: 1\\n",
+            SUCCESS.replace("Number of signers: 1\n", ""),
+            SUCCESS + "Number of signers: 1\n",
             SUCCESS.replace("Number of signers: 1", "Number of signers: secret"),
             SUCCESS.replace("Number of signers: 1", "Number of signers: 9999"),
         ):
@@ -111,7 +111,7 @@ class ApkSignerIdentityTest(unittest.TestCase):
 
     def test_source_stamp_does_not_count_as_distribution_signer(self):
         stamped = SUCCESS + (
-            "Source Stamp Signer certificate SHA-256 digest: " + OTHER + "\\n"
+            "Source Stamp Signer certificate SHA-256 digest: " + OTHER + "\n"
         )
         proof = attest(self.apk, "apksigner", PIN, self.preflight,
                        runner=self.runner(stamped))
