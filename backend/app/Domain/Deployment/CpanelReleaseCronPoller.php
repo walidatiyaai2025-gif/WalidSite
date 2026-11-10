@@ -84,6 +84,57 @@ final class CpanelReleaseCronPoller
     }
 
     /**
+     * Diagnostic receipt for a local Cron preflight that could not reach
+     * signed publisher discovery. This is NEVER release provenance or an
+     * updater permission. All reasons are fixed public codes; no path,
+     * hostname, token, key, exception or untrusted network data is persisted.
+     *
+     * The displayed version is an observed local VERSION, not a verified
+     * installed-release identity. Caller must never pass this receipt to the
+     * code installer. Use the same private lock and atomic receipt rules as
+     * signed catalog polling so stale UP_TO_DATE cannot mask a new blocker.
+     */
+    public function recordBlockedPreflight(
+        string $privateDirectory,
+        string $publicDocumentRoot,
+        string $observedVersion,
+        string $reason,
+    ): void {
+        if (preg_match('/\\A(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)\\z/D', $observedVersion) !== 1
+            || ! in_array($reason, [
+                'TRUSTED_INSTALLED_VERSION_MISSING',
+                'INSTALLED_RUNTIME_IDENTITY_UNVERIFIED',
+                'TRUSTED_RELEASE_ORIGIN_MISSING',
+                'TRUSTED_RELEASE_PUBLIC_KEY_MISSING',
+                'RELEASE_MAINTENANCE_ACTIVE',
+            ], true)) {
+            throw new DomainException('Unsafe scheduled preflight diagnostic.');
+        }
+        $directory = $this->assertPrivateDirectory($privateDirectory, $publicDocumentRoot);
+        $lock = $this->openLock($directory.'/release-poll.lock');
+        try {
+            if (! flock($lock, LOCK_EX | LOCK_NB)) {
+                throw new DomainException('Another scheduled check is running.');
+            }
+            $this->assertLockIdentity($lock, $directory.'/release-poll.lock');
+            $record = [
+                'schema' => 1,
+                'state' => 'BLOCKED',
+                'checked_at' => time(),
+                'installed_version' => $observedVersion,
+                'available_version' => null,
+                'source_sha' => null,
+                'reason' => $reason,
+                'code_applied' => false,
+            ];
+            $this->writeReceipt($directory, $record, $lock);
+        } finally {
+            flock($lock, LOCK_UN);
+            fclose($lock);
+        }
+    }
+
+    /**
      * Record deployment only AFTER the trusted host installer has independently
      * verified backup/restore, atomic code cutover and HTTPS health. This
      * receipt is observational, never an authorization for any future update.
