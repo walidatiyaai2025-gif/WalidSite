@@ -55,6 +55,8 @@ final class CpanelTrustedCodeStagerTest extends TestCase
         file_put_contents($this->home.'/application/storage/app/upload.txt', 'PRESERVED_DATA');
         self::assertTrue(copy($this->front, $this->home.'/public_html/index.php'));
         file_put_contents($this->home.'/public_html/.htaccess', 'RewriteEngine On');
+        self::assertTrue(copy(dirname(__DIR__).'/Fixtures/cpanel-uploads-guard.htaccess',
+            $this->home.'/public_html/uploads/.htaccess'));
         file_put_contents($this->home.'/public_html/uploads/customer.txt', 'PRESERVED_UPLOAD');
     }
 
