@@ -4,7 +4,7 @@ Options -Indexes
     RemoveHandler .php .php3 .php4 .php5 .php7 .php8 .phtml .phar .cgi .pl .py .sh .shtml
     RemoveType .php .php3 .php4 .php5 .php7 .php8 .phtml .phar .cgi .pl .py .sh .shtml
 </IfModule>
-<FilesMatch "(?i)\\.(?:php[0-9]*|phtml|phar|cgi|pl|py|sh|shtml)$">
+<FilesMatch "(?i)\.(?:php[0-9]*|phtml|phar|cgi|pl|py|sh|shtml)(?:\.|$)">
     <IfModule mod_authz_core.c>
         Require all denied
     </IfModule>

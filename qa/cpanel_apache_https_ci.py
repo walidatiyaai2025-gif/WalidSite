@@ -151,16 +151,26 @@ def run(package: Path, source_sha: str) -> dict:
             uploads = home / "public_html/uploads"
             if not (uploads / ".htaccess").is_file():
                 raise AcceptanceError("Safe owner upload root is missing from Setup ZIP")
-            (uploads / "no-execute.php").write_text(
-                "<?php echo 'UNSAFE_UPLOAD_SCRIPT_EXECUTED';", encoding="ascii",
+            # Cover the double-extension form handled by mod_mime and the
+            # native PHP/CGI families. A broken FilesMatch escaping was
+            # invisible to our earlier mod_php-only single .php probe.
+            forbidden_names = (
+                "no-execute.php", "no-execute.PHP8",
+                "no-execute.php.jpg", "no-execute.phtml.png",
+                "no-execute.cgi",
             )
+            for name in forbidden_names:
+                (uploads / name).write_text(
+                    "<?php echo 'UNSAFE_UPLOAD_SCRIPT_EXECUTED';", encoding="ascii",
+                )
             (uploads / "allowed-static.txt").write_text(
                 "WALIDSITE_PUBLIC_UPLOAD_STATIC_TEST", encoding="ascii",
             )
             client = Client(origin, cert)
-            denied = client.request("/uploads/no-execute.php")
-            if denied.status != 403 or "UNSAFE_UPLOAD_SCRIPT_EXECUTED" in denied.body:
-                raise AcceptanceError("Owner uploads allow PHP execution or lack HTTP denial")
+            for name in forbidden_names:
+                denied = client.request("/uploads/" + name)
+                if denied.status != 403 or "UNSAFE_UPLOAD_SCRIPT_EXECUTED" in denied.body:
+                    raise AcceptanceError("Owner uploads allow scripts or lack HTTP denial")
             allowed = client.request("/uploads/allowed-static.txt")
             if allowed.status != 200 or allowed.body.strip() != "WALIDSITE_PUBLIC_UPLOAD_STATIC_TEST":
                 raise AcceptanceError("Safe owner static uploads are not served")
