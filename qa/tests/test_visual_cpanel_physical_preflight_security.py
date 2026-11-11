@@ -42,6 +42,9 @@ class CpanelPhysicalPreflightSecurity(unittest.TestCase):
         self.public = self.home / "public_html"
         (self.app / "storage").mkdir(parents=True)
         (self.public / "uploads").mkdir(parents=True)
+        (self.public / "uploads" / ".htaccess").write_bytes(
+            (SOURCE.parents[4] / "backend/tests/Fixtures/cpanel-uploads-guard.htaccess").read_bytes()
+        )
         (self.app / ".env").write_text("APP_KEY=CI-FAKE\n")
         (self.app / "VERSION").write_text("0.1.2\n")
         (self.public / ".htaccess").write_text("RewriteEngine On\n")
@@ -68,6 +71,23 @@ class CpanelPhysicalPreflightSecurity(unittest.TestCase):
         self.assertEqual(v["result"]["state"], "hosting_layout_verified")
         self.assertFalse(v["result"]["backup_verified"])
         self.assertFalse(v["result"]["code_update_performed"])
+
+    def test_missing_and_altered_upload_guard_fail_closed(self):
+        guard = self.public / "uploads" / ".htaccess"
+        original = guard.read_bytes()
+        guard.unlink()
+        self.assertFalse(self.verdict()["allowed"])
+        guard.write_bytes(b"AddHandler application/x-httpd-php .php\n")
+        self.assertFalse(self.verdict()["allowed"])
+        guard.write_bytes(original + b"# tampered\n")
+        self.assertFalse(self.verdict()["allowed"])
+        guard.write_bytes(original)
+        self.assertTrue(self.verdict()["allowed"])
+
+    def test_upload_guard_comes_from_exact_setup_package_bytes(self):
+        from qa.build_cpanel_package import PUBLIC_UPLOADS_GUARD
+        guard = self.public / "uploads" / ".htaccess"
+        self.assertEqual(guard.read_bytes(), PUBLIC_UPLOADS_GUARD)
 
     def test_tampered_live_dispatcher_rejected(self):
         (self.public / "index.php").write_text("<?php echo 'tampered';")
