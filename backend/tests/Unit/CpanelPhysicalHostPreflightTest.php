@@ -29,6 +29,8 @@ final class CpanelPhysicalHostPreflightTest extends TestCase
         }
         copy($this->trustedFront, $this->home.'/public_html/index.php');
         file_put_contents($this->home.'/public_html/.htaccess', 'RewriteEngine On');
+        copy(dirname(__DIR__).'/Fixtures/cpanel-uploads-guard.htaccess',
+            $this->home.'/public_html/uploads/.htaccess');
         file_put_contents($this->home.'/application/.env', 'DO_NOT_READ_OR_REPORT_APP_KEY');
         file_put_contents($this->home.'/application/VERSION', "0.1.2\n");
     }
@@ -54,6 +56,36 @@ final class CpanelPhysicalHostPreflightTest extends TestCase
         return ($preflight ?? new CpanelPhysicalHostPreflight(
             static fn (string $path): int => 1024 * 1024 * 1024,
         ))->assertReady($this->home, $this->trustedFront, '0.1.2', 4096);
+    }
+
+    public function test_upload_root_guard_must_match_setup_zip_exact_bytes(): void
+    {
+        $path = $this->home.'/public_html/uploads/.htaccess';
+        self::assertSame('hosting_layout_verified', $this->inspect()['state']);
+        $original = file_get_contents($path);
+        foreach (['', '# Allow scripts'."\n".'AddHandler application/x-httpd-php .php', $original."\n# extra"] as $unsafe) {
+            file_put_contents($path, $unsafe);
+            try {
+                $this->inspect();
+                self::fail('Missing or changed upload protection was accepted.');
+            } catch (DomainException) {
+                self::assertFileDoesNotExist($this->home.'/.walidsite-update-maintenance.json');
+            }
+        }
+        file_put_contents($path, $original);
+        self::assertSame('hosting_layout_verified', $this->inspect()['state']);
+    }
+
+    public function test_upload_root_guard_symlink_is_rejected(): void
+    {
+        $path = $this->home.'/public_html/uploads/.htaccess';
+        $target = $this->home.'/private-guard-copy';
+        self::assertTrue(rename($path, $target));
+        if (! @symlink($target, $path)) {
+            self::markTestSkipped('Symlinks unavailable on this runner.');
+        }
+        $this->expectException(DomainException::class);
+        $this->inspect();
     }
 
     public function test_valid_physical_home_passes_without_backup_code_or_file_mutation(): void
@@ -299,6 +331,7 @@ final class CpanelPhysicalHostPreflightTest extends TestCase
             self::assertFileDoesNotExist($this->home.'/.walidsite-active-release.json');
         }
         file_put_contents($this->home.'/application/.env', 'PRIVATE');
+        unlink($this->home.'/public_html/uploads/.htaccess');
         rmdir($this->home.'/public_html/uploads');
         $this->expectException(DomainException::class);
         $this->inspect();

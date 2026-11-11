@@ -1,1 +1,2 @@
 contracts/screens.csv -text
+backend/tests/Fixtures/cpanel-uploads-guard.htaccess -text

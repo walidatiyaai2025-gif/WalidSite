@@ -75,6 +75,19 @@ final class CpanelPhysicalHostPreflight
                 throw new DomainException('Private runtime state or stable public entrypoint is unsafe.');
             }
         }
+        // The Setup ZIP pins this exact upload-root guard. An absent or
+        // altered guard is always incompatible with a supported host layout.
+        // IMPORTANT: matching bytes is NOT evidence the actual web server
+        // honors .htaccess: independent HTTPS PHP-denial proof remains a
+        // separate mandatory host-activation gate.
+        $uploadsGuard = $public.'/uploads/.htaccess';
+        if (! hash_equals(
+            'ff05eec8b7275bfaf54ce957dd11fd09333b2a2e35e8d820bf8c1aa995d7fb90',
+            hash('sha256', $this->readPinnedIdentityFile($uploadsGuard, 4096, false)),
+        )) {
+            throw new DomainException('Physical cPanel upload guard is missing or altered.');
+        }
+
         // Compare bytes through held, regular, single-link descriptors.
         // A pathname-only hash after is_file()/realpath() may authenticate
         // a replaced or hardlinked front controller rather than the opened
