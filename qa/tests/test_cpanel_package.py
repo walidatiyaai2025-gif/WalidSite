@@ -1,6 +1,7 @@
 """Unit tests for secure cPanel installation ZIP generation."""
 import hashlib
 import os
+import re
 import stat
 import json
 import tempfile
@@ -57,6 +58,26 @@ class TestCpanelPackage(unittest.TestCase):
             file = self.root / name
             file.parent.mkdir(parents=True, exist_ok=True)
             file.write_text(data, encoding="utf-8")
+
+    def test_upload_filesmatch_denies_real_script_extensions_including_double_extensions(self):
+        # Exercise the literal bytes emitted into the ZIP. A doubled
+        # backslash in this Python byte string silently disables Apache's
+        # FilesMatch for ordinary .php names on hosts using proxy/LSAPI.
+        text = PUBLIC_UPLOADS_GUARD.decode("ascii")
+        directive = re.search(r'<FilesMatch "([^"]+)">', text)
+        self.assertIsNotNone(directive)
+        regex = re.compile(directive.group(1))
+        for unsafe in (
+            "probe.php", "probe.PHP8", "probe.php.jpg",
+            "avatar.phtml.png", "x.phar", "run.cgi",
+            "run.py.txt", "run.sh", "page.shtml",
+        ):
+            with self.subTest(unsafe=unsafe):
+                self.assertIsNotNone(regex.search(unsafe))
+        for safe in ("photo.jpg", "document.pdf", "statement.txt", "safe.phpx"):
+            with self.subTest(safe=safe):
+                self.assertIsNone(regex.search(safe))
+        self.assertIn("Require all denied", text)
 
     def test_layout_and_no_sensitive_file(self):
         result = build(self.root, self.output, "a" * 40)

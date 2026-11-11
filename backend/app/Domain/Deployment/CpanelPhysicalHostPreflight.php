@@ -82,7 +82,7 @@ final class CpanelPhysicalHostPreflight
         // separate mandatory host-activation gate.
         $uploadsGuard = $public.'/uploads/.htaccess';
         if (! hash_equals(
-            'ff05eec8b7275bfaf54ce957dd11fd09333b2a2e35e8d820bf8c1aa995d7fb90',
+            '313ef4b50800826e72450a0a99dc7095918aa913ec5869731aa3f41ca3826e0b',
             hash('sha256', $this->readPinnedIdentityFile($uploadsGuard, 4096, false)),
         )) {
             throw new DomainException('Physical cPanel upload guard is missing or altered.');

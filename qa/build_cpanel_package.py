@@ -29,7 +29,7 @@ PUBLIC_UPLOADS_GUARD = (
     b"    RemoveHandler .php .php3 .php4 .php5 .php7 .php8 .phtml .phar .cgi .pl .py .sh .shtml\n"
     b"    RemoveType .php .php3 .php4 .php5 .php7 .php8 .phtml .phar .cgi .pl .py .sh .shtml\n"
     b"</IfModule>\n"
-    b"<FilesMatch \"(?i)\\\\.(?:php[0-9]*|phtml|phar|cgi|pl|py|sh|shtml)$\">\n"
+    b"<FilesMatch \"(?i)\\.(?:php[0-9]*|phtml|phar|cgi|pl|py|sh|shtml)(?:\\.|$)\">\n"
     b"    <IfModule mod_authz_core.c>\n"
     b"        Require all denied\n"
     b"    </IfModule>\n"
