@@ -17,7 +17,7 @@ concurrency:
 jobs:
   required-ci-gate:
     if: github.event.action != 'closed'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 35
     services:
       mariadb:
@@ -605,7 +605,7 @@ jobs:
         github.head_ref == 'fix/732-chained-tamper-zip-recovery-gate') &&
        github.event.pull_request.head.repo.full_name == github.repository)
     needs: required-ci-gate
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     services:
       mariadb:
@@ -850,7 +850,7 @@ jobs:
         github.head_ref == 'feat/1120-signed-android-site-origin-release-gate') &&
        github.event.pull_request.head.repo.full_name == github.repository)
     needs: required-ci-gate
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     permissions:
       contents: read
@@ -963,7 +963,7 @@ jobs:
         github.head_ref == 'feat/1120-signed-android-site-origin-release-gate') &&
        github.event.pull_request.head.repo.full_name == github.repository)
     needs: [required-ci-gate, build-android-qa-apk]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 50
     permissions:
       contents: read
@@ -1031,7 +1031,7 @@ jobs:
     # This is NOT a production release or a device smoke test.
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [required-ci-gate, build-cpanel-package, build-android-qa-apk, android-emulator-install-launch]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       contents: read
@@ -1109,7 +1109,7 @@ jobs:
     # Runs only after an actual merge and only for a branch in this repository.
     # No checkout or execution of PR-provided code; never deletes a reused branch.
     if: github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == true && github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       contents: write
@@ -1235,7 +1235,7 @@ jobs:
     # PR-close cleanup must never invoke the orphan candidate path.
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [required-ci-gate, build-cpanel-package]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       contents: write
