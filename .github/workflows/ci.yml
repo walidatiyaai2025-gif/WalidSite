@@ -1039,7 +1039,7 @@ jobs:
           retention-days: 30
 
   verify-source-pinned-release-bundle:
-    # Fail closed if actual main Setup ZIP, Update ZIP and compiled APK
+    # Fail closed if exact-source Setup ZIP, Update ZIP and compiled APK
     # disagree on source SHA, release SemVer or test-only trust boundaries.
     # This is NOT a production release or a device smoke test.
     if: >-
@@ -1055,24 +1055,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - uses: actions/download-artifact@v4
         with:
-          name: WalidSite-UNPUBLISHED-release-train-${{ github.sha }}
+          name: WalidSite-UNPUBLISHED-release-train-${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           path: dist/source-proof/release
       - uses: actions/download-artifact@v4
         with:
-          name: WalidSite-Android-debug-QA-${{ github.sha }}
+          name: WalidSite-Android-debug-QA-${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           path: dist/source-proof/android
       - uses: actions/download-artifact@v4
         with:
-          name: WalidSite-Android-emulator-launch-${{ github.sha }}
+          name: WalidSite-Android-emulator-launch-${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           path: dist/source-proof/emulator
       - name: Verify one immutable web and native artifact train
         shell: bash
         env:
-          SOURCE_SHA: ${{ github.sha }}
+          SOURCE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
@@ -1117,7 +1117,7 @@ jobs:
       - name: Retain non-production unified provenance receipt
         uses: actions/upload-artifact@v4
         with:
-          name: WalidSite-UNPUBLISHED-unified-build-proof-${{ github.sha }}
+          name: WalidSite-UNPUBLISHED-unified-build-proof-${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           path: dist/source-proof/evidence/unified-release-evidence.json
           if-no-files-found: error
           retention-days: 14
