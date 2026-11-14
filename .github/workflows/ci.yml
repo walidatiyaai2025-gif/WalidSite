@@ -600,7 +600,8 @@ jobs:
     if: >-
       (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
       (github.event_name == 'pull_request' && github.event.action != 'closed' &&
-       (github.head_ref == 'fix/732-cpanel-first-boot-missing-key' ||
+       (github.head_ref == 'fix/1120-reproducible-production-runtime' ||
+        github.head_ref == 'fix/732-cpanel-first-boot-missing-key' ||
         github.head_ref == 'fix/26-cpanel-full-install-ci-acceptance' ||
         github.head_ref == 'fix/26-revalidate-recovery-database-under-lease' ||
         github.head_ref == 'fix/26-apache-https-setup-ci-gate' ||
@@ -854,7 +855,8 @@ jobs:
     if: >-
       (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
       (github.event_name == 'pull_request' && github.event.action != 'closed' &&
-       (github.head_ref == 'fix/751-native-android-qa-build-ci' ||
+       (github.head_ref == 'fix/1120-reproducible-production-runtime' ||
+        github.head_ref == 'fix/751-native-android-qa-build-ci' ||
         github.head_ref == 'feat/481-android-emulator-install-launch' ||
         github.head_ref == 'feat/1120-signed-android-site-origin-release-gate') &&
        github.event.pull_request.head.repo.full_name == github.repository)
@@ -969,7 +971,8 @@ jobs:
     if: >-
       (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
       (github.event_name == 'pull_request' && github.event.action != 'closed' &&
-       (github.head_ref == 'feat/481-android-emulator-install-launch' ||
+       (github.head_ref == 'fix/1120-reproducible-production-runtime' ||
+        github.head_ref == 'feat/481-android-emulator-install-launch' ||
         github.head_ref == 'feat/1120-signed-android-site-origin-release-gate') &&
        github.event.pull_request.head.repo.full_name == github.repository)
     needs: [required-ci-gate, build-android-qa-apk]
@@ -1039,7 +1042,11 @@ jobs:
     # Fail closed if actual main Setup ZIP, Update ZIP and compiled APK
     # disagree on source SHA, release SemVer or test-only trust boundaries.
     # This is NOT a production release or a device smoke test.
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: >-
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'pull_request' && github.event.action != 'closed' &&
+       github.head_ref == 'fix/1120-reproducible-production-runtime' &&
+       github.event.pull_request.head.repo.full_name == github.repository)
     needs: [required-ci-gate, build-cpanel-package, build-android-qa-apk, android-emulator-install-launch]
     runs-on: ubuntu-24.04
     timeout-minutes: 15
