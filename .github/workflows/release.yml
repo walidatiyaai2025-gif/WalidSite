@@ -351,6 +351,7 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          flutter-version: '3.47.9'
       - name: Require current Android SDK for independently verified APK bytes
         shell: bash
         run: |

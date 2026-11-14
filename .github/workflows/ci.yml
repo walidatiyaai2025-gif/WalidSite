@@ -586,6 +586,7 @@ jobs:
         if: ${{ hashFiles('mobile/pubspec.yaml') != '' }}
         with:
           channel: stable
+          flutter-version: '3.47.9'
       - name: Flutter analyze and tests (mandatory once scaffold exists)
         if: ${{ hashFiles('mobile/pubspec.yaml') != '' }}
         shell: bash
@@ -891,6 +892,7 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          flutter-version: '3.47.9'
       - name: Extract expected native identity from tracked sources
         id: identity
         shell: bash

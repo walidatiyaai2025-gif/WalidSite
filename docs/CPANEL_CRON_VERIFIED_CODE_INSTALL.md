@@ -116,3 +116,9 @@ necessary, not proof of a completed production upgrade. Actual host PHP-denial
 and Cron PHP signature capabilities were verified separately; the release gate
 remains open until signed publication, real restore/cutover and HTTPS health
 are evidenced.
+
+Flutter is also pinned to `3.47.9`, the SDK recorded in successful exact-main
+CI run `42974930157`. Resolving the floating stable channel later selected
+an SDK deprecating the existing material/cupertino imports and failed strict
+analysis before Laravel ran. Both native build paths and CI now use the same
+known tested SDK; analyzer errors and warnings remain enforced unchanged.
