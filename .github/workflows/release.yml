@@ -90,9 +90,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          git ls-files --error-unmatch backend/composer.lock
           cd backend
+          composer validate --strict
           composer install --no-dev --prefer-dist --no-interaction --no-progress --optimize-autoloader
           composer check-platform-reqs --no-dev
+          git diff --exit-code -- composer.lock
       - name: Produce versioned Setup and Update inspection candidates
         shell: bash
         env:
