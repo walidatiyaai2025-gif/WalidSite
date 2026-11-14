@@ -9,6 +9,7 @@ exists. The separate visual evidence validator decides zero-pixel parity.
 import io
 import os
 import re
+import secrets
 import subprocess
 import sys
 import xml.etree.ElementTree as ET
@@ -121,8 +122,11 @@ def _verify_native_identity(xml: bytes, identifier: str, heading: str,
         inside = bool(box and 0 <= int(box[1]) < int(box[3]) <= width
                       and 0 <= int(box[2]) < int(box[4]) <= height)
         if node.attrib.get("resource-id") == identifier:
-            if not visible or not inside:
-                raise AndroidCaptureError("Native screen marker is not visible")
+            # Stable redacted diagnostics; never echo XML, bounds, or user UI.
+            if not visible:
+                raise AndroidCaptureError("Native screen marker is not visible: hidden")
+            if not inside:
+                raise AndroidCaptureError("Native screen marker is not visible: outside_viewport")
             marker_count += 1
         if heading in (node.attrib.get("text"), node.attrib.get("content-desc")):
             if visible and inside and (not top_heading or int(box[2]) <= height // 5):
@@ -152,6 +156,89 @@ def _native_template(route: object) -> str:
         if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,127}", resource_id):
             return template
     raise AndroidCaptureError("This Flutter route has no independently verified identity")
+
+
+def _read_accessibility_hierarchy(serial: str, runner=subprocess.run) -> bytes:
+    """Read genuine UIAutomator XML, leaving no persistent private UI dump.
+
+    Android 35 may report only a status line for /dev/tty. In that case
+    capture into a random shell-private file instead of ever deleting or
+    overwriting a fixed path on a device that may contain user data.
+    All XML must still pass the existing native marker/heading checks.
+    """
+    document = _run(serial, ["shell", "uiautomator", "dump", "/dev/tty"], runner)
+    if len(document) > MAX_ACCESSIBILITY_BYTES:
+        raise AndroidCaptureError("Accessibility evidence exceeds safe bounds")
+    if b"<hierarchy" in document or b"</hierarchy>" in document:
+        return document
+    path = "/data/local/tmp/walidsite-visual-" + secrets.token_hex(12) + ".xml"
+    try:
+        _run(serial, ["shell", "uiautomator", "dump", path], runner)
+        document = _run(serial, ["exec-out", "cat", path], runner)
+    finally:
+        # Failure to remove private UI data is also a failed capture.
+        _run(serial, ["shell", "rm", "-f", path], runner)
+    if (len(document) > MAX_ACCESSIBILITY_BYTES
+            or b"<hierarchy" not in document
+            or b"</hierarchy>" not in document):
+        raise AndroidCaptureError("No Android accessibility hierarchy available")
+    return document
+
+
+def _focused_window(serial: str, runner=subprocess.run) -> bytes:
+    """Require one real focused WalidSite window, not an activity launch claim.
+
+    Some Android 35 builds omit mCurrentFocus from the windows subsection
+    while the complete WindowManager dump still reports it. A missing field
+    permits only a second strict WindowManager query, never a weaker activity
+    or screenshot-based substitute. Reject ambiguous or foreign focus.
+    """
+    window = _run(serial, ["shell", "dumpsys", "window", "windows"], runner)
+    if len(window) > MAX_ACCESSIBILITY_BYTES:
+        raise AndroidCaptureError("Invalid foreground application evidence")
+    focused = [line.strip() for line in window.splitlines()
+               if b"mCurrentFocus=" in line]
+    if not focused:
+        window = _run(serial, ["shell", "dumpsys", "window"], runner)
+        if len(window) > MAX_ACCESSIBILITY_BYTES:
+            raise AndroidCaptureError("Invalid foreground application evidence")
+        focused = [line.strip() for line in window.splitlines()
+                   if b"mCurrentFocus=" in line]
+    pattern = rb"\bmCurrentFocus=Window\{[^}]*\b" + re.escape(PACKAGE.encode()) + rb"/"
+    if focused:
+        if len(focused) != 1 or re.search(pattern, focused[0]) is None:
+            raise AndroidCaptureError("WalidSite Flutter is not the foreground application")
+        return focused[0]
+
+    # Modern Android builds can omit mCurrentFocus entirely. Consult the
+    # *current* InputDispatcher focused-window record, never a launched
+    # activity or an historical ANR trace. A missing, foreign, or ambiguous
+    # input focus remains a hard failure (no PNG or visual proof).
+    dispatcher = _run(serial, ["shell", "dumpsys", "input"], runner)
+    if len(dispatcher) > MAX_ACCESSIBILITY_BYTES:
+        raise AndroidCaptureError("Invalid foreground application evidence")
+    dispatcher = dispatcher.split(b"Input Dispatcher State at time of last ANR", 1)[0]
+    lines = dispatcher.splitlines()
+    current = []
+    in_focused_windows = False
+    for line in lines:
+        stripped = line.strip()
+        if stripped == b"FocusedWindows:":
+            in_focused_windows = True
+            continue
+        if in_focused_windows:
+            if stripped.startswith(b"displayId="):
+                if re.match(rb"displayId=0,\s*name='[^']+'\s*$", stripped):
+                    current.append(stripped.split(b"name=", 1)[1])
+                continue
+            if stripped:
+                in_focused_windows = False
+        if stripped.startswith(b"FocusedWindow:"):
+            current.append(stripped.split(b"FocusedWindow:", 1)[1].strip())
+    focus_pattern = rb"(?<![A-Za-z0-9_.])" + re.escape(PACKAGE.encode()) + rb"/"
+    if len(current) != 1 or re.search(focus_pattern, current[0]) is None:
+        raise AndroidCaptureError("WalidSite Flutter is not the foreground application")
+    return b"input-focused:" + current[0]
 
 
 def render(env=None, runner=subprocess.run) -> Path:
@@ -185,17 +272,9 @@ def render(env=None, runner=subprocess.run) -> Path:
 
     if _run(serial, ["get-state"], runner).strip() != b"device":
         raise AndroidCaptureError("Selected Android device is not connected")
-    window = _run(serial, ["shell", "dumpsys", "window", "windows"], runner)
-    if len(window) > MAX_ACCESSIBILITY_BYTES:
-        raise AndroidCaptureError("Invalid foreground application evidence")
-    focused_lines = [line.decode("utf-8", errors="replace")
-                     for line in window.splitlines() if b"mCurrentFocus=" in line]
-    if (len(focused_lines) != 1
-            or not re.search(r"\bmCurrentFocus=Window\{[^}]*\b" +
-                             re.escape(PACKAGE) + r"/", focused_lines[0])):
-        raise AndroidCaptureError("WalidSite Flutter is not the foreground application")
+    focused_before = _focused_window(serial, runner)
 
-    hierarchy = _run(serial, ["shell", "uiautomator", "dump", "/dev/tty"], runner)
+    hierarchy = _read_accessibility_hierarchy(serial, runner)
     if route in HEADINGS:
         _verify_heading(hierarchy, HEADINGS[route][0 if locale == "en" else 1], height)
     else:
@@ -216,14 +295,15 @@ def render(env=None, runner=subprocess.run) -> Path:
     # Guard against an app or screen switch while the ADB screenshot command
     # was running. Both the focused window and visible localized heading must
     # remain the same after the native pixels were captured.
-    window_after = _run(serial, ["shell", "dumpsys", "window", "windows"], runner)
-    if len(window_after) > MAX_ACCESSIBILITY_BYTES:
-        raise AndroidCaptureError("Invalid post-capture foreground evidence")
-    focused_after = [line.decode("utf-8", errors="replace")
-                     for line in window_after.splitlines() if b"mCurrentFocus=" in line]
-    if focused_after != focused_lines:
+    try:
+        focused_after = _focused_window(serial, runner)
+    except AndroidCaptureError as exc:
+        # Losing the trusted focus after capturing pixels is a screen switch,
+        # never evidence that the original image can be admitted.
+        raise AndroidCaptureError("Foreground application changed during capture") from exc
+    if focused_after != focused_before:
         raise AndroidCaptureError("Foreground application changed during capture")
-    hierarchy_after = _run(serial, ["shell", "uiautomator", "dump", "/dev/tty"], runner)
+    hierarchy_after = _read_accessibility_hierarchy(serial, runner)
     if route in HEADINGS:
         _verify_heading(hierarchy_after, HEADINGS[route][0 if locale == "en" else 1], height)
     else:

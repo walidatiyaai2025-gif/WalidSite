@@ -121,11 +121,38 @@ def smoke(apk: Path, *, package_id: str, version_name: str,
         launch_output = _checked_adb(adb, serial, "shell", "am", "start", "-W",
                                      "-n", package_id + "/.MainActivity", timeout=45,
                                      stage="launch")
-        if ("Status: ok" not in launch_output.splitlines()
-                or not any(line in {"Activity: " + package_id + "/.MainActivity",
-                                    "Activity: " + package_id + "/" + package_id + ".MainActivity"}
-                           for line in launch_output.splitlines())):
+        # The `am start -W` Activity field is not emitted consistently by
+        # Android 35. A successful status without that line must NOT count as
+        # launch success by itself: attest the top resumed Activity from the
+        # live ActivityManager service and require the exact package/class.
+        if "Status: ok" not in launch_output.splitlines():
             raise DeviceSmokeError("Android launcher did not report expected activity")
+        expected_activities = {
+            package_id + "/.MainActivity",
+            package_id + "/" + package_id + ".MainActivity",
+        }
+        launch_activities = [
+            line.removeprefix("Activity: ").strip()
+            for line in launch_output.splitlines() if line.startswith("Activity: ")
+        ]
+        if len(launch_activities) > 1 or any(
+                activity not in expected_activities for activity in launch_activities):
+            raise DeviceSmokeError("Android launcher did not report expected activity")
+        if not launch_activities:
+            activities = _checked_adb(
+                adb, serial, "shell", "dumpsys", "activity", "activities",
+                timeout=20, stage="resumed-activity",
+            )
+            resumed = [
+                line.strip() for line in activities.splitlines()
+                if "topResumedActivity=" in line
+            ]
+            if (len(resumed) != 1
+                    or not any(re.search(
+                        r"(?<![A-Za-z0-9_.])" + re.escape(identity)
+                        + r"(?=[\s}])", resumed[0],
+                    ) for identity in expected_activities)):
+                raise DeviceSmokeError("Android resumed activity not verified")
         pid = _checked_adb(adb, serial, "shell", "pidof", package_id,
                            stage="process-check")
         if not pid or not all(part.isdecimal() and int(part) > 0 for part in pid.split()):

@@ -41,3 +41,27 @@ for key in ('replaced_existing_install', 'physical_device_type_verified',
             'ios_build_verified', 'production_ready'):
     assert receipt[key] is False, key
 PY
+
+# Capture the real public Welcome screen from the SAME installed APK. This
+# diagnostic must NOT certify visual acceptance, store signing or live hosting.
+python3 -m qa.android_emulator_welcome_diagnostics \
+  --source-sha "$SOURCE_SHA" --serial emulator-5554 \
+  --output-dir "$PWD/dist/android-emulator" \
+  > dist/android-emulator/welcome-diagnostic-run.json
+python3 - <<'PY'
+import hashlib, json, os
+from pathlib import Path
+root = Path("dist/android-emulator")
+r = json.loads((root / "welcome-diagnostics.json").read_text())
+live = root / r["runtime_capture"]
+assert r["schema"] == "walidsite.mobile-01-emulator-visual-diagnostic.v1"
+assert r["source_sha"] == os.environ["SOURCE_SHA"]
+assert r["screen_id"] == "MOBILE-01" and r["route"] == "/welcome"
+assert r["locale"] == "en" and r["device_kind"] == "disposable_android_emulator"
+assert r["runtime_png_sha256"] == hashlib.sha256(live.read_bytes()).hexdigest()
+assert r["mismatching_rgba_pixels"] <= r["total_pixels"]
+assert r["total_pixels"] > 0
+assert r["status"] in ("mismatch", "exact_pixels_unattested")
+assert r["evidence_admitted"] is False and r["visual_fidelity_verified"] is False
+assert r["physical_device_type_verified"] is False and r["production_ready"] is False
+PY

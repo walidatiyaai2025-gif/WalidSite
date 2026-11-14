@@ -87,6 +87,194 @@ class AndroidScreenCaptureTest(unittest.TestCase):
             ["shell", "uiautomator", "dump", "/dev/tty"],
         ])
 
+    def test_android35_missing_subsection_focus_uses_full_window_dump(self):
+        original, _ = self.runner()
+        calls = []
+
+        def android35(args, **kwargs):
+            tail = args[3:]
+            calls.append(tail)
+            if tail == ["shell", "dumpsys", "window", "windows"]:
+                return SimpleNamespace(stdout=b"WindowManager windows: no focus field",
+                                       stderr=b"private", returncode=0)
+            if tail == ["shell", "dumpsys", "window"]:
+                return SimpleNamespace(
+                    stdout=(b"WindowManager full state\n"
+                            b"  mCurrentFocus=Window{abc u0 "
+                            + PACKAGE.encode() + b"/.MainActivity}"),
+                    stderr=b"private", returncode=0)
+            return original(args, **kwargs)
+
+        self.assertEqual(render(self.env, android35), self.output)
+        self.assertEqual(self.output.read_bytes(), self.png)
+        self.assertEqual(calls.count(["shell", "dumpsys", "window"]), 2)
+
+    def test_full_window_dump_missing_ambiguous_or_foreign_focus_fails_closed(self):
+        for focus in (
+            b"WindowManager full state: focus unspecified",
+            b"mCurrentFocus=Window{abc u0 com.android.systemui/.Overlay}",
+            (b"mCurrentFocus=Window{abc u0 " + PACKAGE.encode()
+             + b"/.MainActivity}\nmCurrentFocus=Window{other u0 "
+             + PACKAGE.encode() + b"/.MainActivity}"),
+        ):
+            with self.subTest(focus=focus[:50]):
+                original, _ = self.runner()
+
+                def android35(args, **kwargs):
+                    tail = args[3:]
+                    if tail == ["shell", "dumpsys", "window", "windows"]:
+                        return SimpleNamespace(stdout=b"No mCurrentFocus here",
+                                               stderr=b"private", returncode=0)
+                    if tail == ["shell", "dumpsys", "window"]:
+                        return SimpleNamespace(stdout=focus, stderr=b"private",
+                                               returncode=0)
+                    if tail == ["shell", "dumpsys", "input"]:
+                        # A missing WindowManager focus is permitted to query
+                        # InputDispatcher, but missing input focus still fails closed.
+                        return SimpleNamespace(stdout=b"Input Dispatcher State:\\n  FocusedWindows: <none>\\n",
+                                               stderr=b"private", returncode=0)
+                    return original(args, **kwargs)
+
+                with self.assertRaisesRegex(AndroidCaptureError, "foreground"):
+                    render(self.env, android35)
+                self.assertFalse(self.output.exists())
+
+    def test_android35_missing_windowmanager_focus_requires_real_input_dispatcher(self):
+        original, _ = self.runner()
+        calls = []
+
+        def android35(args, **kwargs):
+            tail = args[3:]
+            calls.append(tail)
+            if tail in (["shell", "dumpsys", "window", "windows"],
+                        ["shell", "dumpsys", "window"]):
+                return SimpleNamespace(stdout=b"WindowManager: no focused window field",
+                                       stderr=b"private", returncode=0)
+            if tail == ["shell", "dumpsys", "input"]:
+                return SimpleNamespace(
+                    stdout=(b"Input Dispatcher State:\n"
+                            b"  FocusedWindows:\n"
+                            b"    displayId=0, name='Window{abc u0 "
+                            + PACKAGE.encode() + b"/.MainActivity}'\n"
+                            b"  TouchStates: <no displays touched>\n"),
+                    stderr=b"private", returncode=0)
+            return original(args, **kwargs)
+
+        self.assertEqual(render(self.env, android35), self.output)
+        self.assertEqual(self.output.read_bytes(), self.png)
+        self.assertEqual(calls.count(["shell", "dumpsys", "input"]), 2)
+
+    def test_android35_input_dispatcher_rejects_missing_foreign_ambiguous_and_anr_focus(self):
+        body = (
+            b"Input Dispatcher State:\n  FocusedWindows:\n"
+            b"    displayId=0, name='Window{abc u0 "
+            + PACKAGE.encode() + b"/.MainActivity}'\n"
+        )
+        invalid = (
+            b"Input Dispatcher State:\n  FocusedWindows: <none>\n",
+            b"Input Dispatcher State:\n  FocusedWindows:\n"
+            b"    displayId=0, name='Window{aaa u0 com.android.systemui/.Overlay}'\n",
+            body + b"    displayId=0, name='Window{bbb u0 com.android.systemui/.Overlay}'\n",
+            b"Input Dispatcher State:\n  FocusedWindows: <none>\n"
+            + b"Input Dispatcher State at time of last ANR\n" + body,
+            b"Input Dispatcher State:\n  FocusedWindows:\n"
+            b"    displayId=0, name='Window{abc u0 evil."
+            + PACKAGE.encode() + b"/.MainActivity}'\n",
+        )
+        for data in invalid:
+            with self.subTest(case=data[:75]):
+                original, _ = self.runner()
+                def android35(args, **kwargs):
+                    tail = args[3:]
+                    if tail in (["shell", "dumpsys", "window", "windows"],
+                                ["shell", "dumpsys", "window"]):
+                        return SimpleNamespace(stdout=b"WindowManager: no focus",
+                                               stderr=b"private", returncode=0)
+                    if tail == ["shell", "dumpsys", "input"]:
+                        return SimpleNamespace(stdout=data, stderr=b"private",
+                                               returncode=0)
+                    return original(args, **kwargs)
+
+                with self.assertRaisesRegex(AndroidCaptureError, "foreground"):
+                    render(self.env, android35)
+                self.assertFalse(self.output.exists())
+
+    def test_android35_tty_dump_uses_unique_private_device_files_and_cleans_them(self):
+        original, _ = self.runner()
+        paths, removed = [], []
+
+        def android35(args, **kwargs):
+            tail = args[3:]
+            if tail == ["shell", "uiautomator", "dump", "/dev/tty"]:
+                return SimpleNamespace(stdout=b"UI hierarchy dumped to /dev/tty",
+                                       stderr=b"private", returncode=0)
+            if len(tail) == 4 and tail[:3] == ["shell", "uiautomator", "dump"]:
+                self.assertRegex(tail[3],
+                    r"^/data/local/tmp/walidsite-visual-[0-9a-f]{24}\.xml$")
+                paths.append(tail[3])
+                return SimpleNamespace(stdout=b"dumped", stderr=b"private", returncode=0)
+            if len(tail) == 3 and tail[:2] == ["exec-out", "cat"]:
+                self.assertIn(tail[2], paths)
+                return SimpleNamespace(stdout=self.hierarchy("Waleed Tech Companion"),
+                                       stderr=b"private", returncode=0)
+            if len(tail) == 4 and tail[:3] == ["shell", "rm", "-f"]:
+                removed.append(tail[3])
+                self.assertIn(tail[3], paths)
+                return SimpleNamespace(stdout=b"", stderr=b"private", returncode=0)
+            return original(args, **kwargs)
+
+        self.assertEqual(render(self.env, android35), self.output)
+        self.assertEqual(self.output.read_bytes(), self.png)
+        self.assertEqual(len(paths), 2)
+        self.assertNotEqual(paths[0], paths[1])
+        self.assertEqual(removed, paths)
+
+    def test_android35_missing_device_hierarchy_rejects_without_png(self):
+        original, _ = self.runner()
+        paths, removed = [], []
+
+        def android35(args, **kwargs):
+            tail = args[3:]
+            if tail == ["shell", "uiautomator", "dump", "/dev/tty"]:
+                return SimpleNamespace(stdout=b"UI dump unavailable",
+                                       stderr=b"private", returncode=0)
+            if len(tail) == 4 and tail[:3] == ["shell", "uiautomator", "dump"]:
+                paths.append(tail[3])
+                return SimpleNamespace(stdout=b"", stderr=b"private", returncode=0)
+            if len(tail) == 3 and tail[:2] == ["exec-out", "cat"]:
+                return SimpleNamespace(stdout=b"private invalid XML",
+                                       stderr=b"secret", returncode=0)
+            if len(tail) == 4 and tail[:3] == ["shell", "rm", "-f"]:
+                removed.append(tail[3])
+                return SimpleNamespace(stdout=b"", stderr=b"private", returncode=0)
+            return original(args, **kwargs)
+
+        with self.assertRaisesRegex(AndroidCaptureError, "hierarchy"):
+            render(self.env, android35)
+        self.assertEqual(len(paths), 1)
+        self.assertEqual(removed, paths)
+        self.assertFalse(self.output.exists())
+
+    def test_android35_cleanup_failure_never_admits_screenshot(self):
+        original, _ = self.runner()
+
+        def cleanup_fails(args, **kwargs):
+            tail = args[3:]
+            if tail == ["shell", "uiautomator", "dump", "/dev/tty"]:
+                return SimpleNamespace(stdout=b"status only", stderr=b"private", returncode=0)
+            if len(tail) == 4 and tail[:3] == ["shell", "uiautomator", "dump"]:
+                return SimpleNamespace(stdout=b"dumped", stderr=b"private", returncode=0)
+            if len(tail) == 3 and tail[:2] == ["exec-out", "cat"]:
+                return SimpleNamespace(stdout=self.hierarchy("Waleed Tech Companion"),
+                                       stderr=b"private", returncode=0)
+            if len(tail) == 4 and tail[:3] == ["shell", "rm", "-f"]:
+                return SimpleNamespace(stdout=b"", stderr=b"private", returncode=1)
+            return original(args, **kwargs)
+
+        with self.assertRaises(AndroidCaptureError):
+            render(self.env, cleanup_fails)
+        self.assertFalse(self.output.exists())
+
     def test_supported_routes_are_real_flutter_headings_not_contract_labels(self):
         self.assertEqual(len(HEADINGS), 8)
         for route, labels in HEADINGS.items():
@@ -160,6 +348,21 @@ class AndroidScreenCaptureTest(unittest.TestCase):
         ):
             with self.subTest(xml=xml[:120]):
                 with self.assertRaises(AndroidCaptureError):
+                    _verify_native_identity(xml, identifier, titles[0], 1440, 860, top)
+
+    def test_native_marker_diagnostics_never_expose_private_bounds_or_xml(self):
+        identifier, titles, top = NATIVE_SCREENS["/welcome"]
+        for bounds, visible, reason in (
+            ("[0,0][1440,860]", False, "hidden"),
+            ("[0,0][1441,860]", True, "outside_viewport"),
+        ):
+            with self.subTest(reason=reason):
+                xml = self.native_hierarchy(
+                    identifier, titles[0], marker_bounds=bounds,
+                    marker_visible=visible,
+                )
+                with self.assertRaisesRegex(AndroidCaptureError,
+                                             "marker is not visible: " + reason):
                     _verify_native_identity(xml, identifier, titles[0], 1440, 860, top)
 
     def test_native_marker_switch_during_screencap_never_creates_evidence(self):
