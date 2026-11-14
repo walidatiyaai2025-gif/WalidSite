@@ -515,11 +515,15 @@ class ReleaseAndroidQaAttachmentTest(unittest.TestCase):
               ".github/workflows/ci.yml").read_text()
         self.assertIn("verify-source-pinned-release-bundle:", ci)
         self.assertIn("needs: [required-ci-gate, build-cpanel-package, build-android-qa-apk, android-emulator-install-launch]", ci)
-        self.assertIn("name: WalidSite-Android-emulator-launch-${{ github.sha }}", ci)
+        bundle_job = ci.split("  verify-source-pinned-release-bundle:", 1)[1].split("\n  cleanup-merged-branch:", 1)[0]
+        tested_sha = "${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
+        self.assertIn("name: WalidSite-Android-emulator-launch-" + tested_sha, bundle_job)
+        self.assertIn("SOURCE_SHA: " + tested_sha, bundle_job)
+        self.assertNotIn("${{ github.sha }}", bundle_job)
         self.assertIn("assert emulator['device_install_launch_verified'] is True", ci)
         self.assertIn("assert emulator['apk_sha256'] == proof['android_apk_sha256']", ci)
         self.assertIn("assert emulator['production_ready'] is False", ci)
-        self.assertIn("WalidSite-UNPUBLISHED-release-train-${{ github.sha }}", ci)
+        self.assertIn("WalidSite-UNPUBLISHED-release-train-" + tested_sha, bundle_job)
         self.assertIn(
             "name: WalidSite-UNPUBLISHED-release-train-"
             "${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}",
@@ -529,7 +533,7 @@ class ReleaseAndroidQaAttachmentTest(unittest.TestCase):
             "ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}",
             ci,
         )
-        self.assertIn("WalidSite-Android-debug-QA-${{ github.sha }}", ci)
+        self.assertIn("WalidSite-Android-debug-QA-" + tested_sha, bundle_job)
         self.assertIn("--candidates dist/source-proof/release/release-train", ci)
         self.assertIn("WalidSite-UNPUBLISHED-unified-build-proof-", ci)
         self.assertIn("proof['native_and_web_version_match'] is True", ci)

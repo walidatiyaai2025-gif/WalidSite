@@ -91,3 +91,34 @@ but blocked on signer identity. That run is **not** proof of a production-signed
 APK or a live Web↔APK deployment. External approved signing configuration,
 release promotion, cPanel physical host adapter/recovery and owner device
 acceptance still gate #1120.
+
+
+## Reproducible runtime baseline (2026-11-14)
+
+The source previously omitted `backend/composer.lock`. Consequently Composer
+resolved a different runtime in separate CI/release builds despite identical
+source SHA and unchanged dependency ranges. That invalidated the strict
+code-only upgrade contract against the installed 0.1.2 runtime.
+
+The canonical lock now records the actual installed dependency inventory,
+verified against the private backup and independently against the current
+host SHA-256 `7e783f97598121104fdcdd97a2731dca8e6f9071beb2d6b149cd1fa27001ea99`.
+Composer strict validation and a current locked production audit passed
+before admission. CI installs and tests this exact lock, audits production
+dependencies and rejects untracked or modified locks. Both packaging paths
+require the same tracked lock and refuse Composer changes. Future dependency
+upgrades must explicitly change it and exercise a supported full-runtime
+upgrade; never generate a different lock implicitly during release.
+
+This does not bypass any signed archive, stable entrypoint, migration,
+independent host adapter or recovery check. A source-compatible runtime is
+necessary, not proof of a completed production upgrade. Actual host PHP-denial
+and Cron PHP signature capabilities were verified separately; the release gate
+remains open until signed publication, real restore/cutover and HTTPS health
+are evidenced.
+
+Flutter is also pinned to `3.47.9`, the SDK recorded in successful exact-main
+CI run `42974930157`. Resolving the floating stable channel later selected
+an SDK deprecating the existing material/cupertino imports and failed strict
+analysis before Laravel ran. Both native build paths and CI now use the same
+known tested SDK; analyzer errors and warnings remain enforced unchanged.
